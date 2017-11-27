@@ -402,18 +402,18 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp);
 
 
-/* Map of old plugin sessions that have been closed */
-static GHashTable *old_plugin_sessions;
-static janus_mutex old_plugin_sessions_mutex;
+/* Map of active plugin sessions */
+static GHashTable *plugin_sessions;
+static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	/* Make sure this plugin session is still alive */
-	janus_mutex_lock_nodebug(&old_plugin_sessions_mutex);
-	janus_plugin_session *result = g_hash_table_lookup(old_plugin_sessions, plugin_session);
-	janus_mutex_unlock_nodebug(&old_plugin_sessions_mutex);
-	if(result != NULL) {
+	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
+	janus_plugin_session *result = g_hash_table_lookup(plugin_sessions, plugin_session);
+	janus_mutex_unlock_nodebug(&plugin_sessions_mutex);
+	if(result == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
 	}
-	return (result == NULL);
+	return (result != NULL);
 }
 
 static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
@@ -634,9 +634,9 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 #endif
 	}
 
-	/* We keep track of old plugin sessions to avoid problems */
-	old_plugin_sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&old_plugin_sessions_mutex);
+	/* We keep track of plugin sessions to avoid problems */
+	plugin_sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&plugin_sessions_mutex);
 
 #ifdef HAVE_LIBCURL
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
@@ -960,10 +960,10 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	//~ janus_refcount_increase(&handle->ref);
 	handle->app = plugin;
 	handle->app_handle = session_handle;
-	/* Make sure this plugin session is not in the old sessions list */
-	janus_mutex_lock(&old_plugin_sessions_mutex);
-	g_hash_table_remove(old_plugin_sessions, session_handle);
-	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	/* Add this plugin session to active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	g_hash_table_insert(plugin_sessions, session_handle, session_handle);
+	janus_mutex_unlock(&plugin_sessions_mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
@@ -978,6 +978,13 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	janus_session *session = (janus_session *)core_session;
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	/* Remove the session from active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	gboolean found = g_hash_table_remove(plugin_sessions, handle->app_handle);
+	janus_mutex_unlock(&plugin_sessions_mutex);
+	if (!found) {
+		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	}
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
@@ -1009,10 +1016,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	int error = 0;
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
 		handle->app_handle->gateway_handle = NULL;
-		/* Put the plugin session in the old sessions list, to avoid it being used */
-		janus_mutex_lock(&old_plugin_sessions_mutex);
-		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
-		janus_mutex_unlock(&old_plugin_sessions_mutex);
 		/* Notify the plugin that the session's over */
 		plugin_t->destroy_session(handle->app_handle, &error);
 		/* We only unref when actually freeing the ICE handle */
