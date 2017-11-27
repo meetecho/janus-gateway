@@ -4048,8 +4048,20 @@ static void *janus_videoroom_handler(void *data) {
 				if(publisher) {
 					if(audio && publisher->audio && listener->audio_offered)
 						listener->audio = json_is_true(audio);
-					if(video && publisher->video && listener->video_offered)
+					if(video && publisher->video && listener->video_offered) {
 						listener->video = json_is_true(video);
+						if(listener->video) {
+							/* Send a FIR */
+							char buf[20];
+							janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+							JANUS_LOG(LOG_VERB, "Restoring video for listener, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+							gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+							/* Send a PLI too, just in case... */
+							janus_rtcp_pli((char *)&buf, 12);
+							JANUS_LOG(LOG_VERB, "Restoring video for listener, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+							gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+						}
+					}
 					if(data && publisher->data && listener->data_offered)
 						listener->data = json_is_true(data);
 					/* Check if a simulcasting-related request is involved */
