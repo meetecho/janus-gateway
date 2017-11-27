@@ -993,7 +993,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_refcount_decrease(&handle->ref);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1007,7 +1007,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			g_main_loop_quit(handle->iceloop);
+			if (g_main_loop_is_running(handle->iceloop))
+				g_main_loop_quit(handle->iceloop);
 		}
 		return 0;
 	}
@@ -1027,7 +1028,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	}
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+	if(handle->iceloop != NULL) {
 		if(handle->audio_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1041,7 +1042,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		g_main_loop_quit(handle->iceloop);
+		if (g_main_loop_is_running(handle->iceloop))
+			g_main_loop_quit(handle->iceloop);
 	}
 
 	/* Prepare JSON event to notify user/application */
@@ -1108,7 +1110,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1132,8 +1134,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 					break;
 				}
 			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
+			if(g_main_loop_is_running(handle->iceloop)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit\n", handle->handle_id);
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
 					g_main_context_wakeup(handle->icectx);
