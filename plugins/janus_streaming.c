@@ -331,6 +331,14 @@ static struct janus_json_parameter simulcast_parameters[] = {
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter configure_parameters[] = {
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0},
+	/* For VP8 simulcast */
+	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+};
 
 /* Static configuration instance */
 static janus_config *config = NULL;
@@ -2703,6 +2711,18 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Can't configure: not on a mountpoint");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			json_t *audio = json_object_get(root, "audio");
+			if(audio)
+				session->audio = json_is_true(audio);
+			json_t *video = json_object_get(root, "video");
+			if(video)
+				session->video = json_is_true(video);
+			json_t *data = json_object_get(root, "data");
+			if(data)
+				session->data = json_is_true(data);
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
 				if(source && source->simulcast) {
