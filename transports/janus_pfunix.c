@@ -416,22 +416,11 @@ void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean tim
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL) {
 		client->session_timeout = TRUE;
-		if(client->fd != -1) {
-			/* Shutdown the client socket */
-			shutdown(client->fd, SHUT_WR);
-		} else {
-			/* Destroy the client */
-			g_hash_table_remove(clients_by_path, client->addr.sun_path);
-			g_hash_table_remove(clients, client);
-			if(client->messages != NULL) {
-				char *response = NULL;
-				while((response = g_async_queue_try_pop(client->messages)) != NULL) {
-					g_free(response);
-				}
-				g_async_queue_unref(client->messages);
-			}
-			g_free(client);
-		}
+		/* Notify the thread about this */
+		int res = 0;
+		do {
+			res = write(write_fd[1], "x", 1);
+		} while(res == -1 && errno == EINTR);
 	}
 	janus_mutex_unlock(&clients_mutex);
 }
@@ -581,6 +570,23 @@ void *janus_pfunix_thread(void *data) {
 						/* FIXME Should we check if sent everything? */
 						JANUS_LOG(LOG_HUGE, "Written %d/%zu bytes on %d\n", res, strlen(payload), client->fd);
 						g_free(payload);
+					}
+					if(client->session_timeout) {
+						/* We should actually get rid of this connection, now */
+						shutdown(SHUT_RDWR, poll_fds[i].fd);
+						close(poll_fds[i].fd);
+						client->fd = -1;
+						/* Destroy the client */
+						g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
+						g_hash_table_remove(clients, client);
+						if(client->messages != NULL) {
+							char *response = NULL;
+							while((response = g_async_queue_try_pop(client->messages)) != NULL) {
+								g_free(response);
+							}
+							g_async_queue_unref(client->messages);
+						}
+						g_free(client);
 					}
 				}
 				janus_mutex_unlock(&clients_mutex);
