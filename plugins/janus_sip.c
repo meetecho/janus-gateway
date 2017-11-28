@@ -192,8 +192,7 @@ static struct janus_json_parameter sipmessage_parameters[] = {
 };
 static struct janus_json_parameter configure_parameters[] = {
         {"audio", JANUS_JSON_BOOL, 0},
-        {"video", JANUS_JSON_BOOL, 0},
-        {"data", JANUS_JSON_BOOL, 0}
+        {"video", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
