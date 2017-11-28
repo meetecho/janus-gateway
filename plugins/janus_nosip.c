@@ -152,6 +152,10 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"peer_video", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
+static struct janus_json_parameter configure_parameters[] = {
+        {"audio", JANUS_JSON_BOOL, 0},
+        {"video", JANUS_JSON_BOOL, 0}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -1150,6 +1154,16 @@ static void *janus_nosip_handler(void *data) {
 			gateway->close_pc(session->handle);
 			result = json_object();
 			json_object_set_new(result, "event", json_string("hangingup"));
+		} else if(!strcasecmp(request_text, "configure")) {
+			JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_NOSIP_ERROR_MISSING_ELEMENT, JANUS_NOSIP_ERROR_INVALID_ELEMENT);
+			json_t *audio = json_object_get(root, "audio");
+			if(audio)
+				session->media.audio_send = json_is_true(audio);
+			json_t *video = json_object_get(root, "video");
+			if(video)
+				session->media.video_send = json_is_true(video);
 		} else if(!strcasecmp(request_text, "recording")) {
 			/* Start or stop recording */
 			JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
