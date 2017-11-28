@@ -278,6 +278,30 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 				g_free(stream->rpass);
 			stream->rpass = g_strdup(rpass);
 		}
+		/* Is simulcasting enabled, using rid? (we need to check this before parsing SSRCs) */
+		tempA = m->attributes;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+			if(a->name && !strcasecmp(a->name, "rid")) {
+				/* This attribute is used by Firefox for simulcasting */
+				char rid[16];
+				if(sscanf(a->value, "%15s send", rid) != 1) {
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
+				} else {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
+					if(stream->rid[0] == NULL) {
+						stream->rid[0] = g_strdup(rid);
+					} else if(stream->rid[1] == NULL) {
+						stream->rid[1] = g_strdup(rid);
+					} else if(stream->rid[2] == NULL) {
+						stream->rid[2] = g_strdup(rid);
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
+					}
+				}
+			}
+			tempA = tempA->next;
+		}
 		/* Now look for candidates and other info */
 		tempA = m->attributes;
 		while(tempA) {
@@ -294,23 +318,6 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 						int res = janus_sdp_parse_candidate(stream, (const char *)a->value, 0);
 						if(res != 0) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
-						}
-					}
-				} else if(!strcasecmp(a->name, "rid")) {
-					/* This attribute is used by Firefox for simulcasting */
-					char rid[16];
-					if(sscanf(a->value, "%15s send", rid) != 1) {
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
-					} else {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
-						if(stream->rid[0] == NULL) {
-							stream->rid[0] = g_strdup(rid);
-						} else if(stream->rid[1] == NULL) {
-							stream->rid[1] = g_strdup(rid);
-						} else if(stream->rid[2] == NULL) {
-							stream->rid[2] = g_strdup(rid);
-						} else {
-							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
 						}
 					}
 				} else if(!strcasecmp(a->name, "ssrc-group")) {

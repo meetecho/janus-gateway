@@ -29,6 +29,7 @@ esac
 
 glib_version=2.34
 ssl_version=1.0.1
+jansson_version=2.5
 
 ##
 # Janus
@@ -197,7 +198,7 @@ PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
                     nice
-                    jansson
+                    jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
                   ])
@@ -225,10 +226,9 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       ])
 AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
-AC_CHECK_LIB([crypto],
-             [RAND_egd],
-             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)],
-             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)]
+AC_SEARCH_LIBS([tls_config_set_ca_mem],[tls],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)]
              )
 
 AC_CHECK_LIB([nice],
@@ -360,7 +360,7 @@ fi
 PKG_CHECK_MODULES([TRANSPORTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 PKG_CHECK_MODULES([MHD],
@@ -467,7 +467,7 @@ AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 PKG_CHECK_MODULES([PLUGINS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],
@@ -626,7 +626,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xye
 PKG_CHECK_MODULES([EVENTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 
@@ -696,11 +696,11 @@ AC_ARG_ENABLE([post-processing],
 AS_IF([test "x$enable_post_processing" = "xyes"],
       [PKG_CHECK_MODULES([POST_PROCESSING],
                          [
-                           glib-2.0,
-                           jansson,
-                           libavutil,
-                           libavcodec,
-                           libavformat,
+                           glib-2.0 >= $glib_version
+                           jansson >= $jansson_version
+                           libavutil
+                           libavcodec
+                           libavformat
                            ogg
                          ])
       ])

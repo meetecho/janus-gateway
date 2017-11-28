@@ -824,7 +824,7 @@ int janus_process_incoming_request(janus_request *request) {
 			error_code, error_cause, FALSE,
 			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 		if(error_code != 0) {
-			ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
