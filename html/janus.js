@@ -96,7 +96,7 @@ Janus.useDefaultDependencies = function (deps) {
 				}
 			}).catch(function(error) {
 				if(typeof(options.error) === typeof(Janus.noop)) {
-					options.error(error.message || '<< internal error >>', error);
+					options.error(error.message || '<< internal error >>', error && error.error ? error.error.message : error);
 				}
 			});
 
