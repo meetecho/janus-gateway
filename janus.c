@@ -2556,7 +2556,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.audio_bytes_lastsec) {
-				GList *lastsec = component->in_stats.audio_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2576,7 +2576,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.video_bytes_lastsec) {
-				GList *lastsec = component->in_stats.video_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.video_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
