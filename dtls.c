@@ -993,6 +993,7 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
+		janus_refcount_decrease(&dtls->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}

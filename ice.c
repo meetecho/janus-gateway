@@ -474,7 +474,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 
 
 /* Trickle helpers */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
 	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
@@ -482,8 +482,6 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
-	trickle->handle = handle;
-	janus_refcount_increase(&handle->ref);
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -584,8 +582,6 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 	if(trickle == NULL)
 		return;
-	janus_refcount_decrease(&trickle->handle->ref);
-	trickle->handle = NULL;
 	g_free(trickle->transaction);
 	trickle->transaction = NULL;
 	if(trickle->candidate)
@@ -1186,7 +1182,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	handle->video_mid = NULL;
 	g_free(handle->data_mid);
 	handle->data_mid = NULL;
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 	janus_mutex_unlock(&handle->mutex);
