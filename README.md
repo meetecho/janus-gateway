@@ -166,10 +166,11 @@ HTTP REST API, you'll have to install it manually:
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
 	# If you want the stable version of libwebsockets, uncomment the next line
-	# git checkout v1.5-chrome47-firefox41
+	# git checkout v2.4-stable
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
+	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
+	cmake -DLWS_MAX_SMP=1 -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace
@@ -284,7 +285,7 @@ MacOS as well, there are a few aspects to highlight when doing that.
 First of all, you can use `brew` to install most of the dependencies:
 
 	brew tap homebrew/boneyard
-	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg libcurl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
 
 For what concerns `libsrtp`, which needs to be installed manually, just
 pass `/usr/local` as a prefix when configuring, and proceed as normal:

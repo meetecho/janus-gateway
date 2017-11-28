@@ -824,7 +824,7 @@ int janus_process_incoming_request(janus_request *request) {
 			error_code, error_cause, FALSE,
 			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 		if(error_code != 0) {
-			ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
@@ -4071,7 +4071,7 @@ gint main(int argc, char *argv[])
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
 		/* Initialize the event broadcaster */
-		if(janus_events_init(enable_events, eventhandlers) < 0) {
+		if(janus_events_init(enable_events, (server_name ? server_name : (char *)JANUS_SERVER_NAME), eventhandlers) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
 			exit(1);
 		}
@@ -4341,6 +4341,7 @@ gint main(int argc, char *argv[])
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "status", json_string("started"));
+		json_object_set_new(info, "info", janus_info(NULL));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
 	}
 

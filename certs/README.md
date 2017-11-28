@@ -10,6 +10,10 @@ Please beware, though, that 512 bit certificates should be avoided, as explained
 # Feeling lazy?
 Just as an example and for the lazy (you'll probably find better samples around), here's how you can quickly create a certificate as needed by Janus:
 
-	openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:1024 -keyout privateKey.key -out certificate.crt
+	openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout privateKey.key -out certificate.crt
 
 Just follow the instructions. This will create a private key in ```privateKey.key``` and a certificate in ```certificate.crt```. To use them, update the configuration file ```janus.cfg``` accordingly, to have the ```cert_pem``` and ```cert_key``` in ```[certificates]``` point to the newly created files.
+
+If you are in need of certificates for use by browsers, for instance for the HTTP or WebSockets transports,
+you can get them from many Certificate Authorities including Letsencrypt.org, a CA that signs certificates
+for free and automatically using scripts on your server.

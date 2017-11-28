@@ -872,6 +872,8 @@ static int janus_websockets_callback_http(
 				return -1;
 			}
 			break;
+		case LWS_CALLBACK_GET_THREAD_ID:
+			return (uint64_t)pthread_self();
 		default:
 			break;
 	}
