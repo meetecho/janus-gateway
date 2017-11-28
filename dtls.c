@@ -757,6 +757,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
 					if(dtls->sctp != NULL) {
 						/* FIXME We need to start it in a thread, though, since it has blocking accept/connect stuff */
+						janus_refcount_increase(&dtls->ref);
 						janus_refcount_increase(&dtls->sctp->ref);
 						GError *error = NULL;
 						char tname[16];
@@ -765,6 +766,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						if(error != NULL) {
 							/* Something went wrong... */
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+							janus_refcount_decrease(&dtls->ref);
+							janus_refcount_decrease(&dtls->sctp->ref);
 						}
 						dtls->srtp_valid = 1;
 					}
@@ -997,6 +1000,7 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
+	janus_refcount_decrease(&dtls->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
