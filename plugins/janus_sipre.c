@@ -18,7 +18,7 @@
  *
  * The supported requests are \c register , \c unregister , \c call ,
  * \c accept, \c info , \c message , \c dtmf_info , \c recording ,
- * \c hold , \c unhold and \c hangup . \c register can be used,
+ * \c hold , \c unhold , \c configure and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
@@ -188,6 +188,10 @@ static struct janus_json_parameter info_parameters[] = {
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
 	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+        {"audio", JANUS_JSON_BOOL, 0},
+        {"video", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
@@ -2169,6 +2173,16 @@ static void *janus_sipre_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
+                } else if(!strcasecmp(request_text, "configure")) {
+                        JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
+                                error_code, error_cause, TRUE,
+                                JANUS_SIPRE_ERROR_MISSING_ELEMENT, JANUS_SIPRE_ERROR_INVALID_ELEMENT);
+                        json_t *audio = json_object_get(root, "audio");
+                        if(audio)
+                                session->media.audio_send = json_is_true(audio);
+                        json_t *video = json_object_get(root, "video");
+                        if(video)
+                                session->media.video_send = json_is_true(video);
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
 			if(!(session->status == janus_sipre_call_status_inviting || session->status == janus_sipre_call_status_incall)) {
