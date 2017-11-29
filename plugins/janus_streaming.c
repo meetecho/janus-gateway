@@ -356,6 +356,7 @@ static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
+static void janus_streaming_hangup_media_internal(janus_plugin_session *handle);
 
 typedef enum janus_streaming_type {
 	janus_streaming_type_none = 0,
@@ -1243,14 +1244,15 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
-	janus_streaming_mountpoint *mp = session->mountpoint;
-	if(mp) {
-		janus_mutex_lock(&mp->mutex);
-		mp->listeners = g_list_remove_all(mp->listeners, session);
-		janus_mutex_unlock(&mp->mutex);
-	}
 	if(!session->destroyed) {
+		JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
+		janus_streaming_mountpoint *mp = session->mountpoint;
+		if(mp) {
+			janus_mutex_lock(&mp->mutex);
+			mp->listeners = g_list_remove_all(mp->listeners, session);
+			janus_mutex_unlock(&mp->mutex);
+		}
+		janus_streaming_hangup_media_internal(handle);
 		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
 		/* Cleaning up and removing the session is done in a lazy way */
@@ -2306,6 +2308,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "switch")) {
 		/* These messages are handled asynchronously */
+		janus_mutex_unlock(&sessions_mutex);
 		janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
@@ -2313,7 +2316,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		msg->jsep = jsep;
 
 		g_async_queue_push(messages, msg);
-		janus_mutex_unlock(&sessions_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
@@ -2428,22 +2430,24 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 }
 
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_mutex_lock(&sessions_mutex);
 	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
-		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroyed) {
-		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
 	if(g_atomic_int_add(&session->hangingup, 1)) {
-		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
 	session->substream = -1;
@@ -2452,14 +2456,26 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	session->templayer_target = 0;
 	session->last_relayed = 0;
 	janus_vp8_simulcast_context_reset(&session->simulcast_context);
-	/* FIXME Simulate a "stop" coming from the browser */
-	janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
-	msg->handle = handle;
-	msg->message = json_pack("{ss}", "request", "stop");
-	msg->transaction = NULL;
-	msg->jsep = NULL;
-	g_async_queue_push(messages, msg);
-	janus_mutex_unlock(&sessions_mutex);
+	session->stopping = TRUE;
+	session->started = FALSE;
+	session->paused = FALSE;
+	session->substream = -1;
+	session->substream_target = 0;
+	session->templayer = -1;
+	session->templayer_target = 0;
+	session->last_relayed = 0;
+	janus_vp8_simulcast_context_reset(&session->simulcast_context);
+	janus_streaming_mountpoint *mp = session->mountpoint;
+	if(mp) {
+		janus_mutex_lock(&mp->mutex);
+		JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint listeners\n");
+		if(g_list_find(mp->listeners, session) != NULL) {
+			JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
+		}
+		mp->listeners = g_list_remove_all(mp->listeners, session);
+		janus_mutex_unlock(&mp->mutex);
+	}
+	session->mountpoint = NULL;
 }
 
 /* Thread to handle incoming messages */
@@ -2868,36 +2884,8 @@ static void *janus_streaming_handler(void *data) {
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Stopping the streaming\n");
-			session->stopping = TRUE;
-			session->started = FALSE;
-			session->paused = FALSE;
-			session->substream = -1;
-			session->substream_target = 0;
-			session->templayer = -1;
-			session->templayer_target = 0;
-			session->last_relayed = 0;
-			janus_vp8_simulcast_context_reset(&session->simulcast_context);
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopping"));
-			janus_streaming_mountpoint *mp = session->mountpoint;
-			if(mp) {
-				janus_mutex_lock(&mp->mutex);
-				JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint listeners\n");
-				if(g_list_find(mp->listeners, session) != NULL) {
-					JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
-				}
-				mp->listeners = g_list_remove_all(mp->listeners, session);
-				janus_mutex_unlock(&mp->mutex);
-			}
-			/* Also notify event handlers */
-			if(notify_events && gateway->events_is_enabled()) {
-				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("stopping"));
-				if(mp)
-					json_object_set_new(info, "id", json_integer(mp->id));
-				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
-			}
-			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 			gateway->close_pc(session->handle);
 		} else {

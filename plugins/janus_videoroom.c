@@ -367,7 +367,6 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle);
 
-
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
 	janus_videoroom_p_type_subscriber,			/* Generic listener/subscriber */
@@ -1299,9 +1298,9 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		JANUS_LOG(LOG_WARN, "VideoRoom session already marked as destroyed...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing VideoRoom session...\n");
 	/* Cleaning up and removing the session is done in a lazy way */
 	if(!session->destroyed) {
+		JANUS_LOG(LOG_VERB, "Removing VideoRoom session...\n");
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media_internal(handle);
 		session->destroyed = janus_get_monotonic_time();
@@ -2729,6 +2728,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch") || !strcasecmp(request_text, "stop")
 			|| !strcasecmp(request_text, "add") || !strcasecmp(request_text, "remove") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
+		janus_mutex_unlock(&sessions_mutex);
 
 		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
 		msg->handle = handle;
@@ -2737,7 +2737,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		msg->jsep = jsep;
 		g_async_queue_push(messages, msg);
 
-		janus_mutex_unlock(&sessions_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
@@ -3148,9 +3147,12 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
-	if(!session || session->destroyed || !session->participant)
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
+	if(!session || session->destroyed || !session->participant) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	/* Check if it's an uplink (publisher) or downlink (viewer) issue */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		if(!uplink) {
@@ -3184,6 +3186,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
 		}
 	}
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 static void janus_videoroom_recorder_create(janus_videoroom_participant *participant, gboolean audio, gboolean video, gboolean data) {
@@ -3275,6 +3278,12 @@ static void janus_videoroom_recorder_close(janus_videoroom_participant *particip
 	participant->drc = NULL;
 }
 
+void janus_videoroom_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -3363,12 +3372,6 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		}
 		/* TODO Should we close the handle as well? */
 	}
-}
-
-void janus_videoroom_hangup_media(janus_plugin_session *handle) {
-	janus_mutex_lock(&sessions_mutex);
-	janus_videoroom_hangup_media_internal(handle);
-	janus_mutex_unlock(&sessions_mutex);
 }
 
 /* Thread to handle incoming messages */
