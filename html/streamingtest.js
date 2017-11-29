@@ -66,6 +66,12 @@ $(document).ready(function() {
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
+                        var token = $('#token').val();
+
+                        if(token.length === 0) {
+                                token = "default";
+                        }
+
 			if(started)
 				return;
 			started = true;
@@ -79,6 +85,7 @@ $(document).ready(function() {
 			janus = new Janus(
 				{
 					server: server,
+                                        token: token,
 					success: function() {
 						// Attach to streaming plugin
 						janus.attach(

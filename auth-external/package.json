@@ -1,0 +1,15 @@
+{
+  "name": "authserver",
+  "version": "0.0.1",
+  "description": "Example token authentication server for Janus Gateway",
+  "main": "authserver-example.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "body-parser": "^1.17.2",
+    "express": "^4.15.3"
+  },
+  "author": "Derrell Lipman <derrell.lipman@unwireduniverse.com>",
+  "license": "GNU General Public License v3"
+}

@@ -690,7 +690,7 @@ int janus_process_incoming_request(janus_request *request) {
 			if(janus_auth_is_enabled()) {
 				/* The token based authentication mechanism is enabled, check that the client provided it */
 				json_t *token = json_object_get(root, "token");
-				if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+				if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token), root)) {
 					token_authorized = TRUE;
 				}
 			}
@@ -772,7 +772,7 @@ int janus_process_incoming_request(janus_request *request) {
 		if(janus_auth_is_enabled()) {
 			/* The token based authentication mechanism is enabled, check that the client provided it */
 			json_t *token = json_object_get(root, "token");
-			if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+			if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token), root)) {
 				token_authorized = TRUE;
 			}
 		}
@@ -1597,6 +1597,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
+			json_object_set_new(status, "token_auth_private", json_string(janus_auth_get_external_private_data()));
 			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
@@ -1954,7 +1955,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token(token_value)) {
+			if(!janus_auth_check_token(token_value, NULL)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -2035,7 +2036,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token(token_value)) {
+			if(!janus_auth_check_token(token_value, NULL)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -2685,7 +2686,7 @@ gboolean janus_transport_is_auth_token_needed(janus_transport *plugin) {
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token) {
 	if(!janus_auth_is_enabled())
 		return TRUE;
-	return token && janus_auth_check_token(token);
+	return token && janus_auth_check_token(token, NULL);
 }
 
 void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
@@ -3505,7 +3506,13 @@ gint main(int argc, char *argv[])
 		janus_config_add_item(config, "general", "api_secret", args_info.apisecret_arg);
 	}
 	if(args_info.token_auth_given) {
-		janus_config_add_item(config, "general", "token_auth", "yes");
+                if (strlen(args_info.token_auth_arg) > 0) {
+                        janus_config_add_item(config, "general", "token_auth", "external");
+                        janus_config_add_item(config, "general", "token_auth_private", args_info.token_auth_arg);
+                } else {
+                        janus_config_add_item(config, "general", "token_auth", "yes");
+                }
+                
 	}
 	if(args_info.cert_pem_given) {
 		janus_config_add_item(config, "certificates", "cert_pem", args_info.cert_pem_arg);
@@ -3683,7 +3690,19 @@ gint main(int argc, char *argv[])
 	}
 	/* Also check if the token based authentication mechanism needs to be enabled */
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
-	janus_auth_init(item && item->value && janus_is_true(item->value));
+        if (item && item->value) {
+                if (!strcasecmp(item->value, "external")) {
+                        janus_auth_init('E');
+                        item = janus_config_get_item_drilldown(config, "general", "token_auth_private");
+                        if (item && item->value) {
+                                janus_auth_set_external_private_data((void *) item->value);
+                        }
+                } else {
+                        janus_auth_init(janus_is_true(item->value) ? 'I' : '-');
+                }
+        } else {
+                janus_auth_init('-');
+        }
 
 	/* Initialize the recorder code */
 	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");
