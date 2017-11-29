@@ -2820,7 +2820,6 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_audiobridge_message_free(msg);
 			continue;
 		}
-		JANUS_LOG(LOG_WARN, ">>>> AAAA\n");
 		janus_mutex_lock(&sessions_mutex);
 		janus_audiobridge_session *session = janus_audiobridge_lookup_session(msg->handle);
 		if(!session) {
@@ -2834,7 +2833,6 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_audiobridge_message_free(msg);
 			continue;
 		}
-		JANUS_LOG(LOG_WARN, ">>>> BBBB\n");
 		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
