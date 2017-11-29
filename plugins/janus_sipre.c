@@ -2084,6 +2084,51 @@ static void *janus_sipre_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
+		} else if(!strcasecmp(request_text, "update")) {
+			/* Update an existing call: currently only used for ICE restarts on the WebRTC side */
+			if(!(session->status == janus_sipre_call_status_inviting || session->status == janus_sipre_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sipre_call_status_string(session->status));
+				/* Ignore */
+				janus_sipre_message_free(msg);
+				continue;
+				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				//~ goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			if(session->sdp == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no local SDP?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no local SDP?)");
+				goto error;
+			}
+			/* Any SDP to handle? if not, something's wrong */
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp) {
+				JANUS_LOG(LOG_ERR, "Missing SDP update\n");
+				error_code = JANUS_SIPRE_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP update");
+				goto error;
+			}
+			if(!json_is_true(json_object_get(msg->jsep, "update"))) {
+				JANUS_LOG(LOG_ERR, "Missing SDP update\n");
+				error_code = JANUS_SIPRE_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP update");
+				goto error;
+			}
+			/* FIXME We should actually parse the new offer */
+			session->sdp->o_version++;
+			/* Send the re-INVITE */
+			char *sdp = janus_sdp_write(session->sdp);
+			session->temp_sdp = sdp;
+			mqueue_push(mq, janus_sipre_mqueue_event_do_update, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
+			/* Send an ack back */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("updating"));
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
 			if(session->status != janus_sipre_call_status_invited) {

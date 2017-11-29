@@ -1122,6 +1122,34 @@ static void *janus_nosip_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
+		} else if(!strcasecmp(request_text, "update")) {
+			/* Only used for ICE restarts */
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!json_is_true(json_object_get(msg->jsep, "update"))) {
+				JANUS_LOG(LOG_ERR, "Not a renegotiation\n");
+				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Not a renegotiation");
+				goto error;
+			}
+			if(!msg_sdp) {
+				JANUS_LOG(LOG_ERR, "Missing SDP\n");
+				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP");
+				goto error;
+			}
+			if(!msg_sdp_type || strcasecmp(msg_sdp_type, "offer")) {
+				JANUS_LOG(LOG_ERR, "Missing or invalid SDP type\n");
+				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing or invalid SDP type");
+				goto error;
+			}
+			/* We just send back whatever we had before */
+			char *sdp = janus_sdp_write(session->sdp);
+			localjsep = json_pack("{ssss}", "type", "answer", "sdp", sdp);
+			g_free(sdp);
+			result = json_object();
+			json_object_set_new(result, "event", json_string("updated"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Get rid of an ongoing session */
 			gateway->close_pc(session->handle);

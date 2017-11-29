@@ -139,8 +139,8 @@ $(document).ready(function() {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(msg);
 									var result = msg["result"];
-									if(result !== null && result !== undefined) {
-										if(result["list"] !== undefined && result["list"] !== null) {
+									if(result) {
+										if(result["list"]) {
 											var list = result["list"];
 											Janus.debug("Got a list of registered peers:");
 											Janus.debug(list);
@@ -229,6 +229,10 @@ $(document).ready(function() {
 												$('#call').removeAttr('disabled').html('Hangup')
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
+											} else if(event === 'set') {
+												// A 'set' event may be used to provide an answer to an ICE restart
+												if(jsep)
+													videocall.handleRemoteJsep({jsep: jsep});
 											} else if(event === 'hangup') {
 												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
 												// Reset status

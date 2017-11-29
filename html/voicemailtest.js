@@ -128,9 +128,9 @@ $(document).ready(function() {
 									Janus.debug(msg);
 									var event = msg["voicemail"];
 									Janus.debug("Event: " + event);
-									if(event != undefined && event != null) {
+									if(event) {
 										if(event === "event") {
-											if(msg["status"] !== undefined && msg["status"] !== null) {
+											if(msg["status"]) {
 												var status = msg["status"];
 												if(status === 'starting') {
 													$('#record')
@@ -169,7 +169,7 @@ $(document).ready(function() {
 											}
 										}
 									}
-									if(jsep !== undefined && jsep !== null) {
+									if(jsep) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
 										vmailtest.handleRemoteJsep({jsep: jsep});

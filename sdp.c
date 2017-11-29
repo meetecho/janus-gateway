@@ -63,7 +63,7 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errl
 }
 
 /* Parse SDP */
-int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
+int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) {
 	if(!ice_handle || !remote_sdp)
 		return -1;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
@@ -221,10 +221,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 					}
 				} else if(!strcasecmp(a->name, "setup")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS setup (local):  %s\n", handle->handle_id, a->value);
-					if(!strcasecmp(a->value, "actpass") || !strcasecmp(a->value, "passive"))
-						stream->dtls_role = JANUS_DTLS_ROLE_CLIENT;
-					else if(!strcasecmp(a->value, "active"))
-						stream->dtls_role = JANUS_DTLS_ROLE_SERVER;
+					if(!update) {
+						if(!strcasecmp(a->value, "actpass") || !strcasecmp(a->value, "passive"))
+							stream->dtls_role = JANUS_DTLS_ROLE_CLIENT;
+						else if(!strcasecmp(a->value, "active"))
+							stream->dtls_role = JANUS_DTLS_ROLE_SERVER;
+					}
 					/* TODO Handle holdconn... */
 				} else if(!strcasecmp(a->name, "ice-ufrag")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE ufrag (local):   %s\n", handle->handle_id, a->value);
@@ -252,6 +254,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 		}
 		/* Make sure we don't overwrite previously parsed fingerprints and ICE credentials if we're bundling */
 		if(!bundled) {
+			/* If this is a renegotiation, check if this is an ICE restart */
+			if((ruser && stream->ruser && strcmp(ruser, stream->ruser)) ||
+					(rpass && stream->rpass && strcmp(rpass, stream->rpass))) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE restart detected\n", handle->handle_id);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+			}
 			/* Store fingerprint and hashing */
 			g_free(stream->remote_hashing);
 			stream->remote_hashing = g_strdup(rhashing);
@@ -346,6 +355,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 	rhashing = NULL;
 	g_free(rfingerprint);
 	rfingerprint = NULL;
+
 	return 0;	/* FIXME Handle errors better */
 }
 
@@ -779,7 +789,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 	return 0;
 }
 
-char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
+char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	if(ice_handle == NULL || anon == NULL)
 		return NULL;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
@@ -989,7 +999,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
 		m->attributes = g_list_insert_before(m->attributes, first, a);
-		a = janus_sdp_attribute_create("setup", "%s", janus_get_dtls_srtp_role(stream->dtls_role));
+		a = janus_sdp_attribute_create("setup", "%s", janus_get_dtls_srtp_role(offer ? JANUS_DTLS_ROLE_ACTPASS : stream->dtls_role));
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		/* Add last attributes, rtcp and ssrc (msid) */
 		if(m->type == JANUS_SDP_AUDIO &&
