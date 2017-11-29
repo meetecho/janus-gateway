@@ -768,7 +768,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		return -1;
 	}
 	janus_stun_port = stun_port;
-	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_stun_server, janus_stun_port);
+	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
 	/* Test the STUN server */
 	StunAgent stun;
 	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
@@ -776,25 +776,48 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	uint8_t buf[1500];
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
-	/* TODO Use the janus_network_address info to drive the socket creation */
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	/* Use the janus_network_address info to drive the socket creation */
+	int fd = socket(addr.family, SOCK_DGRAM, 0);
 	if(fd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
 		return -1;
 	}
-	struct sockaddr_in address, remote;
-	address.sin_family = AF_INET;
-	address.sin_port = 0;
-	address.sin_addr.s_addr = INADDR_ANY;
-	remote.sin_family = AF_INET;
-	remote.sin_port = htons(janus_stun_port);
-	remote.sin_addr.s_addr = inet_addr(janus_stun_server);
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test\n");
+	struct sockaddr *address = NULL, *remote = NULL;
+	struct sockaddr_in address4, remote4;
+	struct sockaddr_in6 address6, remote6;
+	socklen_t addrlen = 0;
+	if(addr.family == AF_INET) {
+		memset(&address4, 0, sizeof(address4));
+		address4.sin_family = AF_INET;
+		address4.sin_port = 0;
+		address4.sin_addr.s_addr = INADDR_ANY;
+		memset(&remote4, 0, sizeof(remote4));
+		remote4.sin_family = AF_INET;
+		remote4.sin_port = htons(janus_stun_port);
+		memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+		address = (struct sockaddr *)(&address4);
+		remote = (struct sockaddr *)(&remote4);
+		addrlen = sizeof(remote4);
+	} else if(addr.family == AF_INET6) {
+		memset(&address6, 0, sizeof(address6));
+		address6.sin6_family = AF_INET6;
+		address6.sin6_port = 0;
+		address6.sin6_addr = in6addr_any;
+		memset(&remote6, 0, sizeof(remote6));
+		remote6.sin6_family = AF_INET6;
+		remote6.sin6_port = htons(janus_stun_port);
+		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
+		remote6.sin6_addr = addr.ipv6;
+		address = (struct sockaddr *)(&address6);
+		remote = (struct sockaddr *)(&remote6);
+		addrlen = sizeof(remote6);
+	}
+	if(bind(fd, address, addrlen) < 0) {
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
 		close(fd);
 		return -1;
 	}
-	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
+	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
 	if(bytes < 0) {
 		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
 		close(fd);
@@ -813,8 +836,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	socklen_t addrlen = sizeof(remote);
-	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
@@ -828,10 +850,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
 		} else {
@@ -842,10 +864,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		}
 		return 0;
 	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
 		} else {
@@ -2245,21 +2267,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, TRUE, buf, buflen,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
-				/* Check if there's an RTCP BYE: in case, let's wrap up */
+				/* Check if there's an RTCP BYE: in case, let's log it */
 				if(janus_rtcp_has_bye(buf, buflen)) {
-					/* Firefox 52 sends a broken BYE as part of its first compound packet: to
-					 * "fix" this, we check if we got a BYE too soon, and in case ignore it */
-					gint64 now = janus_get_monotonic_time();
-					if(now - component->dtls->dtls_connected < 500000) {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), but it arrived too soon, ignoring...\n",
-							handle->handle_id, stream->stream_id, component->component_id);
-						/* FIXME Should we remove the BYE from the compound packet? */
-					} else {
-						/* Looks like it's a real BYE: hangup the PeerConnection */
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-						janus_ice_webrtc_hangup(handle, "RTCP BYE");
-						return;
-					}
+					/* Note: we used to use this as a trigger to close the PeerConnection, but not anymore
+					 * Discussion here, https://groups.google.com/forum/#!topic/meetecho-janus/4XtfbYB7Jvc */
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16")\n", handle->handle_id, stream->stream_id, component->component_id);
 				}
 				/* Is this audio or video? */
 				int video = 0;
