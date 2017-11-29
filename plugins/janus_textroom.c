@@ -49,7 +49,7 @@
  * \ref plugins
  */
 
-#include "plugins/plugin.h"
+#include "plugin.h"
 
 #include <jansson.h>
 
@@ -57,11 +57,11 @@
 #include <curl/curl.h>
 #endif
 
-#include "debug.h"
-#include "apierror.h"
-#include "config.h"
-#include "mutex.h"
-#include "utils.h"
+#include "../debug.h"
+#include "../apierror.h"
+#include "../config.h"
+#include "../mutex.h"
+#include "../utils.h"
 
 
 /* Plugin information */
