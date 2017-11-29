@@ -402,18 +402,18 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp);
 
 
-/* Map of old plugin sessions that have been closed */
-static GHashTable *old_plugin_sessions;
-static janus_mutex old_plugin_sessions_mutex;
+/* Map of active plugin sessions */
+static GHashTable *plugin_sessions;
+static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	/* Make sure this plugin session is still alive */
-	janus_mutex_lock_nodebug(&old_plugin_sessions_mutex);
-	janus_plugin_session *result = g_hash_table_lookup(old_plugin_sessions, plugin_session);
-	janus_mutex_unlock_nodebug(&old_plugin_sessions_mutex);
-	if(result != NULL) {
+	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
+	janus_plugin_session *result = g_hash_table_lookup(plugin_sessions, plugin_session);
+	janus_mutex_unlock_nodebug(&plugin_sessions_mutex);
+	if(result == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
 	}
-	return (result == NULL);
+	return (result != NULL);
 }
 
 static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
@@ -474,7 +474,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 
 
 /* Trickle helpers */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
 	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
@@ -482,8 +482,6 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
-	trickle->handle = handle;
-	janus_refcount_increase(&handle->ref);
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -584,8 +582,6 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 	if(trickle == NULL)
 		return;
-	janus_refcount_decrease(&trickle->handle->ref);
-	trickle->handle = NULL;
 	g_free(trickle->transaction);
 	trickle->transaction = NULL;
 	if(trickle->candidate)
@@ -634,9 +630,9 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 #endif
 	}
 
-	/* We keep track of old plugin sessions to avoid problems */
-	old_plugin_sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&old_plugin_sessions_mutex);
+	/* We keep track of plugin sessions to avoid problems */
+	plugin_sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&plugin_sessions_mutex);
 
 #ifdef HAVE_LIBCURL
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
@@ -960,10 +956,10 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	//~ janus_refcount_increase(&handle->ref);
 	handle->app = plugin;
 	handle->app_handle = session_handle;
-	/* Make sure this plugin session is not in the old sessions list */
-	janus_mutex_lock(&old_plugin_sessions_mutex);
-	g_hash_table_remove(old_plugin_sessions, session_handle);
-	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	/* Add this plugin session to active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	g_hash_table_insert(plugin_sessions, session_handle, session_handle);
+	janus_mutex_unlock(&plugin_sessions_mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
@@ -978,6 +974,13 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	janus_session *session = (janus_session *)core_session;
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	/* Remove the session from active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	gboolean found = g_hash_table_remove(plugin_sessions, handle->app_handle);
+	janus_mutex_unlock(&plugin_sessions_mutex);
+	if (!found) {
+		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	}
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
@@ -986,7 +989,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_refcount_decrease(&handle->ref);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1000,7 +1003,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			g_main_loop_quit(handle->iceloop);
+			if (g_main_loop_is_running(handle->iceloop))
+				g_main_loop_quit(handle->iceloop);
 		}
 		return 0;
 	}
@@ -1009,10 +1013,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	int error = 0;
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
 		handle->app_handle->gateway_handle = NULL;
-		/* Put the plugin session in the old sessions list, to avoid it being used */
-		janus_mutex_lock(&old_plugin_sessions_mutex);
-		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
-		janus_mutex_unlock(&old_plugin_sessions_mutex);
 		/* Notify the plugin that the session's over */
 		plugin_t->destroy_session(handle->app_handle, &error);
 		/* We only unref when actually freeing the ICE handle */
@@ -1024,7 +1024,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	}
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+	if(handle->iceloop != NULL) {
 		if(handle->audio_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1038,7 +1038,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		g_main_loop_quit(handle->iceloop);
+		if (g_main_loop_is_running(handle->iceloop))
+			g_main_loop_quit(handle->iceloop);
 	}
 
 	/* Prepare JSON event to notify user/application */
@@ -1097,15 +1098,15 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
 			handle->handle_id, reason, plugin->get_name());
-		if(plugin && plugin->hangup_media)
+		if(plugin && plugin->hangup_media  && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->hangup_media(handle->app_handle);
 		janus_ice_notify_hangup(handle, reason);
 	}
 	if(handle->queued_packets != NULL)
-		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1119,18 +1120,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			gint64 waited = 0;
-			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
-				g_usleep (100000);
-				waited += 100000;
-				if(waited >= G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
-					break;
-				}
-			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
+			if(g_main_loop_is_running(handle->iceloop)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit\n", handle->handle_id);
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
 					g_main_context_wakeup(handle->icectx);
@@ -1191,8 +1182,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	handle->video_mid = NULL;
 	g_free(handle->data_mid);
 	handle->data_mid = NULL;
-	handle->icethread = NULL;
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 	janus_mutex_unlock(&handle->mutex);
@@ -1456,7 +1445,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin != NULL) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-			if(plugin && plugin->hangup_media)
+			if(plugin && plugin->hangup_media  && janus_plugin_session_is_alive(handle->app_handle))
 				plugin->hangup_media(handle->app_handle);
 		}
 		janus_ice_notify_hangup(handle, "ICE failed");
@@ -2339,14 +2328,18 @@ void *janus_ice_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	g_usleep (100000);
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread quit ICE loop %p\n", handle->handle_id, handle);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
+	if(handle->send_thread != NULL && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		g_thread_join(handle->send_thread);
+	}
 	janus_ice_webrtc_free(handle);
+	handle->icethread = NULL;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
 	g_thread_unref(g_thread_self());
@@ -2725,18 +2718,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
-	janus_refcount_increase(&handle->ref);
-	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
-	if(error != NULL) {
-		/* FIXME We should clear some resources... */
-		janus_refcount_decrease(&handle->ref);
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		return -1;
-	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
@@ -3322,6 +3303,18 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		turnrest_credentials = NULL;
 	}
 #endif
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	janus_refcount_increase(&handle->ref);
+	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
+	if(error != NULL) {
+		/* FIXME We should clear some resources... */
+		janus_refcount_decrease(&handle->ref);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		return -1;
+	}
 	return 0;
 }
 

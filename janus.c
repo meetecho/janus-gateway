@@ -1213,7 +1213,8 @@ int janus_process_incoming_request(janus_request *request) {
 					waited += 100000;
 					if(waited >= 3*G_USEC_PER_SEC) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						break;
+						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
+						goto jsondone;
 					}
 				}
 			}
@@ -1456,6 +1457,11 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
 			goto jsondone;
 		}
+		if(janus_flags_is_set(&handle->webrtc_flags,JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Received a trickle, but still cleaning a previous session\n", handle->handle_id);
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
+			goto jsondone;
+		}
 		janus_mutex_lock(&handle->mutex);
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)) {
 			/* It looks like this peer supports Trickle, after all */
@@ -1466,7 +1472,7 @@ int janus_process_incoming_request(janus_request *request) {
 		if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] No stream, queueing this trickle as it got here before the SDP...\n", handle->handle_id);
 			/* Enqueue this trickle candidate(s), we'll process this later */
-			janus_ice_trickle *early_trickle = janus_ice_trickle_new(handle, transaction_text, candidate ? candidate : candidates);
+			janus_ice_trickle *early_trickle = janus_ice_trickle_new(transaction_text, candidate ? candidate : candidates);
 			handle->pending_trickles = g_list_append(handle->pending_trickles, early_trickle);
 			/* Send the ack right away, an event will tell the application if the candidate(s) failed */
 			goto trickledone;
@@ -1485,7 +1491,7 @@ int janus_process_incoming_request(janus_request *request) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still %s, queueing this trickle to wait until we're done there...\n",
 				handle->handle_id, cause);
 			/* Enqueue this trickle candidate(s), we'll process this later */
-			janus_ice_trickle *early_trickle = janus_ice_trickle_new(handle, transaction_text, candidate ? candidate : candidates);
+			janus_ice_trickle *early_trickle = janus_ice_trickle_new(transaction_text, candidate ? candidate : candidates);
 			handle->pending_trickles = g_list_append(handle->pending_trickles, early_trickle);
 			/* Send the ack right away, an event will tell the application if the candidate(s) failed */
 			goto trickledone;
@@ -2749,7 +2755,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				waited += 100000;
 				if(waited >= 3*G_USEC_PER_SEC) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", ice_handle->handle_id);
-					break;
+					janus_sdp_destroy(parsed_sdp);
+					return NULL;
 				}
 			}
 		}

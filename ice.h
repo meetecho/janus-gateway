@@ -488,8 +488,6 @@ struct janus_ice_component {
 
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 struct janus_ice_trickle {
-	/*! \brief Janus ICE handle this trickle candidate belongs to */
-	janus_ice_handle *handle;
 	/*! \brief Monotonic time of when this trickle candidate has been received */
 	gint64 received;
 	/*! \brief Janus API transaction ID of the original trickle request */
@@ -506,7 +504,7 @@ struct janus_ice_trickle {
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate);
 /*! \brief Helper method to parse trickle candidates
  * @param[in] handle The Janus ICE handle this candidate belongs to
  * @param[in] candidate The trickle candidate to parse, as a Jansson object
