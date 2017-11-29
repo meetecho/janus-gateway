@@ -111,6 +111,12 @@ typedef struct janus_sctp_association {
 	uint16_t remote_port;
 	/*! \brief Queue of incoming/outgoing messages */
 	GAsyncQueue *messages;
+	/*! \brief Buffer for handling partial messages */
+	char *buffer;
+	/*! \brief Current size of the buffer for handling partial messages */
+	size_t buflen;
+	/*! \brief Current offset of the buffer for handling partial messages */
+	size_t offset;
 	/*! \brief Thread for handling SCTP messaging */
 	GThread *thread;
 #ifdef DEBUG_SCTP
