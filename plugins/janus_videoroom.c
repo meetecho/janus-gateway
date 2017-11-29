@@ -3680,6 +3680,10 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&publisher->room->mutex);
 			} else if(!strcasecmp(ptype_text, "subscriber") || !strcasecmp(ptype_text, "listener")) {
 				JANUS_LOG(LOG_VERB, "Configuring new subscriber\n");
+				gboolean legacy = !strcasecmp(ptype_text, "listener");
+				if(legacy) {
+					JANUS_LOG(LOG_WARN, "Subscriber is using the legacy 'listener' ptype\n");
+				}
 				/* This is a new subscriber */
 				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
 					error_code, error_cause, TRUE,
@@ -3800,6 +3804,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(event, "id", json_integer(feed_id));
 					if(publisher->display)
 						json_object_set_new(event, "display", json_string(publisher->display));
+					if(legacy)
+						json_object_set_new(event, "warning", json_string("Deprecated use of 'listener' ptype, update to the new 'subscriber' ASAP"));
 					session->participant_type = janus_videoroom_p_type_subscriber;
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 					/* Negotiate by sending the selected publisher SDP back */
