@@ -478,11 +478,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_VERB, "This is an old video recording, assuming VP8\n");
 					fclose(file);
-					return "opus";
+					return "vp8";
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_VERB, "This is an old audio recording, assuming Opus\n");
 					fclose(file);
-					return "vp8";
+					return "opus";
 				}
 			}
 			JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
