@@ -1352,7 +1352,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
-			json_object_set_new(info, "textroom", json_string("kicked"));
+			json_object_set_new(info, "event", json_string("kicked"));
 			json_object_set_new(info, "room", json_integer(textroom->room_id));
 			json_object_set_new(info, "username", json_string(participant->username));
 			gateway->notify_event(&janus_textroom_plugin, session->handle, info);

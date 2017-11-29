@@ -2596,7 +2596,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							/* Also notify event handlers */
 							if(notify_events && gateway->events_is_enabled()) {
 								json_t *info = json_object();
-								json_object_set_new(info, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
+								json_object_set_new(info, "event", json_string(participant->talking ? "talking" : "stopped-talking"));
 								json_object_set_new(info, "room", json_integer(participant->room->room_id));
 								json_object_set_new(info, "id", json_integer(participant->user_id));
 								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
