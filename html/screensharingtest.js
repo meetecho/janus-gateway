@@ -143,7 +143,14 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#screencapture").parent().unblock();
-									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									if(on) {
+										bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									} else {
+										bootbox.alert("Your screen sharing session just stopped.", function() {
+											janus.destroy();
+											window.location.reload();
+										});
+									}
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -236,6 +243,11 @@ $(document).ready(function() {
 											color: 'white'
 										}
 									});
+									// Track the onended event on the video track, just in case the user
+									// stops screensharing without closing the PeerConnection too
+									screentest.webrtcStuff.myStream.getVideoTracks()[0].onended = function() {
+										screentest.hangup();
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here

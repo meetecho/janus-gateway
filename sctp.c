@@ -77,7 +77,7 @@ void janus_sctp_handle_open_response_message(janus_sctp_association *sctp, janus
 void janus_sctp_handle_open_ack_message(janus_sctp_association *sctp, janus_datachannel_ack *ack, size_t length, uint16_t stream);
 void janus_sctp_handle_unknown_message(char *msg, size_t length, uint16_t stream);
 void janus_sctp_handle_data_message(janus_sctp_association *sctp, char *buffer, size_t length, uint16_t stream);
-void janus_sctp_handle_message(janus_sctp_association *sctp, char *buffer, size_t length, uint32_t ppid, uint16_t stream);
+void janus_sctp_handle_message(janus_sctp_association *sctp, char *buffer, size_t length, uint32_t ppid, uint16_t stream, int flags);
 void janus_sctp_handle_association_change_event(struct sctp_assoc_change *sac);
 void janus_sctp_handle_peer_address_change_event(struct sctp_paddr_change *spc);
 void janus_sctp_handle_adaptation_indication(struct sctp_adaptation_event *sai);
@@ -239,6 +239,9 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	janus_mutex_lock(&sctp->mutex);
 	sctp->sock = sock;
 	sctp->messages = g_async_queue_new_full((GDestroyNotify) janus_sctp_message_destroy);
+	sctp->buffer = NULL;
+	sctp->buflen = 0;
+	sctp->offset = 0;
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
@@ -327,7 +330,7 @@ static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore ad
 		if(flags & MSG_NOTIFICATION) {
 			janus_sctp_handle_notification(sctp, (union sctp_notification *)data, datalen);
 		} else {
-			janus_sctp_handle_message(sctp, data, datalen, ntohl(rcv.rcv_ppid), rcv.rcv_sid);
+			janus_sctp_handle_message(sctp, data, datalen, ntohl(rcv.rcv_ppid), rcv.rcv_sid, flags);
 		}
 		free(data);
 	}
@@ -921,7 +924,7 @@ void janus_sctp_handle_data_message(janus_sctp_association *sctp, char *buffer, 
 	return;
 }
 
-void janus_sctp_handle_message(janus_sctp_association *sctp, char *buffer, size_t length, uint32_t ppid, uint16_t stream) {
+void janus_sctp_handle_message(janus_sctp_association *sctp, char *buffer, size_t length, uint32_t ppid, uint16_t stream, int flags) {
 	janus_datachannel_open_request *req;
 	janus_datachannel_open_response *rsp;
 	janus_datachannel_ack *ack, *msg;
@@ -966,7 +969,29 @@ void janus_sctp_handle_message(janus_sctp_association *sctp, char *buffer, size_
 		case DATA_CHANNEL_PPID_BINARY:
 		case DATA_CHANNEL_PPID_DOMSTRING_PARTIAL:
 		case DATA_CHANNEL_PPID_BINARY_PARTIAL:
-			janus_sctp_handle_data_message(sctp, buffer, length, stream);
+			if((flags & MSG_EOR) &&
+					ppid != DATA_CHANNEL_PPID_DOMSTRING_PARTIAL &&
+					ppid != DATA_CHANNEL_PPID_BINARY_PARTIAL) {
+				/* Message is complete, send it */
+				if(sctp->offset > 0) {
+					/* We buffered multiple partial messages */
+					janus_sctp_handle_data_message(sctp, sctp->buffer, sctp->offset, stream);
+					sctp->offset = 0;
+				} else {
+					/* No buffering done, send this message as it is */
+					janus_sctp_handle_data_message(sctp, buffer, length, stream);
+				}
+			} else {
+				/* Partial message, buffer only for now */
+				if(length > (sctp->buflen - sctp->offset)) {
+					/* (re)Allocate the buffer */
+					int newlen = sctp->buflen + (length - (sctp->buflen - sctp->offset));
+					sctp->buffer = g_realloc(sctp->buffer, newlen);
+					sctp->buflen = newlen;
+				}
+				memcpy(sctp->buffer + sctp->offset, buffer, length);
+				sctp->offset += length;
+			}
 			break;
 		default:
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message of length %zu, PPID %u on stream %u received.\n",
@@ -1312,6 +1337,7 @@ void *janus_sctp_thread(void *data) {
 		fclose(sctp->debug_dump);
 	sctp->debug_dump = NULL;
 #endif
+	g_free(sctp->buffer);
 	g_free(sctp);
 	sctp = NULL;
 	g_thread_unref(g_thread_self());

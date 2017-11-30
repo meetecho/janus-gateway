@@ -438,6 +438,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			wscinfo.timeout_secs = pingpong_timeout;
 		}
 #endif
+		/* Force single-thread server */
+		wscinfo.count_threads = 1;
 
 		/* Create the base context */
 		wsc = lws_create_context(&wscinfo);
