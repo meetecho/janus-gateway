@@ -983,7 +983,7 @@ const char *janus_sip_get_package(void) {
 
 static janus_sip_session *janus_sip_lookup_session(janus_plugin_session *handle) {
 	janus_sip_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_sip_session *)handle->plugin_handle;
 	}
 	return session;

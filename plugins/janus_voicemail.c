@@ -442,7 +442,7 @@ const char *janus_voicemail_get_package(void) {
 
 static janus_voicemail_session *janus_voicemail_lookup_session(janus_plugin_session *handle) {
 	janus_voicemail_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_voicemail_session *)handle->plugin_handle;
 	}
 	return session;

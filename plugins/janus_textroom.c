@@ -597,7 +597,7 @@ const char *janus_textroom_get_package(void) {
 
 static janus_textroom_session *janus_textroom_lookup_session(janus_plugin_session *handle) {
 	janus_textroom_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_textroom_session *)handle->plugin_handle;
 	}
 	return session;

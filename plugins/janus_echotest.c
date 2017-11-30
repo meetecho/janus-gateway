@@ -388,7 +388,7 @@ const char *janus_echotest_get_package(void) {
 
 static janus_echotest_session *janus_echotest_lookup_session(janus_plugin_session *handle) {
 	janus_echotest_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_echotest_session *)handle->plugin_handle;
 	}
 	return session;

@@ -1034,7 +1034,7 @@ const char *janus_sipre_get_package(void) {
 
 static janus_sipre_session *janus_sipre_lookup_session(janus_plugin_session *handle) {
 	janus_sipre_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_sipre_session *)handle->plugin_handle;
 	}
 	return session;

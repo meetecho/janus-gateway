@@ -1201,7 +1201,7 @@ const char *janus_videoroom_get_package(void) {
 
 static janus_videoroom_session *janus_videoroom_lookup_session(janus_plugin_session *handle) {
 	janus_videoroom_session *session = NULL;
-	if (g_hash_table_contains(sessions,handle)) {
+	if (g_hash_table_contains(sessions, handle)) {
 		session = (janus_videoroom_session *)handle->plugin_handle;
 	}
 	return session;
