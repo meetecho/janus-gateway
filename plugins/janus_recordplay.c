@@ -346,6 +346,7 @@ static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_recordplay_handler(void *data);
+static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_recordplay_message {
 	janus_plugin_session *handle;
@@ -507,11 +508,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_VERB, "This is an old video recording, assuming VP8\n");
 					fclose(file);
-					return "opus";
+					return "vp8";
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_VERB, "This is an old audio recording, assuming Opus\n");
 					fclose(file);
-					return "vp8";
+					return "opus";
 				}
 			}
 			JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
@@ -776,6 +777,14 @@ const char *janus_recordplay_get_package(void) {
 	return JANUS_RECORDPLAY_PACKAGE;
 }
 
+static janus_recordplay_session *janus_recordplay_lookup_session(janus_plugin_session *handle) {
+	janus_recordplay_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_recordplay_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -817,15 +826,16 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 		*error = -1;
 		return;
 	}	
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No Record&Play session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
-	janus_recordplay_hangup_media(handle);
-	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_hangup_media_internal(handle);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
@@ -835,12 +845,15 @@ json_t *janus_recordplay_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	/* In the echo test, every session is the same: we just provide some configure info */
 	json_t *info = json_object();
 	json_object_set_new(info, "type", json_string(session->recorder ? "recorder" : (session->recording ? "player" : "none")));
@@ -859,12 +872,6 @@ json_t *janus_recordplay_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-	if(!session)
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
-
-	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
-	janus_refcount_increase(&session->ref);
 
 	/* Pre-parse the message */
 	int error_code = 0;
@@ -872,13 +879,17 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	json_t *root = message;
 	json_t *response = NULL;
 	
-	if(message == NULL) {
-		JANUS_LOG(LOG_ERR, "No message??\n");
-		error_code = JANUS_RECORDPLAY_ERROR_NO_MESSAGE;
-		g_snprintf(error_cause, 512, "%s", "No message??");
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
+		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
 		goto plugin_response;
 	}
-
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	if(g_atomic_int_get(&session->destroyed)) {
 		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
@@ -886,6 +897,12 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		goto plugin_response;
 	}
 
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_RECORDPLAY_ERROR_NO_MESSAGE;
+		g_snprintf(error_cause, 512, "%s", "No message??");
+		goto plugin_response;
+	}
 	if(!json_is_object(root)) {
 		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 		error_code = JANUS_RECORDPLAY_ERROR_INVALID_JSON;
@@ -1007,7 +1024,8 @@ plugin_response:
 				json_decref(jsep);
 			g_free(transaction);
 
-			janus_refcount_decrease(&session->ref);
+			if(session != NULL)
+				janus_refcount_decrease(&session->ref);
 			return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
 		}
 
@@ -1017,13 +1035,19 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_RECORDPLAY_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;	
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(g_atomic_int_get(&session->destroyed))
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
 	/* Take note of the fact that the session is now active */
 	session->active = TRUE;
@@ -1040,6 +1064,7 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 			}
 		}
 	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -1129,9 +1154,14 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-	if(!session || g_atomic_int_get(&session->destroyed))
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 
 	json_t *event = json_object();
 	json_object_set_new(event, "recordplay", json_string("event"));
@@ -1143,22 +1173,31 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_object_set_new(event, "result", result);
 	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event, NULL);
 	json_decref(event);
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_RECORDPLAY_PACKAGE, handle);
+	janus_mutex_lock(&sessions_mutex);
+	janus_recordplay_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	session->active = FALSE;
-	if(g_atomic_int_get(&session->destroyed))
+	if(g_atomic_int_get(&session->destroyed)) {
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	}
+	if(g_atomic_int_add(&session->hangingup, 1)) {
 		return;
+	}
 	session->simulcast_ssrc = 0;
 
 	/* Send an event to the browser and tell it's over */
@@ -1169,18 +1208,73 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
 
-	/* FIXME Simulate a "stop" coming from the browser */
-	janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
+	session->active = FALSE;
+	janus_mutex_lock(&session->rec_mutex);
+	if(session->arc) {
+		janus_recorder_close(session->arc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+		janus_recorder_destroy(session->arc);
 	}
-	janus_refcount_increase(&session->ref);
-	msg->handle = handle;
-	msg->message = json_pack("{ss}", "request", "stop");
-	msg->transaction = NULL;
-	msg->jsep = NULL;
-	g_async_queue_push(messages, msg);
+	session->arc = NULL;
+	if(session->vrc) {
+		janus_recorder_close(session->vrc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+		janus_recorder_destroy(session->vrc);
+	}
+	session->vrc = NULL;
+	janus_mutex_unlock(&session->rec_mutex);
+	if(session->recorder) {
+		if(session->recording) {
+			/* Create a .nfo file for this recording */
+			char nfofile[1024], nfo[1024];
+			g_snprintf(nfofile, 1024, "%s/%"SCNu64".nfo", recordings_path, session->recording->id);
+			FILE *file = fopen(nfofile, "wt");
+			if(file == NULL) {
+				JANUS_LOG(LOG_ERR, "Error creating file %s...\n", nfofile);
+			} else {
+				if(session->recording->arc_file && session->recording->vrc_file) {
+					g_snprintf(nfo, 1024,
+						"[%"SCNu64"]\r\n"
+						"name = %s\r\n"
+						"date = %s\r\n"
+						"audio = %s.mjr\r\n"
+						"video = %s.mjr\r\n",
+							session->recording->id, session->recording->name, session->recording->date,
+							session->recording->arc_file, session->recording->vrc_file);
+				} else if(session->recording->arc_file) {
+					g_snprintf(nfo, 1024,
+						"[%"SCNu64"]\r\n"
+						"name = %s\r\n"
+						"date = %s\r\n"
+						"audio = %s.mjr\r\n",
+							session->recording->id, session->recording->name, session->recording->date,
+							session->recording->arc_file);
+				} else if(session->recording->vrc_file) {
+					g_snprintf(nfo, 1024,
+						"[%"SCNu64"]\r\n"
+						"name = %s\r\n"
+						"date = %s\r\n"
+						"video = %s.mjr\r\n",
+							session->recording->id, session->recording->name, session->recording->date,
+							session->recording->vrc_file);
+				}
+				/* Write to the file now */
+				fwrite(nfo, strlen(nfo), sizeof(char), file);
+				fclose(file);
+				g_atomic_int_set(&session->recording->completed, 1);
+				/* Generate the offer */
+				if(janus_recordplay_generate_offer(session->recording) < 0) {
+					JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", session->recording->id);
+				}
+			}
+		} else {
+			JANUS_LOG(LOG_WARN, "Got a stop but missing recorder/recording! .nfo file may not have been generated...\n");
+		}
+	}
+	if(session->recording) {
+		janus_refcount_decrease(&session->recording->ref);
+		session->recording = NULL;
+	}
 }
 
 /* Thread to handle incoming messages */
@@ -1200,16 +1294,20 @@ static void *janus_recordplay_handler(void *data) {
 			janus_recordplay_message_free(msg);
 			continue;
 		}
-		janus_recordplay_session *session = (janus_recordplay_session *)msg->handle->plugin_handle;
+		janus_mutex_lock(&sessions_mutex);
+		janus_recordplay_session *session = janus_recordplay_lookup_session(msg->handle);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_recordplay_message_free(msg);
 			continue;
 		}
 		if(g_atomic_int_get(&session->destroyed)) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_recordplay_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = NULL;
@@ -1471,70 +1569,6 @@ static void *janus_recordplay_handler(void *data) {
 				gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "stop")) {
-			/* Stop the recording/playout */
-			session->active = FALSE;
-			janus_mutex_lock(&session->rec_mutex);
-			if(session->arc) {
-				janus_recorder_close(session->arc);
-				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-				janus_recorder_destroy(session->arc);
-			}
-			session->arc = NULL;
-			if(session->vrc) {
-				janus_recorder_close(session->vrc);
-				JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-				janus_recorder_destroy(session->vrc);
-			}
-			session->vrc = NULL;
-			janus_mutex_unlock(&session->rec_mutex);
-			if(session->recorder) {
-				if(session->recording) {
-					/* Create a .nfo file for this recording */
-					char nfofile[1024], nfo[1024];
-					g_snprintf(nfofile, 1024, "%s/%"SCNu64".nfo", recordings_path, session->recording->id);
-					FILE *file = fopen(nfofile, "wt");
-					if(file == NULL) {
-						JANUS_LOG(LOG_ERR, "Error creating file %s...\n", nfofile);
-					} else {
-						if(session->recording->arc_file && session->recording->vrc_file) {
-							g_snprintf(nfo, 1024,
-								"[%"SCNu64"]\r\n"
-								"name = %s\r\n"
-								"date = %s\r\n"
-								"audio = %s.mjr\r\n"
-								"video = %s.mjr\r\n",
-									session->recording->id, session->recording->name, session->recording->date,
-									session->recording->arc_file, session->recording->vrc_file);
-						} else if(session->recording->arc_file) {
-							g_snprintf(nfo, 1024,
-								"[%"SCNu64"]\r\n"
-								"name = %s\r\n"
-								"date = %s\r\n"
-								"audio = %s.mjr\r\n",
-									session->recording->id, session->recording->name, session->recording->date,
-									session->recording->arc_file);
-						} else if(session->recording->vrc_file) {
-							g_snprintf(nfo, 1024,
-								"[%"SCNu64"]\r\n"
-								"name = %s\r\n"
-								"date = %s\r\n"
-								"video = %s.mjr\r\n",
-									session->recording->id, session->recording->name, session->recording->date,
-									session->recording->vrc_file);
-						}
-						/* Write to the file now */
-						fwrite(nfo, strlen(nfo), sizeof(char), file);
-						fclose(file);
-						g_atomic_int_set(&session->recording->completed, 1);
-						/* Generate the offer */
-						if(janus_recordplay_generate_offer(session->recording) < 0) {
-							JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", session->recording->id);
-						}
-					}
-				} else {
-					JANUS_LOG(LOG_WARN, "Got a stop but missing recorder/recording! .nfo file may not have been generated...\n");
-				}
-			}
 			/* Done! */
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopped"));
@@ -1548,9 +1582,9 @@ static void *janus_recordplay_handler(void *data) {
 						json_object_set_new(info, "id", json_integer(session->recording->id));
 					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 				}
-				janus_refcount_decrease(&session->recording->ref);
-				session->recording = NULL;
 			}
+			/* Stop the recording/playout */
+			janus_recordplay_hangup_media(session->handle);
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;

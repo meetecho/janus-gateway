@@ -180,6 +180,7 @@ static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_voicemail_handler(void *data);
+static void janus_voicemail_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_voicemail_message {
 	janus_plugin_session *handle;
@@ -405,6 +406,14 @@ const char *janus_voicemail_get_package(void) {
 	return JANUS_VOICEMAIL_PACKAGE;
 }
 
+static janus_voicemail_session *janus_voicemail_lookup_session(janus_plugin_session *handle) {
+	janus_voicemail_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_voicemail_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -444,16 +453,17 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle; 
+	janus_mutex_lock(&sessions_mutex);
+	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No VoiceMail session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
-	janus_voicemail_hangup_media(handle);
+	janus_voicemail_hangup_media_internal(handle);
 	handle->plugin_handle = NULL;
-	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 
@@ -464,12 +474,15 @@ json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	/* In the echo test, every session is the same: we just provide some configure info */
 	json_t *info = json_object();
 	json_object_set_new(info, "state", json_string(session->stream ? "recording" : "idle"));
@@ -487,19 +500,18 @@ json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
-	if(!session)
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
-
-	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
 	}
-
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 
+	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -514,13 +526,19 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_VOICEMAIL_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
+	janus_mutex_lock(&sessions_mutex);
+	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(g_atomic_int_get(&session->destroyed))
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
 	/* Only start recording this peer when we get this event */
 	session->start_time = janus_get_monotonic_time();
@@ -532,6 +550,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	int ret = gateway->push_event(handle, &janus_voicemail_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -581,9 +600,15 @@ void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char
 
 void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_VOICEMAIL_PACKAGE, handle);
+	janus_mutex_lock(&sessions_mutex);
+	janus_voicemail_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_voicemail_hangup_media_internal(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
+	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -619,16 +644,20 @@ static void *janus_voicemail_handler(void *data) {
 			janus_voicemail_message_free(msg);
 			continue;
 		}
-		janus_voicemail_session *session = (janus_voicemail_session *)msg->handle->plugin_handle;
+		janus_mutex_lock(&sessions_mutex);
+		janus_voicemail_session *session = janus_voicemail_lookup_session(msg->handle);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_voicemail_message_free(msg);
 			continue;
 		}
 		if(g_atomic_int_get(&session->destroyed)) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_voicemail_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
