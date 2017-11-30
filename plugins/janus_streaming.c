@@ -2929,7 +2929,6 @@ static void *janus_streaming_handler(void *data) {
 					json_object_set_new(info, "id", json_integer(mp->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
-			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 			gateway->close_pc(session->handle);
 		} else {
