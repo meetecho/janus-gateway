@@ -1243,7 +1243,11 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		handle->hangup_reason = reason;
 	}
 	if(handle->queued_packets != NULL)
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
+#else
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+#endif
 	/* Get rid of the loop */
 	if(handle->send_thread == NULL) {
 		if(handle->iceloop != NULL) {
