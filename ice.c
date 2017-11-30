@@ -1234,9 +1234,9 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
 			handle->handle_id, reason, plugin->get_name());
-		if(plugin && plugin->hangup_media)
+		if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->hangup_media(handle->app_handle);
-		//janus_ice_notify_hangup(handle, reason);
+		/* user will be notified only after the actual hangup */
 		handle->hangup_reason=reason;
 	}
 	if(handle->queued_packets != NULL)
@@ -1601,7 +1601,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin != NULL) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-			if(plugin && plugin->hangup_media)
+			if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
 				plugin->hangup_media(handle->app_handle);
 		}
 		janus_ice_notify_hangup(handle, "ICE failed");
