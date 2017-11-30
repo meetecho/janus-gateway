@@ -324,6 +324,8 @@ struct janus_ice_handle {
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
 	gchar *remote_sdp;
+	/*! \brief Reason this handle has been hung up*/
+	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */

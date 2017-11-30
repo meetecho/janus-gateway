@@ -747,6 +747,7 @@ static void *janus_audiobridge_handler(void *data);
 static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_audiobridge_mixer_thread(void *data);
 static void *janus_audiobridge_participant_thread(void *data);
+static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_audiobridge_message {
 	janus_plugin_session *handle;
@@ -1418,6 +1419,14 @@ const char *janus_audiobridge_get_package(void) {
 	return JANUS_AUDIOBRIDGE_PACKAGE;
 }
 
+static janus_audiobridge_session *janus_audiobridge_lookup_session(janus_plugin_session *handle) {
+	janus_audiobridge_session *session = NULL;
+	if (g_hash_table_contains(sessions,handle)) {
+		session = (janus_audiobridge_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1442,18 +1451,19 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 		*error = -1;
 		return;
 	}	
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle; 
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No AudioBridge session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_audiobridge_hangup_media(handle);
+		JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
+		janus_audiobridge_hangup_media_internal(handle);
 		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -1481,8 +1491,10 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
@@ -1520,6 +1532,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 	}
 	json_object_set_new(info, "started", session->started ? json_true() : json_false());
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -1533,6 +1546,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	json_t *root = message;
 	json_t *response = NULL;
 	
+	janus_mutex_lock(&sessions_mutex);
+
 	if(message == NULL) {
 		JANUS_LOG(LOG_ERR, "No message??\n");
 		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_MESSAGE;
@@ -1540,7 +1555,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		goto plugin_response;
 	}
 
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;	
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
@@ -2460,6 +2475,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "configure")
 			|| !strcasecmp(request_text, "changeroom") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
+		janus_mutex_unlock(&sessions_mutex);
 		janus_audiobridge_message *msg = g_malloc0(sizeof(janus_audiobridge_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
@@ -2477,6 +2493,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 
 plugin_response:
 		{
+			janus_mutex_unlock(&sessions_mutex);
 			if(error_code == 0 && !response) {
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid response");
@@ -2504,25 +2521,32 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;	
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
-	if(!participant)
+	if(!participant) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
 	/* FIXME Only send this peer the audio mix when we get this event */
 	session->started = TRUE;
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;	
+	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
 	if(!session || session->destroyed || session->stopping || !session->participant)
 		return;
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
@@ -2672,19 +2696,27 @@ void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, ch
 }
 
 void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || !session->participant)
+	if(session->destroyed || !session->participant) {
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	}
+	if(g_atomic_int_add(&session->hangingup, 1)) {
 		return;
+	}
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_mutex_lock(&rooms_mutex);
@@ -2788,11 +2820,8 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_audiobridge_message_free(msg);
 			continue;
 		}
-		janus_audiobridge_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL) {
-			session = (janus_audiobridge_session *)msg->handle->plugin_handle;
-		}
+		janus_audiobridge_session *session = janus_audiobridge_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
