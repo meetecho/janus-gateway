@@ -206,6 +206,7 @@ static uint16_t rtp_range_max = 60000;
 static GThread *handler_thread;
 static GThread *watchdog;
 static void *janus_sipre_handler(void *data);
+static void janus_sipre_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_sipre_message {
 	janus_plugin_session *handle;
@@ -1031,6 +1032,14 @@ const char *janus_sipre_get_package(void) {
 	return JANUS_SIPRE_PACKAGE;
 }
 
+static janus_sipre_session *janus_sipre_lookup_session(janus_plugin_session *handle) {
+	janus_sipre_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_sipre_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1119,18 +1128,19 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No SIPre session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_sipre_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+		janus_sipre_hangup_media_internal(handle);
+		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
 		/* Unregister */
 		mqueue_push(mq, janus_sipre_mqueue_event_do_unregister, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Close re-related stuff for this SIP session */
@@ -1146,8 +1156,10 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
@@ -1180,6 +1192,7 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -1201,14 +1214,19 @@ void janus_sipre_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
@@ -1339,10 +1357,16 @@ void janus_sipre_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 }
 
 void janus_sipre_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1406,11 +1430,8 @@ static void *janus_sipre_handler(void *data) {
 			janus_sipre_message_free(msg);
 			continue;
 		}
-		janus_sipre_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_sipre_session *)msg->handle->plugin_handle;
-		}
+		janus_sipre_session *session = janus_sipre_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
