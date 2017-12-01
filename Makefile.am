@@ -29,7 +29,7 @@ bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
 header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
-	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h text2pcap.h
+	rtcp.h rtp.h rtpsrtp.h sdp-utils.h ip-utils.h utils.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
 pluginsheader_HEADERS = plugins/plugin.h
@@ -66,6 +66,9 @@ recordings_DATA = $(NULL)
 
 demosdir = $(datadir)/janus/demos
 demos_DATA = $(NULL)
+
+jsmodulesdir = $(datadir)/janus/javascript
+jsmodules_DATA = html/janus.js
 
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
@@ -116,6 +119,7 @@ janus_SOURCES = \
 	rtcp.h \
 	rtp.c \
 	rtp.h \
+	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
 	sdp.c \
@@ -158,8 +162,8 @@ man1_MANS = janus.1
 
 BUILT_SOURCES = cmdline.c cmdline.h version.c
 
-cmdline.c: janus.ggo
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
+cmdline.c: janus.c
+	gengetopt --set-package="janus" --set-version="$(VERSION)" < janus.ggo
 
 directory = .git
 dir_target = $(directory)-$(wildcard $(directory))
@@ -275,6 +279,16 @@ conf_DATA += conf/janus.eventhandler.sampleevh.cfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.cfg.sample
 endif
 
+if ENABLE_RABBITMQEVH
+event_LTLIBRARIES += events/libjanus_rabbitmqevh.la
+events_libjanus_rabbitmqevh_la_SOURCES = events/janus_rabbitmqevh.c
+events_libjanus_rabbitmqevh_la_CFLAGS = $(events_cflags)
+events_libjanus_rabbitmqevh_la_LDFLAGS = $(events_ldflags) -lrabbitmq
+events_libjanus_rabbitmqevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.rabbitmqevh.cfg.sample
+EXTRA_DIST += conf/janus.eventhandler.rabbitmqevh.cfg.sample
+endif
+
 ##
 # Plugins
 ##
@@ -333,6 +347,26 @@ plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LI
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.cfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
+endif
+
+if ENABLE_PLUGIN_SIPRE
+plugin_LTLIBRARIES += plugins/libjanus_sipre.la
+plugins_libjanus_sipre_la_SOURCES = plugins/janus_sipre.c
+plugins_libjanus_sipre_la_CFLAGS = $(plugins_cflags) $(LIBRE_CFLAGS)
+plugins_libjanus_sipre_la_LDFLAGS = $(plugins_ldflags) $(LIBRE_LDFLAGS) $(LIBRE_LIBS)
+plugins_libjanus_sipre_la_LIBADD = $(plugins_libadd) $(LIBRE_LIBADD)
+conf_DATA += conf/janus.plugin.sipre.cfg.sample
+EXTRA_DIST += conf/janus.plugin.sipre.cfg.sample
+endif
+
+if ENABLE_PLUGIN_NOSIP
+plugin_LTLIBRARIES += plugins/libjanus_nosip.la
+plugins_libjanus_nosip_la_SOURCES = plugins/janus_nosip.c
+plugins_libjanus_nosip_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_nosip_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_nosip_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.nosip.cfg.sample
+EXTRA_DIST += conf/janus.plugin.nosip.cfg.sample
 endif
 
 if ENABLE_PLUGIN_STREAMING
@@ -436,6 +470,44 @@ endif
 
 if ENABLE_DOCS
 SUBDIRS += docs
+endif
+
+##
+# JavaScript module flavours for janus.js
+##
+
+if ENABLE_JAVASCRIPT_ES_MODULE
+jsmodules_DATA += npm/bundles/janus.es.js
+EXTRA_DIST += npm/bundles/janus.es.js
+CLEANFILES += npm/bundles/janus.es.js
+endif
+
+if ENABLE_JAVASCRIPT_UMD_MODULE
+jsmodules_DATA += npm/bundles/janus.umd.js
+EXTRA_DIST += npm/bundles/janus.umd.js
+CLEANFILES += npm/bundles/janus.umd.js
+endif
+
+if ENABLE_JAVASCRIPT_IIFE_MODULE
+jsmodules_DATA += npm/bundles/janus.iife.js
+EXTRA_DIST += npm/bundles/janus.iife.js
+CLEANFILES += npm/bundles/janus.iife.js
+endif
+
+if ENABLE_JAVASCRIPT_COMMON_JS_MODULE
+jsmodules_DATA += npm/bundles/janus.cjs.js
+EXTRA_DIST += npm/bundles/janus.cjs.js
+CLEANFILES += npm/bundles/janus.cjs.js
+endif
+
+if ENABLE_JAVASCRIPT_MODULES
+
+npm/node_modules/rollup/bin/rollup: npm/package.json
+	cd npm && $(NPM) install && touch node_modules/rollup/bin/rollup
+
+npm/bundles/janus.%.js: html/janus.js npm/node_modules/rollup/bin/rollup npm/rollup.config.js npm/module.js
+	cd npm && $(NPM) run rollup -- --o $(patsubst npm/%,%,$@) --f $*
+
 endif
 
 ##

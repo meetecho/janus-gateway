@@ -854,8 +854,8 @@ function Janus(gatewayCallbacks) {
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		// If we know the browser supports BUNDLE and/or rtcp-mux, let's advertise those right away
-		if(adapter.browserDetails.browser == "chrome" || adapter.browserDetails.browser == "firefox" ||
-				adapter.browserDetails.browser == "safari") {
+		if(Janus.webRTCAdapter.browserDetails.browser == "chrome" || Janus.webRTCAdapter.browserDetails.browser == "firefox" ||
+				Janus.webRTCAdapter.browserDetails.browser == "safari") {
 			request["force-bundle"] = true;
 			request["force-rtcp-mux"] = true;
 		}
@@ -1314,6 +1314,13 @@ function Janus(gatewayCallbacks) {
 			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 			pc_constraints.optional.push({"googIPv6":true});
 		}
+		// Any custom constraint to add?
+		if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
+			Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
+			for(var i in callbacks.rtcConstraints) {
+				pc_constraints.optional.push(callbacks.rtcConstraints[i]);
+			}
+		}
 		if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 			// This is Edge, enable BUNDLE explicitly
 			pc_config.bundlePolicy = "max-bundle";
@@ -1359,7 +1366,7 @@ function Janus(gatewayCallbacks) {
 		};
 		if(stream !== null && stream !== undefined) {
 			Janus.log('Adding local stream');
-			stream.getTracks().forEach(track => config.pc.addTrack(track, stream));
+			stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
 			pluginHandle.onlocalstream(stream);
 		}
 		config.pc.ontrack = function(event) {
@@ -1822,7 +1829,7 @@ function Janus(gatewayCallbacks) {
 		Janus.debug(mediaConstraints);
 		// Check if this is Firefox and we've been asked to do simulcasting
 		var sendVideo = isVideoSendEnabled(media);
-		if(sendVideo && simulcast && adapter.browserDetails.browser === "firefox") {
+		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
 			var sender = config.pc.getSenders()[1];
@@ -1842,10 +1849,10 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Setting local description");
 					if(sendVideo && simulcast) {
 						// This SDP munging only works with Chrome
-						if(adapter.browserDetails.browser === "chrome") {
+						if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
 							Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
 							offer.sdp = mungeSdpForSimulcasting(offer.sdp);
-						} else if(adapter.browserDetails.browser !== "firefox") {
+						} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
 							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 						}
 					}
@@ -1909,7 +1916,7 @@ function Janus(gatewayCallbacks) {
 		Janus.debug(mediaConstraints);
 		// Check if this is Firefox and we've been asked to do simulcasting
 		var sendVideo = isVideoSendEnabled(media);
-		if(sendVideo && simulcast && adapter.browserDetails.browser === "firefox") {
+		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
 			var sender = config.pc.getSenders()[1];
@@ -1929,12 +1936,12 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Setting local description");
 					if(sendVideo && simulcast) {
 						// This SDP munging only works with Chrome
-						if(adapter.browserDetails.browser === "chrome") {
+						if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
 							// FIXME Apparently trying to simulcast when answering breaks video in Chrome...
 							//~ Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
 							//~ answer.sdp = mungeSdpForSimulcasting(answer.sdp);
 							Janus.warn("simulcast=true, but this is an answer, and video breaks in Chrome if we enable it");
-						} else if(adapter.browserDetails.browser !== "firefox") {
+						} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
 							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 						}
 					}
@@ -2147,7 +2154,7 @@ function Janus(gatewayCallbacks) {
 									} else {
 										// Calculate bitrate
 										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
-										if(adapter.browserDetails.browser == "safari")
+										if(Janus.webRTCAdapter.browserDetails.browser == "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
 										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
 										config.bitrate.value = bitRate + ' kbits/sec';

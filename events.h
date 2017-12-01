@@ -18,9 +18,10 @@
 
 /*! \brief Initialize the event handlers broadcaster
  * @param[in] enabled Whether broadcasting events should be supported at all
+ * @param[in] server_name The name of this server, to be added to all events
  * @param[in] handlers Map of all registered event handlers
  * @returns 0 on success, a negative integer otherwise */
-int janus_events_init(gboolean enabled, GHashTable *handlers);
+int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers);
 
 /*! \brief De-initialize the event handlers broadcaster */
 void janus_events_deinit(void);

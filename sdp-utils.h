@@ -93,6 +93,31 @@ janus_sdp_mdirection janus_sdp_parse_mdirection(const char *direction);
  * @returns The direction as a string, if valid, or NULL otherwise */
 const char *janus_sdp_mdirection_str(janus_sdp_mdirection direction);
 
+/*! \brief Helper method to return the preferred audio and video codecs in an SDP offer or answer,
+ * (where by preferred we mean the codecs we prefer ourselves, and not the m-line SDP order)
+ * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
+ * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
+ * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * @param[in] sdp The Janus SDP object to parse
+ * @param[out] acodec The audio codec that was found
+ * @param[out] vcodec The video codec that was found */
+void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
+/*! \brief Helper method to return the first audio and video codecs in an SDP offer or answer,
+ * (no matter whether we personally prefer them ourselves or not)
+ * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
+ * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
+ * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * @param[in] sdp The Janus SDP object to parse
+ * @param[out] acodec The audio codec that was found
+ * @param[out] vcodec The video codec that was found */
+void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
+/*! \brief Helper method to match a codec to one of the preferred codecs
+ * \note Don't free the returned value, as it's a constant value
+ * @param[in] type The type of media to match
+ * @param[in] codec The codec to match
+ * @returns The codec, if found, or NULL otherwise */
+const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec);
+
 /*! \brief SDP m-line representation */
 typedef struct janus_sdp_mline {
 	/*! \brief Media type as a janus_sdp_mtype enumerator */

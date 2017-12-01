@@ -12,13 +12,15 @@
  
 #include <string.h>
 #include "rtp.h"
+#include "rtpsrtp.h"
 #include "debug.h"
+#include "utils.h"
 
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
 
-	rtp_header *rtp = (rtp_header *)buf;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -109,7 +111,7 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 		uint8_t *byte, uint32_t *word, char **ref) {
 	if(!buf || len < 12)
 		return -1;
-	rtp_header *rtp = (rtp_header *)buf;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -229,9 +231,13 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 	memset(context, 0, sizeof(*context));
 }
 
-void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
-	if(header == NULL || context == NULL || step < 1)
+void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
+	if(header == NULL || context == NULL)
 		return;
+	/* Note: while the step property is still there for compatibility reasons, to
+	 * keep the signature as it was before, it's ignored: whenever there's a switch
+	 * to take into account, we compute how much time passed between the last RTP
+	 * packet with the old SSRC and this new one, and prepare a timestamp accordingly */
 	uint32_t ssrc = ntohl(header->ssrc);
 	uint32_t timestamp = ntohl(header->timestamp);
 	uint16_t seq = ntohs(header->seq_number);
@@ -245,19 +251,31 @@ void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *co
 			context->v_base_ts = timestamp;
 			context->v_base_seq_prev = context->v_last_seq;
 			context->v_base_seq = seq;
+			/* How much time since the last video RTP packet? We compute an offset accordingly */
+			if(context->v_last_time > 0) {
+				gint64 time_diff = janus_get_monotonic_time() - context->v_last_time;
+				time_diff = (time_diff/1000)*90;	/* We're assuming 90khz here */
+				if(time_diff == 0)
+					time_diff = 1;
+				context->v_base_ts_prev += (guint32)time_diff;
+				context->v_last_ts += (guint32)time_diff;
+				JANUS_LOG(LOG_VERB, "Computed offset for video RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
+			}
 		}
 		if(context->v_seq_reset) {
 			/* Video sequence number was paused for a while: just update that */
 			context->v_seq_reset = FALSE;
 			context->v_base_seq_prev = context->v_last_seq;
-			context->v_base_seq = header->seq_number;
+			context->v_base_seq = seq;
 		}
 		/* Compute a coherent timestamp and sequence number */
-		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev+step;
+		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev;
 		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->v_last_ts);
 		header->seq_number = htons(context->v_last_seq);
+		/* Take note of when we last handled this RTP packet */
+		context->v_last_time = janus_get_monotonic_time();
 	} else {
 		if(ssrc != context->a_last_ssrc) {
 			/* Audio SSRC changed: update both sequence number and timestamp */
@@ -268,19 +286,34 @@ void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *co
 			context->a_base_ts = timestamp;
 			context->a_base_seq_prev = context->a_last_seq;
 			context->a_base_seq = seq;
+			/* How much time since the last audio RTP packet? We compute an offset accordingly */
+			if(context->a_last_time > 0) {
+				gint64 time_diff = janus_get_monotonic_time() - context->a_last_time;
+				int akhz = 48;
+				if(header->type == 0 || header->type == 8 || header->type == 9)
+					akhz = 8;	/* We're assuming 48khz here (Opus), unless it's G.711/G.722 (8khz) */
+				time_diff = (time_diff/1000)*(akhz);
+				if(time_diff == 0)
+					time_diff = 1;
+				context->a_base_ts_prev += (guint32)time_diff;
+				context->a_last_ts += (guint32)time_diff;
+				JANUS_LOG(LOG_VERB, "Computed offset for audio RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
+			}
 		}
 		if(context->a_seq_reset) {
 			/* Audio sequence number was paused for a while: just update that */
 			context->a_seq_reset = FALSE;
 			context->a_base_seq_prev = context->a_last_seq;
-			context->a_base_seq = header->seq_number;
+			context->a_base_seq = seq;
 		}
 		/* Compute a coherent timestamp and sequence number */
-		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev+step;
+		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev;
 		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->a_last_ts);
 		header->seq_number = htons(context->a_last_seq);
+		/* Take note of when we last handled this RTP packet */
+		context->a_last_time = janus_get_monotonic_time();
 	}
 }
 

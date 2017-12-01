@@ -14,6 +14,7 @@
 #ifndef _JANUS_DTLS_BIO_H
 #define _JANUS_DTLS_BIO_H
 
+#include <openssl/opensslv.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
@@ -32,5 +33,11 @@ BIO_METHOD *BIO_janus_dtls_filter(void);
  * @param start_mtu The MTU to start from (1472 by default)
  */
 void janus_dtls_bio_filter_set_mtu(int start_mtu);
+
+#if defined(LIBRESSL_VERSION_NUMBER)
+#define JANUS_USE_OPENSSL_PRE_1_1_API (1)
+#else
+#define JANUS_USE_OPENSSL_PRE_1_1_API (OPENSSL_VERSION_NUMBER < 0x10100000L)
+#endif
 
 #endif

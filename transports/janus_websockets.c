@@ -438,6 +438,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			wscinfo.timeout_secs = pingpong_timeout;
 		}
 #endif
+		/* Force single-thread server */
+		wscinfo.count_threads = 1;
 
 		/* Create the base context */
 		wsc = lws_create_context(&wscinfo);
@@ -872,6 +874,8 @@ static int janus_websockets_callback_http(
 				return -1;
 			}
 			break;
+		case LWS_CALLBACK_GET_THREAD_ID:
+			return (uint64_t)pthread_self();
 		default:
 			break;
 	}
@@ -898,13 +902,15 @@ static int janus_websockets_common_callback(
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
 			/* Is there any filtering we should apply? */
-			char name[256], ip[256];
+			char ip[256];
 #ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
-			lws_get_peer_simple(wsi, name, 256);
+			lws_get_peer_simple(wsi, ip, 256);
+			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s\n", log_prefix, wsi, ip);
 #else
+			char name[256];
 			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
-#endif
 			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s by %s\n", log_prefix, wsi, ip, name);
+#endif
 			if(!janus_websockets_is_allowed(ip, admin)) {
 				JANUS_LOG(LOG_ERR, "[%s-%p] IP %s is unauthorized to connect to the WebSockets %s API interface\n", log_prefix, wsi, ip, admin ? "Admin" : "Janus");
 				/* Close the connection */

@@ -73,6 +73,7 @@
 #include "../mutex.h"
 #include "../record.h"
 #include "../rtp.h"
+#include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
@@ -201,10 +202,13 @@ static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+static uint16_t rtp_range_min = 10000;
+static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
 static GThread *watchdog;
 static void *janus_sip_handler(void *data);
+static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
@@ -829,6 +833,28 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
 		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 
+		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		if(item && item->value) {
+			/* Split in min and max port */
+			char *maxport = strrchr(item->value, '-');
+			if(maxport != NULL) {
+				*maxport = '\0';
+				maxport++;
+				rtp_range_min = atoi(item->value);
+				rtp_range_max = atoi(maxport);
+				maxport--;
+				*maxport = '-';
+			}
+			if(rtp_range_min > rtp_range_max) {
+				uint16_t temp_port = rtp_range_min;
+				rtp_range_min = rtp_range_max;
+				rtp_range_max = temp_port;
+			}
+			if(rtp_range_max == 0)
+				rtp_range_max = 65535;
+			JANUS_LOG(LOG_VERB, "SIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
+		}
+
 		item = janus_config_get_item_drilldown(config, "general", "events");
 		if(item != NULL && item->value != NULL)
 			notify_events = janus_is_true(item->value);
@@ -955,6 +981,14 @@ const char *janus_sip_get_package(void) {
 	return JANUS_SIP_PACKAGE;
 }
 
+static janus_sip_session *janus_sip_lookup_session(janus_plugin_session *handle) {
+	janus_sip_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_sip_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1042,18 +1076,19 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_sip_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+		janus_sip_hangup_media_internal(handle);
+		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
 		if(session->stack != NULL) {
 			/* Shutdown the NUA: this will remove the session later on */
 			nua_shutdown(session->stack->s_nua);
@@ -1070,8 +1105,10 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
@@ -1105,6 +1142,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -1126,14 +1164,19 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
@@ -1157,7 +1200,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			}
 			if(session->media.simulcast_ssrc) {
 				/* The user is simulcasting: drop everything except the base layer */
-				rtp_header *header = (rtp_header *)buf;
+				janus_rtp_header *header = (janus_rtp_header *)buf;
 				uint32_t ssrc = ntohl(header->ssrc);
 				if(ssrc != session->media.simulcast_ssrc) {
 					JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
@@ -1165,7 +1208,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				}
 			}
 			if(session->media.video_ssrc == 0) {
-				rtp_header *header = (rtp_header *)buf;
+				janus_rtp_header *header = (janus_rtp_header *)buf;
 				session->media.video_ssrc = ntohl(header->ssrc);
 				JANUS_LOG(LOG_VERB, "Got SIP video SSRC: %"SCNu32"\n", session->media.video_ssrc);
 			}
@@ -1179,7 +1222,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					int protected = len;
 					int res = srtp_protect(session->media.video_srtp_out, &sbuf, &protected);
 					if(res != srtp_err_status_ok) {
-						rtp_header *header = (rtp_header *)&sbuf;
+						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1187,7 +1230,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					} else {
 						/* Forward the frame to the peer */
 						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
-							rtp_header *header = (rtp_header *)&sbuf;
+							janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1197,7 +1240,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				} else {
 					/* Forward the frame to the peer */
 					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
-						rtp_header *header = (rtp_header *)&buf;
+						janus_rtp_header *header = (janus_rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1211,7 +1254,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				return;
 			}
 			if(session->media.audio_ssrc == 0) {
-				rtp_header *header = (rtp_header *)buf;
+				janus_rtp_header *header = (janus_rtp_header *)buf;
 				session->media.audio_ssrc = ntohl(header->ssrc);
 				JANUS_LOG(LOG_VERB, "Got SIP audio SSRC: %"SCNu32"\n", session->media.audio_ssrc);
 			}
@@ -1225,7 +1268,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					int protected = len;
 					int res = srtp_protect(session->media.audio_srtp_out, &sbuf, &protected);
 					if(res != srtp_err_status_ok) {
-						rtp_header *header = (rtp_header *)&sbuf;
+						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1233,7 +1276,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					} else {
 						/* Forward the frame to the peer */
 						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
-							rtp_header *header = (rtp_header *)&sbuf;
+							janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1243,7 +1286,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				} else {
 					/* Forward the frame to the peer */
 					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
-						rtp_header *header = (rtp_header *)&buf;
+						janus_rtp_header *header = (janus_rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1332,10 +1375,16 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 }
 
 void janus_sip_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1402,11 +1451,8 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_message_free(msg);
 			continue;
 		}
-		janus_sip_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_sip_session *)msg->handle->plugin_handle;
-		}
+		janus_sip_session *session = janus_sip_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -2631,6 +2677,7 @@ static void *janus_sip_handler(void *data) {
 			goto error;
 		}
 
+		janus_mutex_unlock(&sessions_mutex);
 		/* Prepare JSON event */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -2644,6 +2691,7 @@ static void *janus_sip_handler(void *data) {
 
 error:
 		{
+			janus_mutex_unlock(&sessions_mutex);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "sip", json_string("event"));
@@ -3558,7 +3606,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			audio_rtp_address.sin_family = AF_INET;
@@ -3607,7 +3655,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating video sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			video_rtp_address.sin_family = AF_INET;
@@ -3779,6 +3827,10 @@ static void *janus_sip_relay_thread(void *data) {
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "[SIP-%s] Got an EINTR (%s), ignoring...\n", session->account.username, strerror(errno));
+				continue;
+			}
 			JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling...\n", session->account.username);
 			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 			break;
@@ -3810,14 +3862,15 @@ static void *janus_sip_relay_thread(void *data) {
 							session->account.username, strerror(error));
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
+						continue;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIP-%s] Got a '%s' on the video RTCP socket, closing it\n",
 							session->account.username, strerror(error));
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
+						continue;
 					}
-					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
-					continue;
+					/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
 				}
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
@@ -3847,7 +3900,7 @@ static void *janus_sip_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					rtp_header *header = (rtp_header *)buffer;
+					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -3912,10 +3965,10 @@ static void *janus_sip_relay_thread(void *data) {
 						continue;
 					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTP channel...\n", bytes);
-					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
+					//~ janus_rtp_header_t *rtp = (janus_rtp_header_t *)buffer;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-					rtp_header *header = (rtp_header *)buffer;
+					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
