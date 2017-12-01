@@ -1048,7 +1048,7 @@ int janus_process_incoming_request(janus_request *request) {
 			error_code, error_cause, FALSE,
 			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 		if(error_code != 0) {
-			ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
@@ -1213,7 +1213,8 @@ int janus_process_incoming_request(janus_request *request) {
 					waited += 100000;
 					if(waited >= 3*G_USEC_PER_SEC) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						break;
+						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
+						goto jsondone;
 					}
 				}
 			}
@@ -1454,6 +1455,11 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(candidate != NULL && candidates != NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
+			goto jsondone;
+		}
+		if(janus_flags_is_set(&handle->webrtc_flags,JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Received a trickle, but still cleaning a previous session\n", handle->handle_id);
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
 			goto jsondone;
 		}
 		janus_mutex_lock(&handle->mutex);
@@ -2425,7 +2431,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.audio_bytes_lastsec) {
-				GList *lastsec = component->in_stats.audio_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2445,7 +2451,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.video_bytes_lastsec) {
-				GList *lastsec = component->in_stats.video_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.video_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2749,7 +2755,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				waited += 100000;
 				if(waited >= 3*G_USEC_PER_SEC) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", ice_handle->handle_id);
-					break;
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Still cleaning a previous session\n", ice_handle->handle_id);
+					janus_sdp_destroy(parsed_sdp);
+					return NULL;
 				}
 			}
 		}

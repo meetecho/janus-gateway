@@ -207,6 +207,7 @@ static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
+static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
@@ -956,6 +957,14 @@ const char *janus_sip_get_package(void) {
 	return JANUS_SIP_PACKAGE;
 }
 
+static janus_sip_session *janus_sip_lookup_session(janus_plugin_session *handle) {
+	janus_sip_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_sip_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1050,15 +1059,16 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&sessions_mutex);
-	janus_sip_hangup_media(handle);
 	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+	janus_sip_hangup_media_internal(handle);
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
 		nua_shutdown(session->stack->s_nua);
@@ -1071,12 +1081,15 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
@@ -1115,17 +1128,18 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
-	if(!session)
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
+	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
-	}
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -1140,14 +1154,19 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_SIP_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(g_atomic_int_get(&session->destroyed))
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
@@ -1347,9 +1366,15 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 
 void janus_sip_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_SIP_PACKAGE, handle);
+	janus_mutex_lock(&sessions_mutex);
+	janus_sip_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	janus_sip_session *session = janus_sip_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1421,16 +1446,20 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_message_free(msg);
 			continue;
 		}
-		janus_sip_session *session = (janus_sip_session *)msg->handle->plugin_handle;
+		janus_mutex_lock(&sessions_mutex);
+		janus_sip_session *session = janus_sip_lookup_session(msg->handle);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sip_message_free(msg);
 			continue;
 		}
 		if(g_atomic_int_get(&session->destroyed)) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_sip_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;

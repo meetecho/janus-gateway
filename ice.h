@@ -195,7 +195,7 @@ typedef struct janus_ice_stats {
 	/*! \brief Audio bytes sent or received */
 	guint64 audio_bytes;
 	/*! \brief Audio bytes sent or received in the last second */
-	GList *audio_bytes_lastsec;
+	GQueue *audio_bytes_lastsec;
 	/*! \brief Whether or not we notified about audio lastsec issues already */
 	gboolean audio_notified_lastsec;
 	/*! \brief Number of audio NACKs sent or received */
@@ -205,7 +205,7 @@ typedef struct janus_ice_stats {
 	/*! \brief Video bytes sent or received */
 	guint64 video_bytes;
 	/*! \brief Video bytes sent or received in the last second */
-	GList *video_bytes_lastsec;
+	GQueue *video_bytes_lastsec;
 	/*! \brief Whether or not we notified about video lastsec issues already */
 	gboolean video_notified_lastsec;
 	/*! \brief Number of video NACKs sent or received */
@@ -325,6 +325,8 @@ struct janus_ice_handle {
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
 	gchar *remote_sdp;
+	/*! \brief Reason this handle has been hung up*/
+	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */
@@ -459,7 +461,7 @@ struct janus_ice_component {
 	/*! \brief Whether we should do NACKs (in or out) for video */
 	gboolean do_video_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
-	GList *retransmit_buffer;
+	GQueue *retransmit_buffer;
 	/*! \brief Last time a log message about sending retransmits was printed */
 	gint64 retransmit_log_ts;
 	/*! \brief Number of retransmitted packets since last log message */

@@ -329,17 +329,14 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
 		janus_ice_component *component = stream->rtp_component;
 		janus_mutex_lock(&component->mutex);
 		if(component->retransmit_buffer) {
-			GList *first = g_list_first(component->retransmit_buffer);
-			janus_rtp_packet *p = (janus_rtp_packet *)first->data;
+			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->retransmit_buffer);
 			while(p && (now - p->created >= (gint64)max_nack_queue*1000)) {
 				/* Packet is too old, get rid of it */
-				first->data = NULL;
-				component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+				g_queue_pop_head(component->retransmit_buffer);
 				g_free(p->data);
 				p->data = NULL;
 				g_free(p);
-				first = g_list_first(component->retransmit_buffer);
-				p = (janus_rtp_packet *)(first ? first->data : NULL);
+				p = (janus_rtp_packet *)g_queue_peek_head(component->retransmit_buffer);
 			}
 		}
 		janus_mutex_unlock(&component->mutex);
@@ -402,18 +399,18 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp);
 
 
-/* Map of old plugin sessions that have been closed */
-static GHashTable *old_plugin_sessions;
-static janus_mutex old_plugin_sessions_mutex;
+/* Map of active plugin sessions */
+static GHashTable *plugin_sessions;
+static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	/* Make sure this plugin session is still alive */
-	janus_mutex_lock_nodebug(&old_plugin_sessions_mutex);
-	janus_plugin_session *result = g_hash_table_lookup(old_plugin_sessions, plugin_session);
-	janus_mutex_unlock_nodebug(&old_plugin_sessions_mutex);
-	if(result != NULL) {
+	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
+	janus_plugin_session *result = g_hash_table_lookup(plugin_sessions, plugin_session);
+	janus_mutex_unlock_nodebug(&plugin_sessions_mutex);
+	if(result == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
 	}
-	return (result == NULL);
+	return (result != NULL);
 }
 
 static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
@@ -483,7 +480,6 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 		return NULL;
 	}
 	trickle->handle = handle;
-	janus_refcount_increase(&handle->ref);
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -584,7 +580,6 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 	if(trickle == NULL)
 		return;
-	janus_refcount_decrease(&trickle->handle->ref);
 	trickle->handle = NULL;
 	g_free(trickle->transaction);
 	trickle->transaction = NULL;
@@ -634,9 +629,9 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 #endif
 	}
 
-	/* We keep track of old plugin sessions to avoid problems */
-	old_plugin_sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&old_plugin_sessions_mutex);
+	/* We keep track of plugin sessions to avoid problems */
+	plugin_sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&plugin_sessions_mutex);
 
 #ifdef HAVE_LIBCURL
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
@@ -678,7 +673,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		return -1;
 	}
 	janus_stun_port = stun_port;
-	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_stun_server, janus_stun_port);
+	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
 	/* Test the STUN server */
 	StunAgent stun;
 	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
@@ -686,25 +681,48 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	uint8_t buf[1500];
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
-	/* TODO Use the janus_network_address info to drive the socket creation */
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	/* Use the janus_network_address info to drive the socket creation */
+	int fd = socket(addr.family, SOCK_DGRAM, 0);
 	if(fd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
 		return -1;
 	}
-	struct sockaddr_in address, remote;
-	address.sin_family = AF_INET;
-	address.sin_port = 0;
-	address.sin_addr.s_addr = INADDR_ANY;
-	remote.sin_family = AF_INET;
-	remote.sin_port = htons(janus_stun_port);
-	remote.sin_addr.s_addr = inet_addr(janus_stun_server);
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test\n");
+	struct sockaddr *address = NULL, *remote = NULL;
+	struct sockaddr_in address4, remote4;
+	struct sockaddr_in6 address6, remote6;
+	socklen_t addrlen = 0;
+	if(addr.family == AF_INET) {
+		memset(&address4, 0, sizeof(address4));
+		address4.sin_family = AF_INET;
+		address4.sin_port = 0;
+		address4.sin_addr.s_addr = INADDR_ANY;
+		memset(&remote4, 0, sizeof(remote4));
+		remote4.sin_family = AF_INET;
+		remote4.sin_port = htons(janus_stun_port);
+		memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+		address = (struct sockaddr *)(&address4);
+		remote = (struct sockaddr *)(&remote4);
+		addrlen = sizeof(remote4);
+	} else if(addr.family == AF_INET6) {
+		memset(&address6, 0, sizeof(address6));
+		address6.sin6_family = AF_INET6;
+		address6.sin6_port = 0;
+		address6.sin6_addr = in6addr_any;
+		memset(&remote6, 0, sizeof(remote6));
+		remote6.sin6_family = AF_INET6;
+		remote6.sin6_port = htons(janus_stun_port);
+		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
+		remote6.sin6_addr = addr.ipv6;
+		address = (struct sockaddr *)(&address6);
+		remote = (struct sockaddr *)(&remote6);
+		addrlen = sizeof(remote6);
+	}
+	if(bind(fd, address, addrlen) < 0) {
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
 		close(fd);
 		return -1;
 	}
-	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
+	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
 	if(bytes < 0) {
 		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
 		close(fd);
@@ -723,8 +741,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	socklen_t addrlen = sizeof(remote);
-	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
@@ -738,10 +755,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
 		} else {
@@ -752,10 +769,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		}
 		return 0;
 	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
 		} else {
@@ -865,14 +882,14 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 	stats->audio_packets = 0;
 	stats->audio_bytes = 0;
 	if(stats->audio_bytes_lastsec)
-		g_list_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
+		g_queue_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->audio_bytes_lastsec = NULL;
 	stats->audio_notified_lastsec = FALSE;
 	stats->audio_nacks = 0;
 	stats->video_packets = 0;
 	stats->video_bytes = 0;
 	if(stats->video_bytes_lastsec)
-		g_list_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
+		g_queue_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->video_bytes_lastsec = NULL;
 	stats->video_notified_lastsec = FALSE;
 	stats->video_nacks = 0;
@@ -960,10 +977,10 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	//~ janus_refcount_increase(&handle->ref);
 	handle->app = plugin;
 	handle->app_handle = session_handle;
-	/* Make sure this plugin session is not in the old sessions list */
-	janus_mutex_lock(&old_plugin_sessions_mutex);
-	g_hash_table_remove(old_plugin_sessions, session_handle);
-	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	/* Add this plugin session to active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	g_hash_table_insert(plugin_sessions, session_handle, session_handle);
+	janus_mutex_unlock(&plugin_sessions_mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
@@ -980,13 +997,21 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
+	/* Remove the session from active sessions map */
+	janus_mutex_lock(&plugin_sessions_mutex);
+	gboolean found = g_hash_table_remove(plugin_sessions, handle->app_handle);
+	if (!found) {
+		janus_mutex_unlock(&plugin_sessions_mutex);
+		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	}
+	janus_mutex_unlock(&plugin_sessions_mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
 		janus_refcount_decrease(&handle->ref);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1000,7 +1025,9 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			g_main_loop_quit(handle->iceloop);
+			if(g_main_loop_is_running(handle->iceloop)) {
+				g_main_loop_quit(handle->iceloop);
+			}
 		}
 		return 0;
 	}
@@ -1009,10 +1036,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	int error = 0;
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
 		handle->app_handle->gateway_handle = NULL;
-		/* Put the plugin session in the old sessions list, to avoid it being used */
-		janus_mutex_lock(&old_plugin_sessions_mutex);
-		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
-		janus_mutex_unlock(&old_plugin_sessions_mutex);
 		/* Notify the plugin that the session's over */
 		plugin_t->destroy_session(handle->app_handle, &error);
 		/* We only unref when actually freeing the ICE handle */
@@ -1024,7 +1047,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	}
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+	if(handle->iceloop != NULL) {
 		if(handle->audio_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1038,7 +1061,9 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		g_main_loop_quit(handle->iceloop);
+		if(g_main_loop_is_running(handle->iceloop)) {
+			g_main_loop_quit(handle->iceloop);
+		}
 	}
 
 	/* Prepare JSON event to notify user/application */
@@ -1097,15 +1122,20 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
 			handle->handle_id, reason, plugin->get_name());
-		if(plugin && plugin->hangup_media)
+		if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->hangup_media(handle->app_handle);
-		janus_ice_notify_hangup(handle, reason);
+		/* user will be notified only after the actual hangup */
+		handle->hangup_reason = reason;
 	}
 	if(handle->queued_packets != NULL)
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
+#else
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+#endif
+	/* Get rid of the loop */
 	if(handle->send_thread == NULL) {
-		/* Get rid of the loop */
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1129,7 +1159,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 					break;
 				}
 			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+			if(g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
@@ -1195,6 +1225,10 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+	if (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) && handle->hangup_reason) {
+		janus_ice_notify_hangup(handle, handle->hangup_reason);
+	}
+	handle->hangup_reason = NULL;
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed; %p %p\n", handle->handle_id, handle, handle->session);
 }
@@ -1287,16 +1321,12 @@ void janus_ice_component_free(const janus_refcount *component_ref) {
 	}
 	if(component->retransmit_buffer != NULL) {
 		janus_rtp_packet *p = NULL;
-		GList *first = g_list_first(component->retransmit_buffer);
-		while(first != NULL) {
-			p = (janus_rtp_packet *)first->data;
-			first->data = NULL;
-			component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+		while((p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer)) != NULL) {
 			g_free(p->data);
 			p->data = NULL;
 			g_free(p);
-			first = g_list_first(component->retransmit_buffer);
 		}
+		g_queue_free(component->retransmit_buffer);
 	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
@@ -1456,7 +1486,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin != NULL) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-			if(plugin && plugin->hangup_media)
+			if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
 				plugin->hangup_media(handle->app_handle);
 		}
 		janus_ice_notify_hangup(handle, "ICE failed");
@@ -1982,44 +2012,38 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(buflen > 0) {
 					/* Update the last sec queue as well */
 					janus_ice_stats_item *s = g_malloc0(sizeof(janus_ice_stats_item));
-					if(s == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					s->bytes = buflen;
+					s->when = janus_get_monotonic_time();
+					janus_mutex_lock(&component->mutex);
+					if(!video) {
+						if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
+							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
+							component->in_stats.audio_notified_lastsec = FALSE;
+							janus_ice_notify_media(handle, FALSE, TRUE);
+						}
+						component->in_stats.audio_packets++;
+						component->in_stats.audio_bytes += buflen;
+						if(component->in_stats.audio_bytes_lastsec == NULL)
+							component->in_stats.audio_bytes_lastsec = g_queue_new();
+						g_queue_push_tail(component->in_stats.audio_bytes_lastsec, s);
+						if(g_queue_get_length(component->in_stats.audio_bytes_lastsec) > 100) {
+							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.audio_bytes_lastsec);
+							g_free(s);
+						}
 					} else {
-						s->bytes = buflen;
-						s->when = janus_get_monotonic_time();
-						janus_mutex_lock(&component->mutex);
-						if(!video) {
-							if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
-								/* We either received our first audio packet, or we started receiving it again after missing more than a second */
-								component->in_stats.audio_notified_lastsec = FALSE;
-								janus_ice_notify_media(handle, FALSE, TRUE);
-							}
-							component->in_stats.audio_packets++;
-							component->in_stats.audio_bytes += buflen;
-							component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
-							if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
-								GList *first = g_list_first(component->in_stats.audio_bytes_lastsec);
-								s = (janus_ice_stats_item *)first->data;
-								first->data = NULL;
-								component->in_stats.audio_bytes_lastsec = g_list_delete_link(component->in_stats.audio_bytes_lastsec, first);
-								g_free(s);
-							}
-						} else {
-							if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
-								/* We either received our first video packet, or we started receiving it again after missing more than a second */
-								component->in_stats.video_notified_lastsec = FALSE;
-								janus_ice_notify_media(handle, TRUE, TRUE);
-							}
-							component->in_stats.video_packets++;
-							component->in_stats.video_bytes += buflen;
-							component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
-							if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
-								GList *first = g_list_first(component->in_stats.video_bytes_lastsec);
-								s = (janus_ice_stats_item *)first->data;
-								first->data = NULL;
-								component->in_stats.video_bytes_lastsec = g_list_delete_link(component->in_stats.video_bytes_lastsec, first);
-								g_free(s);
-							}
+						if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
+							/* We either received our first video packet, or we started receiving it again after missing more than a second */
+							component->in_stats.video_notified_lastsec = FALSE;
+							janus_ice_notify_media(handle, TRUE, TRUE);
+						}
+						component->in_stats.video_packets++;
+						component->in_stats.video_bytes += buflen;
+						if(component->in_stats.video_bytes_lastsec == NULL)
+							component->in_stats.video_bytes_lastsec = g_queue_new();
+						g_queue_push_tail(component->in_stats.video_bytes_lastsec, s);
+						if(g_queue_get_length(component->in_stats.video_bytes_lastsec) > 100) {
+							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.video_bytes_lastsec);
+							g_free(s);
 						}
 						janus_mutex_unlock(&component->mutex);
 					}
@@ -2154,21 +2178,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, TRUE, buf, buflen,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
-				/* Check if there's an RTCP BYE: in case, let's wrap up */
+				/* Check if there's an RTCP BYE: in case, let's log it */
 				if(janus_rtcp_has_bye(buf, buflen)) {
-					/* Firefox 52 sends a broken BYE as part of its first compound packet: to
-					 * "fix" this, we check if we got a BYE too soon, and in case ignore it */
-					gint64 now = janus_get_monotonic_time();
-					if(now - component->dtls->dtls_connected < 500000) {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), but it arrived too soon, ignoring...\n",
-							handle->handle_id, stream->stream_id, component->component_id);
-						/* FIXME Should we remove the BYE from the compound packet? */
-					} else {
-						/* Looks like it's a real BYE: hangup the PeerConnection */
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-						janus_ice_webrtc_hangup(handle, "RTCP BYE");
-						return;
-					}
+					/* Note: we used to use this as a trigger to close the PeerConnection, but not anymore
+					 * Discussion here, https://groups.google.com/forum/#!topic/meetecho-janus/4XtfbYB7Jvc */
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16")\n", handle->handle_id, stream->stream_id, component->component_id);
 				}
 				/* Is this audio or video? */
 				int video = 0;
@@ -2242,7 +2256,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
-						GList *rp = component->retransmit_buffer;
+						GList *rp = g_queue_peek_head_link(component->retransmit_buffer);
 						while(rp) {
 							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
 							if(p) {
@@ -2349,14 +2363,14 @@ void *janus_ice_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	g_usleep (100000);
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	janus_ice_webrtc_free(handle);
+	handle->icethread = NULL;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
 	g_thread_unref(g_thread_self());
@@ -2735,18 +2749,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
-	janus_refcount_increase(&handle->ref);
-	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
-	if(error != NULL) {
-		/* FIXME We should clear some resources... */
-		janus_refcount_decrease(&handle->ref);
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		return -1;
-	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
@@ -3332,6 +3334,18 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		turnrest_credentials = NULL;
 	}
 #endif
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	janus_refcount_increase(&handle->ref);
+	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
+	if(error != NULL) {
+		/* FIXME We should clear some resources... */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_refcount_decrease(&handle->ref);
+		return -1;
+	}
 	return 0;
 }
 
@@ -3402,10 +3416,9 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
-				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
-				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
@@ -3413,8 +3426,7 @@ void *janus_ice_send_thread(void *data) {
 					janus_ice_notify_media(handle, FALSE, FALSE);
 				}
 				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-					last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+					last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 					if(last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 						/* We missed more than no_second_timer seconds of video! */
 						component->in_stats.video_notified_lastsec = TRUE;
@@ -3425,8 +3437,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			if(handle->video_stream && handle->video_stream->rtp_component) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
-				GList *lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
@@ -3893,23 +3904,16 @@ void *janus_ice_send_thread(void *data) {
 								continue;
 							}
 							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
-							if(p == NULL) {
-								JANUS_LOG(LOG_FATAL, "Memory error!\n");
-							} else {
-								p->data = (char *)g_malloc0(protected);
-								if(p->data == NULL) {
-									JANUS_LOG(LOG_FATAL, "Memory error!\n");
-									g_free(p);
-								} else {
-									memcpy(p->data, sbuf, protected);
-									p->length = protected;
-									p->created = janus_get_monotonic_time();
-									p->last_retransmit = 0;
-									janus_mutex_lock(&component->mutex);
-									component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
-									janus_mutex_unlock(&component->mutex);
-								}
-							}
+							p->data = (char *)g_malloc0(protected);
+							memcpy(p->data, sbuf, protected);
+							p->length = protected;
+							p->created = janus_get_monotonic_time();
+							p->last_retransmit = 0;
+							janus_mutex_lock(&component->mutex);
+							if(component->retransmit_buffer == NULL)
+								component->retransmit_buffer = g_queue_new();
+							g_queue_push_tail(component->retransmit_buffer, p);
+							janus_mutex_unlock(&component->mutex);
 						}
 					}
 				}
@@ -3975,6 +3979,7 @@ void *janus_ice_send_thread(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...; %p\n", handle->handle_id, handle);
 	handle->send_thread = NULL;
+	g_thread_unref(g_thread_self());
 	janus_refcount_decrease(&handle->ref);
 	return NULL;
 }

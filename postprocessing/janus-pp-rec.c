@@ -81,12 +81,13 @@ gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
-int working = 0;
+static int working = 0;
+
+static int post_reset_trigger = 200;
 
 
 /* Signal handler */
-void janus_pp_handle_signal(int signum);
-void janus_pp_handle_signal(int signum) {
+static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
@@ -103,6 +104,12 @@ int main(int argc, char *argv[])
 		if(val >= LOG_NONE && val <= LOG_MAX)
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
+	}
+	if(g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
+		if(val >= 0)
+			post_reset_trigger = val;
+		JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
 	}
 	
 	/* Evaluate arguments */
@@ -162,6 +169,7 @@ int main(int argc, char *argv[])
 	long offset = 0;
 	uint16_t len = 0;
 	uint32_t count = 0;
+	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -362,7 +370,7 @@ int main(int argc, char *argv[])
 	/* Now let's parse the frames and order them */
 	uint32_t last_ts = 0, reset = 0;
 	int times_resetted = 0;
-	uint32_t post_reset_pkts = 0;
+	int post_reset_pkts = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -445,6 +453,18 @@ int main(int argc, char *argv[])
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
 		}
+		if(ssrc == 0) {
+			ssrc = ntohl(rtp->ssrc);
+			JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
+		}
+		if(ssrc != ntohl(rtp->ssrc)) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n",
+				ntohl(rtp->ssrc), ssrc);
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
 		if(p == NULL) {
@@ -461,7 +481,7 @@ int main(int argc, char *argv[])
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
 			gboolean late_pkt = FALSE;
 			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				if(post_reset_pkts > 1000) {
+				if(post_reset_pkts > post_reset_trigger) {
 					reset = ntohl(rtp->timestamp);
 					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
 					times_resetted++;
@@ -469,13 +489,13 @@ int main(int argc, char *argv[])
 				}
 			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
 					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
 					late_pkt = TRUE;
 					times_resetted--;
 				}
 			} else if(ntohl(rtp->timestamp) < reset) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
 				} else {

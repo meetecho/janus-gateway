@@ -266,7 +266,7 @@ $(document).ready(function() {
 										var video = msg["video_codec"];
 										if(mystream && mystream.getVideoTracks() && mystream.getVideoTracks().length > 0 && !video) {
 											// Video has been rejected
-											toastr.warning("Our video stream has been rejected, viewers won't hear us");
+											toastr.warning("Our video stream has been rejected, viewers won't see us");
 											// Hide the webcam video
 											$('#myvideo').hide();
 											$('#videolocal').append(

@@ -87,17 +87,17 @@ struct janus_refcount {
 /* Reference counters debugging */
 extern GHashTable *counters;
 extern janus_mutex counters_mutex;
-static void janus_refcount_track(janus_refcount *ref) {
-	janus_mutex_lock(&counters_mutex);
-	if(counters == NULL)
-		counters = g_hash_table_new(NULL, NULL);
-	g_hash_table_insert(counters, ref, ref);
-	janus_mutex_unlock(&counters_mutex);
+#define janus_refcount_track(refp) { \
+	janus_mutex_lock(&counters_mutex); \
+	if(counters == NULL) \
+		counters = g_hash_table_new(NULL, NULL); \
+	g_hash_table_insert(counters, refp, refp); \
+	janus_mutex_unlock(&counters_mutex); \
 }
-static void janus_refcount_untrack(janus_refcount *ref) {
-	janus_mutex_lock(&counters_mutex);
-	g_hash_table_remove(counters, ref);
-	janus_mutex_unlock(&counters_mutex);
+#define janus_refcount_untrack(refp) { \
+	janus_mutex_lock(&counters_mutex); \
+	g_hash_table_remove(counters, refp); \
+	janus_mutex_unlock(&counters_mutex); \
 }
 #endif
 
