@@ -80,5 +80,6 @@ typedef struct janus_lua_session {
 } janus_lua_session;
 extern GHashTable *lua_sessions, *lua_ids;
 extern janus_mutex lua_sessions_mutex;
+janus_lua_session *janus_lua_lookup_session(janus_plugin_session *handle);
 
 #endif
