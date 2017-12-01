@@ -329,17 +329,14 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
 		janus_ice_component *component = stream->rtp_component;
 		janus_mutex_lock(&component->mutex);
 		if(component->retransmit_buffer) {
-			GList *first = g_list_first(component->retransmit_buffer);
-			janus_rtp_packet *p = (janus_rtp_packet *)first->data;
+			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->retransmit_buffer);
 			while(p && (now - p->created >= (gint64)max_nack_queue*1000)) {
 				/* Packet is too old, get rid of it */
-				first->data = NULL;
-				component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+				g_queue_pop_head(component->retransmit_buffer);
 				g_free(p->data);
 				p->data = NULL;
 				g_free(p);
-				first = g_list_first(component->retransmit_buffer);
-				p = (janus_rtp_packet *)(first ? first->data : NULL);
+				p = (janus_rtp_packet *)g_queue_peek_head(component->retransmit_buffer);
 			}
 		}
 		janus_mutex_unlock(&component->mutex);
@@ -994,14 +991,14 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 	stats->audio_packets = 0;
 	stats->audio_bytes = 0;
 	if(stats->audio_bytes_lastsec)
-		g_list_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
+		g_queue_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->audio_bytes_lastsec = NULL;
 	stats->audio_notified_lastsec = FALSE;
 	stats->audio_nacks = 0;
 	stats->video_packets = 0;
 	stats->video_bytes = 0;
 	if(stats->video_bytes_lastsec)
-		g_list_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
+		g_queue_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->video_bytes_lastsec = NULL;
 	stats->video_notified_lastsec = FALSE;
 	stats->video_nacks = 0;
@@ -1434,16 +1431,12 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	}
 	if(component->retransmit_buffer != NULL) {
 		janus_rtp_packet *p = NULL;
-		GList *first = g_list_first(component->retransmit_buffer);
-		while(first != NULL) {
-			p = (janus_rtp_packet *)first->data;
-			first->data = NULL;
-			component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+		while((p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer)) != NULL) {
 			g_free(p->data);
 			p->data = NULL;
 			g_free(p);
-			first = g_list_first(component->retransmit_buffer);
 		}
+		g_queue_free(component->retransmit_buffer);
 	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
@@ -2140,12 +2133,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						}
 						component->in_stats.audio_packets++;
 						component->in_stats.audio_bytes += buflen;
-						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
-						if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
-							GList *first = g_list_first(component->in_stats.audio_bytes_lastsec);
-							s = (janus_ice_stats_item *)first->data;
-							first->data = NULL;
-							component->in_stats.audio_bytes_lastsec = g_list_delete_link(component->in_stats.audio_bytes_lastsec, first);
+						if(component->in_stats.audio_bytes_lastsec == NULL)
+							component->in_stats.audio_bytes_lastsec = g_queue_new();
+						g_queue_push_tail(component->in_stats.audio_bytes_lastsec, s);
+						if(g_queue_get_length(component->in_stats.audio_bytes_lastsec) > 100) {
+							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.audio_bytes_lastsec);
 							g_free(s);
 						}
 					} else {
@@ -2156,12 +2148,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						}
 						component->in_stats.video_packets++;
 						component->in_stats.video_bytes += buflen;
-						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
-						if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
-							GList *first = g_list_first(component->in_stats.video_bytes_lastsec);
-							s = (janus_ice_stats_item *)first->data;
-							first->data = NULL;
-							component->in_stats.video_bytes_lastsec = g_list_delete_link(component->in_stats.video_bytes_lastsec, first);
+						if(component->in_stats.video_bytes_lastsec == NULL)
+							component->in_stats.video_bytes_lastsec = g_queue_new();
+						g_queue_push_tail(component->in_stats.video_bytes_lastsec, s);
+						if(g_queue_get_length(component->in_stats.video_bytes_lastsec) > 100) {
+							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.video_bytes_lastsec);
 							g_free(s);
 						}
 					}
@@ -2375,7 +2366,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
-						GList *rp = component->retransmit_buffer;
+						GList *rp = g_queue_peek_head_link(component->retransmit_buffer);
 						while(rp) {
 							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
 							if(p) {
@@ -3483,10 +3474,9 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
-				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
-				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
@@ -3494,8 +3484,7 @@ void *janus_ice_send_thread(void *data) {
 					janus_ice_notify_media(handle, FALSE, FALSE);
 				}
 				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-					last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+					last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 					if(last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 						/* We missed more than no_second_timer seconds of video! */
 						component->in_stats.video_notified_lastsec = TRUE;
@@ -3506,8 +3495,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			if(handle->video_stream && handle->video_stream->rtp_component) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
-				GList *lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
@@ -3980,7 +3968,9 @@ void *janus_ice_send_thread(void *data) {
 							p->created = janus_get_monotonic_time();
 							p->last_retransmit = 0;
 							janus_mutex_lock(&component->mutex);
-							component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
+							if(component->retransmit_buffer == NULL)
+								component->retransmit_buffer = g_queue_new();
+							g_queue_push_tail(component->retransmit_buffer, p);
 							janus_mutex_unlock(&component->mutex);
 						}
 					}
