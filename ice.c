@@ -3475,9 +3475,9 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
-				janus_ice_stats_item *last = (janus_ice_stats_item *)g_queue_peek_tail(component->in_stats.audio_bytes_lastsec);
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
@@ -3485,7 +3485,7 @@ void *janus_ice_send_thread(void *data) {
 					janus_ice_notify_media(handle, FALSE, FALSE);
 				}
 				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					last = (janus_ice_stats_item *)g_queue_peek_tail(component->in_stats.video_bytes_lastsec);
+					last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 					if(last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 						/* We missed more than no_second_timer seconds of video! */
 						component->in_stats.video_notified_lastsec = TRUE;
@@ -3496,7 +3496,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			if(handle->video_stream && handle->video_stream->rtp_component) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
-				janus_ice_stats_item *last = (janus_ice_stats_item *)g_queue_peek_tail(component->in_stats.video_bytes_lastsec);
+				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.video_bytes_lastsec ? g_queue_peek_tail(component->in_stats.video_bytes_lastsec) : NULL);
 				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
