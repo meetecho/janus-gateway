@@ -1431,8 +1431,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	}
 	if(component->retransmit_buffer != NULL) {
 		janus_rtp_packet *p = NULL;
-		while(g_queue_get_length(component->retransmit_buffer) > 0) {
-			p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer);
+		while((p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer)) != NULL) {
 			g_free(p->data);
 			p->data = NULL;
 			g_free(p);
