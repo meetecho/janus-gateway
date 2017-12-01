@@ -1239,7 +1239,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		/* user will be notified only after the actual hangup */
 		handle->hangup_reason = reason;
 	}
-	if(handle->queued_packets != NULL)
+	if(handle->queued_packets != NULL && handle->send_thread_created)
 #if GLIB_CHECK_VERSION(2, 46, 0)
 		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 #else
