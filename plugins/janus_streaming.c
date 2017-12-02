@@ -246,7 +246,8 @@ static struct janus_json_parameter rtp_parameters[] = {
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0}
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter live_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1388,13 +1389,84 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 			goto plugin_response;
 		}
+		/* Return more info if the right secret is provided */
+		gboolean admin = FALSE;
+		if(mp->secret) {
+			json_t *secret = json_object_get(root, "secret");
+			if(secret && json_string_value(secret) && janus_strcmp_const_time(mp->secret, json_string_value(secret)))
+				admin = TRUE;
+		}
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
-		json_object_set_new(ml, "description", json_string(mp->description));
+		if(admin && mp->name)
+			json_object_set_new(ml, "name", json_string(mp->name));
+		if(mp->description)
+			json_object_set_new(ml, "description", json_string(mp->description));
+		if(admin && mp->secret)
+			json_object_set_new(ml, "secret", json_string(mp->secret));
+		if(admin && mp->pin)
+			json_object_set_new(ml, "pin", json_string(mp->pin));
+		if(admin && mp->is_private)
+			json_object_set_new(ml, "is_private", json_true());
+		if(mp->audio) {
+			json_object_set_new(ml, "audio", json_true());
+			if(mp->codecs.audio_pt != -1)
+				json_object_set_new(ml, "audiopt", json_integer(mp->codecs.audio_pt));
+			if(mp->codecs.audio_rtpmap)
+				json_object_set_new(ml, "audiortpmap", json_string(mp->codecs.audio_rtpmap));
+			if(mp->codecs.audio_fmtp)
+				json_object_set_new(ml, "audiofmtp", json_string(mp->codecs.audio_fmtp));
+		}
+		if(mp->video) {
+			json_object_set_new(ml, "video", json_true());
+			if(mp->codecs.video_pt != -1)
+				json_object_set_new(ml, "videopt", json_integer(mp->codecs.video_pt));
+			if(mp->codecs.video_rtpmap)
+				json_object_set_new(ml, "videortpmap", json_string(mp->codecs.video_rtpmap));
+			if(mp->codecs.video_fmtp)
+				json_object_set_new(ml, "videofmtp", json_string(mp->codecs.video_fmtp));
+		}
+		if(mp->data) {
+			json_object_set_new(ml, "data", json_true());
+		}
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
-		if(mp->streaming_source == janus_streaming_source_rtp) {
+		if(mp->streaming_source == janus_streaming_source_file) {
+			janus_streaming_file_source *source = mp->source;
+			if(admin && source->filename)
+				json_object_set_new(ml, "filename", json_string(source->filename));
+		} else if(mp->streaming_source == janus_streaming_source_rtp) {
 			janus_streaming_rtp_source *source = mp->source;
 			gint64 now = janus_get_monotonic_time();
+			if(source->rtsp) {
+				json_object_set_new(ml, "rtsp", json_true());
+				if(admin) {
+					if(source->rtsp_url)
+						json_object_set_new(ml, "url", json_string(source->rtsp_url));
+					if(source->rtsp_username)
+						json_object_set_new(ml, "rtsp_user", json_string(source->rtsp_username));
+					if(source->rtsp_password)
+						json_object_set_new(ml, "rtsp_pwd", json_string(source->rtsp_password));
+				}
+			}
+			if(source->keyframe.enabled) {
+				json_object_set_new(ml, "videobufferkf", json_true());
+			}
+			if(source->simulcast) {
+				json_object_set_new(ml, "videosimulcast", json_true());
+			}
+			if(admin) {
+				if(mp->audio)
+					json_object_set_new(ml, "audioport", json_integer(source->audio_port));
+				if(mp->video) {
+					json_object_set_new(ml, "videoport", json_integer(source->video_port[0]));
+					if(source->video_port[1] > -1)
+						json_object_set_new(ml, "videoport2", json_integer(source->video_port[1]));
+					if(source->video_port[2] > -1)
+						json_object_set_new(ml, "videoport3", json_integer(source->video_port[2]));
+				}
+				if(mp->data)
+					json_object_set_new(ml, "dataport", json_integer(source->data_port));
+			}
 			if(source->audio_fd != -1)
 				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
 			if(source->video_fd[0] != -1 || source->video_fd[1] != -1 || source->video_fd[2] != -1)
@@ -1402,7 +1474,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			if(source->data_fd != -1)
 				json_object_set_new(ml, "data_age_ms", json_integer((now - source->last_received_data) / 1000));
 			janus_mutex_lock(&source->rec_mutex);
-			if(source->arc || source->vrc || source->drc) {
+			if(admin && (source->arc || source->vrc || source->drc)) {
 				json_t *recording = json_object();
 				if(source->arc && source->arc->filename)
 					json_object_set_new(recording, "audio", json_string(source->arc->filename));
