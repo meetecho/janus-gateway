@@ -1114,10 +1114,10 @@ void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
@@ -1127,7 +1127,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		/* user will be notified only after the actual hangup */
 		handle->hangup_reason = reason;
 	}
-	if(handle->queued_packets != NULL)
+	if(handle->queued_packets != NULL && handle->send_thread_created)
 #if GLIB_CHECK_VERSION(2, 46, 0)
 		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 #else
@@ -2364,11 +2364,18 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
-	g_main_loop_run (loop);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		g_main_loop_run (loop);
+	} else {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping ICE loop because alert has been set\n", handle->handle_id);
+	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	janus_ice_webrtc_free(handle);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+		janus_ice_webrtc_free(handle);
+		janus_ice_webrtc_free(handle);
+	}
 	handle->icethread = NULL;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	/* This ICE session is over, unref it */
