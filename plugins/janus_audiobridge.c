@@ -1795,6 +1795,19 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				janus_config_add_item(config, cat, "secret", audiobridge->room_secret);
 			if(audiobridge->room_pin)
 				janus_config_add_item(config, cat, "pin", audiobridge->room_pin);
+			if(audiobridge->audiolevel_ext) {
+				janus_config_add_item(config, cat, "audiolevel_ext", "yes");
+				if(audiobridge->audiolevel_event)
+					janus_config_add_item(config, cat, "audiolevel_event", "yes");
+				if(audiobridge->audio_active_packets > 0) {
+					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_active_packets);
+					janus_config_add_item(config, cat, "audio_active_packets", value);
+				}
+				if(audiobridge->audio_level_average > 0) {
+					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_level_average);
+					janus_config_add_item(config, cat, "audio_level_average", value);
+				}
+			}
 			if(audiobridge->record_file) {
 				janus_config_add_item(config, cat, "record", "yes");
 				janus_config_add_item(config, cat, "record_file", audiobridge->record_file);
