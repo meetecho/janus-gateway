@@ -1226,10 +1226,10 @@ void janus_ice_free(janus_ice_handle *handle) {
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
@@ -2460,11 +2460,15 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
-	g_main_loop_run (loop);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		g_main_loop_run (loop);
+	} else {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping ICE loop because alert has been set\n", handle->handle_id);
+	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 		janus_ice_webrtc_free(handle);
 	}
 	g_thread_unref(g_thread_self());
