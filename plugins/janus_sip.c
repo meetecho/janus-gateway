@@ -1000,7 +1000,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
-	session->account.force_udp = TRUE;
+	session->account.force_udp = FALSE;
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
