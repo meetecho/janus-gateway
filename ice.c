@@ -2371,10 +2371,8 @@ void *janus_ice_thread(void *data) {
 	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-		janus_ice_webrtc_free(handle);
-	}
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	janus_ice_webrtc_free(handle);
 	handle->icethread = NULL;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	/* This ICE session is over, unref it */
