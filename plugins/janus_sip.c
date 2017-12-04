@@ -145,6 +145,7 @@ static struct janus_json_parameter request_parameters[] = {
 static struct janus_json_parameter register_parameters[] = {
 	{"type", JSON_STRING, 0},
 	{"send_register", JANUS_JSON_BOOL, 0},
+	{"force_udp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
@@ -306,6 +307,7 @@ typedef enum {
 typedef struct janus_sip_account {
 	char *identity;
 	char *user_agent;		/* Used to override the general UA string */
+	gboolean force_udp;
 	gboolean sips;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
@@ -583,6 +585,7 @@ static void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.identity);
 					    session->account.identity = NULL;
 					}
+					session->account.force_udp = FALSE;
 					session->account.sips = TRUE;
 					if (session->account.proxy) {
 					    g_free(session->account.proxy);
@@ -997,6 +1000,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
+	session->account.force_udp = TRUE;
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
@@ -1533,6 +1537,11 @@ static void *janus_sip_handler(void *data) {
 			if(do_sips != NULL) {
 				sips = json_is_true(do_sips);
 			}
+			gboolean force_udp = FALSE;
+			json_t *do_udp = json_object_get(root, "force_udp");
+			if(do_udp != NULL) {
+				force_udp = json_is_true(do_udp);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -1663,6 +1672,7 @@ static void *janus_sip_handler(void *data) {
 					g_free(session->account.identity);
 				}
 				session->account.identity = NULL;
+				session->account.force_udp = FALSE;
 				session->account.sips = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -1692,6 +1702,7 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(identities, session->account.identity, session);
 			janus_mutex_unlock(&sessions_mutex);
+			session->account.force_udp = force_udp;
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
@@ -4086,7 +4097,10 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	char sips_url[128];
 	char *ipv6;
 	ipv6 = strstr(local_ip, ":");
-	g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	if(session->account.force_udp)
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	else
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
