@@ -471,7 +471,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 
 
 /* Trickle helpers */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
 	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
@@ -479,7 +479,6 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
-	trickle->handle = handle;
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -580,7 +579,6 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 	if(trickle == NULL)
 		return;
-	trickle->handle = NULL;
 	g_free(trickle->transaction);
 	trickle->transaction = NULL;
 	if(trickle->candidate)
@@ -1149,16 +1147,6 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			gint64 waited = 0;
-			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
-				g_usleep (100000);
-				waited += 100000;
-				if(waited >= G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
-					break;
-				}
-			}
 			if(g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
@@ -1555,8 +1543,7 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 	}
 	/* Handle new state */
-	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
-			&& handle->send_thread == NULL) {
+	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)) {
 		/* Make sure we're not trying to start the thread more than once */
 		if(!g_atomic_int_compare_and_exchange(&handle->send_thread_created, 0, 1)) {
 			return;
@@ -2366,11 +2353,16 @@ void *janus_ice_thread(void *data) {
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		g_main_loop_run (loop);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread quit ICE loop %p\n", handle->handle_id, handle);
 	} else {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping ICE loop because alert has been set\n", handle->handle_id);
 	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
+	if(g_atomic_int_get(&handle->send_thread_created) && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		while(handle->send_thread != NULL)
+			g_usleep(100000);
+	}
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_ice_webrtc_free(handle);
 	handle->icethread = NULL;
