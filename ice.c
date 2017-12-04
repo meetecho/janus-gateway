@@ -2045,8 +2045,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.video_bytes_lastsec);
 							g_free(s);
 						}
-						janus_mutex_unlock(&component->mutex);
 					}
+					janus_mutex_unlock(&component->mutex);
 				}
 
 				/* FIXME Don't handle RTCP or stats for the simulcasted SSRCs, for now */
