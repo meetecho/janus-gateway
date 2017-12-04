@@ -1437,6 +1437,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		} else if(mp->streaming_source == janus_streaming_source_rtp) {
 			janus_streaming_rtp_source *source = mp->source;
 			gint64 now = janus_get_monotonic_time();
+#ifdef HAVE_LIBCURL
 			if(source->rtsp) {
 				json_object_set_new(ml, "rtsp", json_true());
 				if(admin) {
@@ -1448,6 +1449,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						json_object_set_new(ml, "rtsp_pwd", json_string(source->rtsp_password));
 				}
 			}
+#endif
 			if(source->keyframe.enabled) {
 				json_object_set_new(ml, "videobufferkf", json_true());
 			}
