@@ -379,7 +379,7 @@ void janus_transport_task(gpointer data, gpointer user_data);
  */
 ///@{
 int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
-json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
+json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
@@ -972,6 +972,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *jsep = json_object_get(root, "jsep");
 		char *jsep_type = NULL;
 		char *jsep_sdp = NULL, *jsep_sdp_stripped = NULL;
+		gboolean renegotiation = FALSE;
 		if(jsep != NULL) {
 			if(!json_is_object(jsep)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid jsep object");
@@ -1096,12 +1097,12 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				if(janus_sdp_process(handle, parsed_sdp) < 0) {
+				if(janus_sdp_process(handle, parsed_sdp, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_free(parsed_sdp);
 					g_free(jsep_type);
 					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
-					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "Error processing SDP");
 					janus_mutex_unlock(&handle->mutex);
 					goto jsondone;
 				}
@@ -1331,10 +1332,45 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 			} else {
-				/* TODO Actually handle session updates: for now we ignore them, and just relay them to plugins */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring negotiation update, we don't support them yet...\n", handle->handle_id);
+				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
+				 * direction and ICE restarts: anything more complex than that will result in an error */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
+				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
+					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
+					janus_sdp_free(parsed_sdp);
+					g_free(jsep_type);
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
+					janus_mutex_unlock(&handle->mutex);
+					goto jsondone;
+				}
+				renegotiation = TRUE;
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
+					/* Update remote credentials for ICE */
+					if(handle->audio_stream) {
+						nice_agent_set_remote_credentials(handle->agent, handle->audio_stream->stream_id,
+							handle->audio_stream->ruser, handle->audio_stream->rpass);
+					}
+					if(handle->video_stream) {
+						nice_agent_set_remote_credentials(handle->agent, handle->video_stream->stream_id,
+							handle->video_stream->ruser, handle->video_stream->rpass);
+					}
+					if(handle->data_stream) {
+						nice_agent_set_remote_credentials(handle->agent, handle->data_stream->stream_id,
+							handle->data_stream->ruser, handle->data_stream->rpass);
+					}
+					/* FIXME We only need to do that for offers: if it's an answer, we did that already */
+					if(offer) {
+						janus_ice_restart(handle);
+					} else {
+						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+					}
+				}
 			}
+			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
+			g_free(tmp);
 			janus_mutex_unlock(&handle->mutex);
 			/* Anonymize SDP */
 			if(janus_sdp_anonymize(parsed_sdp) < 0) {
@@ -1383,7 +1419,10 @@ int janus_process_incoming_request(janus_request *request) {
 					json_object_set(body_jsep, "simulcast", simulcast);
 				}
 			}
-		};
+			/* Check if this is a renegotiation or update */
+			if(renegotiation)
+				json_object_set(body_jsep, "update", json_true());
+		}
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body, body_jsep);
 		g_free(jsep_type);
@@ -2300,6 +2339,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "got-answer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER) ? json_true() : json_false());
 		json_object_set_new(flags, "processing-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER) ? json_true() : json_false());
 		json_object_set_new(flags, "starting", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START) ? json_true() : json_false());
+		json_object_set_new(flags, "ice-restart", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART) ? json_true() : json_false());
 		json_object_set_new(flags, "ready", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY) ? json_true() : json_false());
 		json_object_set_new(flags, "stopped", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) ? json_true() : json_false());
 		json_object_set_new(flags, "alert", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) ? json_true() : json_false());
@@ -2783,9 +2823,10 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	/* Attach JSEP if possible? */
 	const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
 	const char *sdp = json_string_value(json_object_get(jsep, "sdp"));
+	gboolean restart = json_object_get(jsep, "sdp") ? json_is_true(json_object_get(jsep, "restart")) : FALSE;
 	json_t *merged_jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		merged_jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
+		merged_jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp, restart);
 		if(merged_jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -2825,7 +2866,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	return JANUS_OK;
 }
 
-json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
+json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart) {
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
 			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped ||
 			plugin == NULL || sdp_type == NULL || sdp == NULL) {
@@ -2933,8 +2974,11 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
+	/* Check if this is a renegotiation and we need an ICE restart */
+	if(offer && restart)
+		janus_ice_restart(ice_handle);
 	/* Add our details */
-	char *sdp_merged = janus_sdp_merge(ice_handle, parsed_sdp);
+	char *sdp_merged = janus_sdp_merge(ice_handle, parsed_sdp, offer ? TRUE : FALSE);
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
@@ -3165,7 +3209,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_t *jsep = json_object();
 	json_object_set_new(jsep, "type", json_string(sdp_type));
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
+	char *tmp = ice_handle->local_sdp;
 	ice_handle->local_sdp = sdp_merged;
+	g_free(tmp);
 	return jsep;
 }
 

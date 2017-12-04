@@ -881,6 +881,7 @@ function Janus(gatewayCallbacks) {
 							streamExternal : false,
 							remoteStream : null,
 							mySdp : null,
+							mediaConstraints : null,
 							pc : null,
 							dataChannel : null,
 							dtmfSender : null,
@@ -963,6 +964,7 @@ function Janus(gatewayCallbacks) {
 							streamExternal : false,
 							remoteStream : null,
 							mySdp : null,
+							mediaConstraints : null,
 							pc : null,
 							dataChannel : null,
 							dtmfSender : null,
@@ -1433,6 +1435,8 @@ function Janus(gatewayCallbacks) {
 		if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
 			// Create offer/answer now
+			config.sdpSent = false;
+			config.mySdp = null;
 			if(jsep === null || jsep === undefined) {
 				createOffer(handleId, media, callbacks);
 			} else {
@@ -1802,19 +1806,15 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Creating offer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
-		var mediaConstraints = null;
-		if(Janus.webRTCAdapter.browserDetails.browser == "firefox" || Janus.webRTCAdapter.browserDetails.browser == "edge") {
-			mediaConstraints = {
-				'offerToReceiveAudio':isAudioRecvEnabled(media),
-				'offerToReceiveVideo':isVideoRecvEnabled(media)
-			};
-		} else {
-			mediaConstraints = {
-				'mandatory': {
-					'OfferToReceiveAudio':isAudioRecvEnabled(media),
-					'OfferToReceiveVideo':isVideoRecvEnabled(media)
-				}
-			};
+		var mediaConstraints = {
+			'offerToReceiveAudio':isAudioRecvEnabled(media),
+			'offerToReceiveVideo':isVideoRecvEnabled(media)
+		}
+		var iceRestart = callbacks.iceRestart === true ? true : false;
+		if(iceRestart) {
+			config.sdpSent = false;
+			config.mySdp = null;
+			mediaConstraints["iceRestart"] = true;
 		}
 		Janus.debug(mediaConstraints);
 		// Check if this is Firefox and we've been asked to do simulcasting
@@ -1849,6 +1849,7 @@ function Janus(gatewayCallbacks) {
 					config.mySdp = offer.sdp;
 					config.pc.setLocalDescription(offer);
 				}
+				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
@@ -1938,6 +1939,7 @@ function Janus(gatewayCallbacks) {
 					config.mySdp = answer.sdp;
 					config.pc.setLocalDescription(answer);
 				}
+				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");

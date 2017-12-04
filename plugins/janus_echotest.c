@@ -670,6 +670,8 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			header->seq_number = htons(seq_number);
 		} else {
 			if((!video && session->audio_active) || (video && session->video_active)) {
+				/* Update the RTP header (just in case the source changed, e.g., after a renegotiation) */
+				janus_rtp_header_update((janus_rtp_header *)buf, &session->context, video, 0);
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 				/* Send the frame back */

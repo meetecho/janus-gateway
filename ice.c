@@ -374,7 +374,7 @@ static janus_seq_info *janus_seq_pop_head(janus_seq_info **head) {
 	}
 	return pop_seq;
 }
-static void janus_seq_list_free(janus_seq_info **head) {
+void janus_seq_list_free(janus_seq_info **head) {
 	if(!*head)
 		return;
 	janus_seq_info *cur = *head;
@@ -2469,6 +2469,7 @@ void *janus_ice_thread(void *data) {
 		handle->cdone = -1;
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 		janus_ice_webrtc_free(handle);
 	}
 	g_thread_unref(g_thread_self());
@@ -2807,6 +2808,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 
 	/* Note: in case this is not an OFFER, we don't know whether any medium are supported on the other side or not yet */
 	if(audio) {
@@ -3411,6 +3413,16 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	return 0;
 }
 
+void janus_ice_restart(janus_ice_handle *handle) {
+	if(!handle || !handle->agent || !handle->streams)
+		return;
+	/* Restart ICE */
+	if(nice_agent_restart(handle->agent) == FALSE) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE restart failed...\n", handle->handle_id);
+	}
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+}
+
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	janus_session *session = (janus_session *)handle->session;
@@ -3581,7 +3593,7 @@ void *janus_ice_send_thread(void *data) {
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
 				sr->si.s_octets = htonl(stream->rtp_component->out_stats.audio_bytes);
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-				janus_rtcp_sdes((char *)sdes, sdeslen, "janusaudio", 10);
+				janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janusaudio", 10);
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
 			}
@@ -3619,7 +3631,7 @@ void *janus_ice_send_thread(void *data) {
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
 				sr->si.s_octets = htonl(stream->rtp_component->out_stats.video_bytes);
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-				janus_rtcp_sdes((char *)sdes, sdeslen, "janusvideo", 10);
+				janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janusvideo", 10);
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
 			}

@@ -184,6 +184,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 18)
 
 
 /*! \brief Janus media statistics
@@ -254,6 +255,7 @@ typedef struct janus_seq_info {
 	struct janus_seq_info *next;
 	struct janus_seq_info *prev;
 } janus_seq_info;
+void janus_seq_list_free(janus_seq_info **head);
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
@@ -361,15 +363,15 @@ struct janus_ice_stream {
 	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
 	guint32 video_ssrc;
 	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
-	guint32 audio_ssrc_peer;
+	guint32 audio_ssrc_peer, audio_ssrc_peer_new;
 	/*! \brief Video SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer;
+	guint32 video_ssrc_peer, video_ssrc_peer_new;
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_rtx;
+	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new;
 	/*! \brief Video SSRC (simulcasted 1) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_1;
+	guint32 video_ssrc_peer_sim_1, video_ssrc_peer_sim_1_new;
 	/*! \brief Video SSRC (simulcasted 2) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_2;
+	guint32 video_ssrc_peer_sim_2, video_ssrc_peer_sim_2_new;
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
 	/*! \brief List of payload types we can expect for audio */
@@ -616,6 +618,9 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
  * @param[in] handle The Janus ICE handle this callback refers to
  * @param[in] component The Janus ICE component that is now ready to be used */
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
+/*! \brief Method to restart ICE and the connectivity checks
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_restart(janus_ice_handle *handle);
 ///@}
 
 #endif
