@@ -2045,8 +2045,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.video_bytes_lastsec);
 							g_free(s);
 						}
-						janus_mutex_unlock(&component->mutex);
 					}
+					janus_mutex_unlock(&component->mutex);
 				}
 
 				/* FIXME Don't handle RTCP or stats for the simulcasted SSRCs, for now */
@@ -3422,7 +3422,7 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
