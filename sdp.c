@@ -119,6 +119,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, handle->audio_id);
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
 			} else {
 				/* Audio rejected? */
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
@@ -141,6 +142,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 					bundled = id == handle->audio_id;
 				}
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 			} else {
 				/* Video rejected? */
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video rejected by peer...\n", handle->handle_id);
