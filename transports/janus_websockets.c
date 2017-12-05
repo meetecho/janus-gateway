@@ -815,6 +815,7 @@ void janus_websockets_session_over(janus_transport_session *transport, guint64 s
 	}
 	g_atomic_int_set(&client->session_timeout, 1);
 	lws_callback_on_writable(client->wsi);
+	janus_mutex_unlock(&transport->mutex);
 }
 
 
