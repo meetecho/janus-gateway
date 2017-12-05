@@ -3947,9 +3947,6 @@ void *janus_ice_send_thread(void *data) {
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
-						if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] ts=%"SCNu32", seq=%"SCNu16"\n", handle->handle_id, timestamp, seq);
-						}
 					} else {
 						/* Shoot! */
 						int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
@@ -3977,8 +3974,6 @@ void *janus_ice_send_thread(void *data) {
 								if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
 									rtcp_ctx->tb = 8000;
 							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
-								guint16 seq = ntohs(header->seq_number);
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] ts=%"SCNu32", seq=%"SCNu16"\n", handle->handle_id, timestamp, seq);
 								component->out_stats.video_packets++;
 								component->out_stats.video_bytes += sent;
 								stream->video_last_ts = timestamp;
