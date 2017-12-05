@@ -1023,7 +1023,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
 			}
 		}
@@ -1059,7 +1059,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		if(g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 			g_main_loop_quit(handle->iceloop);
 		}
 	}
