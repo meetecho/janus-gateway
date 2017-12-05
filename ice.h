@@ -508,7 +508,7 @@ struct janus_ice_trickle {
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate);
 /*! \brief Helper method to parse trickle candidates
  * @param[in] handle The Janus ICE handle this candidate belongs to
  * @param[in] candidate The trickle candidate to parse, as a Jansson object
