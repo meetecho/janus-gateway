@@ -119,7 +119,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, handle->audio_id);
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
-				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+					stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+					if(stream->audio_rtcp_ctx == NULL) {
+						stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+					}
+				}
 			} else {
 				/* Audio rejected? */
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
@@ -142,7 +149,15 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 					bundled = id == handle->audio_id;
 				}
-				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+					if(stream->video_rtcp_ctx == NULL) {
+						stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+						stream->video_rtcp_ctx->tb = 48000;	/* May change later */
+					}
+				}
 			} else {
 				/* Video rejected? */
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video rejected by peer...\n", handle->handle_id);
@@ -375,7 +390,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				/* FIXME Reset the RTCP context */
 				janus_ice_component *component = stream->rtp_component;
 				janus_mutex_lock(&component->mutex);
-				memset(stream->audio_rtcp_ctx, 0, sizeof(*stream->audio_rtcp_ctx));
+				if(stream->audio_rtcp_ctx)
+					memset(stream->audio_rtcp_ctx, 0, sizeof(*stream->audio_rtcp_ctx));
 				if(component->last_seqs_audio)
 					janus_seq_list_free(&component->last_seqs_audio);
 				janus_mutex_unlock(&component->mutex);
@@ -391,7 +407,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				/* FIXME Reset the RTCP context */
 				janus_ice_component *component = stream->rtp_component;
 				janus_mutex_lock(&component->mutex);
-				memset(stream->video_rtcp_ctx, 0, sizeof(*stream->video_rtcp_ctx));
+				if(stream->video_rtcp_ctx)
+					memset(stream->video_rtcp_ctx, 0, sizeof(*stream->video_rtcp_ctx));
 				if(component->last_seqs_video)
 					janus_seq_list_free(&component->last_seqs_video);
 				janus_mutex_unlock(&component->mutex);
