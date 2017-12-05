@@ -140,7 +140,7 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
-										// Answer
+										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,

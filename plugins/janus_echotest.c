@@ -659,7 +659,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(header, &session->context, TRUE, 4500);
+			janus_rtp_header_update(header, &session->context, TRUE, 0);
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->vrc, buf, len);

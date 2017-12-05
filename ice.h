@@ -363,17 +363,23 @@ struct janus_ice_stream {
 	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
 	guint32 video_ssrc;
 	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
-	guint32 audio_ssrc_peer, audio_ssrc_peer_new;
+	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
 	/*! \brief Video SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer, video_ssrc_peer_new;
+	guint32 video_ssrc_peer, video_ssrc_peer_new, video_ssrc_peer_orig;
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new;
+	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new, video_ssrc_peer_rtx_orig;
 	/*! \brief Video SSRC (simulcasted 1) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_1, video_ssrc_peer_sim_1_new;
+	guint32 video_ssrc_peer_sim_1, video_ssrc_peer_sim_1_new, video_ssrc_peer_sim_1_orig;
 	/*! \brief Video SSRC (simulcasted 2) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_2, video_ssrc_peer_sim_2_new;
+	guint32 video_ssrc_peer_sim_2, video_ssrc_peer_sim_2_new, video_ssrc_peer_sim_2_orig;
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief RTP switching context in case of renegotiations (audio+video) */
+	janus_rtp_switching_context rtp_ctx;
+	/*! \brief RTP switching context in case of renegotiations (video simulcast 1) */
+	janus_rtp_switching_context sim_1_rtp_ctx;
+	/*! \brief RTP switching context in case of renegotiations (video simulcast 2) */
+	janus_rtp_switching_context sim_2_rtp_ctx;
 	/*! \brief List of payload types we can expect for audio */
 	GList *audio_payload_types;
 	/*! \brief List of payload types we can expect for video */
@@ -381,9 +387,9 @@ struct janus_ice_stream {
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
-	rtcp_context *audio_rtcp_ctx;
+	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context for the video stream (may be bundled) */
-	rtcp_context *video_rtcp_ctx;
+	janus_rtcp_context *video_rtcp_ctx;
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */

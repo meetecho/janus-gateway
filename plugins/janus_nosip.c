@@ -136,13 +136,15 @@ static struct janus_json_parameter request_parameters[] = {
 };
 static struct janus_json_parameter generate_parameters[] = {
 	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter process_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -229,6 +231,7 @@ typedef struct janus_nosip_media {
 
 typedef struct janus_nosip_session {
 	janus_plugin_session *handle;
+	gint64 sdp_version;
 	janus_nosip_media media;	/* Media gatewaying stuff (same stuff as the SIP plugin) */
 	janus_sdp *sdp;				/* The SDP this user sent */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
@@ -997,6 +1000,7 @@ static void *janus_nosip_handler(void *data) {
 			/* Any SDP to handle? if not, something's wrong */
 			const char *msg_sdp_type = json_string_value(json_object_get(generate ? msg->jsep : root, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(generate ? msg->jsep : root, "sdp"));
+			gboolean sdp_update = json_is_true(json_object_get(generate ? msg->jsep : root, "update"));
 			if(!msg_sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
@@ -1038,23 +1042,25 @@ static void *janus_nosip_handler(void *data) {
 						goto error;
 					}
 				}
-				if(offer) {
-					/* Clean up SRTP stuff from before first, in case it's still needed */
-					janus_nosip_srtp_cleanup(session);
-					session->media.require_srtp = require_srtp;
-					session->media.has_srtp_local = do_srtp;
-					if(do_srtp) {
-						JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
+				if(!sdp_update) {
+					if(offer) {
+						/* Clean up SRTP stuff from before first, in case it's still needed */
+						janus_nosip_srtp_cleanup(session);
+						session->media.require_srtp = require_srtp;
+						session->media.has_srtp_local = do_srtp;
+						if(do_srtp) {
+							JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
+						}
+					} else {
+						/* Make sure the request is consistent with the state (original offer) */
+						if(session->media.require_srtp && !session->media.has_srtp_remote) {
+							JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
+							error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
+							g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
+							goto error;
+						}
+						do_srtp = do_srtp || session->media.has_srtp_remote;
 					}
-				} else {
-					/* Make sure the request is consistent with the state (original offer) */
-					if(session->media.require_srtp && !session->media.has_srtp_remote) {
-						JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
-						error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
-						g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
-						goto error;
-					}
-					do_srtp = do_srtp || session->media.has_srtp_remote;
 				}
 			}
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
@@ -1067,21 +1073,23 @@ static void *janus_nosip_handler(void *data) {
 				goto error;
 			}
 			if(generate) {
-				/* Allocate RTP ports and merge them with the anonymized SDP */
-				if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
-					JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-					session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
-				}
-				if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
-					JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-					session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
-				}
-				if(janus_nosip_allocate_local_ports(session) < 0) {
-					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-					janus_sdp_free(parsed_sdp);
-					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
-					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
-					goto error;
+				if(!sdp_update) {
+					/* Allocate RTP ports and merge them with the anonymized SDP */
+					if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
+						JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
+						session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
+					}
+					if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
+						JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
+						session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+					}
+					if(janus_nosip_allocate_local_ports(session) < 0) {
+						JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+						janus_sdp_free(parsed_sdp);
+						error_code = JANUS_NOSIP_ERROR_IO_ERROR;
+						g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+						goto error;
+					}
 				}
 				char *sdp = janus_nosip_sdp_manipulate(session, parsed_sdp, FALSE);
 				if(sdp == NULL) {
@@ -1097,7 +1105,7 @@ static void *janus_nosip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Prepared SDP %s for (%p)\n%s", msg_sdp_type, info, sdp);
 				g_atomic_int_set(&session->hangingup, 0);
 				/* Also notify event handlers */
-				if(notify_events && gateway->events_is_enabled()) {
+				if(!sdp_update && notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("generated"));
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
@@ -1109,11 +1117,13 @@ static void *janus_nosip_handler(void *data) {
 				json_object_set_new(result, "event", json_string("generated"));
 				json_object_set_new(result, "type", json_string(offer ? "offer" : "answer"));
 				json_object_set_new(result, "sdp", json_string(sdp));
+				if(sdp_update)
+					json_object_set_new(result, "update", json_true());
 				g_free(sdp);
 			} else {
 				/* We got a barebone offer or answer from our peer: process it accordingly */
 				gboolean changed = FALSE;
-				if(offer) {
+				if(!sdp_update && offer) {
 					/* Clean up SRTP stuff from before first, in case it's still needed */
 					janus_nosip_srtp_cleanup(session);
 				}
@@ -1138,7 +1148,7 @@ static void *janus_nosip_handler(void *data) {
 				janus_sdp_free(session->sdp);
 				session->sdp = parsed_sdp;
 				/* Also notify event handlers */
-				if(notify_events && gateway->events_is_enabled()) {
+				if(!sdp_update && notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("processed"));
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
@@ -1152,10 +1162,12 @@ static void *janus_nosip_handler(void *data) {
 					json_object_set_new(result, "srtp",
 						json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 				}
+				if(sdp_update)
+					json_object_set_new(result, "update", json_true());
 				localjsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			}
 			/* If this is an answer, start the media */
-			if(!offer) {
+			if(!sdp_update && !offer) {
 				/* Start the media */
 				session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 				GError *error = NULL;

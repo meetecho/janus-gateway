@@ -177,7 +177,8 @@ $(document).ready(function() {
 											var processOffer = {
 												request: "process",
 												type: result["type"],
-												sdp: result["sdp"]
+												sdp: result["sdp"],
+												update: result["update"]
 											}
 											callee.send({message: processOffer});
 										} else if(event === "processed") {
@@ -340,6 +341,7 @@ $(document).ready(function() {
 											// signalling)has been processed, and we got a JSEP SDP to process:
 											// we need to come up with our own answer now, so let's do that
 											Janus.debug("[callee] Trying a createAnswer too (audio/video sendrecv)");
+											var update = result["update"];
 											callee.createAnswer(
 												{
 													// This is the WebRTC enriched offer the plugin gave us
@@ -353,7 +355,8 @@ $(document).ready(function() {
 														// an answer for us, just as we did for the caller's offer.
 														// We'll get the result in an event called "generated" here.
 														var body = {
-															request: "generate"
+															request: "generate",
+															update: update
 														};
 														callee.send({message: body, jsep: jsep});
 													},
@@ -374,7 +377,8 @@ $(document).ready(function() {
 											var processAnswer = {
 												request: "process",
 												type: result["type"],
-												sdp: result["sdp"]
+												sdp: result["sdp"],
+												update: result["update"]
 											}
 											caller.send({message: processAnswer});
 										}

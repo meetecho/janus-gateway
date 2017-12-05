@@ -394,6 +394,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					janus_seq_list_free(&component->last_seqs_video);
 				janus_mutex_unlock(&component->mutex);
 			}
+			if(stream->video_ssrc_peer_sim_1 > 0 && stream->video_ssrc_peer_sim_1 != stream->video_ssrc_peer_sim_1_new) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 1) changed: %"SCNu32" --> %"SCNu32"\n",
+					handle->handle_id, stream->video_ssrc_peer_sim_1, stream->video_ssrc_peer_sim_1_new);
+			}
+			if(stream->video_ssrc_peer_sim_2 > 0 && stream->video_ssrc_peer_sim_2 != stream->video_ssrc_peer_sim_2_new) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 2) changed: %"SCNu32" --> %"SCNu32"\n",
+					handle->handle_id, stream->video_ssrc_peer_sim_2, stream->video_ssrc_peer_sim_2_new);
+			}
 			stream->video_ssrc_peer = stream->video_ssrc_peer_new;
 			stream->video_ssrc_peer_rtx = stream->video_ssrc_peer_rtx_new;
 			stream->video_ssrc_peer_sim_1 = stream->video_ssrc_peer_sim_1_new;

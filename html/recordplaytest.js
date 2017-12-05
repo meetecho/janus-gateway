@@ -135,7 +135,7 @@ $(document).ready(function() {
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
 											var event = result["status"];
-											if(event === 'preparing') {
+											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
 												recordplay.createAnswer(
 													{

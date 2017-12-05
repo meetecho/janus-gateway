@@ -213,6 +213,8 @@ static void janus_voicemail_message_free(janus_voicemail_message *msg) {
 
 typedef struct janus_voicemail_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	guint64 recording_id;
 	gint64 start_time;
 	char *filename;
@@ -264,6 +266,7 @@ int ogg_flush(janus_voicemail_session *session);
 #define JANUS_VOICEMAIL_ERROR_ALREADY_RECORDING	465
 #define JANUS_VOICEMAIL_ERROR_IO_ERROR			466
 #define JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR		467
+#define JANUS_VOICEMAIL_ERROR_INVALID_STATE		468
 
 
 /* VoiceMail watchdog/garbage collector (sort of) */
@@ -696,6 +699,9 @@ static void *janus_voicemail_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		if(!strcasecmp(request_text, "record")) {
 			JANUS_LOG(LOG_VERB, "Starting new recording\n");
 			if(session->file != NULL) {
@@ -743,6 +749,19 @@ static void *janus_voicemail_handler(void *data) {
 				json_object_set_new(info, "event", json_string("starting"));
 				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
 			}
+		} else if(!strcasecmp(request_text, "refresh")) {
+			/* Only needed in case of ICE restarts (but with 10s messages is this worth it?) */
+			JANUS_LOG(LOG_VERB, "Refreshing existing recording\n");
+			if(session->stream == NULL || !session->started) {
+				JANUS_LOG(LOG_ERR, "Invalid state (not recording)\n");
+				error_code = JANUS_VOICEMAIL_ERROR_INVALID_STATE;
+				g_snprintf(error_cause, 512, "Invalid state (not recording)");
+				goto error;
+			}
+			sdp_update = TRUE;
+			event = json_object();
+			json_object_set_new(event, "voicemail", json_string("event"));
+			json_object_set_new(event, "status", json_string("refreshing"));
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
@@ -789,14 +808,23 @@ static void *janus_voicemail_handler(void *data) {
 				type = "answer";
 			if(!strcasecmp(msg_sdp_type, "answer"))
 				type = "offer";
+			if(sdp_update) {
+				/* Renegotiation: make sure the user provided an offer, and send answer */
+				JANUS_LOG(LOG_VERB, "Request to refresh existing connection\n");
+				session->sdp_version++;		/* This needs to be increased when it changes */
+			} else {
+				/* New PeerConnection */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			/* Fill the SDP template and use that as our answer */
 			char sdp[1024];
 			/* What is the Opus payload type? */
 			int opus_pt = janus_get_codec_pt(msg_sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time(),			/* We need current time here */
+				session->sdp_sessid,
+				session->sdp_version,
 				session->recording_id,			/* Recording ID */
 				opus_pt,						/* Opus payload type */
 				opus_pt							/* Opus payload type */);
@@ -818,7 +846,7 @@ static void *janus_voicemail_handler(void *data) {
 			}
 		}
 		janus_voicemail_message_free(msg);
-		
+
 		if(session->stopping) {
 			gateway->end_session(session->handle);
 		}

@@ -316,7 +316,8 @@ static struct janus_json_parameter set_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"refresh", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
@@ -356,7 +357,9 @@ static void janus_videocall_message_free(janus_videocall_message *msg) {
 
 typedef struct janus_videocall_session {
 	janus_plugin_session *handle;
+	gint64 sdp_version;
 	gchar *username;
+	gchar *sdp;
 	gboolean has_audio;
 	gboolean has_video;
 	gboolean has_data;
@@ -569,7 +572,9 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
 	session->peer = NULL;
+	session->sdp = NULL;
 	session->username = NULL;
+	session->sdp_version = -1;
 	janus_rtp_switching_context_reset(&session->context);
 	session->ssrc[0] = 0;
 	session->ssrc[1] = 0;
@@ -1014,6 +1019,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		}
 	}
 	session->peer = NULL;
+	g_free(session->sdp);
+	session->sdp = NULL;
+	session->sdp_version = -1;
 	/* Reset controls */
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -1082,6 +1090,9 @@ static void *janus_videocall_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		if(!strcasecmp(request_text, "list")) {
 			result = json_object();
 			json_t *list = json_array();
@@ -1308,6 +1319,7 @@ static void *janus_videocall_handler(void *data) {
 			}
 			janus_sdp_free(answer);
 			/* Send SDP to our peer */
+			session->sdp = g_strdup(msg_sdp);
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			json_t *call = json_object();
 			json_object_set_new(call, "videocall", json_string("event"));
@@ -1350,6 +1362,7 @@ static void *janus_videocall_handler(void *data) {
 			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
+			json_t *refresh = json_object_get(root, "refresh");
 			if(audio) {
 				session->audio_active = json_is_true(audio);
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -1512,6 +1525,38 @@ static void *janus_videocall_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("set"));
+			/* If this is for an ICE restart, prepare the SDP to send back too */
+			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			if(do_refresh && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			}
+			if(sdp_update) {
+				if(session->peer != NULL && session->peer->sdp != NULL) {
+					char temp_error[512];
+					/* Parse the SDP our peer gave us and increase the version */
+					janus_sdp *parsed_sdp = janus_sdp_parse(session->peer->sdp, temp_error, sizeof(temp_error));
+					if(session->sdp_version == -1)
+						session->sdp_version = parsed_sdp->o_version;
+					session->sdp_version++;
+					parsed_sdp->o_version = session->sdp_version;
+					/* Generate a new SDP */
+					char *sdp = janus_sdp_write(parsed_sdp);
+					janus_sdp_free(parsed_sdp);
+					/* Answer back */
+					json_t *event = json_object();
+					json_object_set_new(event, "videocall", json_string("event"));
+					json_object_set_new(event, "result", result);
+					json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", sdp);
+					json_object_set_new(jsep, "restart", json_true());
+					int ret = gateway->push_event(session->handle, &janus_videocall_plugin, msg->transaction, event, jsep);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+					json_decref(event);
+					json_decref(jsep);
+					g_free(sdp);
+					janus_videocall_message_free(msg);
+					continue;
+				}
+			}
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call or reject an incoming one */
 			janus_mutex_lock(&sessions_mutex);
