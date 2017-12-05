@@ -1267,7 +1267,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
@@ -1279,6 +1279,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	guint32 id = session->id;
 	JANUS_LOG(LOG_VERB, "Removing Lua session %"SCNu32"...\n", id);
 	janus_refcount_increase(&session->ref);
+	g_hash_table_remove(lua_sessions, handle);
 	janus_mutex_unlock(&lua_sessions_mutex);
 
 	/* Notify the Lua script */
@@ -1301,11 +1302,6 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 		session->recipients = g_slist_remove(session->recipients, recipient);
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
-
-	/* Finally, remove from the hashtable */
-	janus_mutex_lock(&lua_sessions_mutex);
-	g_hash_table_remove(lua_sessions, handle);
-	janus_mutex_unlock(&lua_sessions_mutex);
 	janus_refcount_decrease(&session->ref);
 
 	return;
@@ -1314,7 +1310,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_lua_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
