@@ -3365,24 +3365,30 @@ void *janus_ice_send_thread(void *data) {
 			if(handle->streams != NULL) {
 				if(handle->audio_stream) {
 					janus_ice_stream *stream = handle->audio_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 				if(handle->video_stream) {
 					janus_ice_stream *stream = handle->video_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 				if(handle->data_stream) {
 					janus_ice_stream *stream = handle->data_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 			}
 			while(g_async_queue_length(handle->queued_packets) > 0) {
