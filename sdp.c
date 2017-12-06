@@ -117,8 +117,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					temp = temp->next;
 					continue;
 				}
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, handle->audio_id);
-				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+				} else {
+					guint id = handle->bundle_id;
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+					bundled = handle->audio_id != handle->bundle_id;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
 					stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
@@ -141,14 +147,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					temp = temp->next;
 					continue;
 				}
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing video candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
 				} else {
-					guint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+					guint id = handle->bundle_id;
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
-					bundled = id == handle->audio_id;
+					bundled = handle->video_id != handle->bundle_id;
 				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing video candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
@@ -174,14 +180,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						temp = temp->next;
 						continue;
 					}
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
 					} else {
-						guint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
+						guint id = handle->bundle_id;
 						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
-						bundled = (id == handle->audio_id || id == handle->video_id);
+						bundled = handle->data_id != handle->bundle_id;
 					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 					if(stream == NULL) {
 						JANUS_LOG(LOG_WARN, "No valid stream for data??\n");
 						temp = temp->next;
@@ -339,11 +345,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name) {
 				if(!strcasecmp(a->name, "candidate")) {
-					if(m->type == JANUS_SDP_VIDEO && handle->audio_id > 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] This is a video candidate but we're bundling, ignoring...\n", handle->handle_id);
+					if(m->type == JANUS_SDP_AUDIO && handle->audio_id != handle->bundle_id && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] This is an audio candidate but we're bundling on another stream, ignoring...\n", handle->handle_id);
+					} else if(m->type == JANUS_SDP_VIDEO && handle->video_id != handle->bundle_id && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] This is a video candidate but we're bundling on another stream, ignoring...\n", handle->handle_id);
 #ifdef HAVE_SCTP
-					} else if(m->type == JANUS_SDP_APPLICATION && (handle->audio_id > 0 || handle->video_id > 0) && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] This is a SCTP candidate but we're bundling, ignoring...\n", handle->handle_id);
+					} else if(m->type == JANUS_SDP_APPLICATION && handle->data_id != handle->bundle_id && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] This is a SCTP candidate but we're bundling on another stream, ignoring...\n", handle->handle_id);
 #endif
 					} else {
 						int res = janus_sdp_parse_candidate(stream, (const char *)a->value, 0);
@@ -413,17 +421,21 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					janus_seq_list_free(&component->last_seqs_video);
 				janus_mutex_unlock(&component->mutex);
 			}
+			stream->video_ssrc_peer = stream->video_ssrc_peer_new;
+			if(stream->video_ssrc_peer_rtx > 0 && stream->video_ssrc_peer_rtx != stream->video_ssrc_peer_rtx_new) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (rtx) changed: %"SCNu32" --> %"SCNu32"\n",
+					handle->handle_id, stream->video_ssrc_peer_rtx, stream->video_ssrc_peer_rtx_new);
+			}
+			stream->video_ssrc_peer_rtx = stream->video_ssrc_peer_rtx_new;
 			if(stream->video_ssrc_peer_sim_1 > 0 && stream->video_ssrc_peer_sim_1 != stream->video_ssrc_peer_sim_1_new) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 1) changed: %"SCNu32" --> %"SCNu32"\n",
 					handle->handle_id, stream->video_ssrc_peer_sim_1, stream->video_ssrc_peer_sim_1_new);
 			}
+			stream->video_ssrc_peer_sim_1 = stream->video_ssrc_peer_sim_1_new;
 			if(stream->video_ssrc_peer_sim_2 > 0 && stream->video_ssrc_peer_sim_2 != stream->video_ssrc_peer_sim_2_new) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 2) changed: %"SCNu32" --> %"SCNu32"\n",
 					handle->handle_id, stream->video_ssrc_peer_sim_2, stream->video_ssrc_peer_sim_2_new);
 			}
-			stream->video_ssrc_peer = stream->video_ssrc_peer_new;
-			stream->video_ssrc_peer_rtx = stream->video_ssrc_peer_rtx_new;
-			stream->video_ssrc_peer_sim_1 = stream->video_ssrc_peer_sim_1_new;
 			stream->video_ssrc_peer_sim_2 = stream->video_ssrc_peer_sim_2_new;
 			stream->video_ssrc_peer_new = 0;
 			stream->video_ssrc_peer_rtx_new = 0;
@@ -882,25 +894,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		return NULL;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_ice_stream *stream = NULL;
-	/* Check available media */
-	int audio = 0;
-	int video = 0;
-	int data = 0;
-	GList *temp = anon->m_lines;
-	while(temp) {
-		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
-			audio = 1;
-		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
-			video = 1;
-#ifdef HAVE_SCTP
-		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-			if(m->proto && !strcasecmp(m->proto, "DTLS/SCTP"))
-				data = 1;
-#endif
-		}
-		temp = temp->next;
-	}
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"RTP/SAVPF";
 	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
 	/* Origin o= */
@@ -925,20 +918,39 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	buffer[0] = '\0';
 	buffer_part[0] = '\0';
 	g_snprintf(buffer, sizeof(buffer), "BUNDLE");
-	if(audio) {
-		g_snprintf(buffer_part, sizeof(buffer_part),
-			" %s", handle->audio_mid ? handle->audio_mid : "audio");
-		g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
-	}
-	if(video) {
-		g_snprintf(buffer_part, sizeof(buffer_part),
-			" %s", handle->video_mid ? handle->video_mid : "video");
-		g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
-	}
-	if(data) {
-		g_snprintf(buffer_part, sizeof(buffer_part),
-			" %s", handle->data_mid ? handle->data_mid : "data");
-		g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+	/* Iterate on available media */
+	int audio = 0;
+	int video = 0;
+	int data = 0;
+	GList *temp = anon->m_lines;
+	while(temp) {
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+			audio++;
+			if(audio == 1) {
+				g_snprintf(buffer_part, sizeof(buffer_part),
+					" %s", handle->audio_mid ? handle->audio_mid : "audio");
+				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+			}
+		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+			video++;
+			if(video) {
+				g_snprintf(buffer_part, sizeof(buffer_part),
+					" %s", handle->video_mid ? handle->video_mid : "video");
+				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+			}
+#ifdef HAVE_SCTP
+		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
+			if(m->proto && !strcasecmp(m->proto, "DTLS/SCTP"))
+				data++;
+			if(data) {
+				g_snprintf(buffer_part, sizeof(buffer_part),
+					" %s", handle->data_mid ? handle->data_mid : "data");
+				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+			}
+#endif
+		}
+		temp = temp->next;
 	}
 	/* Global attributes: start with group */
 	GList *first = anon->attributes;
@@ -975,17 +987,20 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* Check if we need to refuse the media or not */
 		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 			audio++;
-			if(audio > 1 || !handle->audio_id) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, handle->audio_id);
+			gint id = handle->audio_id;
+			if(id == 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))
+				id = handle->video_id > 0 ? handle->video_id : handle->data_id;
+			if(audio > 1 || !id) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, id);
 				m->port = 0;
 				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
 			/* Audio */
-			stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+			stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 			if(stream == NULL) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, handle->audio_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, id);
 				m->port = 0;
 				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
@@ -995,10 +1010,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			video++;
 			gint id = handle->video_id;
 			if(id == 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))
-				id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+				id = handle->audio_id > 0 ? handle->audio_id : handle->data_id;
 			if(video > 1 || !id) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video,
-					janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_id : handle->video_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video, id);
 				m->port = 0;
 				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;

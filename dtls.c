@@ -647,75 +647,73 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				goto done;
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
-				if(component->stream_id == handle->audio_id || component->stream_id == handle->video_id) {
-					/* Complete with SRTP setup */
-					unsigned char material[SRTP_MASTER_LENGTH*2];
-					unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
-					/* Export keying material for SRTP */
-					if(!SSL_export_keying_material(dtls->ssl, material, SRTP_MASTER_LENGTH*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
-						/* Oops... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
-							handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
-						goto done;
-					}
-					/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
-					if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
-						local_key = material;
-						remote_key = local_key + SRTP_MASTER_KEY_LENGTH;
-						local_salt = remote_key + SRTP_MASTER_KEY_LENGTH;
-						remote_salt = local_salt + SRTP_MASTER_SALT_LENGTH;
-					} else {
-						remote_key = material;
-						local_key = remote_key + SRTP_MASTER_KEY_LENGTH;
-						remote_salt = local_key + SRTP_MASTER_KEY_LENGTH;
-						local_salt = remote_salt + SRTP_MASTER_SALT_LENGTH;
-					}
-					/* Build master keys and set SRTP policies */
-						/* Remote (inbound) */
-					srtp_crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
-					srtp_crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
-					dtls->remote_policy.ssrc.type = ssrc_any_inbound;
-					unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
-					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
-					memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
-					memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
-#if HAS_DTLS_WINDOW_SIZE
-					dtls->remote_policy.window_size = 128;
-					dtls->remote_policy.allow_repeat_tx = 0;
-#endif
-					dtls->remote_policy.next = NULL;
-						/* Local (outbound) */
-					srtp_crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
-					srtp_crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
-					dtls->local_policy.ssrc.type = ssrc_any_outbound;
-					unsigned char local_policy_key[SRTP_MASTER_LENGTH];
-					dtls->local_policy.key = (unsigned char *)&local_policy_key;
-					memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
-					memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
-#if HAS_DTLS_WINDOW_SIZE
-					dtls->local_policy.window_size = 128;
-					dtls->local_policy.allow_repeat_tx = 0;
-#endif
-					dtls->local_policy.next = NULL;
-					/* Create SRTP sessions */
-					srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
-					if(res != srtp_err_status_ok) {
-						/* Something went wrong... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
-						goto done;
-					}
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
-					res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
-					if(res != srtp_err_status_ok) {
-						/* Something went wrong... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
-						goto done;
-					}
-					dtls->srtp_valid = 1;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+				/* Complete with SRTP setup */
+				unsigned char material[SRTP_MASTER_LENGTH*2];
+				unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
+				/* Export keying material for SRTP */
+				if(!SSL_export_keying_material(dtls->ssl, material, SRTP_MASTER_LENGTH*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
+					/* Oops... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
+						handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
+					goto done;
 				}
+				/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
+				if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
+					local_key = material;
+					remote_key = local_key + SRTP_MASTER_KEY_LENGTH;
+					local_salt = remote_key + SRTP_MASTER_KEY_LENGTH;
+					remote_salt = local_salt + SRTP_MASTER_SALT_LENGTH;
+				} else {
+					remote_key = material;
+					local_key = remote_key + SRTP_MASTER_KEY_LENGTH;
+					remote_salt = local_key + SRTP_MASTER_KEY_LENGTH;
+					local_salt = remote_salt + SRTP_MASTER_SALT_LENGTH;
+				}
+				/* Build master keys and set SRTP policies */
+					/* Remote (inbound) */
+				srtp_crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
+				srtp_crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
+				dtls->remote_policy.ssrc.type = ssrc_any_inbound;
+				unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
+				dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
+				memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
+				memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
+				dtls->remote_policy.window_size = 128;
+				dtls->remote_policy.allow_repeat_tx = 0;
+#endif
+				dtls->remote_policy.next = NULL;
+					/* Local (outbound) */
+				srtp_crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
+				srtp_crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
+				dtls->local_policy.ssrc.type = ssrc_any_outbound;
+				unsigned char local_policy_key[SRTP_MASTER_LENGTH];
+				dtls->local_policy.key = (unsigned char *)&local_policy_key;
+				memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
+				memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
+				dtls->local_policy.window_size = 128;
+				dtls->local_policy.allow_repeat_tx = 0;
+#endif
+				dtls->local_policy.next = NULL;
+				/* Create SRTP sessions */
+				srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
+				if(res != srtp_err_status_ok) {
+					/* Something went wrong... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
+					goto done;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+				res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
+				if(res != srtp_err_status_ok) {
+					/* Something went wrong... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
+					goto done;
+				}
+				dtls->srtp_valid = 1;
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 #ifdef HAVE_SCTP
 				if(component->stream_id == handle->data_id ||
 						(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) &&

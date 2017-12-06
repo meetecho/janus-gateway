@@ -1125,48 +1125,45 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", handle->handle_id);
-						if(audio) {
-							/* Get rid of video and data, if present */
-							if(handle->streams && handle->video_stream) {
-								if(handle->audio_stream->rtp_component && handle->video_stream->rtp_component)
-									handle->audio_stream->rtp_component->do_video_nacks = handle->video_stream->rtp_component->do_video_nacks;
-								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
-								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
-								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
-								handle->audio_stream->video_ssrc_peer_sim_1 = handle->video_stream->video_ssrc_peer_sim_1;
-								handle->audio_stream->video_ssrc_peer_sim_2 = handle->video_stream->video_ssrc_peer_sim_2;
-								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
-									nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_remove_stream(handle->agent, handle->video_stream->stream_id);
-								janus_ice_stream_free(handle->streams, handle->video_stream);
-							}
+						janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id));
+						if(handle->audio_stream && handle->audio_stream != stream) {
+							/* This stream is redundant, merge it with the bundled stream */
+							if(stream->rtp_component && handle->audio_stream->rtp_component)
+								stream->rtp_component->do_audio_nacks = handle->audio_stream->rtp_component->do_audio_nacks;
+							stream->video_ssrc = handle->audio_stream->audio_ssrc;
+							stream->video_ssrc_peer = handle->audio_stream->audio_ssrc_peer;
+							nice_agent_attach_recv(handle->agent, handle->audio_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
+								nice_agent_attach_recv(handle->agent, handle->audio_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							nice_agent_remove_stream(handle->agent, handle->audio_stream->stream_id);
+							handle->audio_stream = NULL;
+							handle->audio_id = 0;
+							janus_ice_stream_free(handle->streams, handle->audio_stream);
+						}
+						if(handle->video_stream && handle->video_stream != stream) {
+							/* This stream is redundant, merge it with the bundled stream */
+							if(stream->rtp_component && handle->video_stream->rtp_component)
+								stream->rtp_component->do_video_nacks = handle->video_stream->rtp_component->do_video_nacks;
+							stream->video_ssrc = handle->video_stream->video_ssrc;
+							stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
+							stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
+							stream->video_ssrc_peer_sim_1 = handle->video_stream->video_ssrc_peer_sim_1;
+							stream->video_ssrc_peer_sim_2 = handle->video_stream->video_ssrc_peer_sim_2;
+							nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
+								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							nice_agent_remove_stream(handle->agent, handle->video_stream->stream_id);
 							handle->video_stream = NULL;
 							handle->video_id = 0;
-							if(handle->streams && handle->data_stream) {
-								nice_agent_attach_recv(handle->agent, handle->data_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_remove_stream(handle->agent, handle->data_stream->stream_id);
-								janus_ice_stream_free(handle->streams, handle->data_stream);
-							}
+							janus_ice_stream_free(handle->streams, handle->video_stream);
+						}
+						if(handle->data_stream && handle->data_stream != stream) {
+							/* This stream is redundant, merge it with the bundled stream */
+							nice_agent_attach_recv(handle->agent, handle->data_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							nice_agent_remove_stream(handle->agent, handle->data_stream->stream_id);
 							handle->data_stream = NULL;
 							handle->data_id = 0;
-							if(!video) {
-								if(handle->audio_stream->rtp_component)
-									handle->audio_stream->rtp_component->do_video_nacks = FALSE;
-								handle->audio_stream->video_ssrc = 0;
-								handle->audio_stream->video_ssrc_peer = 0;
-								g_free(handle->audio_stream->video_rtcp_ctx);
-								handle->audio_stream->video_rtcp_ctx = NULL;
-							}
-						} else if(video) {
-							/* Get rid of data, if present */
-							if(handle->streams && handle->data_stream) {
-								nice_agent_attach_recv(handle->agent, handle->data_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_remove_stream(handle->agent, handle->data_stream->stream_id);
-								janus_ice_stream_free(handle->streams, handle->data_stream);
-							}
-							handle->data_stream = NULL;
-							handle->data_id = 0;
+							janus_ice_stream_free(handle->streams, handle->data_stream);
 						}
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced()) {
@@ -1238,7 +1235,7 @@ int janus_process_incoming_request(janus_request *request) {
 							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
 							} else {
-								gint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+								gint id = handle->bundle_id;
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 							}
 							if(stream)
@@ -1254,7 +1251,7 @@ int janus_process_incoming_request(janus_request *request) {
 							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
 							} else {
-								gint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
+								gint id = handle->bundle_id;
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 							}
 							if(stream)
@@ -3006,7 +3003,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->video_id));
 			} else {
-				gint id = ice_handle->audio_id > 0 ? ice_handle->audio_id : ice_handle->video_id;
+				gint id = ice_handle->bundle_id;
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(id));
 			}
 			if(stream)
@@ -3022,7 +3019,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->data_id));
 			} else {
-				gint id = ice_handle->audio_id > 0 ? ice_handle->audio_id : (ice_handle->video_id > 0 ? ice_handle->video_id : ice_handle->data_id);
+				gint id = ice_handle->bundle_id;
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(id));
 			}
 			if(stream)
@@ -3038,48 +3035,45 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", ice_handle->handle_id);
-				if(audio) {
-					/* Get rid of video and data, if present */
-					if(ice_handle->streams && ice_handle->video_stream) {
-						if(ice_handle->audio_stream->rtp_component && ice_handle->video_stream->rtp_component)
-							ice_handle->audio_stream->rtp_component->do_video_nacks = ice_handle->video_stream->rtp_component->do_video_nacks;
-						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
-						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
-						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
-						ice_handle->audio_stream->video_ssrc_peer_sim_1 = ice_handle->video_stream->video_ssrc_peer_sim_1;
-						ice_handle->audio_stream->video_ssrc_peer_sim_2 = ice_handle->video_stream->video_ssrc_peer_sim_2;
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
-							nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_remove_stream(ice_handle->agent, ice_handle->video_stream->stream_id);
-						janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
-					}
+				janus_ice_stream *stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->bundle_id));
+				if(ice_handle->audio_stream && ice_handle->audio_stream != stream) {
+					/* This stream is redundant, merge it with the bundled stream */
+					if(stream->rtp_component && ice_handle->audio_stream->rtp_component)
+						stream->rtp_component->do_audio_nacks = ice_handle->audio_stream->rtp_component->do_audio_nacks;
+					stream->video_ssrc = ice_handle->audio_stream->audio_ssrc;
+					stream->video_ssrc_peer = ice_handle->audio_stream->audio_ssrc_peer;
+					nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_remove_stream(ice_handle->agent, ice_handle->audio_stream->stream_id);
+					ice_handle->audio_stream = NULL;
+					ice_handle->audio_id = 0;
+					janus_ice_stream_free(ice_handle->streams, ice_handle->audio_stream);
+				}
+				if(ice_handle->video_stream && ice_handle->video_stream != stream) {
+					/* This stream is redundant, merge it with the bundled stream */
+					if(stream->rtp_component && ice_handle->video_stream->rtp_component)
+						stream->rtp_component->do_video_nacks = ice_handle->video_stream->rtp_component->do_video_nacks;
+					stream->video_ssrc = ice_handle->video_stream->video_ssrc;
+					stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
+					stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
+					stream->video_ssrc_peer_sim_1 = ice_handle->video_stream->video_ssrc_peer_sim_1;
+					stream->video_ssrc_peer_sim_2 = ice_handle->video_stream->video_ssrc_peer_sim_2;
+					nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_remove_stream(ice_handle->agent, ice_handle->video_stream->stream_id);
 					ice_handle->video_stream = NULL;
 					ice_handle->video_id = 0;
-					if(ice_handle->streams && ice_handle->data_stream) {
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_remove_stream(ice_handle->agent, ice_handle->data_stream->stream_id);
-						janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
-					}
+					janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
+				}
+				if(ice_handle->data_stream && ice_handle->data_stream != stream) {
+					/* This stream is redundant, merge it with the bundled stream */
+					nice_agent_attach_recv(ice_handle->agent, ice_handle->data_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_remove_stream(ice_handle->agent, ice_handle->data_stream->stream_id);
 					ice_handle->data_stream = NULL;
 					ice_handle->data_id = 0;
-					if(!video) {
-						if(ice_handle->audio_stream->rtp_component)
-							ice_handle->audio_stream->rtp_component->do_video_nacks = FALSE;
-						ice_handle->audio_stream->video_ssrc = 0;
-						ice_handle->audio_stream->video_ssrc_peer = 0;
-						g_free(ice_handle->audio_stream->video_rtcp_ctx);
-						ice_handle->audio_stream->video_rtcp_ctx = NULL;
-					}
-				} else if(video) {
-					/* Get rid of data, if present */
-					if(ice_handle->streams && ice_handle->data_stream) {
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_remove_stream(ice_handle->agent, ice_handle->data_stream->stream_id);
-						janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
-					}
-					ice_handle->data_stream = NULL;
-					ice_handle->data_id = 0;
+					janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
 				}
 			}
 			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced()) {

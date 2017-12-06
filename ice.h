@@ -304,6 +304,8 @@ struct janus_ice_handle {
 	guint video_id;
 	/*! \brief libnice ICE DataChannels ID */
 	guint data_id;
+	/*! \brief Stream ID used when bundling (will be one of the above) */
+	guint bundle_id;
 	/*! \brief Audio mid (media ID) */
 	gchar *audio_mid;
 	/*! \brief Video mid (media ID) */

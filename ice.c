@@ -3003,10 +3003,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->cdone = 0;
 	handle->streams_num = 0;
 	handle->streams = g_hash_table_new(NULL, NULL);
+	handle->bundle_id = 0;
 	if(audio) {
 		/* Add an audio stream */
 		handle->streams_num++;
 		handle->audio_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
+		handle->bundle_id = handle->audio_id;
 		janus_ice_stream *audio_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(audio_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -3170,6 +3172,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* Add a video stream */
 		handle->streams_num++;
 		handle->video_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
+		if(handle->bundle_id == 0)
+			handle->bundle_id = handle->video_id;
 		janus_ice_stream *video_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(video_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -3331,6 +3335,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* Add a SCTP/DataChannel stream */
 		handle->streams_num++;
 		handle->data_id = nice_agent_add_stream (handle->agent, 1);
+		if(handle->bundle_id == 0)
+			handle->bundle_id = handle->data_id;
 		janus_ice_stream *data_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(data_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -3542,7 +3548,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		/* Let's check if it's time to send a RTCP RR as well */
 		if(now-audio_rtcp_last_rr >= 5*G_USEC_PER_SEC) {
-			janus_ice_stream *stream = handle->audio_stream;
+			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->audio_stream;
 			if(handle->audio_stream && stream->audio_rtcp_ctx && stream->audio_rtcp_ctx->rtp_recvd) {
 				/* Create a RR */
 				int rrlen = 32;
@@ -3560,7 +3566,7 @@ void *janus_ice_send_thread(void *data) {
 			audio_rtcp_last_rr = now;
 		}
 		if(now-video_rtcp_last_rr >= 5*G_USEC_PER_SEC) {
-			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->video_stream;
 			if(stream) {
 				if(stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd) {
 					/* Create a RR */
@@ -3581,7 +3587,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		/* Do the same with SR/SDES */
 		if(now-audio_rtcp_last_sr >= 5*G_USEC_PER_SEC) {
-			janus_ice_stream *stream = handle->audio_stream;
+			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->audio_stream;
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
 				/* Create a SR/SDES compound */
 				int srlen = 28;
@@ -3619,7 +3625,7 @@ void *janus_ice_send_thread(void *data) {
 			audio_rtcp_last_sr = now;
 		}
 		if(now-video_rtcp_last_sr >= 5*G_USEC_PER_SEC) {
-			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->video_stream;
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
 				/* Create a SR/SDES compound */
 				int srlen = 28;
@@ -3660,7 +3666,7 @@ void *janus_ice_send_thread(void *data) {
 		 * FIXME Should we really do this here? Would this slow down this thread and add delay? */
 		if(janus_ice_event_stats_period > 0 && now-audio_last_event >= (gint64)janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
-				janus_ice_stream *stream = handle->audio_stream;
+				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->audio_stream;
 				if(stream && stream->audio_rtcp_ctx) {
 					json_t *info = json_object();
 					json_object_set_new(info, "media", json_string("audio"));
@@ -3685,7 +3691,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		if(janus_ice_event_stats_period > 0 && now-video_last_event >= (gint64)janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->video_stream;
 				if(stream && stream->video_rtcp_ctx) {
 					json_t *info = json_object();
 					json_object_set_new(info, "media", json_string("video"));
@@ -3738,7 +3744,7 @@ void *janus_ice_send_thread(void *data) {
 		if(pkt->control) {
 			/* RTCP */
 			int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
-			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (video ? handle->video_stream : handle->audio_stream);
+			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : (video ? handle->video_stream : handle->audio_stream);
 			if(!stream) {
 				g_free(pkt->data);
 				pkt->data = NULL;
@@ -3797,7 +3803,7 @@ void *janus_ice_send_thread(void *data) {
 					rr->header.type = RTCP_RR;
 					rr->header.rc = 0;
 					rr->header.length = htons((rrlen/4)-1);
-					janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+					janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : (handle->video_stream);
 					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd) {
 						rr->header.rc = 1;
 						janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
@@ -3874,7 +3880,7 @@ void *janus_ice_send_thread(void *data) {
 			if(pkt->type == JANUS_ICE_PACKET_AUDIO || pkt->type == JANUS_ICE_PACKET_VIDEO) {
 				/* RTP */
 				int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
-				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (video ? handle->video_stream : handle->audio_stream);
+				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : (video ? handle->video_stream : handle->audio_stream);
 				if(!stream) {
 					g_free(pkt->data);
 					pkt->data = NULL;
@@ -4020,7 +4026,7 @@ void *janus_ice_send_thread(void *data) {
 					continue;
 				}
 #ifdef HAVE_SCTP
-				janus_ice_stream *stream = handle->data_stream ? handle->data_stream : (handle->audio_stream ? handle->audio_stream : handle->video_stream);
+				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->data_stream;
 				if(!stream) {
 					g_free(pkt->data);
 					pkt->data = NULL;
