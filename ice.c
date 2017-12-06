@@ -3963,6 +3963,12 @@ void *janus_ice_send_thread(void *data) {
 			continue;
 		}
 	}
+	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		g_main_loop_quit(handle->iceloop);
+		if (handle->icectx != NULL) {
+			g_main_context_wakeup(handle->icectx);
+		}
+	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...; %p\n", handle->handle_id, handle);
 	handle->send_thread = NULL;
 	g_thread_unref(g_thread_self());
