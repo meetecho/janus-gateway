@@ -528,6 +528,38 @@ void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 	janus_dtls_notify_state_change(dtls);
 }
 
+int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
+	if(dtls == NULL)
+		return -1;
+	janus_ice_component *component = (janus_ice_component *)dtls->component;
+	if(component == NULL)
+		return -2;
+	janus_ice_stream *stream = component->stream;
+	if(!stream)
+		return -3;
+	janus_ice_handle *handle = stream->handle;
+	if(!handle || !handle->agent)
+		return -4;
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return -5;
+	dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
+	if(dtls->sctp == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating SCTP association...\n", handle->handle_id);
+		return -6;
+	}
+	/* We need to start it in a thread, since it has blocking accept/connect stuff */
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
+	g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+		return -7;
+	}
+	return 0;
+}
+
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len) {
 	if(dtls == NULL) {
 		JANUS_LOG(LOG_ERR, "No DTLS-SRTP stack, no incoming message...\n");
@@ -718,20 +750,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				if(component->stream_id == handle->data_id ||
 						(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) &&
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
-					/* FIXME Create SCTP association as well (5000 should be dynamic, from the SDP...) */
-					dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
-					if(dtls->sctp != NULL) {
-						/* FIXME We need to start it in a thread, though, since it has blocking accept/connect stuff */
-						GError *error = NULL;
-						char tname[16];
-						g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
-						g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
-						if(error != NULL) {
-							/* Something went wrong... */
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-						}
-						dtls->srtp_valid = 1;
-					}
+					/* Create SCTP association as well */
+					janus_dtls_srtp_create_sctp(dtls);
 				}
 #endif
 				dtls->ready = 1;

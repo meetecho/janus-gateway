@@ -188,10 +188,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						bundled = handle->data_id != handle->bundle_id;
 					}
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
-					if(stream == NULL) {
-						JANUS_LOG(LOG_WARN, "No valid stream for data??\n");
-						temp = temp->next;
-						continue;
+					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS);
 					}
 				}
 			} else {

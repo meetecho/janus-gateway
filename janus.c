@@ -1364,6 +1364,21 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 					}
 				}
+				if(!offer) {
+					/* Were datachannels just added? */
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+						janus_ice_stream *stream = handle->data_stream;
+						if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+							stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id));
+						}
+						if(stream != NULL && stream->rtp_component != NULL
+								&& stream->rtp_component->dtls != NULL && stream->rtp_component->dtls->sctp == NULL) {
+							/* Create SCTP association as well */
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", handle->handle_id);
+							janus_dtls_srtp_create_sctp(stream->rtp_component->dtls);
+						}
+					}
+				}
 			}
 			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
@@ -3196,6 +3211,21 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 			janus_mutex_unlock(&ice_handle->mutex);
+		}
+	}
+	if(!offer) {
+		/* Check if datachannels were just added on an existing PeerConnection */
+		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+			janus_ice_stream *stream = ice_handle->data_stream;
+			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->bundle_id));
+			}
+			if(stream != NULL && stream->rtp_component != NULL &&
+					stream->rtp_component->dtls != NULL && stream->rtp_component->dtls->sctp == NULL) {
+				/* Create SCTP association as well */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Creating datachannels...\n", ice_handle->handle_id);
+				janus_dtls_srtp_create_sctp(stream->rtp_component->dtls);
+			}
 		}
 	}
 

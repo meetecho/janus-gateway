@@ -1434,6 +1434,31 @@ function Janus(gatewayCallbacks) {
 		// Are we updating a session?
 		if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
+			// Any data channel to create in this renegotiation?
+			if(isDataEnabled(media) && !config.dataChannel) {
+				Janus.log("Creating data channel");
+				var onDataChannelMessage = function(event) {
+					Janus.log('Received message on data channel: ' + event.data);
+					pluginHandle.ondata(event.data);	// FIXME
+				}
+				var onDataChannelStateChange = function() {
+					var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
+					Janus.log('State change on data channel: ' + dcState);
+					if(dcState === 'open') {
+						pluginHandle.ondataopen();	// FIXME
+					}
+				}
+				var onDataChannelError = function(error) {
+					Janus.error('Got error on data channel:', error);
+					// TODO
+				}
+				// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
+				config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {ordered:false});	// FIXME Add options (ordered, maxRetransmits, etc.)
+				config.dataChannel.onmessage = onDataChannelMessage;
+				config.dataChannel.onopen = onDataChannelStateChange;
+				config.dataChannel.onclose = onDataChannelStateChange;
+				config.dataChannel.onerror = onDataChannelError;
+			}
 			// Create offer/answer now
 			config.sdpSent = false;
 			config.mySdp = null;
