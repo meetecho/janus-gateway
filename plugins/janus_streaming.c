@@ -2886,6 +2886,15 @@ static void *janus_streaming_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Stopping the streaming\n");
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopping"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "status", json_string("stopping"));
+				janus_streaming_mountpoint *mp = session->mountpoint;
+				if(mp)
+					json_object_set_new(info, "id", json_integer(mp->id));
+				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+			}
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 			gateway->close_pc(session->handle);
 		} else {

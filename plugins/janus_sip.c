@@ -2677,7 +2677,6 @@ static void *janus_sip_handler(void *data) {
 			goto error;
 		}
 
-		janus_mutex_unlock(&sessions_mutex);
 		/* Prepare JSON event */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -2691,7 +2690,6 @@ static void *janus_sip_handler(void *data) {
 
 error:
 		{
-			janus_mutex_unlock(&sessions_mutex);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "sip", json_string("event"));
