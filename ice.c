@@ -1133,7 +1133,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
 			}
 		}
@@ -1165,7 +1165,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		if(g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 			g_main_loop_quit(handle->iceloop);
 		}
 	}
@@ -1226,10 +1226,10 @@ void janus_ice_free(janus_ice_handle *handle) {
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
@@ -1239,7 +1239,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		/* user will be notified only after the actual hangup */
 		handle->hangup_reason = reason;
 	}
-	if(handle->queued_packets != NULL)
+	if(handle->queued_packets != NULL && handle->send_thread_created)
 #if GLIB_CHECK_VERSION(2, 46, 0)
 		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 #else
@@ -1271,7 +1271,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 					break;
 				}
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
@@ -1431,8 +1431,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	}
 	if(component->retransmit_buffer != NULL) {
 		janus_rtp_packet *p = NULL;
-		while(g_queue_get_length(component->retransmit_buffer) > 0) {
-			p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer);
+		while((p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer)) != NULL) {
 			g_free(p->data);
 			p->data = NULL;
 			g_free(p);
@@ -2463,11 +2462,15 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
-	g_main_loop_run (loop);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		g_main_loop_run (loop);
+	} else {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping ICE loop because alert has been set\n", handle->handle_id);
+	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 		janus_ice_webrtc_free(handle);
 	}
 	g_thread_unref(g_thread_self());
@@ -3479,7 +3482,7 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {

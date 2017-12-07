@@ -1882,6 +1882,25 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
 				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+			if(videoroom->audiolevel_ext) {
+				janus_config_add_item(config, cat, "audiolevel_ext", "yes");
+				if(videoroom->audiolevel_event)
+					janus_config_add_item(config, cat, "audiolevel_event", "yes");
+				if(videoroom->audio_active_packets > 0) {
+					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
+					janus_config_add_item(config, cat, "audio_active_packets", value);
+				}
+				if(videoroom->audio_level_average > 0) {
+					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
+					janus_config_add_item(config, cat, "audio_level_average", value);
+				}
+			}
+			if(videoroom->videoorient_ext)
+				janus_config_add_item(config, cat, "videoorient_ext", "yes");
+			if(videoroom->playoutdelay_ext)
+				janus_config_add_item(config, cat, "playoutdelay_ext", "yes");
+			if(videoroom->notify_joining)
+				janus_config_add_item(config, cat, "notify_joining", "yes");
 			if(videoroom->record)
 				janus_config_add_item(config, cat, "record", "yes");
 			if(videoroom->rec_dir)
