@@ -140,12 +140,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						stream->audio_recv = FALSE;
 						break;
 					case JANUS_SDP_SENDONLY:
-						stream->audio_send = TRUE;
-						stream->audio_recv = FALSE;
-						break;
-					case JANUS_SDP_RECVONLY:
+						/* A sendonly peer means recvonly for Janus */
 						stream->audio_send = FALSE;
 						stream->audio_recv = TRUE;
+						break;
+					case JANUS_SDP_RECVONLY:
+						/* A recvonly peer means sendonly for Janus */
+						stream->audio_send = TRUE;
+						stream->audio_recv = FALSE;
 						break;
 					case JANUS_SDP_SENDRECV:
 					case JANUS_SDP_DEFAULT:
@@ -192,12 +194,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						stream->video_recv = FALSE;
 						break;
 					case JANUS_SDP_SENDONLY:
-						stream->video_send = TRUE;
-						stream->video_recv = FALSE;
-						break;
-					case JANUS_SDP_RECVONLY:
+						/* A sendonly peer means recvonly for Janus */
 						stream->video_send = FALSE;
 						stream->video_recv = TRUE;
+						break;
+					case JANUS_SDP_RECVONLY:
+						/* A recvonly peer means sendonly for Janus */
+						stream->video_send = TRUE;
+						stream->video_recv = FALSE;
 						break;
 					case JANUS_SDP_SENDRECV:
 					case JANUS_SDP_DEFAULT:
