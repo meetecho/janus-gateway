@@ -2638,15 +2638,24 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
 			!janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return -2;
+	janus_refcount_increase(&plugin_session->ref);
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
+	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_refcount_decrease(&plugin_session->ref);
 		return JANUS_ERROR_SESSION_NOT_FOUND;
+	}
+	janus_refcount_increase(&ice_handle->ref);
 	janus_session *session = ice_handle->session;
-	if(!session || g_atomic_int_get(&session->destroyed))
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
 		return JANUS_ERROR_SESSION_NOT_FOUND;
+	}
 	/* Make sure this is a JSON object */
 	if(!json_is_object(message)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
 		return JANUS_ERROR_INVALID_JSON_OBJECT;
 	}
 	/* Attach JSEP if possible? */
@@ -2659,9 +2668,13 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
+				janus_refcount_decrease(&plugin_session->ref);
+				janus_refcount_decrease(&ice_handle->ref);
 				return JANUS_ERROR_HANDLE_NOT_FOUND;
 			} else {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
+				janus_refcount_decrease(&plugin_session->ref);
+				janus_refcount_decrease(&ice_handle->ref);
 				return JANUS_ERROR_JSEP_INVALID_SDP;
 			}
 		}
@@ -2687,6 +2700,8 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			session->session_id, ice_handle->handle_id, "local", sdp_type, sdp);
 	}
 
+	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
 	return JANUS_OK;
 }
 
@@ -2867,19 +2882,31 @@ void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection */
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return;
+	janus_refcount_increase(&plugin_session->ref);
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-	if(!ice_handle)
+	if(!ice_handle) {
+		janus_refcount_decrease(&plugin_session->ref);
 		return;
+	}
+	janus_refcount_increase(&ice_handle->ref);
 	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
 		return;
+	}
 	janus_session *session = (janus_session *)ice_handle->session;
-	if(!session)
+	if(!session) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
 		return;
+	}
 
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle, "Close PC");
+	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
 }
 
 void janus_plugin_end_session(janus_plugin_session *plugin_session) {
