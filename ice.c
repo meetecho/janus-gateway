@@ -2087,6 +2087,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
 					//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
 			}
+			/* Make sure we're prepared to receive this media packet */
+			if((!video && !stream->audio_recv) || (video && !stream->video_recv))
+				return;
 
 			int buflen = len;
 			srtp_err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
@@ -3882,6 +3885,13 @@ void *janus_ice_send_thread(void *data) {
 				int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
 				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : (video ? handle->video_stream : handle->audio_stream);
 				if(!stream) {
+					g_free(pkt->data);
+					pkt->data = NULL;
+					g_free(pkt);
+					pkt = NULL;
+					continue;
+				}
+				if((!video && !stream->audio_send) || (video && !stream->video_send)) {
 					g_free(pkt->data);
 					pkt->data = NULL;
 					g_free(pkt);

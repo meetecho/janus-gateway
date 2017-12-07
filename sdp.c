@@ -133,6 +133,26 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 					}
 				}
+				switch(m->direction) {
+					case JANUS_SDP_INACTIVE:
+						stream->audio_send = FALSE;
+						stream->audio_recv = FALSE;
+						break;
+					case JANUS_SDP_SENDONLY:
+						stream->audio_send = TRUE;
+						stream->audio_recv = FALSE;
+						break;
+					case JANUS_SDP_RECVONLY:
+						stream->audio_send = FALSE;
+						stream->audio_recv = TRUE;
+						break;
+					case JANUS_SDP_SENDRECV:
+					case JANUS_SDP_DEFAULT:
+					default:
+						stream->audio_send = TRUE;
+						stream->audio_recv = TRUE;
+						break;
+				}
 			} else {
 				/* Audio rejected? */
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
@@ -163,6 +183,26 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 						stream->video_rtcp_ctx->tb = 90000;	/* May change later */
 					}
+				}
+				switch(m->direction) {
+					case JANUS_SDP_INACTIVE:
+						stream->video_send = FALSE;
+						stream->video_recv = FALSE;
+						break;
+					case JANUS_SDP_SENDONLY:
+						stream->video_send = TRUE;
+						stream->video_recv = FALSE;
+						break;
+					case JANUS_SDP_RECVONLY:
+						stream->video_send = FALSE;
+						stream->video_recv = TRUE;
+						break;
+					case JANUS_SDP_SENDRECV:
+					case JANUS_SDP_DEFAULT:
+					default:
+						stream->video_send = TRUE;
+						stream->video_recv = TRUE;
+						break;
 				}
 			} else {
 				/* Video rejected? */
@@ -892,7 +932,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		return NULL;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_ice_stream *stream = NULL;
-	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"RTP/SAVPF";
+	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"UDP/TLS/RTP/SAVPF";
 	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
 	/* Origin o= */
 	gint64 sessid = janus_get_real_time();
@@ -985,9 +1025,13 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* Check if we need to refuse the media or not */
 		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 			audio++;
-			gint id = handle->audio_id;
-			if(id == 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))
-				id = handle->video_id > 0 ? handle->video_id : handle->data_id;
+			guint id = handle->audio_id;
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+			} else {
+				id = handle->bundle_id;
+				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+			}
 			if(audio > 1 || !id) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, id);
 				m->port = 0;
@@ -996,7 +1040,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				continue;
 			}
 			/* Audio */
-			stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 			if(stream == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, id);
 				m->port = 0;
@@ -1004,11 +1047,35 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				temp = temp->next;
 				continue;
 			}
+			switch(m->direction) {
+				case JANUS_SDP_INACTIVE:
+					stream->audio_send = FALSE;
+					stream->audio_recv = FALSE;
+					break;
+				case JANUS_SDP_SENDONLY:
+					stream->audio_send = TRUE;
+					stream->audio_recv = FALSE;
+					break;
+				case JANUS_SDP_RECVONLY:
+					stream->audio_send = FALSE;
+					stream->audio_recv = TRUE;
+					break;
+				case JANUS_SDP_SENDRECV:
+				case JANUS_SDP_DEFAULT:
+				default:
+					stream->audio_send = TRUE;
+					stream->audio_recv = TRUE;
+					break;
+			}
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 			video++;
-			gint id = handle->video_id;
-			if(id == 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))
-				id = handle->audio_id > 0 ? handle->audio_id : handle->data_id;
+			guint id = handle->video_id;
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
+			} else {
+				id = handle->bundle_id;
+				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+			}
 			if(video > 1 || !id) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video, id);
 				m->port = 0;
@@ -1017,7 +1084,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				continue;
 			}
 			/* Video */
-			stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 			if(stream == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (invalid stream %d)\n", handle->handle_id, id);
 				m->port = 0;
@@ -1025,15 +1091,39 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				temp = temp->next;
 				continue;
 			}
+			switch(m->direction) {
+				case JANUS_SDP_INACTIVE:
+					stream->video_send = FALSE;
+					stream->video_recv = FALSE;
+					break;
+				case JANUS_SDP_SENDONLY:
+					stream->video_send = TRUE;
+					stream->video_recv = FALSE;
+					break;
+				case JANUS_SDP_RECVONLY:
+					stream->video_send = FALSE;
+					stream->video_recv = TRUE;
+					break;
+				case JANUS_SDP_SENDRECV:
+				case JANUS_SDP_DEFAULT:
+				default:
+					stream->video_send = TRUE;
+					stream->video_recv = TRUE;
+					break;
+			}
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* Is this SCTP for DataChannels? */
 			if(!strcasecmp(m->proto, "DTLS/SCTP") && m->port > 0) {
 				/* Yep */
 				data++;
-				gint id = handle->data_id;
-				if(id == 0 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))
-					id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+				guint id = handle->data_id;
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
+				} else {
+					id = handle->bundle_id;
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+				}
 				if(data > 1 || !id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (we have %d SCTP lines, and the id is %d)\n", handle->handle_id, data, id);
 					m->port = 0;
@@ -1042,7 +1132,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 					continue;
 				}
 				/* SCTP */
-				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (invalid stream %d)\n", handle->handle_id, id);
 					m->port = 0;

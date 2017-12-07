@@ -1130,8 +1130,10 @@ int janus_process_incoming_request(janus_request *request) {
 							/* This stream is redundant, merge it with the bundled stream */
 							if(stream->rtp_component && handle->audio_stream->rtp_component)
 								stream->rtp_component->do_audio_nacks = handle->audio_stream->rtp_component->do_audio_nacks;
-							stream->video_ssrc = handle->audio_stream->audio_ssrc;
-							stream->video_ssrc_peer = handle->audio_stream->audio_ssrc_peer;
+							stream->audio_ssrc = handle->audio_stream->audio_ssrc;
+							stream->audio_ssrc_peer = handle->audio_stream->audio_ssrc_peer;
+							stream->audio_send = handle->audio_stream->audio_send;
+							stream->audio_recv = handle->audio_stream->audio_recv;
 							nice_agent_attach_recv(handle->agent, handle->audio_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 								nice_agent_attach_recv(handle->agent, handle->audio_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
@@ -1149,6 +1151,8 @@ int janus_process_incoming_request(janus_request *request) {
 							stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
 							stream->video_ssrc_peer_sim_1 = handle->video_stream->video_ssrc_peer_sim_1;
 							stream->video_ssrc_peer_sim_2 = handle->video_stream->video_ssrc_peer_sim_2;
+							stream->video_send = handle->video_stream->video_send;
+							stream->video_recv = handle->video_stream->video_recv;
 							nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
@@ -2510,6 +2514,12 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "rid", rid);
 	}
 	json_object_set_new(s, "ssrc", ss);
+	json_t *sd = json_object();
+	json_object_set_new(sd, "audio-send", stream->audio_send ? json_true() : json_false());
+	json_object_set_new(sd, "audio-recv", stream->audio_recv ? json_true() : json_false());
+	json_object_set_new(sd, "video-send", stream->video_send ? json_true() : json_false());
+	json_object_set_new(sd, "video-recv", stream->video_recv ? json_true() : json_false());
+	json_object_set_new(s, "direction", sd);
 	json_t *components = json_array();
 	if(stream->rtp_component) {
 		json_t *c = janus_admin_component_summary(stream->rtp_component);
@@ -3055,8 +3065,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					/* This stream is redundant, merge it with the bundled stream */
 					if(stream->rtp_component && ice_handle->audio_stream->rtp_component)
 						stream->rtp_component->do_audio_nacks = ice_handle->audio_stream->rtp_component->do_audio_nacks;
-					stream->video_ssrc = ice_handle->audio_stream->audio_ssrc;
-					stream->video_ssrc_peer = ice_handle->audio_stream->audio_ssrc_peer;
+					stream->audio_ssrc = ice_handle->audio_stream->audio_ssrc;
+					stream->audio_ssrc_peer = ice_handle->audio_stream->audio_ssrc_peer;
+					stream->audio_send = ice_handle->audio_stream->audio_send;
+					stream->audio_recv = ice_handle->audio_stream->audio_recv;
 					nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 					if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 						nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
@@ -3074,6 +3086,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
 					stream->video_ssrc_peer_sim_1 = ice_handle->video_stream->video_ssrc_peer_sim_1;
 					stream->video_ssrc_peer_sim_2 = ice_handle->video_stream->video_ssrc_peer_sim_2;
+					stream->video_send = ice_handle->video_stream->video_send;
+					stream->video_recv = ice_handle->video_stream->video_recv;
 					nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 					if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);

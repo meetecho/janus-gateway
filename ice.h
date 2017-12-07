@@ -388,6 +388,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
+	/*! \brief Media direction */
+	gboolean audio_send, audio_recv, video_send, video_recv;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
 	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context for the video stream (may be bundled) */
