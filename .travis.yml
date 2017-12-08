@@ -1,0 +1,17 @@
+
+sudo: required
+
+node_js:
+    - node
+
+notifications:
+    email:
+        on_success: change
+        on_failure: change
+
+script: ./docker/travis-ci.sh
+
+env:
+ - image=cmacq2/janus-build-env:js-modules
+ - image=cmacq2/janus-build-env:http-w-openssl
+
