@@ -167,7 +167,12 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	int index = 1;
 	int profile_idc = *(buffer+index);
 	if(profile_idc != 66) {
-		JANUS_LOG(LOG_WARN, "Profile is not baseline (%d != 66)\n", profile_idc);
+		JANUS_LOG(LOG_WARN, "Profile is not baseline (%d), can't detect resolution "
+              "let's fallback on default max resolution (1920x1080)\n",
+              profile_idc);
+    *width = 1920;
+    *height = 1080;
+    return;
 	}
 	/* Then let's skip 2 bytes and evaluate/skip the rest */
 	index += 3;
