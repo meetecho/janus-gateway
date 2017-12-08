@@ -121,17 +121,24 @@
  * as a dependency. For instance, all the demos link to it externally via
  * <a href="https://cdnjs.com/">cdnjs.com</a>.
  *
- * \note The current \c janus.js library makes use of jQuery (http://jquery.com/)
- * as a support. A version without that dependency is available as
- * \c janus.nojquery.js in the same folder, so you can use that one instead
- * if required by your web application: all the documentation related to
- * \c janus.js applies to \c janus.nojquery.js as well (including the
- * dependency on the webrtc-adapter shim).
+ * \note The current \c janus.js library allows you to provide custom implementations of
+ * certain dependencies, in order to make it easier to integrate with other JavaScript
+ * libraries and frameworks. Using this feature you can ensure \c janus.js does not (implicitly)
+ * depend on certain global variables. Two implementations are included in \c janus.js itself:
+ *
+ *  -# \ref js-default-deps which relies on native browser APIs,
+ *     which in turn require somewhat more modern browsers
+ *  -# \ref js-old-deps which uses jQuery (http://jquery.com/) instead,
+ *     and should provide equivalent behaviour to previous versions of \c janus.js
+ *
+ * By default \ref js-default-deps will be used, but you can override this
+ * when initialising the Janus library and pass a custom dependencies object instead.
+ * For details, refer to: \ref js-dependencies
  *
  * In general, when using the gateway features, you would normally do the following:
  *
  * -# include the Janus JavaScript library in your web page;
- * -# initialize the Janus JavaScript library;
+ * -# initialize the Janus JavaScript library and (optionally) passing its dependencies;
  * -# connect to the gateway and create a session;
  * -# create one or more handles to attach to a plugin (e.g., echo test and/or streaming);
  * -# interact with the plugin (sending/receiving messages, negotiating a PeerConnection);
@@ -165,7 +172,8 @@
  *   - \c true or \c "all": all debuggers enabled (Janus.trace, Janus.debug, Janus.log, Janus.warn, Janus.error)
  *   - array (e.g., <code>["trace", "warn"]</code>): only enable selected debuggers (allowed tokens: trace, debug, log, warn, error)
  *   - \c false: disable all debuggers
- * - \c callback: a user provided function that is invoked when the initialization is complete. 
+ * - \c callback: a user provided function that is invoked when the initialization is complete
+ * - \c dependencies: a user provided implementation of Janus library dependencies
  *
  * Here's an example:
  *
@@ -173,6 +181,7 @@
  \verbatim
 Janus.init({
    debug: true,
+   dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
    callback: function() {
 	   // Done!
    });
@@ -572,6 +581,124 @@ janus.attach(
  * This is it! For more information about the API, have a look at the
  * demo pages that are available in the \b html folder in this package.
  *
+ */
+
+/*!\page js-dependencies Working with custom janus.js dependencies
+ *
+ * Certain dependencies of \c janus.js may be passed during library initialization as
+ * a property list containing the following keys:
+ *
+ * -# \c newWebSocket: a function which given WebSockets server and protocol arguments
+ * should return a new WebSocket (or something that acts like it)
+ * -# \c webRTCAdapter: an \c adapter object such as provided by the
+ * <a href="https://github.com/webrtc/adapter">webrtc-adapter</a> library
+ * -# \c isArray: a function which tests if a given argument is a JavaScript array
+ * -# \c checkJanusExtension: a function which tests if the Janus Screensharing extension
+ * for Chrome is installed/available. This can be done by testing whether or not an element
+ * with an \c id attribute value of \c janus-extension-installed is present.
+ * -# \c httpAPICall: a function which given an url and options argument performs an
+ * HTTP API request to the Janus Gateway. This function is not as straightforward to implement,
+ * see the section on \ref js-http-apicall below for details.
+ *
+ * Depending on your needs you do not have to provide all these dependencies, e.g.
+ * you do not need to implement the \c httpAPICall function if your application relies
+ * exclusively on WebSockets to access the gateway API.
+ *
+ * Two implementations of the dependencies object are provided by \c janus.js:
+ *
+ * -# \c Janus.useDefaultDependencies
+ * -# \c Janus.useOldDependencies
+ *
+ * In turn, each of these implementations accept their dependencies as arguments or fallback on
+ * certain global variables. Below follows an overview:
+ *
+ * \section js-default-deps Janus.useDefaultDependencies
+ * The \c Janus.useDefaultDependencies method relies on the following native browser APIs:
+ *
+ * -# \c Promise: support for \c Promises as standardised in ES 6 (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises)
+ * -# \c fetch: support for the \c fetch API (https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+ * -# \c WebSocket: support for the \c WebSocket API (https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
+ * -# \c document.querySelector: support for the \c document.querySelector API (https://developer.mozilla.org/en-US/docs/Web/API/Document/querySelector)
+ *
+ * Additionally the \c adapter object from the <a href="https://github.com/webrtc/adapter">webrtc-adapter</a> library is also required.
+ * These dependencies may either be passed explicitly to the function as a property list with keys of the same name, or
+ * if omitted the function will fallback to relying on global variables of that name instead.
+ *
+ * Example:
+\verbatim
+	var customDependencies = Janus.useDefaultDependencies({
+		fetch: myCustomFetchImplementation // myCustomFetchImplementation should provide a compatible fetch() API
+	});
+
+	var relyingOnGlobalsEntirely = Janus.useDefaultDependencies();
+\endverbatim
+ *
+ * Being able to passe dependencies like this is especially useful in the context of modern ES modules:
+ *
+\verbatim
+import adapter from 'webrtc-adapter';
+//  other imports elided
+
+const setupDeps = () => Janus.useDefaultDependencies({
+	adapter,
+	// other dependencies elided
+});
+
+export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps()});
+\endverbatim
+ *
+ * \section js-old-deps Janus.useOldDependencies
+ * The \c Janus.useOldDependencies method relies on:
+ *
+ * -# \c jQuery: the JQuery library (http://jquery.com/)
+ * -# \c WebSocket: support for the \c WebSocket API (https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
+ * -# \c adapter: the \c adapter object from the <a href="https://github.com/webrtc/adapter">webrtc-adapter</a> library
+ *
+ * This function provides a simple upgrade path for existing applications which are heavily
+ * tied to jQuery (especially since previous versions of \c janus.js depended on it).
+ *
+ * \section js-http-apicall httpAPICall
+ * The \c httpAPICall function is used to issue API calls to the Janus gateway HTTP(S) interfaces.
+ * It will be passed two arguments:
+ *
+ * -# \c url: a string which refers to the (server) URL of the API endpoint to contact
+ * -# \c options a property list (see below)
+ *
+ * Any return values from the \c httpAPICall function will be ignored.
+ *
+ * When working with HTTP request or response bodies, the \c httpAPICall is responsible for
+ * serialisation to, and deserialisation from the 'wire format' (JSON).
+ * That is: the \c httpAPICall must transform objects to JSON or parse JSON as and when required.
+ * Similarly, the \c httpAPICall is also responsible for setting appropriate HTTP
+ * \c Content-Type (application/json) and/or \c Accept headers.
+ *
+ * The \c options argument may contain the following keys:
+ *
+ * -# \c timeout: a timeout in miliseconds which should be imposed on the request.
+ *    The \c httpAPICall implementation is required to implement support for imposing timeouts
+ *    on HTTP API requests.
+ * -# \c body: payload to include as body of the outgoing HTTP request.
+      The \c httpAPICall must encode it in the 'wire format' (JSON).
+ * -# \c withCredentials: a boolean indicating whether or not HTTP credentials should be sent
+ * -# \c success: a callback which should be dispatched when an API request was successful.
+ * -# \c error: a callback which should be dispatched when an API request was unsuccessful, or timed out
+ * -# \c async: a boolean hint which indicates whether or not asynchronous requests are desirable.
+ *    This hint is a primarily a remnant for backwards compatible behaviour when working with jQuery.
+ *
+ * The \c success callback should be passed the deserialised API response body.
+ * The \c error callback accepts two arguments: a descriptive status text string and the raw error object
+ * which caused the \c error callback to be invoked.
+ *
+ * \note The \c httpAPICall represents the primary way to intercept HTTP(S) API calls issued from within the
+ * \c janus.js library. You can use this mechanism to augment outgoing requests with additional headers
+ * or to intercept responses. For example:
+ *
+ * -# You can support authentication schemes based on the HTTP \c Authorization header by
+ * injecting it into outgoing API requests and routing them through a proxy.
+ * -# You can intercept incoming responses and extract data from custom header values generated by a proxy.
+ * -# You can combine both to implement a robust defence against <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)">CSRF</a>
+ * -# You can reroute the control flow entirely, and e.g. use \c httpAPICall as an action creator in your
+ * <a href="http://redux.js.org/">Redux</a> application.
  */
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT and UnixSockets API
