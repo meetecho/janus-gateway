@@ -1,0 +1,11 @@
+FROM cmacq2/janus-build-env:base
+RUN apt-get update -qq && apt-get install -qq -y --no-install-recommends \
+        libmicrohttpd-dev
+
+CMD ["--disable-dependency-tracking", \
+     "--disable-unix-sockets", \
+     "--disable-mqtt", \
+     "--disable-websockets", \
+     "--disable-rabbitmq", \
+     "--disable-data-channels" \
+    ]
