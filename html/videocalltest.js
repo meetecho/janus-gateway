@@ -229,10 +229,29 @@ $(document).ready(function() {
 												$('#call').removeAttr('disabled').html('Hangup')
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
-											} else if(event === 'set') {
-												// A 'set' event may be used to provide an answer to an ICE restart
-												if(jsep)
-													videocall.handleRemoteJsep({jsep: jsep});
+											} else if(event === 'update') {
+												// An 'update' event may be used to provide renegotiation attempts
+												if(jsep) {
+													if(jsep.type === "answer") {
+														videocall.handleRemoteJsep({jsep: jsep});
+													} else {
+														videocall.createAnswer(
+															{
+																jsep: jsep,
+																media: { data: true },	// Let's negotiate data channels as well
+																success: function(jsep) {
+																	Janus.debug("Got SDP!");
+																	Janus.debug(jsep);
+																	var body = { "request": "set" };
+																	videocall.send({"message": body, "jsep": jsep});
+																},
+																error: function(error) {
+																	Janus.error("WebRTC error:", error);
+																	bootbox.alert("WebRTC error... " + JSON.stringify(error));
+																}
+															});
+													}
+												}
 											} else if(event === 'hangup') {
 												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
 												// Reset status
@@ -340,6 +359,7 @@ $(document).ready(function() {
 											if($("#remotevideo").get(0).videoWidth)
 												$('#remotevideo').show();
 										}
+										return;
 									}
 									$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the video, hide the spinner and show the resolution when we get a playing event
