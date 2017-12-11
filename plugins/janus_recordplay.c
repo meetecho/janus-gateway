@@ -335,11 +335,11 @@ static struct janus_json_parameter configure_parameters[] = {
 static struct janus_json_parameter record_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
 	{"filename", JSON_STRING, 0},
-	{"refresh", JANUS_JSON_BOOL, 0}
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter play_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"refresh", JANUS_JSON_BOOL, 0}
+	{"restart", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
@@ -1349,10 +1349,10 @@ static void *janus_recordplay_handler(void *data) {
 			if(filename) {
 				filename_text = json_string_value(filename);
 			}
-			json_t *refresh = json_object_get(root, "refresh");
-			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
-			if(do_refresh && !sdp_update) {
-				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			json_t *update = json_object_get(root, "update");
+			gboolean do_update = update ? json_is_true(update) : FALSE;
+			if(do_update && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'update' request, but no SDP update? Ignoring...\n");
 			}
 			/* Check if this is a new recorder, or if an update is taking place (i.e., ICE restart) */
 			guint64 id = 0;
@@ -1360,11 +1360,11 @@ static void *janus_recordplay_handler(void *data) {
 			gboolean audio = FALSE, video = FALSE;
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
-				JANUS_LOG(LOG_VERB, "Request to refresh existing recorder\n");
+				JANUS_LOG(LOG_VERB, "Request to update existing recorder\n");
 				if(!session->recorder || !session->recording) {
-					JANUS_LOG(LOG_ERR, "Not a recording session, can't refresh\n");
+					JANUS_LOG(LOG_ERR, "Not a recording session, can't update\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
-					g_snprintf(error_cause, 512, "Not a recording session, can't refresh");
+					g_snprintf(error_cause, 512, "Not a recording session, can't update");
 					goto error;
 				}
 				id = session->recording->id;
@@ -1372,7 +1372,7 @@ static void *janus_recordplay_handler(void *data) {
 				session->sdp_version++;		/* This needs to be increased when it changes */
 				audio = (session->arc != NULL);
 				video = (session->vrc != NULL);
-				sdp_update = do_refresh;
+				sdp_update = do_update;
 				goto recdone;
 			}
 			/* If we're here, we're doing a new recording */
@@ -1508,19 +1508,19 @@ recdone:
 				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			json_t *refresh = json_object_get(root, "refresh");
-			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			json_t *restart = json_object_get(root, "restart");
+			gboolean do_restart = restart ? json_is_true(restart) : FALSE;
 			/* Check if this is a new playout, or if an update is taking place (i.e., ICE restart) */
 			guint64 id_value = 0;
 			janus_recordplay_recording *rec = NULL;
 			const char *warning = NULL;
-			if(sdp_update || do_refresh) {
+			if(sdp_update || do_restart) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
-				JANUS_LOG(LOG_VERB, "Request to refresh existing playout\n");
+				JANUS_LOG(LOG_VERB, "Request to perform an ICE restart on existing playout\n");
 				if(session->recorder || session->recording == NULL || session->recording->offer == NULL) {
-					JANUS_LOG(LOG_ERR, "Not a playout session, can't refresh\n");
+					JANUS_LOG(LOG_ERR, "Not a playout session, can't restart\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
-					g_snprintf(error_cause, 512, "Not a playout session, can't refresh");
+					g_snprintf(error_cause, 512, "Not a playout session, can't restart");
 					goto error;
 				}
 				rec = session->recording;
@@ -1531,9 +1531,9 @@ recdone:
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(rec->offer, error_str, sizeof(error_str));
 				if(offer == NULL) {
-					JANUS_LOG(LOG_ERR, "Invalid offer, can't refresh\n");
+					JANUS_LOG(LOG_ERR, "Invalid offer, can't restart\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
-					g_snprintf(error_cause, 512, "Invalid, can't refresh");
+					g_snprintf(error_cause, 512, "Invalid, can't restart");
 					goto error;
 				}
 				offer->o_sessid = session->sdp_sessid;
@@ -1584,7 +1584,7 @@ playdone:
 			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);
 			/* Done! */
 			result = json_object();
-			json_object_set_new(result, "status", json_string(sdp_update ? "refreshing" : "preparing"));
+			json_object_set_new(result, "status", json_string(sdp_update ? "restarting" : "preparing"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			if(warning)
 				json_object_set_new(result, "warning", json_string(warning));

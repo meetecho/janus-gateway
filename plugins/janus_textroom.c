@@ -740,7 +740,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			json_decref(jsep);
 		g_free(transaction);
 		return result;
-	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "refresh")) {
+	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "restart")) {
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
 		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
@@ -1957,7 +1957,7 @@ static void *janus_textroom_handler(void *data) {
 				goto error;
 			}
 			do_offer = TRUE;
-		} else if(!strcasecmp(request_text, "refresh")) {
+		} else if(!strcasecmp(request_text, "restart")) {
 			if(!g_atomic_int_get(&session->setup)) {
 				JANUS_LOG(LOG_ERR, "PeerConnection not setup\n");
 				error_code = JANUS_TEXTROOM_ERROR_ALREADY_SETUP;

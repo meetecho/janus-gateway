@@ -718,7 +718,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
-	{"refresh", JANUS_JSON_BOOL, 0}
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -3149,7 +3149,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
-			json_t *refresh = json_object_get(root, "refresh");
+			json_t *update = json_object_get(root, "update");
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
 			if(quality) {
@@ -3271,9 +3271,9 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
 			}
-			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
-			if(do_refresh && !sdp_update) {
-				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			gboolean do_update = update ? json_is_true(update) : FALSE;
+			if(do_update && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'update' request, but no SDP update? Ignoring...\n");
 			}
 			/* Done */
 			event = json_object();
@@ -3681,7 +3681,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
-				JANUS_LOG(LOG_VERB, "Request to refresh existing connection\n");
+				JANUS_LOG(LOG_VERB, "Request to update existing connection\n");
 				session->sdp_version++;		/* This needs to be increased when it changes */
 			} else {
 				/* New PeerConnection */

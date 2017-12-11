@@ -749,9 +749,9 @@ static void *janus_voicemail_handler(void *data) {
 				json_object_set_new(info, "event", json_string("starting"));
 				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
 			}
-		} else if(!strcasecmp(request_text, "refresh")) {
-			/* Only needed in case of ICE restarts (but with 10s messages is this worth it?) */
-			JANUS_LOG(LOG_VERB, "Refreshing existing recording\n");
+		} else if(!strcasecmp(request_text, "update")) {
+			/* Only needed in case of renegotiations and ICE restarts (but with 10s messages is this worth it?) */
+			JANUS_LOG(LOG_VERB, "Updating existing recording\n");
 			if(session->stream == NULL || !session->started) {
 				JANUS_LOG(LOG_ERR, "Invalid state (not recording)\n");
 				error_code = JANUS_VOICEMAIL_ERROR_INVALID_STATE;
@@ -761,7 +761,7 @@ static void *janus_voicemail_handler(void *data) {
 			sdp_update = TRUE;
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
-			json_object_set_new(event, "status", json_string("refreshing"));
+			json_object_set_new(event, "status", json_string("updating"));
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
@@ -810,7 +810,7 @@ static void *janus_voicemail_handler(void *data) {
 				type = "offer";
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
-				JANUS_LOG(LOG_VERB, "Request to refresh existing connection\n");
+				JANUS_LOG(LOG_VERB, "Request to update existing connection\n");
 				session->sdp_version++;		/* This needs to be increased when it changes */
 			} else {
 				/* New PeerConnection */

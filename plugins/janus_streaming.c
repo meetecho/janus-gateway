@@ -230,7 +230,7 @@ static struct janus_json_parameter watch_parameters[] = {
 	{"offer_audio", JANUS_JSON_BOOL, 0},
 	{"offer_video", JANUS_JSON_BOOL, 0},
 	{"offer_data", JANUS_JSON_BOOL, 0},
-	{"refresh", JANUS_JSON_BOOL, 0}
+	{"restart", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
@@ -2639,7 +2639,7 @@ static void *janus_streaming_handler(void *data) {
 		json_t *result = NULL;
 		const char *sdp_type = NULL;
 		char *sdp = NULL;
-		gboolean do_refresh = FALSE;
+		gboolean do_restart = FALSE;
 		/* All these requests can only be handled asynchronously */
 		if(!strcasecmp(request_text, "watch")) {
 			JANUS_VALIDATE_JSON_OBJECT(root, watch_parameters,
@@ -2652,8 +2652,8 @@ static void *janus_streaming_handler(void *data) {
 			json_t *offer_video = json_object_get(root, "offer_video");
 			json_t *offer_data = json_object_get(root, "offer_data");
 			guint64 id_value = json_integer_value(id);
-			json_t *refresh = json_object_get(root, "refresh");
-			do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			json_t *restart = json_object_get(root, "restart");
+			do_restart = restart ? json_is_true(restart) : FALSE;
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 			if(mp == NULL) {
@@ -2673,9 +2673,9 @@ static void *janus_streaming_handler(void *data) {
 			janus_mutex_lock(&mp->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
-			if(do_refresh) {
+			if(do_restart) {
 				/* User asked for an ICE restart: provide a new offer */
-				JANUS_LOG(LOG_VERB, "Request to refresh mountpoint/stream %"SCNu64" subscription\n", id_value);
+				JANUS_LOG(LOG_VERB, "Request to perform an ICE restart on mountpoint/stream %"SCNu64" subscription\n", id_value);
 				session->sdp_version++;	/* This needs to be increased when it changes */
 				goto done;
 			}
@@ -2842,7 +2842,7 @@ done:
 			sdp = g_strdup(sdptemp);
 			JANUS_LOG(LOG_VERB, "Going to %s this SDP:\n%s\n", sdp_type, sdp);
 			result = json_object();
-			json_object_set_new(result, "status", json_string(do_refresh ? "refreshing" : "preparing"));
+			json_object_set_new(result, "status", json_string(do_restart ? "updating" : "preparing"));
 		} else if(!strcasecmp(request_text, "start")) {
 			if(session->mountpoint == NULL) {
 				JANUS_LOG(LOG_VERB, "Can't start: no mountpoint set\n");
@@ -3048,12 +3048,12 @@ done:
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		if(msg_sdp) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (%s):\n%s\n",
-				do_refresh ? "renegotiation occurring" : "but we really don't care", msg_sdp_type, msg_sdp);
+				do_restart ? "renegotiation occurring" : "but we really don't care", msg_sdp_type, msg_sdp);
 		}
 
 		/* Prepare JSON event */
 		json_t *jsep = json_pack("{ssss}", "type", sdp_type, "sdp", sdp);
-		if(do_refresh)
+		if(do_restart)
 			json_object_set_new(jsep, "restart", json_true());
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
