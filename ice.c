@@ -1133,7 +1133,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
 			}
 		}
@@ -1165,7 +1165,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		if(handle->data_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		if(g_main_loop_is_running(handle->iceloop)) {
+		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 			g_main_loop_quit(handle->iceloop);
 		}
 	}
@@ -1271,7 +1271,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 					break;
 				}
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
@@ -3478,7 +3478,7 @@ void *janus_ice_send_thread(void *data) {
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component && handle->audio_stream->rtp_component) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio_bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio_bytes_lastsec) : NULL);
 				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
