@@ -1043,26 +1043,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_text2pcap_close(handle->text2pcap);
 		g_clear_pointer(&handle->text2pcap, janus_text2pcap_free);
 	}
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop != NULL) {
-		if(handle->audio_id > 0) {
-			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-				nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-		}
-		if(handle->video_id > 0) {
-			nice_agent_attach_recv(handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-				nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-		}
-		if(handle->data_id > 0) {
-			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-		}
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-			g_main_loop_quit(handle->iceloop);
-		}
-	}
+	janus_ice_webrtc_hangup(handle, "Detach");
 
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
@@ -1116,14 +1098,16 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin != NULL) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
-			handle->handle_id, reason, plugin->get_name());
-		if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
-			plugin->hangup_media(handle->app_handle);
-		/* user will be notified only after the actual hangup */
-		handle->hangup_reason = reason;
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin != NULL) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
+				handle->handle_id, reason, plugin->get_name());
+			if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
+				plugin->hangup_media(handle->app_handle);
+			/* User will be notified only after the actual hangup */
+			handle->hangup_reason = reason;
+		}
 	}
 	if(handle->queued_packets != NULL && handle->send_thread_created)
 #if GLIB_CHECK_VERSION(2, 46, 0)
@@ -3365,24 +3349,30 @@ void *janus_ice_send_thread(void *data) {
 			if(handle->streams != NULL) {
 				if(handle->audio_stream) {
 					janus_ice_stream *stream = handle->audio_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 				if(handle->video_stream) {
 					janus_ice_stream *stream = handle->video_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 				if(handle->data_stream) {
 					janus_ice_stream *stream = handle->data_stream;
+					janus_refcount_increase(&stream->ref);
 					if(stream->rtp_component)
 						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
 					if(stream->rtcp_component)
 						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+					janus_refcount_decrease(&stream->ref);
 				}
 			}
 			while(g_async_queue_length(handle->queued_packets) > 0) {
@@ -3971,6 +3961,12 @@ void *janus_ice_send_thread(void *data) {
 			g_free(pkt);
 			pkt = NULL;
 			continue;
+		}
+	}
+	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		g_main_loop_quit(handle->iceloop);
+		if (handle->icectx != NULL) {
+			g_main_context_wakeup(handle->icectx);
 		}
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...; %p\n", handle->handle_id, handle);
