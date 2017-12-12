@@ -1399,8 +1399,10 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Adding onended callback to track:", event.track);
 					event.track.onended = function(ev) {
 						Janus.log("Remote track removed:", ev);
-						config.remoteStream.removeTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
+						if(config.remoteStream) {
+							config.remoteStream.removeTrack(ev.target);
+							pluginHandle.onremotestream(config.remoteStream);
+						}
 					}
 				}
 			};
