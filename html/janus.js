@@ -887,7 +887,6 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							sdpSent : false,
 							volume : {
 								value : null,
 								timer : null
@@ -970,7 +969,6 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							sdpSent : false,
 							volume : {
 								value : null,
 								timer : null
@@ -1241,7 +1239,6 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
-		Janus.warn(callbacks);
 		var asyncRequest = true;
 		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
 			asyncRequest = (callbacks.asyncRequest === true);
@@ -1305,82 +1302,111 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		Janus.debug("streamsDone:", stream);
-		config.myStream = stream;
-		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
-		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
-		var pc_constraints = {
-			"optional": [{"DtlsSrtpKeyAgreement": true}]
-		};
-		if(ipv6Support === true) {
-			// FIXME This is only supported in Chrome right now
-			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
-			pc_constraints.optional.push({"googIPv6":true});
-		}
-		// Any custom constraint to add?
-		if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
-			Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-			for(var i in callbacks.rtcConstraints) {
-				pc_constraints.optional.push(callbacks.rtcConstraints[i]);
+		Janus.debug("  -- Audio tracks:", stream.getAudioTracks());
+		Janus.debug("  -- Video tracks:", stream.getVideoTracks());
+		// We're capturing the new stream: check if we're updating or if it's a new thing
+		if(!config.myStream || !media.update || config.streamExternal) {
+			config.myStream = stream;
+		} else {
+			// We only need to update the existing stream
+			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
+					stream.getAudioTracks() && stream.getAudioTracks().length) {
+				Janus.log("Adding audio track:", stream.getAudioTracks()[0]);
+				config.myStream.addTrack(stream.getAudioTracks()[0]);
+				config.pc.addTrack(stream.getAudioTracks()[0], stream);
+			}
+			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
+					stream.getVideoTracks() && stream.getVideoTracks().length) {
+				Janus.log("Adding video track:", stream.getVideoTracks()[0]);
+				config.myStream.addTrack(stream.getVideoTracks()[0]);
+				config.pc.addTrack(stream.getVideoTracks()[0], stream);
 			}
 		}
-		if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
-			// This is Edge, enable BUNDLE explicitly
-			pc_config.bundlePolicy = "max-bundle";
-		}
-		Janus.log("Creating PeerConnection");
-		Janus.debug(pc_constraints);
-		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
-		Janus.debug(config.pc);
-		if(config.pc.getStats) {	// FIXME
-			config.volume.value = 0;
-			config.bitrate.value = "0 kbits/sec";
-		}
-		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
-		config.pc.oniceconnectionstatechange = function(e) {
-			if(config.pc)
-				pluginHandle.iceState(config.pc.iceConnectionState);
-		};
-		config.pc.onicecandidate = function(event) {
-			if (event.candidate == null ||
-					(Janus.webRTCAdapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
-				Janus.log("End of candidates.");
-				config.iceDone = true;
-				if(config.trickle === true) {
-					// Notify end of candidates
-					sendTrickleCandidate(handleId, {"completed": true});
+		// If we still need to create a PeerConnection, let's do that
+		if(!config.pc) {
+			var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
+			//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
+			var pc_constraints = {
+				"optional": [{"DtlsSrtpKeyAgreement": true}]
+			};
+			if(ipv6Support === true) {
+				// FIXME This is only supported in Chrome right now
+				// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
+				pc_constraints.optional.push({"googIPv6":true});
+			}
+			// Any custom constraint to add?
+			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
+				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
+				for(var i in callbacks.rtcConstraints) {
+					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
+				}
+			}
+			if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
+				// This is Edge, enable BUNDLE explicitly
+				pc_config.bundlePolicy = "max-bundle";
+			}
+			Janus.log("Creating PeerConnection");
+			Janus.debug(pc_constraints);
+			config.pc = new RTCPeerConnection(pc_config, pc_constraints);
+			Janus.debug(config.pc);
+			if(config.pc.getStats) {	// FIXME
+				config.volume.value = 0;
+				config.bitrate.value = "0 kbits/sec";
+			}
+			Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
+			config.pc.oniceconnectionstatechange = function(e) {
+				if(config.pc)
+					pluginHandle.iceState(config.pc.iceConnectionState);
+			};
+			config.pc.onicecandidate = function(event) {
+				if (event.candidate == null ||
+						(Janus.webRTCAdapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
+					Janus.log("End of candidates.");
+					config.iceDone = true;
+					if(config.trickle === true) {
+						// Notify end of candidates
+						sendTrickleCandidate(handleId, {"completed": true});
+					} else {
+						// No trickle, time to send the complete SDP (including all candidates)
+						sendSDP(handleId, callbacks);
+					}
 				} else {
-					// No trickle, time to send the complete SDP (including all candidates)
-					sendSDP(handleId, callbacks);
+					// JSON.stringify doesn't work on some WebRTC objects anymore
+					// See https://code.google.com/p/chromium/issues/detail?id=467366
+					var candidate = {
+						"candidate": event.candidate.candidate,
+						"sdpMid": event.candidate.sdpMid,
+						"sdpMLineIndex": event.candidate.sdpMLineIndex
+					};
+					if(config.trickle === true) {
+						// Send candidate
+						sendTrickleCandidate(handleId, candidate);
+					}
 				}
-			} else {
-				// JSON.stringify doesn't work on some WebRTC objects anymore
-				// See https://code.google.com/p/chromium/issues/detail?id=467366
-				var candidate = {
-					"candidate": event.candidate.candidate,
-					"sdpMid": event.candidate.sdpMid,
-					"sdpMLineIndex": event.candidate.sdpMLineIndex
-				};
-				if(config.trickle === true) {
-					// Send candidate
-					sendTrickleCandidate(handleId, candidate);
-				}
+			};
+			if(stream !== null && stream !== undefined) {
+				Janus.log('Adding local stream');
+				stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
 			}
-		};
-		if(stream !== null && stream !== undefined) {
-			Janus.log('Adding local stream');
-			stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
-			pluginHandle.onlocalstream(stream);
+			config.pc.ontrack = function(event) {
+				Janus.log("Handling Remote Track");
+				Janus.debug(event);
+				if(!event.streams)
+					return;
+				config.remoteStream = event.streams[0];
+				pluginHandle.onremotestream(config.remoteStream);
+				if(event.track && !event.track.onended) {
+					Janus.log("Adding onended callback to track:", event.track);
+					event.track.onended = function(ev) {
+						Janus.log("Remote track removed:", ev);
+						config.remoteStream.removeTrack(ev.target);
+						pluginHandle.onremotestream(config.remoteStream);
+					}
+				}
+			};
 		}
-		config.pc.ontrack = function(event) {
-			Janus.log("Handling Remote Track");
-			Janus.debug(event);
-			if(!event.streams)
-				return;
-			config.remoteStream = event.streams[0];
-			pluginHandle.onremotestream(config.remoteStream);
-		};
 		// Any data channel to create?
-		if(isDataEnabled(media)) {
+		if(isDataEnabled(media) && !config.dataChannel) {
 			Janus.log("Creating data channel");
 			var onDataChannelMessage = function(event) {
 				Janus.log('Received message on data channel: ' + event.data);
@@ -1404,6 +1430,9 @@ function Janus(gatewayCallbacks) {
 			config.dataChannel.onclose = onDataChannelStateChange;
 			config.dataChannel.onerror = onDataChannelError;
 		}
+		// If there's a new local stream, let's notify the application
+		if(config.myStream)
+			pluginHandle.onlocalstream(config.myStream);
 		// Create offer/answer now
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
@@ -1422,6 +1451,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : webrtcError;
 		var jsep = callbacks.jsep;
+		callbacks.media = callbacks.media || { audio: true, video: true };
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
@@ -1432,47 +1462,108 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		// Are we updating a session?
-		if(config.pc !== undefined && config.pc !== null) {
+		if(config.pc === undefined || config.pc === null) {
+			// Nope, new PeerConnection
+			media.update = false;
+		} else if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
-			// Any data channel to create in this renegotiation?
-			if(isDataEnabled(media) && !config.dataChannel) {
-				Janus.log("Creating data channel");
-				var onDataChannelMessage = function(event) {
-					Janus.log('Received message on data channel: ' + event.data);
-					pluginHandle.ondata(event.data);	// FIXME
+			media.update = true;
+			// Check if there's anything do add/remove/replace, or if we
+			// can go directly to preparing the new SDP offer or answer
+			if(callbacks.stream !== null && callbacks.stream !== undefined) {
+				// External stream: is this the same as the one we were using before?
+				if(callbacks.stream !== config.myStream) {
+					Janus.log("Renegotiation involves a new external stream");
 				}
-				var onDataChannelStateChange = function() {
-					var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
-					Janus.log('State change on data channel: ' + dcState);
-					if(dcState === 'open') {
-						pluginHandle.ondataopen();	// FIXME
+			} else {
+				// Check if there are changes on audio
+				if(media.addAudio) {
+					media.replaceAudio = false;
+					media.removeAudio = false;
+					media.audioSend = true;
+					if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
+						Janus.error("Can't add audio stream, there already is one");
+						callbacks.error("Can't add audio stream, there already is one");
+						return;
+					}
+				} else if(media.removeAudio) {
+					media.replaceAudio = false;
+					media.addAudio = false;
+					media.audioSend = false;
+				} else if(media.replaceAudio) {
+					media.addAudio = false;
+					media.removeAudio = false;
+					media.audioSend = true;
+				}
+				if(config.myStream === null || config.myStream === undefined) {
+					// No media stream: if we were asked to replace, it's actually an "add"
+					if(media.replaceAudio) {
+						media.replaceAudio = false;
+						media.addAudio = true;
+						media.audioSend = true;
+					}
+					if(isAudioSendEnabled(media))
+						media.addAudio = true;
+				} else {
+					if(config.myStream.getAudioTracks() === null
+							|| config.myStream.getAudioTracks() === undefined
+							|| config.myStream.getAudioTracks().length === 0) {
+						// No audio track: if we were asked to replace, it's actually an "add"
+						if(media.replaceAudio) {
+							media.replaceAudio = false;
+							media.addAudio = true;
+							media.audioSend = true;
+						}
+						if(isAudioSendEnabled(media))
+							media.addAudio = true;
 					}
 				}
-				var onDataChannelError = function(error) {
-					Janus.error('Got error on data channel:', error);
-					// TODO
+				// Check if there are changes on video
+				if(media.addVideo) {
+					media.replaceVideo = false;
+					media.removeVideo = false;
+					media.videoSend = true;
+					if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
+						Janus.error("Can't add video stream, there already is one");
+						callbacks.error("Can't add video stream, there already is one");
+						return;
+					}
+				} else if(media.removeVideo) {
+					media.replaceVideo = false;
+					media.addVideo = false;
+					media.videoSend = false;
+				} else if(media.replaceVideo) {
+					media.addVideo = false;
+					media.removeVideo = false;
+					media.videoSend = true;
 				}
-				// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
-				config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {ordered:false});	// FIXME Add options (ordered, maxRetransmits, etc.)
-				config.dataChannel.onmessage = onDataChannelMessage;
-				config.dataChannel.onopen = onDataChannelStateChange;
-				config.dataChannel.onclose = onDataChannelStateChange;
-				config.dataChannel.onerror = onDataChannelError;
+				if(config.myStream === null || config.myStream === undefined) {
+					// No media stream: if we were asked to replace, it's actually an "add"
+					if(media.replaceVideo) {
+						media.replaceVideo = false;
+						media.addVideo = true;
+						media.videoSend = true;
+					}
+					if(isVideoSendEnabled(media))
+						media.addVideo = true;
+				} else {
+					if(config.myStream.getVideoTracks() === null
+							|| config.myStream.getVideoTracks() === undefined
+							|| config.myStream.getVideoTracks().length === 0) {
+						// No video track: if we were asked to replace, it's actually an "add"
+						if(media.replaceVideo) {
+							media.replaceVideo = false;
+							media.addVideo = true;
+							media.videoSend = true;
+						}
+						if(isVideoSendEnabled(media))
+							media.addVideo = true;
+					}
+				}
+				// Data channels can only be added
+				if(media.addData)
+					media.data = true;
 			}
-			// Create offer/answer now
-			config.sdpSent = false;
-			config.mySdp = null;
-			if(jsep === null || jsep === undefined) {
-				createOffer(handleId, media, callbacks);
-			} else {
-				config.pc.setRemoteDescription(
-						new RTCSessionDescription(jsep),
-						function() {
-							Janus.log("Remote description accepted!");
-							createAnswer(handleId, media, callbacks);
-						}, callbacks.error);
-			}
-			return;
 		}
 		config.trickle = isTrickleEnabled(callbacks.trickle);
 		// Was a MediaStream object passed, or do we need to take care of that?
@@ -1480,10 +1571,62 @@ function Janus(gatewayCallbacks) {
 			var stream = callbacks.stream;
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
+			// If this is an update, let's check if we need to release the previous stream
+			if(media.update) {
+				if(config.myStream && config.myStream !== callbacks.stream && !config.streamExternal) {
+					// We're replacing a stream we captured ourselves with an external one
+					try {
+						// Try a MediaStreamTrack.stop() for each track
+						var tracks = config.myStream.getTracks();
+						for(var i in tracks) {
+							var mst = tracks[i];
+							Janus.log(mst);
+							if(mst !== null && mst !== undefined)
+								mst.stop();
+						}
+					} catch(e) {
+						// Do nothing if this fails
+					}
+					config.myStream = null;
+				}
+			}
 			// Skip the getUserMedia part
 			config.streamExternal = true;
 			streamsDone(handleId, jsep, media, callbacks, stream);
 			return;
+		}
+		// If we're updating, check if we need to remove/replace one of the tracks
+		if(media.update) {
+			if(media.removeAudio || media.replaceAudio) {
+				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
+					Janus.log("Removing audio track:", config.myStream.getAudioTracks()[0]);
+					config.myStream.removeTrack(config.myStream.getAudioTracks()[0]);
+				}
+				if(config.pc.getSenders() && config.pc.getSenders().length) {
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "audio") {
+							Janus.log("Removing audio sender:", s);
+							config.pc.removeTrack(s);
+						}
+					}
+				}
+			}
+			if(media.removeVideo || media.replaceVideo) {
+				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
+					Janus.log("Removing video track:", config.myStream.getVideoTracks()[0]);
+					config.myStream.removeTrack(config.myStream.getVideoTracks()[0]);
+				}
+				if(config.pc.getSenders() && config.pc.getSenders().length) {
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "video") {
+							Janus.log("Removing video sender:", s);
+							config.pc.removeTrack(s);
+						}
+					}
+				}
+			}
 		}
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
@@ -1837,8 +1980,6 @@ function Janus(gatewayCallbacks) {
 		}
 		var iceRestart = callbacks.iceRestart === true ? true : false;
 		if(iceRestart) {
-			config.sdpSent = false;
-			config.mySdp = null;
 			mediaConstraints["iceRestart"] = true;
 		}
 		Janus.debug(mediaConstraints);
@@ -1860,33 +2001,26 @@ function Janus(gatewayCallbacks) {
 		config.pc.createOffer(
 			function(offer) {
 				Janus.debug(offer);
-				if(config.mySdp === null || config.mySdp === undefined) {
-					Janus.log("Setting local description");
-					if(sendVideo && simulcast) {
-						// This SDP munging only works with Chrome
-						if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
-							Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
-							offer.sdp = mungeSdpForSimulcasting(offer.sdp);
-						} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
-						}
+				Janus.log("Setting local description");
+				if(sendVideo && simulcast) {
+					// This SDP munging only works with Chrome
+					if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+						Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
+						offer.sdp = mungeSdpForSimulcasting(offer.sdp);
+					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
-					config.mySdp = offer.sdp;
-					config.pc.setLocalDescription(offer);
 				}
+				config.mySdp = offer.sdp;
+				config.pc.setLocalDescription(offer);
 				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
-				if(config.sdpSent) {
-					Janus.log("Offer already sent, not sending it again");
-					return;
-				}
 				Janus.log("Offer ready");
 				Janus.debug(callbacks);
-				config.sdpSent = true;
 				// JSON.stringify doesn't work on some WebRTC objects anymore
 				// See https://code.google.com/p/chromium/issues/detail?id=467366
 				var jsep = {
@@ -1948,33 +2082,26 @@ function Janus(gatewayCallbacks) {
 		config.pc.createAnswer(
 			function(answer) {
 				Janus.debug(answer);
-				if(config.mySdp === null || config.mySdp === undefined) {
-					Janus.log("Setting local description");
-					if(sendVideo && simulcast) {
-						// This SDP munging only works with Chrome
-						if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
-							// FIXME Apparently trying to simulcast when answering breaks video in Chrome...
-							//~ Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
-							//~ answer.sdp = mungeSdpForSimulcasting(answer.sdp);
-							Janus.warn("simulcast=true, but this is an answer, and video breaks in Chrome if we enable it");
-						} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
-							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
-						}
+				Janus.log("Setting local description");
+				if(sendVideo && simulcast) {
+					// This SDP munging only works with Chrome
+					if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+						// FIXME Apparently trying to simulcast when answering breaks video in Chrome...
+						//~ Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
+						//~ answer.sdp = mungeSdpForSimulcasting(answer.sdp);
+						Janus.warn("simulcast=true, but this is an answer, and video breaks in Chrome if we enable it");
+					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
-					config.mySdp = answer.sdp;
-					config.pc.setLocalDescription(answer);
 				}
+				config.mySdp = answer.sdp;
+				config.pc.setLocalDescription(answer);
 				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
-				if(config.sdpSent) {	// FIXME badly
-					Janus.log("Answer already sent, not sending it again");
-					return;
-				}
-				config.sdpSent = true;
 				// JSON.stringify doesn't work on some WebRTC objects anymore
 				// See https://code.google.com/p/chromium/issues/detail?id=467366
 				var jsep = {
@@ -2005,10 +2132,6 @@ function Janus(gatewayCallbacks) {
 			"type": config.pc.localDescription.type,
 			"sdp": config.pc.localDescription.sdp
 		};
-		if(config.sdpSent) {
-			Janus.log("Offer/Answer SDP already sent, not sending it again");
-			return;
-		}
 		if(config.trickle === false)
 			config.mySdp["trickle"] = false;
 		Janus.debug(callbacks);
@@ -2265,7 +2388,6 @@ function Janus(gatewayCallbacks) {
 			config.pc = null;
 			config.mySdp = null;
 			config.iceDone = false;
-			config.sdpSent = false;
 			config.dataChannel = null;
 			config.dtmfSender = null;
 		}
