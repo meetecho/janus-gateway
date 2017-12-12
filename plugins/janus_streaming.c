@@ -610,6 +610,7 @@ static void *janus_streaming_watchdog(void *data) {
 		/* Iterate on all the mountpoints */
 		if(old_mountpoints != NULL) {
 			GList *sl = old_mountpoints;
+			now = janus_get_monotonic_time();
 			JANUS_LOG(LOG_HUGE, "Checking %d old Streaming mountpoints...\n", g_list_length(old_mountpoints));
 			while(sl) {
 				janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)sl->data;
