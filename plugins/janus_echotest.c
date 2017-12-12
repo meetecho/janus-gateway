@@ -1214,6 +1214,13 @@ static void *janus_echotest_handler(void *data) {
 				temp = temp->next;
 			}
 			janus_sdp *answer = janus_sdp_generate_answer(offer, JANUS_SDP_OA_DONE);
+			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
+			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
+			if(m && m->direction == JANUS_SDP_SENDONLY)
+				m->direction = JANUS_SDP_INACTIVE;
+			m = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO);
+			if(m && m->direction == JANUS_SDP_SENDONLY)
+				m->direction = JANUS_SDP_INACTIVE;
 			/* Add the extmap attribute, if needed */
 			if(session->rtpmapid_extmap_id > -1) {
 				/* First of all, let's check if the extmap attribute had a direction */
