@@ -1302,8 +1302,10 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		Janus.debug("streamsDone:", stream);
-		Janus.debug("  -- Audio tracks:", stream.getAudioTracks());
-		Janus.debug("  -- Video tracks:", stream.getVideoTracks());
+		if(stream) {
+			Janus.debug("  -- Audio tracks:", stream.getAudioTracks());
+			Janus.debug("  -- Video tracks:", stream.getVideoTracks());
+		}
 		// We're capturing the new stream: check if we're updating or if it's a new thing
 		if(!config.myStream || !media.update || config.streamExternal) {
 			config.myStream = stream;
