@@ -221,7 +221,8 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed") {
+									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videoleft").parent().block({
 											message: '<b>Publishing...</b>',
 											css: {
@@ -252,7 +253,7 @@ $(document).ready(function() {
 										}
 									} else {
 										$('#videoleft .no-video-container').remove();
-										$('#myvideo').show();
+										$('#myvideo').removeClass('hide').show();
 									}
 								},
 								onremotestream: function(stream) {
@@ -290,7 +291,7 @@ $(document).ready(function() {
 										}
 									} else {
 										$('#videoright .no-video-container').remove();
-										$('#peervideo').show();
+										$('#peervideo').removeClass('hide').show();
 									}
 									if(!addButtons)
 										return;

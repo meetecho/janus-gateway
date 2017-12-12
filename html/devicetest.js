@@ -303,7 +303,8 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed") {
+									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
 										// No remote video yet
 										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 										if(spinner == null) {
@@ -336,7 +337,7 @@ $(document).ready(function() {
 										}
 									} else {
 										$('#videoleft .no-video-container').remove();
-										$('#myvideo').show();
+										$('#myvideo').removeClass('hide').show();
 									}
 									// Reset devices controls
 									$('#audio-device, #video-device').removeAttr('disabled');
@@ -377,7 +378,7 @@ $(document).ready(function() {
 										}
 									} else {
 										$('#videoright .no-video-container').remove();
-										$('#peervideo').show();
+										$('#peervideo').removeClass('hide').show();
 									}
 									if(!addButtons)
 										return;
