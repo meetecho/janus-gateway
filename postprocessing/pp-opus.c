@@ -92,6 +92,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				ogg_stream_packetin(stream, op);
 				ogg_write();
 			}
+			ogg_flush();
 			g_free(op);
 		}
 		if(tmp->drop) {
@@ -123,6 +124,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		ogg_stream_packetin(stream, op);
 		g_free(op);
 		ogg_write();
+		ogg_flush();
 		tmp = tmp->next;
 	}
 	g_free(buffer);
