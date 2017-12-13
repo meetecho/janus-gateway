@@ -820,6 +820,7 @@ void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const 
 				uint i=0;
 				for(i=0; i<janus_video_codecs; i++) {
 					if(janus_sdp_get_codec_pt(sdp, janus_preferred_video_codecs[i]) > 0) {
+						video = TRUE;
 						if(vcodec)
 							*vcodec = janus_preferred_video_codecs[i];
 						break;

@@ -739,13 +739,13 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
-		janus_mutex_unlock(&sessions_mutex);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			error_code = JANUS_TEXTROOM_ERROR_INVALID_JSON;
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto plugin_response;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(root != NULL)
 			json_decref(root);
 		if(jsep != NULL)

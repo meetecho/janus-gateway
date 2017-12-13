@@ -2871,8 +2871,8 @@ static int janus_sipre_allocate_local_ports(janus_sipre_session *session) {
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.video_rtp_fd);
 				session->media.video_rtp_fd = -1;
-				close(session->media.video_rtp_fd);
-				session->media.video_rtp_fd = -1;
+				close(session->media.video_rtcp_fd);
+				session->media.video_rtcp_fd = -1;
 				attempts--;
 				continue;
 			}
