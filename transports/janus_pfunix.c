@@ -565,6 +565,8 @@ void *janus_pfunix_thread(void *data) {
 					while((payload = g_async_queue_try_pop(client->messages)) != NULL) {
 						int res = 0;
 						do {
+							if(client->fd < 0)
+								break;
 							res = write(client->fd, payload, strlen(payload));
 						} while(res == -1 && errno == EINTR);
 						/* FIXME Should we check if sent everything? */

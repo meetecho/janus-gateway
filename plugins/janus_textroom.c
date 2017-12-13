@@ -333,6 +333,7 @@ static void *janus_textroom_watchdog(void *data) {
 		if(old_rooms != NULL) {
 			GList *rl = old_rooms;
 			now = janus_get_monotonic_time();
+			JANUS_LOG(LOG_HUGE, "Checking %d old Textrooms...\n", g_list_length(old_rooms));
 			while(rl) {
 				janus_textroom_room *textroom = (janus_textroom_room*)rl->data;
 				if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping)){
@@ -540,6 +541,19 @@ void janus_textroom_destroy(void) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
+	/* Remove all textrooms */
+	janus_mutex_lock(&rooms_mutex);
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, rooms);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_textroom_room *room = value;
+		if(!room->destroyed) {
+			room->destroyed = janus_get_monotonic_time();
+			old_rooms = g_list_append(old_rooms, room);
+		}
+	}
+	janus_mutex_unlock(&rooms_mutex);
 	if(watchdog != NULL) {
 		g_thread_join(watchdog);
 		watchdog = NULL;
@@ -727,13 +741,13 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
-		janus_mutex_unlock(&sessions_mutex);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			error_code = JANUS_TEXTROOM_ERROR_INVALID_JSON;
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto plugin_response;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(root != NULL)
 			json_decref(root);
 		if(jsep != NULL)
