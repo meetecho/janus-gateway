@@ -173,6 +173,10 @@ static char *admin_ws_path = NULL;
 /* Custom Access-Control-Allow-Origin value, if specified */
 static char *allow_origin = NULL;
 
+/* cookies */
+static char cookie_value[500];
+static int cookie_max_age = 0;
+
 /* REST and Admin/Monitor ACL list */
 GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
 janus_mutex access_list_mutex;
@@ -1041,6 +1045,10 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 	session->destroyed = 0;
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
+
+	/* create cookie */
+	g_snprintf(cookie_value, sizeof(cookie_value), "%"G_GUINT64_FORMAT, (guint64)session_id);
+	cookie_max_age = 86400;
 }
 
 void janus_http_session_over(void *transport, guint64 session_id, gboolean timeout) {
@@ -1061,6 +1069,10 @@ void janus_http_session_over(void *transport, guint64 session_id, gboolean timeo
 	session->destroyed = janus_get_monotonic_time();
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
+
+	/* remove cookie */
+	g_snprintf(cookie_value, sizeof(cookie_value), "%"G_GUINT64_FORMAT, (guint64)session_id);
+	cookie_max_age = -1;
 }
 
 /* Connection notifiers */
@@ -1432,6 +1444,9 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	}
 
 parsingdone:
+	/* cookies */
+	cookie_value[0] = '\0';
+
 	/* Check if we have session and handle identifiers */
 	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
 	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
@@ -1684,6 +1699,9 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	}
 
 parsingdone:
+	/* cookies */
+	cookie_value[0] = '\0';
+
 	/* Check if we have session and handle identifiers */
 	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
 	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
@@ -1856,6 +1874,15 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 		payload ? strlen(payload) : 0,
 		(void*)payload,
 		MHD_RESPMEM_MUST_FREE);
+	
+	/* send cookie in header */
+	if(strlen(cookie_value) > 0) {
+		char cookie[1000];
+		g_snprintf(cookie, sizeof(cookie), "JANUSSID=%s;PATH=/;MAX-AGE=%d", cookie_value, cookie_max_age);
+		JANUS_LOG(LOG_DBG, "Set-Cookie: %s\n", cookie);
+		MHD_add_response_header(response, "Set-Cookie", cookie);
+	}
+
 	MHD_add_response_header(response, "Content-Type", "application/json");
 	janus_http_add_cors_headers(msg, response);
 	int ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
