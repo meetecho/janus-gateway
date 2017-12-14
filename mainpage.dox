@@ -156,7 +156,7 @@
  * above mentioned steps on your behalf. Needless to say, you're very welcome
  * to provide wrapper APIs yourself, if you feel a sudden urge to do so! :-)
  *
- * <hr>
+ * \section janusjs Using janus.js
  *
  * As a first step, you should include the Janus library in your project.
  * Depending on your needs you can either use \c janus.js or one of the generated
@@ -452,7 +452,11 @@ janus.attach(
  * mechanism provided by the \c Handle API, in particular describing
  * the properties and callbacks that may be involved. To follow the approach
  * outlined by the W3C WebRTC API, this negotiation mechanism is heavily
- * based on asynchronous methods as well.
+ * based on asynchronous methods as well. Notice that the following paragraphs
+ * address the first negotiation step, that is the one to create a new
+ * PeerConnection from scratch: to know how to originate or handle a
+ * renegotiation instead (e.g., to add/remove/replace a media source, or
+ * force an ICE restart) check the \ref renegotiation section instead.
  *
  * - \c createOffer takes a single parameter, that can contain any of the
  * following properties and callbacks:
@@ -597,6 +601,158 @@ janus.attach(
  * or receive some from them. Handling this is just a matter of checking
  * the \c type of the \c jsep object and reacting accordingly.
  *  
+ * \section renegotiation Updating an existing PeerConnection (renegotiations)
+ * While the JavaScript APIs described above will suffice for most of the
+ * common scenarios, there are cases when updates on a PeerConnection may
+ * be needed. This can happen whenever, for instance, you want to add a
+ * new media source (e.g., add video to an audio only call), replace an
+ * existing one (e.g., switch from capturing the camera to sharing your
+ * screen), or trigger an ICE restart because of a network change. All
+ * these actions require a renegotiation to occur, which means a new SDP
+ * offer/answer round to update the existing PeerConnection.
+ *
+ * Since version \c 0.2.6, renegotiations are indeed supported by Janus,
+ * and the \c janus.js library exposes ways to easily handle the process
+ * of updating a media session. More specifically, there are additional
+ * properties you can pass to \c createOffer and \c createAnswer for the
+ * purpose: most of the properties introduced in the previous section will
+ * still be usable, as it will be clearer in the next paragraphs.
+ *
+ * The new properties you can pass to \c media in \c createOffer and
+ * \c createAnswer are the following:
+ *
+ * - \c addAudio: if set, start capturing audio if you weren't (will fail
+ * if you're sending audio already);
+ * - \c addVideo: if set, start capturing video if you weren't (will fail
+ * if you're sending video already);
+ * - \c addData: if set, negotiate a datachannel if it didn't exist (is
+ * actually just a synonym for \c data:true );
+ * - \c removeAudio: if set, stop capturing audio and remove the local audio track;
+ * - \c removeVideo: if set, stop capturing video and remove the local video track;
+ * - \c replaceAudio: if set, stop capturing the current audio (remove the
+ * local audio track), and capture a new audio source;
+ * - \c replaceVideo: if set, stop capturing the current video (remove the
+ * local video track), and capture a new video source.
+ *
+ * Notice that these properties are only processed when you're trying a
+ * renegotiation, and will be ignored when creating a new PeerConnection.
+ *
+ * These properties don't replace the existing \c media properties, but go
+ * along with them. For instance, when adding a new video stream, or
+ * replacing an existing one, you can still use the video related properties
+ * as before, e.g., to pass a specific device ID or asking for a screenshare
+ * instead of a camera. Besides, notice that you'll currently have to pass
+ * info on the streams you want to keep as well, or they might be removed:
+ * this means that, if for instance you want to replace the video source,
+ * but want to keep the audio as it is, passing \c audio:false to the new
+ * createOffer will potentially disable audio.
+ *
+ * Here's a simple example of how you can use \c removeVideo to remove
+ * the local video capture in a session, e.g., in the EchoTest demo:
+ *
+ \verbatim
+// Remove local video
+echotest.createOffer(
+    {
+        media: { removeVideo: true },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * This other example shows how you can add a new video stream to an-audio
+ * only PeerConnection instead:
+ *
+ \verbatim
+// Add local video
+echotest.createOffer(
+    {
+        media: { addVideo: true },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * Finally, this example shows how you can replace the video track, by
+ * also showing how you can combine this with one of the properties we
+ * already met in the previous section:
+ *
+ \verbatim
+// Replace local video
+echotest.createOffer(
+    {
+        media: {
+            video: {
+                deviceId: "44f4740bee234ce6ddcfea8e59e8ed7505054f75edf27e3a12294686b37ff6a7"
+            },
+            replaceVideo: true
+        },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * Notice that renegotiations involving media changes (both local and remote)
+ * will likely result in new calls to the \c onlocalstream and \c onremotestream
+ * application callbacks: as such, be prepared to see those callbacks called
+ * for the same PeerConnection more than once during the course of a media session.
+ *
+ * \section ICE restarts
+ * While ICE restarts can be achieved with a renegotiation, they're complex
+ * enough to deserve a specific subsection. In fact, ICE restarts don't
+ * address changes in the media, but in the underlying transport itself.
+ * They're used, for instance, when there's a network change (e.g., the
+ * IP address changed, or the user switched from WiFi to 4G). In order for
+ * this to work, new candidates must be exchanged, and connectivity checks
+ * must be restarted in order to find the new optimal path.
+ *
+ * With \c janus.js, you can only force an ICE restart when sending a new
+ * offer. In order to do so, all you need to do is add `iceRestart:true`
+ * to your `createOffer` call, and an ICE restart will be requested. The
+ * following example shows how this can be done with the EchoTest:
+ *
+ \verbatim
+echotest.createOffer({
+    iceRestart: true,
+    media: { data: true },
+    success: function(jsep) {
+        echotest.send({message: {audio: true, video: true}, jsep: jsep});
+	}
+});
+ \endverbatim
+ *
+ * In this particular example, we're not asking for any change on the
+ * media streams, but just an ICE restart. If successful, as soon as the
+ * answer is received, the client and Janus will restart the ICE process
+ * and find a new path for the media packets.
+ *
+ * Notice that, with Janus and its plugins, you won't always be able to
+ * force an ICE restart by sending a new SDP offer yourself: some plugins,
+ * like the Streaming plugin for instance, will want to always send an
+ * offer themselves, which means they'll be the ones actually forcing the
+ * ICE restart from a negotiation perspective. In order to still allow
+ * users to actually originate the process, all the stock Janus plugins
+ * that assume they'll be sending offers for some or all of their media
+ * streams also expose APIs to force an ICE restart from the server side.
+ * You can learn more about this on a plugin level basis
+ * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/753">here</a> and
+ * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/1099">here</a>.
+ *
  * <hr>
  *
  * This is it! For more information about the API, have a look at the
