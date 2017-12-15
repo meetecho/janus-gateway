@@ -1217,6 +1217,8 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 	if(session->recorder) {
 		/* Create a .nfo file for this recording */
 		char nfofile[1024], nfo[1024];
+		nfofile[0] = '\0';
+		nfo[0] = '\0';
 		g_snprintf(nfofile, 1024, "%s/%"SCNu64".nfo", recordings_path, session->recording->id);
 		FILE *file = fopen(nfofile, "wt");
 		if(file == NULL) {
