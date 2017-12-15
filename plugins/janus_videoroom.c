@@ -1231,7 +1231,7 @@ static void janus_videoroom_notify_participants(janus_videoroom_participant *par
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, participant->room->participants);
-	while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+	while (participant->room && !participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_participant *p = value;
 		if(p && p->session && p != participant) {
 			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
@@ -1352,7 +1352,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 			json_object_set_new(info, "type", json_string("publisher"));
 			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-			if(participant) {
+			if(participant && participant->room) {
 				janus_videoroom *room = participant->room; 
 				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 				json_object_set_new(info, "id", json_integer(participant->user_id));
@@ -1391,9 +1391,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			json_object_set_new(info, "type", json_string("listener"));
 			janus_videoroom_listener *participant = (janus_videoroom_listener *)session->participant;
-			if(participant) {
+			if(participant && participant->room) {
 				janus_videoroom_participant *feed = (janus_videoroom_participant *)participant->feed;
-				if(feed) {
+				if(feed && feed->room) {
 					janus_videoroom *room = feed->room; 
 					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 					json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
@@ -2114,11 +2114,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_participant *p = value;
 			if(p && p->session) {
+				p->room = NULL;
 				/* Notify the user we're going to destroy the room... */
 				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, destroyed, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				/* ... and then ask the core to remove the handle */
-				gateway->end_session(p->session->handle);
+				/* ... and then ask the core to close the PeerConnection */
+				gateway->close_pc(p->session->handle);
 			}
 		}
 		json_decref(destroyed);
@@ -2891,7 +2892,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 	janus_videoroom *videoroom = participant->room;
 
-	if(participant->kicked)
+	if(participant->kicked || videoroom == NULL)
 		return;
 	/* In case this is an audio packet and we're doing talk detection, check the audio level extension */
 	if(!video && videoroom->audiolevel_event && participant->audio_active) {
@@ -3348,6 +3349,9 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			if(l) {
 				participant->listeners = g_slist_remove(participant->listeners, l);
 				l->feed = NULL;
+				l->room = NULL;
+				if(l->session)
+					gateway->close_pc(l->session->handle);
 			}
 		}
 		janus_mutex_unlock(&participant->listeners_mutex);
@@ -3808,6 +3812,12 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid participant instance");
 				goto error;
 			}
+			if(participant->room == NULL) {
+				JANUS_LOG(LOG_ERR, "No such room\n");
+				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+				g_snprintf(error_cause, 512, "No such room");
+				goto error;
+			}
 			if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")) {
 				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
@@ -4049,6 +4059,12 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Invalid listener instance\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid listener instance");
+				goto error;
+			}
+			if(listener->room == NULL) {
+				JANUS_LOG(LOG_ERR, "No such room\n");
+				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+				g_snprintf(error_cause, 512, "No such room");
 				goto error;
 			}
 			if(!strcasecmp(request_text, "join")) {
@@ -5049,6 +5065,9 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 		if(l) {
 			p->listeners = g_slist_remove(p->listeners, l);
 			l->feed = NULL;
+			l->room = NULL;
+			if(l->session)
+				gateway->close_pc(l->session->handle);
 		}
 	}
 	g_slist_free(p->subscriptions);
