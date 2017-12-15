@@ -2878,49 +2878,76 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, in
 #endif
 }
 
-void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
-	/* A plugin asked to get rid of a PeerConnection */
-	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
-		return;
-	janus_refcount_increase(&plugin_session->ref);
+static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
+	/* We actually enforce the close_pc here */
+	janus_plugin_session *plugin_session = (janus_plugin_session *) user_data;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle) {
 		janus_refcount_decrease(&plugin_session->ref);
-		return;
+		return G_SOURCE_REMOVE;
 	}
 	janus_refcount_increase(&ice_handle->ref);
 	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		janus_refcount_decrease(&plugin_session->ref);
 		janus_refcount_decrease(&ice_handle->ref);
-		return;
+		return G_SOURCE_REMOVE;
 	}
-	janus_session *session = (janus_session *)ice_handle->session;
-	if(!session) {
-		janus_refcount_decrease(&plugin_session->ref);
-		janus_refcount_decrease(&ice_handle->ref);
-		return;
-	}
-
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle, "Close PC");
 	janus_refcount_decrease(&plugin_session->ref);
 	janus_refcount_decrease(&ice_handle->ref);
+
+	return G_SOURCE_REMOVE;
+}
+
+void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
+	/* A plugin asked to get rid of a PeerConnection: enqueue it as a timed source */
+	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
+		return;
+	janus_refcount_increase(&plugin_session->ref);
+	GSource *timeout_source = g_timeout_source_new_seconds(0);
+	g_source_set_callback(timeout_source, janus_plugin_close_pc_internal, plugin_session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
+}
+
+static gboolean janus_plugin_end_session_internal(gpointer user_data) {
+	/* We actually enforce the end_session here */
+	janus_plugin_session *plugin_session = (janus_plugin_session *) user_data;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle) {
+		janus_refcount_decrease(&plugin_session->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_refcount_increase(&ice_handle->ref);
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session) {
+		janus_refcount_decrease(&plugin_session->ref);
+		janus_refcount_decrease(&ice_handle->ref);
+		return G_SOURCE_REMOVE;
+	}
+	/* Destroy the handle */
+	janus_session_handles_remove(session, ice_handle);
+
+	return G_SOURCE_REMOVE;
 }
 
 void janus_plugin_end_session(janus_plugin_session *plugin_session) {
-	/* A plugin asked to get rid of a handle */
+	/* A plugin asked to get rid of a handle: enqueue it as a timed source */
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-	if(!ice_handle)
-		return;
-	janus_session *session = (janus_session *)ice_handle->session;
-	if(!session)
-		return;
-	/* Destroy the handle */
-	janus_session_handles_remove(session, ice_handle);
+	GSource *timeout_source = g_timeout_source_new_seconds(0);
+	g_source_set_callback(timeout_source, janus_plugin_end_session_internal, plugin_session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
 }
 
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {

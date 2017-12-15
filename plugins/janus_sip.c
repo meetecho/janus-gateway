@@ -3784,7 +3784,7 @@ static void *janus_sip_relay_thread(void *data) {
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
-	int resfd = 0, bytes = 0;
+	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
@@ -3887,9 +3887,12 @@ static void *janus_sip_relay_thread(void *data) {
 						session->media.video_rtcp_fd = -1;
 						continue;
 					}
-					/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
 				}
-				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
+				/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
+				pollerrs++;
+				if(pollerrs < 100)
+					continue;
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Too many errors polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
@@ -3921,6 +3924,7 @@ static void *janus_sip_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
+					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
@@ -3962,7 +3966,7 @@ static void *janus_sip_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTCP channel...\n", bytes);
+					pollerrs = 0;
 					/* Is this SRTCP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
@@ -3985,10 +3989,7 @@ static void *janus_sip_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTP channel...\n", bytes);
-					//~ janus_rtp_header_t *rtp = (janus_rtp_header_t *)buffer;
-					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
@@ -4030,7 +4031,7 @@ static void *janus_sip_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTCP channel...\n", bytes);
+					pollerrs = 0;
 					/* Is this SRTCP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;

@@ -336,6 +336,7 @@ $(document).ready(function() {
 											if($("#remotevideo").get(0).videoWidth)
 												$('#remotevideo').show();
 										}
+										return;
 									}
 									$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the video, hide the spinner and show the resolution when we get a playing event
