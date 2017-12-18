@@ -182,9 +182,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
-					if(stream->video_rtcp_ctx == NULL) {
-						stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
-						stream->video_rtcp_ctx->tb = 90000;	/* May change later */
+					if(stream->video_rtcp_ctx[0] == NULL) {
+						stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
+						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 					}
 				}
 				switch(m->direction) {
@@ -380,10 +380,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		}
 		/* Now look for candidates and other info */
 		stream->audio_ssrc_peer_new = 0;
-		stream->video_ssrc_peer_new = 0;
+		stream->video_ssrc_peer_new[0] = 0;
 		stream->video_ssrc_peer_rtx_new = 0;
-		stream->video_ssrc_peer_sim_1_new = 0;
-		stream->video_ssrc_peer_sim_2_new = 0;
+		stream->video_ssrc_peer_new[1] = 0;
+		stream->video_ssrc_peer_new[2] = 0;
 		tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -451,40 +451,40 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 			stream->audio_ssrc_peer = stream->audio_ssrc_peer_new;
 			stream->audio_ssrc_peer_new = 0;
 		}
-		if(stream->video_ssrc_peer_new > 0 || stream->video_ssrc_peer_rtx_new > 0
-				|| stream->video_ssrc_peer_sim_1_new > 0 || stream->video_ssrc_peer_sim_2_new > 0) {
-			if(stream->video_ssrc_peer > 0 && stream->video_ssrc_peer != stream->video_ssrc_peer_new) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC changed: %"SCNu32" --> %"SCNu32"\n",
-					handle->handle_id, stream->video_ssrc_peer, stream->video_ssrc_peer_new);
-				/* FIXME Reset the RTCP context */
-				janus_ice_component *component = stream->rtp_component;
-				janus_mutex_lock(&component->mutex);
-				if(stream->video_rtcp_ctx)
-					memset(stream->video_rtcp_ctx, 0, sizeof(*stream->video_rtcp_ctx));
-				if(component->last_seqs_video)
-					janus_seq_list_free(&component->last_seqs_video);
-				janus_mutex_unlock(&component->mutex);
+		int vindex = 0;
+		for(vindex=0; vindex<3; vindex++) {
+			if(stream->video_ssrc_peer_new[vindex] > 0) {
+				if(stream->video_ssrc_peer[vindex] > 0 && stream->video_ssrc_peer[vindex] != stream->video_ssrc_peer_new[vindex]) {
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (#%d) changed: %"SCNu32" --> %"SCNu32"\n",
+						handle->handle_id, vindex, stream->video_ssrc_peer[vindex], stream->video_ssrc_peer_new[vindex]);
+					/* FIXME Reset the RTCP context */
+					janus_ice_component *component = stream->rtp_component;
+					janus_mutex_lock(&component->mutex);
+					if(stream->video_rtcp_ctx[vindex])
+						memset(stream->video_rtcp_ctx[vindex], 0, sizeof(*stream->video_rtcp_ctx[vindex]));
+					if(component->last_seqs_video[vindex])
+						janus_seq_list_free(&component->last_seqs_video[vindex]);
+					janus_mutex_unlock(&component->mutex);
+				}
+				stream->video_ssrc_peer[vindex] = stream->video_ssrc_peer_new[vindex];
+				stream->video_ssrc_peer_new[vindex] = 0;
 			}
-			stream->video_ssrc_peer = stream->video_ssrc_peer_new;
+		}
+		if(stream->video_ssrc_peer[1] && stream->video_rtcp_ctx[1] == NULL) {
+			stream->video_rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
+			stream->video_rtcp_ctx[1]->tb = 90000;
+		}
+		if(stream->video_ssrc_peer[2] && stream->video_rtcp_ctx[2] == NULL) {
+			stream->video_rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
+			stream->video_rtcp_ctx[2]->tb = 90000;
+		}
+		if(stream->video_ssrc_peer_rtx_new > 0) {
 			if(stream->video_ssrc_peer_rtx > 0 && stream->video_ssrc_peer_rtx != stream->video_ssrc_peer_rtx_new) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (rtx) changed: %"SCNu32" --> %"SCNu32"\n",
 					handle->handle_id, stream->video_ssrc_peer_rtx, stream->video_ssrc_peer_rtx_new);
 			}
 			stream->video_ssrc_peer_rtx = stream->video_ssrc_peer_rtx_new;
-			if(stream->video_ssrc_peer_sim_1 > 0 && stream->video_ssrc_peer_sim_1 != stream->video_ssrc_peer_sim_1_new) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 1) changed: %"SCNu32" --> %"SCNu32"\n",
-					handle->handle_id, stream->video_ssrc_peer_sim_1, stream->video_ssrc_peer_sim_1_new);
-			}
-			stream->video_ssrc_peer_sim_1 = stream->video_ssrc_peer_sim_1_new;
-			if(stream->video_ssrc_peer_sim_2 > 0 && stream->video_ssrc_peer_sim_2 != stream->video_ssrc_peer_sim_2_new) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (simulcast 2) changed: %"SCNu32" --> %"SCNu32"\n",
-					handle->handle_id, stream->video_ssrc_peer_sim_2, stream->video_ssrc_peer_sim_2_new);
-			}
-			stream->video_ssrc_peer_sim_2 = stream->video_ssrc_peer_sim_2_new;
-			stream->video_ssrc_peer_new = 0;
 			stream->video_ssrc_peer_rtx_new = 0;
-			stream->video_ssrc_peer_sim_1_new = 0;
-			stream->video_ssrc_peer_sim_2_new = 0;
 		}
 		temp = temp->next;
 	}
@@ -740,16 +740,16 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 				ssrc = g_ascii_strtoull(index, NULL, 0);
 				switch(i) {
 					case 1:
-						stream->video_ssrc_peer_new = ssrc;
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new);
+						stream->video_ssrc_peer_new[0] = ssrc;
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[0]);
 						break;
 					case 2:
 						if(fid) {
 							stream->video_ssrc_peer_rtx_new = ssrc;
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (rtx): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_rtx_new);
 						} else if(sim) {
-							stream->video_ssrc_peer_sim_1_new = ssrc;
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1_new);
+							stream->video_ssrc_peer_new[1] = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[1]);
 						} else {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 						}
@@ -758,8 +758,8 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 						if(fid) {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Found one too many retransmission SSRC (rtx): %"SCNu64"\n", handle->handle_id, ssrc);
 						} else if(sim) {
-							stream->video_ssrc_peer_sim_2_new = ssrc;
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2_new);
+							stream->video_ssrc_peer_new[2] = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[2]);
 						} else {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 						}
@@ -789,17 +789,17 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 		return -3;
 	if(video) {
 		if(stream->video_ssrc_peer_new == 0) {
-			stream->video_ssrc_peer_new = ssrc;
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new);
+			stream->video_ssrc_peer_new[0] = ssrc;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[0]);
 		} else {
 			/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
 			if(stream->rid[0]) {
-				if(stream->video_ssrc_peer_sim_1_new == 0) {
-					stream->video_ssrc_peer_sim_1_new = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1_new);
-				} else if(stream->video_ssrc_peer_sim_2_new == 0) {
-					stream->video_ssrc_peer_sim_2_new = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2_new);
+				if(stream->video_ssrc_peer[1] == 0) {
+					stream->video_ssrc_peer_new[1] = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[1]);
+				} else if(stream->video_ssrc_peer[2] == 0) {
+					stream->video_ssrc_peer_new[2] = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[2]);
 				} else {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 				}

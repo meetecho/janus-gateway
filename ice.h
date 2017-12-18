@@ -177,43 +177,39 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
 #define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
-#define JANUS_ICE_HANDLE_WEBRTC_PLAN_B				(1 << 11)
-#define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
-#define JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO			(1 << 13)
-#define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
-#define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
-#define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
-#define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 17)
-#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 18)
+#define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 11)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO			(1 << 12)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 13)
+#define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 14)
+#define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 15)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 16)
+#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
 
 
 /*! \brief Janus media statistics
  * \note To improve with more stuff */
+typedef struct janus_ice_stats_info {
+	/*! \brief Packets sent or received */
+	guint32 packets;
+	/*! \brief Bytes sent or received */
+	guint64 bytes;
+	/*! \brief Bytes sent or received in the last second */
+	GQueue *bytes_lastsec;
+	/*! \brief Whether or not we notified about lastsec issues already */
+	gboolean notified_lastsec;
+	/*! \brief Number of NACKs sent or received */
+	guint32 nacks;
+} janus_ice_stats_info;
+
+/*! \brief Janus media statistics container
+ * \note To improve with more stuff */
 typedef struct janus_ice_stats {
-	/*! \brief Audio packets sent or received */
-	guint32 audio_packets;
-	/*! \brief Audio bytes sent or received */
-	guint64 audio_bytes;
-	/*! \brief Audio bytes sent or received in the last second */
-	GQueue *audio_bytes_lastsec;
-	/*! \brief Whether or not we notified about audio lastsec issues already */
-	gboolean audio_notified_lastsec;
-	/*! \brief Number of audio NACKs sent or received */
-	guint32 audio_nacks;
-	/*! \brief Video packets sent or received */
-	guint32 video_packets;
-	/*! \brief Video bytes sent or received */
-	guint64 video_bytes;
-	/*! \brief Video bytes sent or received in the last second */
-	GQueue *video_bytes_lastsec;
-	/*! \brief Whether or not we notified about video lastsec issues already */
-	gboolean video_notified_lastsec;
-	/*! \brief Number of video NACKs sent or received */
-	guint32 video_nacks;
-	/*! \brief Data packets sent or received */
-	guint32 data_packets;
-	/*! \brief Data bytes sent or received */
-	guint64 data_bytes;
+	/*! \brief Audio info */
+	janus_ice_stats_info audio;
+	/*! \brief Video info (considering we may be simulcasting) */
+	janus_ice_stats_info video[3];
+	/*! \brief Data info */
+	janus_ice_stats_info data;
 	/*! \brief Last time the slow_link callback (of the plugin) was called */
 	gint64 last_slowlink_time;
 	/*! \brief Start time of recent NACKs (for slow_link) */
@@ -366,22 +362,14 @@ struct janus_ice_stream {
 	guint32 video_ssrc;
 	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
-	/*! \brief Video SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer, video_ssrc_peer_new, video_ssrc_peer_orig;
+	/*! \brief Video SSRC(s) of the peer for this stream (may be bundled, and simulcasting) */
+	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
 	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new, video_ssrc_peer_rtx_orig;
-	/*! \brief Video SSRC (simulcasted 1) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_1, video_ssrc_peer_sim_1_new, video_ssrc_peer_sim_1_orig;
-	/*! \brief Video SSRC (simulcasted 2) of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_sim_2, video_ssrc_peer_sim_2_new, video_ssrc_peer_sim_2_orig;
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
-	/*! \brief RTP switching context in case of renegotiations (audio+video) */
-	janus_rtp_switching_context rtp_ctx;
-	/*! \brief RTP switching context in case of renegotiations (video simulcast 1) */
-	janus_rtp_switching_context sim_1_rtp_ctx;
-	/*! \brief RTP switching context in case of renegotiations (video simulcast 2) */
-	janus_rtp_switching_context sim_2_rtp_ctx;
+	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
+	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect for audio */
 	GList *audio_payload_types;
 	/*! \brief List of payload types we can expect for video */
@@ -392,16 +380,16 @@ struct janus_ice_stream {
 	gboolean audio_send, audio_recv, video_send, video_recv;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
 	janus_rtcp_context *audio_rtcp_ctx;
-	/*! \brief RTCP context for the video stream (may be bundled) */
-	janus_rtcp_context *video_rtcp_ctx;
+	/*! \brief RTCP context(s) for the video stream (may be bundled, and simulcasting) */
+	janus_rtcp_context *video_rtcp_ctx[3];
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
 	guint32 audio_first_rtp_ts;
-	/*! \brief First received video NTP timestamp */
-	gint64 video_first_ntp_ts;
-	/*! \brief First received video NTP RTP timestamp */
-	guint32 video_first_rtp_ts;
+	/*! \brief First received video NTP timestamp (for all simulcast video streams) */
+	gint64 video_first_ntp_ts[3];
+	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
+	guint32 video_first_rtp_ts[3];
 	/*! \brief Last sent audio RTP timestamp */
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
@@ -475,8 +463,8 @@ struct janus_ice_component {
 	guint nack_sent_recent_cnt;
 	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
 	janus_seq_info *last_seqs_audio;
-	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
-	janus_seq_info *last_seqs_video;
+	/*! \brief List of recently received video sequence numbers (as a support to NACK generation, for each simulcast SSRC) */
+	janus_seq_info *last_seqs_video[3];
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
