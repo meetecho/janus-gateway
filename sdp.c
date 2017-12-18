@@ -351,6 +351,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 			}
 			tempA = tempA->next;
 		}
+		if(stream->video_ssrc_peer[1] && stream->video_rtcp_ctx[1] == NULL) {
+			stream->video_rtcp_ctx[1] = g_malloc0(sizeof(rtcp_context));
+			stream->video_rtcp_ctx[1]->tb = 90000;
+		}
+		if(stream->video_ssrc_peer[2] && stream->video_rtcp_ctx[2] == NULL) {
+			stream->video_rtcp_ctx[2] = g_malloc0(sizeof(rtcp_context));
+			stream->video_rtcp_ctx[2]->tb = 90000;
+		}
 		temp = temp->next;
 	}
 	if(ruser)
@@ -605,16 +613,16 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 				ssrc = g_ascii_strtoull(index, NULL, 0);
 				switch(i) {
 					case 1:
-						stream->video_ssrc_peer = ssrc;
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer);
+						stream->video_ssrc_peer[0] = ssrc;
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[0]);
 						break;
 					case 2:
 						if(fid) {
 							stream->video_ssrc_peer_rtx = ssrc;
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (rtx): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_rtx);
 						} else if(sim) {
-							stream->video_ssrc_peer_sim_1 = ssrc;
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1);
+							stream->video_ssrc_peer[1] = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[1]);
 						} else {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 						}
@@ -623,8 +631,8 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 						if(fid) {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Found one too many retransmission SSRC (rtx): %"SCNu64"\n", handle->handle_id, ssrc);
 						} else if(sim) {
-							stream->video_ssrc_peer_sim_2 = ssrc;
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2);
+							stream->video_ssrc_peer[2] = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[2]);
 						} else {
 							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 						}
@@ -654,17 +662,17 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 		return -3;
 	if(video) {
 		if(stream->video_ssrc_peer == 0) {
-			stream->video_ssrc_peer = ssrc;
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer);
+			stream->video_ssrc_peer[0] = ssrc;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[0]);
 		} else {
 			/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
 			if(stream->rid[0]) {
-				if(stream->video_ssrc_peer_sim_1 == 0) {
-					stream->video_ssrc_peer_sim_1 = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1);
-				} else if(stream->video_ssrc_peer_sim_2 == 0) {
-					stream->video_ssrc_peer_sim_2 = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2);
+				if(stream->video_ssrc_peer[1] == 0) {
+					stream->video_ssrc_peer[1] = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[1]);
+				} else if(stream->video_ssrc_peer[2] == 0) {
+					stream->video_ssrc_peer[2] = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer[2]);
 				} else {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
 				}
