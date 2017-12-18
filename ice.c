@@ -3919,7 +3919,7 @@ void *janus_ice_send_thread(void *data) {
 									stream->audio_first_rtp_ts = timestamp;
 								}
 								/* Let's check if this was G.711: in case we may need to change the timestamp base */
-								rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[0] : stream->audio_rtcp_ctx;
+								rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 								int pt = header->type;
 								if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
 									rtcp_ctx->tb = 8000;
