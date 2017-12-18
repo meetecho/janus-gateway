@@ -1130,10 +1130,10 @@ int janus_process_incoming_request(janus_request *request) {
 								if(handle->audio_stream->rtp_component && handle->video_stream->rtp_component)
 									handle->audio_stream->rtp_component->do_video_nacks = handle->video_stream->rtp_component->do_video_nacks;
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
-								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
+								handle->audio_stream->video_ssrc_peer[0] = handle->video_stream->video_ssrc_peer[0];
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
-								handle->audio_stream->video_ssrc_peer_sim_1 = handle->video_stream->video_ssrc_peer_sim_1;
-								handle->audio_stream->video_ssrc_peer_sim_2 = handle->video_stream->video_ssrc_peer_sim_2;
+								handle->audio_stream->video_ssrc_peer[1] = handle->video_stream->video_ssrc_peer[1];
+								handle->audio_stream->video_ssrc_peer[2] = handle->video_stream->video_ssrc_peer[2];
 								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 									nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
@@ -1153,9 +1153,13 @@ int janus_process_incoming_request(janus_request *request) {
 								if(handle->audio_stream->rtp_component)
 									handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 								handle->audio_stream->video_ssrc = 0;
-								handle->audio_stream->video_ssrc_peer = 0;
-								g_free(handle->audio_stream->video_rtcp_ctx);
-								handle->audio_stream->video_rtcp_ctx = NULL;
+								handle->audio_stream->video_ssrc_peer[0] = 0;
+								g_free(handle->audio_stream->video_rtcp_ctx[0]);
+								handle->audio_stream->video_rtcp_ctx[0] = NULL;
+								g_free(handle->audio_stream->video_rtcp_ctx[1]);
+								handle->audio_stream->video_rtcp_ctx[1] = NULL;
+								g_free(handle->audio_stream->video_rtcp_ctx[2]);
+								handle->audio_stream->video_rtcp_ctx[2] = NULL;
 							}
 						} else if(video) {
 							/* Get rid of data, if present */
@@ -1367,19 +1371,19 @@ int janus_process_incoming_request(janus_request *request) {
 			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
 			/* Check if VP8 simulcasting is enabled */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-				if(handle->video_stream && handle->video_stream->video_ssrc_peer_sim_1) {
+				if(handle->video_stream && handle->video_stream->video_ssrc_peer[1]) {
 					json_t *simulcast = json_object();
-					json_object_set(simulcast, "ssrc-0", json_integer(handle->video_stream->video_ssrc_peer));
-					json_object_set(simulcast, "ssrc-1", json_integer(handle->video_stream->video_ssrc_peer_sim_1));
-					if(handle->video_stream->video_ssrc_peer_sim_2)
-						json_object_set(simulcast, "ssrc-2", json_integer(handle->video_stream->video_ssrc_peer_sim_2));
+					json_object_set(simulcast, "ssrc-0", json_integer(handle->video_stream->video_ssrc_peer[0]));
+					json_object_set(simulcast, "ssrc-1", json_integer(handle->video_stream->video_ssrc_peer[1]));
+					if(handle->video_stream->video_ssrc_peer[2])
+						json_object_set(simulcast, "ssrc-2", json_integer(handle->video_stream->video_ssrc_peer[2]));
 					json_object_set(body_jsep, "simulcast", simulcast);
-				} else if(handle->audio_stream && handle->audio_stream->video_ssrc_peer_sim_1) {
+				} else if(handle->audio_stream && handle->audio_stream->video_ssrc_peer[1]) {
 					json_t *simulcast = json_object();
-					json_object_set(simulcast, "ssrc-0", json_integer(handle->audio_stream->video_ssrc_peer));
-					json_object_set(simulcast, "ssrc-1", json_integer(handle->audio_stream->video_ssrc_peer_sim_1));
-					if(handle->audio_stream->video_ssrc_peer_sim_2)
-						json_object_set(simulcast, "ssrc-2", json_integer(handle->audio_stream->video_ssrc_peer_sim_2));
+					json_object_set(simulcast, "ssrc-0", json_integer(handle->audio_stream->video_ssrc_peer[0]));
+					json_object_set(simulcast, "ssrc-1", json_integer(handle->audio_stream->video_ssrc_peer[1]));
+					if(handle->audio_stream->video_ssrc_peer[2])
+						json_object_set(simulcast, "ssrc-2", json_integer(handle->audio_stream->video_ssrc_peer[2]));
 					json_object_set(body_jsep, "simulcast", simulcast);
 				}
 			}
@@ -2311,7 +2315,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
 		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
-		json_object_set_new(flags, "plan-b", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
@@ -2440,14 +2443,14 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "video", json_integer(stream->video_ssrc));
 	if(stream->audio_ssrc_peer)
 		json_object_set_new(ss, "audio-peer", json_integer(stream->audio_ssrc_peer));
-	if(stream->video_ssrc_peer)
-		json_object_set_new(ss, "video-peer", json_integer(stream->video_ssrc_peer));
+	if(stream->video_ssrc_peer[0])
+		json_object_set_new(ss, "video-peer", json_integer(stream->video_ssrc_peer[0]));
 	if(stream->video_ssrc_peer_rtx)
 		json_object_set_new(ss, "video-peer-rtx", json_integer(stream->video_ssrc_peer_rtx));
-	if(stream->video_ssrc_peer_sim_1)
-		json_object_set_new(ss, "video-peer-sim-1", json_integer(stream->video_ssrc_peer_sim_1));
-	if(stream->video_ssrc_peer_sim_2)
-		json_object_set_new(ss, "video-peer-sim-2", json_integer(stream->video_ssrc_peer_sim_2));
+	if(stream->video_ssrc_peer[1])
+		json_object_set_new(ss, "video-peer-sim-1", json_integer(stream->video_ssrc_peer[1]));
+	if(stream->video_ssrc_peer[2])
+		json_object_set_new(ss, "video-peer-sim-2", json_integer(stream->video_ssrc_peer[2]));
 	if(stream->rid[0]) {
 		json_t *rid = json_array();
 		json_array_append_new(rid, json_string(stream->rid[0]));
@@ -2481,17 +2484,25 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(audio_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, TRUE)));
 		json_object_set_new(rtcp_stats, "audio", audio_rtcp_stats);
 	}
-	if(stream->video_rtcp_ctx != NULL) {
-		if(rtcp_stats == NULL)
-			rtcp_stats = json_object();
-		json_t *video_rtcp_stats = json_object();
-		json_object_set_new(video_rtcp_stats, "base", json_integer(stream->video_rtcp_ctx->tb));
-		json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
-		json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, FALSE)));
-		json_object_set_new(video_rtcp_stats, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, TRUE)));
-		json_object_set_new(video_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, FALSE)));
-		json_object_set_new(video_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, TRUE)));
-		json_object_set_new(rtcp_stats, "video", video_rtcp_stats);
+	int vindex=0;
+	for(vindex=0; vindex<3; vindex++) {
+		if(stream->video_rtcp_ctx[vindex] != NULL) {
+			if(rtcp_stats == NULL)
+				rtcp_stats = json_object();
+			json_t *video_rtcp_stats = json_object();
+			json_object_set_new(video_rtcp_stats, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
+			json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx[vindex])));
+			json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE)));
+			json_object_set_new(video_rtcp_stats, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], TRUE)));
+			json_object_set_new(video_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], FALSE)));
+			json_object_set_new(video_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], TRUE)));
+			if(vindex == 0)
+				json_object_set_new(rtcp_stats, "video", video_rtcp_stats);
+			else if(vindex == 1)
+				json_object_set_new(rtcp_stats, "video-sim1", video_rtcp_stats);
+			else
+				json_object_set_new(rtcp_stats, "video-sim2", video_rtcp_stats);
+		}
 	}
 	if(rtcp_stats != NULL)
 		json_object_set_new(s, "rtcp_stats", rtcp_stats);
@@ -2553,16 +2564,16 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
-			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
-			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
+			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio.packets));
+			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio.bytes));
 			json_object_set_new(in_stats, "do_audio_nacks", component->do_audio_nacks ? json_true() : json_false());
 			if(component->do_audio_nacks)
-				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
+				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio.nacks));
 			/* Compute the last second stuff too */
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
-			if(component->in_stats.audio_bytes_lastsec) {
-				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio_bytes_lastsec);
+			if(component->in_stats.audio.bytes_lastsec) {
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio.bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2573,39 +2584,50 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
 		}
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
-			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
-			json_object_set_new(in_stats, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
-			if(component->do_video_nacks)
-				json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
-			/* Compute the last second stuff too */
-			gint64 now = janus_get_monotonic_time();
-			guint64 bytes = 0;
-			if(component->in_stats.video_bytes_lastsec) {
-				GList *lastsec = g_queue_peek_head_link(component->in_stats.video_bytes_lastsec);
-				while(lastsec) {
-					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
-					if(s && now-s->when < G_USEC_PER_SEC)
-						bytes += s->bytes;
-					lastsec = lastsec->next;
+			int vindex=0;
+			for(vindex=0; vindex<3; vindex++) {
+				if(vindex > 0 && component->stream->video_ssrc_peer[vindex] == 0)
+					continue;
+				json_t *container = (vindex == 0 ? in_stats : json_object());
+				json_object_set_new(container, "video_packets", json_integer(component->in_stats.video[vindex].packets));
+				json_object_set_new(container, "video_bytes", json_integer(component->in_stats.video[vindex].bytes));
+				if(vindex == 0)
+					json_object_set_new(container, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
+				if(component->do_video_nacks)
+					json_object_set_new(container, "video_nacks", json_integer(component->in_stats.video[vindex].nacks));
+				/* Compute the last second stuff too */
+				gint64 now = janus_get_monotonic_time();
+				guint64 bytes = 0;
+				if(component->in_stats.video[vindex].bytes_lastsec) {
+					GList *lastsec = g_queue_peek_head_link(component->in_stats.video[vindex].bytes_lastsec);
+					while(lastsec) {
+						janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
+						if(s && now-s->when < G_USEC_PER_SEC)
+							bytes += s->bytes;
+						lastsec = lastsec->next;
+					}
 				}
+				json_object_set_new(container, "video_bytes_lastsec", json_integer(bytes));
+				if(vindex == 1)
+					json_object_set_new(in_stats, "video-simulcast-1", container);
+				else if(vindex == 2)
+					json_object_set_new(in_stats, "video-simulcast-2", container);
 			}
-			json_object_set_new(in_stats, "video_bytes_lastsec", json_integer(bytes));
 		}
-		json_object_set_new(in_stats, "data_packets", json_integer(component->in_stats.data_packets));
-		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
+		json_object_set_new(in_stats, "data_packets", json_integer(component->in_stats.data.packets));
+		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data.bytes));
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
-			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio_packets));
-			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
-			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
+			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio.packets));
+			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio.bytes));
+			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio.nacks));
 		}
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video_packets));
-			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
-			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
+			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video[0].packets));
+			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video[0].bytes));
+			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video[0].nacks));
 		}
-		json_object_set_new(out_stats, "data_packets", json_integer(component->out_stats.data_packets));
-		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
+		json_object_set_new(out_stats, "data_packets", json_integer(component->out_stats.data.packets));
+		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data.bytes));
 #ifdef HAVE_SCTP
 		/* FIXME Actually check if this succeeded? */
 		json_object_set_new(d, "sctp-association", dtls->sctp ? json_true() : json_false());
@@ -3000,10 +3022,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						if(ice_handle->audio_stream->rtp_component && ice_handle->video_stream->rtp_component)
 							ice_handle->audio_stream->rtp_component->do_video_nacks = ice_handle->video_stream->rtp_component->do_video_nacks;
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
-						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
+						ice_handle->audio_stream->video_ssrc_peer[0] = ice_handle->video_stream->video_ssrc_peer[0];
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
-						ice_handle->audio_stream->video_ssrc_peer_sim_1 = ice_handle->video_stream->video_ssrc_peer_sim_1;
-						ice_handle->audio_stream->video_ssrc_peer_sim_2 = ice_handle->video_stream->video_ssrc_peer_sim_2;
+						ice_handle->audio_stream->video_ssrc_peer[1] = ice_handle->video_stream->video_ssrc_peer[1];
+						ice_handle->audio_stream->video_ssrc_peer[2] = ice_handle->video_stream->video_ssrc_peer[2];
 						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 							nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
@@ -3023,9 +3045,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						if(ice_handle->audio_stream->rtp_component)
 							ice_handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 						ice_handle->audio_stream->video_ssrc = 0;
-						ice_handle->audio_stream->video_ssrc_peer = 0;
-						g_free(ice_handle->audio_stream->video_rtcp_ctx);
-						ice_handle->audio_stream->video_rtcp_ctx = NULL;
+						ice_handle->audio_stream->video_ssrc_peer[0] = 0;
+						g_free(ice_handle->audio_stream->video_rtcp_ctx[0]);
+						ice_handle->audio_stream->video_rtcp_ctx[0] = NULL;
+						g_free(ice_handle->audio_stream->video_rtcp_ctx[1]);
+						ice_handle->audio_stream->video_rtcp_ctx[1] = NULL;
+						g_free(ice_handle->audio_stream->video_rtcp_ctx[2]);
+						ice_handle->audio_stream->video_rtcp_ctx[2] = NULL;
 					}
 				} else if(video) {
 					/* Get rid of data, if present */
