@@ -190,7 +190,7 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 			case RTCP_SDES: {
 				/* SDES, source description */
 				JANUS_LOG(LOG_HUGE, "     #%d SDES (202)\n", pno);
-				rtcp_sdes *sdes = (rtcp_sdes*)rtcp;
+				rtcp_sdes *sdes = (rtcp_sdes *)rtcp;
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(sdes->chunk.ssrc));
 				if(fixssrc && newssrcl) {
 					sdes->chunk.ssrc = htonl(newssrcl);
@@ -200,7 +200,7 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 			case RTCP_BYE: {
 				/* BYE, goodbye */
 				JANUS_LOG(LOG_HUGE, "     #%d BYE (203)\n", pno);
-				rtcp_bye_t *bye = (rtcp_bye_t*)rtcp;
+				rtcp_bye_t *bye = (rtcp_bye_t *)rtcp;
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(bye->ssrc[0]));
 				if(fixssrc && newssrcl) {
 					bye->ssrc[0] = htonl(newssrcl);
@@ -210,7 +210,7 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 			case RTCP_APP: {
 				/* APP, application-defined */
 				JANUS_LOG(LOG_HUGE, "     #%d APP (204)\n", pno);
-				rtcp_app_t *app = (rtcp_app_t*)rtcp;
+				rtcp_app_t *app = (rtcp_app_t *)rtcp;
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(app->ssrc));
 				if(fixssrc && newssrcl) {
 					app->ssrc = htonl(newssrcl);
