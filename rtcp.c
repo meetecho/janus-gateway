@@ -163,7 +163,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				/* SR, sender report */
 				JANUS_LOG(LOG_HUGE, "     #%d SR (200)\n", pno);
 				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
-				/* RTCP context provided, update it with info on this SR */
+				/* If an RTCP context was provided, update it with info on this SR */
 				janus_rtcp_incoming_sr(ctx, sr);
 				if(fixssrc && newssrcl) {
 					sr->ssrc = htonl(newssrcl);
@@ -177,10 +177,8 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				/* RR, receiver report */
 				JANUS_LOG(LOG_HUGE, "     #%d RR (201)\n", pno);
 				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
-				if(ctx != NULL) {
-					/* RTCP context provided, update it with info on this SR */
-					janus_rtcp_incoming_rr(ctx, rr);
-				}
+				/* If an RTCP context was provided, update it with info on this RR */
+				janus_rtcp_incoming_rr(ctx, rr);
 				if(fixssrc && newssrcl) {
 					rr->ssrc = htonl(newssrcl);
 				}

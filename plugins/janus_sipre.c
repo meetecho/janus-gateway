@@ -3026,7 +3026,7 @@ static void *janus_sipre_relay_thread(void *data) {
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
-	int resfd = 0, bytes = 0;
+	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
@@ -3120,16 +3120,20 @@ static void *janus_sipre_relay_thread(void *data) {
 							session->account.username, strerror(error));
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
+						continue;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIPre-%s] Got a '%s' on the video RTCP socket, closing it\n",
 							session->account.username, strerror(error));
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
+						continue;
 					}
-					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
-					continue;
 				}
-				JANUS_LOG(LOG_ERR, "[SIPre-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
+				/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
+				pollerrs++;
+				if(pollerrs < 100)
+					continue;
+				JANUS_LOG(LOG_ERR, "[SIPre-%s] Too many errors polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIPre-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
@@ -3161,6 +3165,7 @@ static void *janus_sipre_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
 							(!video && session->media.audio_ssrc_peer != ntohl(header->ssrc))) {
