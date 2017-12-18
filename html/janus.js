@@ -1341,8 +1341,10 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		// We're now capturing the new stream: check if we're updating or if it's a new thing
+		var addTracks = false;
 		if(!config.myStream || !media.update || config.streamExternal) {
 			config.myStream = stream;
+			addTracks = true;
 		} else {
 			// We only need to update the existing stream
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
@@ -1420,10 +1422,6 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 			};
-			if(stream !== null && stream !== undefined) {
-				Janus.log('Adding local stream');
-				stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
-			}
 			config.pc.ontrack = function(event) {
 				Janus.log("Handling Remote Track");
 				Janus.debug(event);
@@ -1442,6 +1440,10 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 			};
+		}
+		if(addTracks && stream !== null && stream !== undefined) {
+			Janus.log('Adding local stream');
+			stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
 		}
 		// Any data channel to create?
 		if(isDataEnabled(media) && !config.dataChannel) {
