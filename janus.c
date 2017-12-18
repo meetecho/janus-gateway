@@ -2624,22 +2624,10 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio.packets));
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio.bytes));
+			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(component->in_stats.audio.bytes_lastsec));
 			json_object_set_new(in_stats, "do_audio_nacks", component->do_audio_nacks ? json_true() : json_false());
 			if(component->do_audio_nacks)
 				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio.nacks));
-			/* Compute the last second stuff too */
-			gint64 now = janus_get_monotonic_time();
-			guint64 bytes = 0;
-			if(component->in_stats.audio.bytes_lastsec) {
-				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio.bytes_lastsec);
-				while(lastsec) {
-					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
-					if(s && now-s->when < G_USEC_PER_SEC)
-						bytes += s->bytes;
-					lastsec = lastsec->next;
-				}
-			}
-			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
 		}
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			int vindex=0;
@@ -2649,23 +2637,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 				json_t *container = (vindex == 0 ? in_stats : json_object());
 				json_object_set_new(container, "video_packets", json_integer(component->in_stats.video[vindex].packets));
 				json_object_set_new(container, "video_bytes", json_integer(component->in_stats.video[vindex].bytes));
+				json_object_set_new(container, "video_bytes_lastsec", json_integer(component->in_stats.video[vindex].bytes_lastsec));
 				if(vindex == 0)
 					json_object_set_new(container, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
 				if(component->do_video_nacks)
 					json_object_set_new(container, "video_nacks", json_integer(component->in_stats.video[vindex].nacks));
-				/* Compute the last second stuff too */
-				gint64 now = janus_get_monotonic_time();
-				guint64 bytes = 0;
-				if(component->in_stats.video[vindex].bytes_lastsec) {
-					GList *lastsec = g_queue_peek_head_link(component->in_stats.video[vindex].bytes_lastsec);
-					while(lastsec) {
-						janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
-						if(s && now-s->when < G_USEC_PER_SEC)
-							bytes += s->bytes;
-						lastsec = lastsec->next;
-					}
-				}
-				json_object_set_new(container, "video_bytes_lastsec", json_integer(bytes));
 				if(vindex == 1)
 					json_object_set_new(in_stats, "video-simulcast-1", container);
 				else if(vindex == 2)
@@ -2677,11 +2653,13 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio.packets));
 			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio.bytes));
+			json_object_set_new(out_stats, "audio_bytes_lastsec", json_integer(component->out_stats.audio.bytes_lastsec));
 			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio.nacks));
 		}
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video[0].packets));
 			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video[0].bytes));
+			json_object_set_new(out_stats, "video_bytes_lastsec", json_integer(component->out_stats.video[0].bytes_lastsec));
 			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video[0].nacks));
 		}
 		json_object_set_new(out_stats, "data_packets", json_integer(component->out_stats.data.packets));
