@@ -4064,7 +4064,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 		/* Fix all SSRCs before enqueueing, as we need to use the ones for this media
 		 * leg. Note that this is only needed for RTCP packets coming from plugins: the
 		 * ones created by the core already have the right SSRCs in the right place */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
 			video ? stream->video_ssrc : stream->audio_ssrc,
 			video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
