@@ -979,28 +979,6 @@ const gchar *janus_get_ice_state_name(gint state) {
 	return janus_ice_state_name[state];
 }
 
-/* Stats */
-static void janus_ice_stats_queue_free(gpointer data) {
-	janus_ice_stats_item *s = (janus_ice_stats_item *)data;
-	g_free(s);
-}
-
-void janus_ice_stats_reset(janus_ice_stats *stats) {
-	if(stats == NULL)
-		return;
-	if(stats->audio.bytes_lastsec)
-		g_queue_free_full(stats->audio.bytes_lastsec, &janus_ice_stats_queue_free);
-	if(stats->video[0].bytes_lastsec)
-		g_queue_free_full(stats->video[0].bytes_lastsec, &janus_ice_stats_queue_free);
-	if(stats->video[1].bytes_lastsec)
-		g_queue_free_full(stats->video[1].bytes_lastsec, &janus_ice_stats_queue_free);
-	if(stats->video[2].bytes_lastsec)
-		g_queue_free_full(stats->video[2].bytes_lastsec, &janus_ice_stats_queue_free);
-	if(stats->data.bytes_lastsec)
-		g_queue_free_full(stats->data.bytes_lastsec, &janus_ice_stats_queue_free);
-	memset(stats, 0, sizeof(*stats));
-}
-
 
 /* ICE Handles */
 janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id) {
@@ -1488,8 +1466,6 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 		janus_seq_list_free(&component->last_seqs_video[1]);
 	if(component->last_seqs_video[2])
 		janus_seq_list_free(&component->last_seqs_video[2]);
-	janus_ice_stats_reset(&component->in_stats);
-	janus_ice_stats_reset(&component->out_stats);
 	g_free(component);
 	//~ janus_mutex_unlock(&handle->mutex);
 }
@@ -2125,45 +2101,48 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
-				/* Update stats (TODO Do the same for the last second window as well) */
+				/* Update stats (overall data received, and data received in the last second) */
 				if(buflen > 0) {
-					/* Update the last sec queue as well */
-					janus_ice_stats_item *s = g_malloc0(sizeof(janus_ice_stats_item));
-					s->bytes = buflen;
-					s->when = janus_get_monotonic_time();
-					janus_mutex_lock(&component->mutex);
+					gint64 now = janus_get_monotonic_time();
 					if(!video) {
 						if(component->in_stats.audio.bytes == 0 || component->in_stats.audio.notified_lastsec) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio.notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, FALSE, TRUE);
 						}
+						/* Overall audio data */
 						component->in_stats.audio.packets++;
 						component->in_stats.audio.bytes += buflen;
-						if(component->in_stats.audio.bytes_lastsec == NULL)
-							component->in_stats.audio.bytes_lastsec = g_queue_new();
-						g_queue_push_tail(component->in_stats.audio.bytes_lastsec, s);
-						if(g_queue_get_length(component->in_stats.audio.bytes_lastsec) > 100) {
-							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.audio.bytes_lastsec);
-							g_free(s);
+						/* Last second audio data */
+						if(component->in_stats.audio.updated == 0)
+							component->in_stats.audio.updated = now;
+						if(now > component->in_stats.audio.updated &&
+								now - component->in_stats.audio.updated >= G_USEC_PER_SEC) {
+							component->in_stats.audio.bytes_lastsec = component->in_stats.audio.bytes_lastsec_temp;
+							component->in_stats.audio.bytes_lastsec_temp = 0;
+							component->in_stats.audio.updated = now;
 						}
+						component->in_stats.audio.bytes_lastsec_temp += buflen;
 					} else {
 						if(component->in_stats.video[vindex].bytes == 0 || component->in_stats.video[vindex].notified_lastsec) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video[vindex].notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, TRUE, TRUE);
 						}
+						/* Overall video data for this SSRC */
 						component->in_stats.video[vindex].packets++;
 						component->in_stats.video[vindex].bytes += buflen;
-						if(component->in_stats.video[vindex].bytes_lastsec == NULL)
-							component->in_stats.video[vindex].bytes_lastsec = g_queue_new();
-						g_queue_push_tail(component->in_stats.video[vindex].bytes_lastsec, s);
-						if(g_queue_get_length(component->in_stats.video[vindex].bytes_lastsec) > 100) {
-							s = (janus_ice_stats_item *)g_queue_pop_head(component->in_stats.video[vindex].bytes_lastsec);
-							g_free(s);
+						/* Last second video data for this SSRC */
+						if(component->in_stats.video[vindex].updated == 0)
+							component->in_stats.video[vindex].updated = now;
+						if(now > component->in_stats.video[vindex].updated &&
+								now - component->in_stats.video[vindex].updated >= G_USEC_PER_SEC) {
+							component->in_stats.video[vindex].bytes_lastsec = component->in_stats.video[vindex].bytes_lastsec_temp;
+							component->in_stats.video[vindex].bytes_lastsec_temp = 0;
+							component->in_stats.video[vindex].updated = now;
 						}
+						component->in_stats.video[vindex].bytes_lastsec_temp += buflen;
 					}
-					janus_mutex_unlock(&component->mutex);
 				}
 
 				/* Update the RTCP context as well */
@@ -2442,7 +2421,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			&& janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Not RTP and not RTCP... may these be data channels?\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
-		/* Update stats (TODO Do the same for the last second window as well) */
+		/* Update stats (only overall data received) */
 		if(len > 0) {
 			component->in_stats.data.packets++;
 			component->in_stats.data.bytes += len;
@@ -3067,8 +3046,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->nack_sent_recent_cnt = 0;
 		audio_rtp->last_seqs_audio = NULL;
 		audio_rtp->last_seqs_video[0] = NULL;
-		janus_ice_stats_reset(&audio_rtp->in_stats);
-		janus_ice_stats_reset(&audio_rtp->out_stats);
 		janus_mutex_init(&audio_rtp->mutex);
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(1), audio_rtp);
 		audio_stream->rtp_component = audio_rtp;
@@ -3129,8 +3106,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->retransmit_log_ts = 0;
 			audio_rtcp->retransmit_recent_cnt = 0;
-			janus_ice_stats_reset(&audio_rtcp->in_stats);
-			janus_ice_stats_reset(&audio_rtcp->out_stats);
 			janus_mutex_init(&audio_rtcp->mutex);
 			g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 			audio_stream->rtcp_component = audio_rtcp;
@@ -3224,8 +3199,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->nack_sent_recent_cnt = 0;
 		video_rtp->last_seqs_audio = NULL;
 		video_rtp->last_seqs_video[0] = NULL;
-		janus_ice_stats_reset(&video_rtp->in_stats);
-		janus_ice_stats_reset(&video_rtp->out_stats);
 		janus_mutex_init(&video_rtp->mutex);
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(1), video_rtp);
 		video_stream->rtp_component = video_rtp;
@@ -3286,8 +3259,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->retransmit_log_ts = 0;
 			video_rtcp->retransmit_recent_cnt = 0;
-			janus_ice_stats_reset(&video_rtcp->in_stats);
-			janus_ice_stats_reset(&video_rtcp->out_stats);
 			janus_mutex_init(&video_rtcp->mutex);
 			g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 			video_stream->rtcp_component = video_rtcp;
@@ -3378,8 +3349,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->retransmit_buffer = NULL;
 		data_component->retransmit_log_ts = 0;
 		data_component->retransmit_recent_cnt = 0;
-		janus_ice_stats_reset(&data_component->in_stats);
-		janus_ice_stats_reset(&data_component->out_stats);
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */
@@ -3473,21 +3442,67 @@ void *janus_ice_send_thread(void *data) {
 			pkt = NULL;
 			continue;
 		}
-		/* First of all, let's see if everything's fine on the recv side */
+		/* Reset the last second counters if too much time passed with no data in or out */
 		gint64 now = janus_get_monotonic_time();
+		if(handle->audio_stream && handle->audio_stream->rtp_component) {
+			janus_ice_component *component = handle->audio_stream->rtp_component;
+			gint64 last = component->in_stats.audio.updated;
+			if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->in_stats.audio.bytes_lastsec_temp > 0) {
+				component->in_stats.audio.bytes_lastsec = 0;
+				component->in_stats.audio.bytes_lastsec_temp = 0;
+			}
+			last = component->out_stats.audio.updated;
+			if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->out_stats.audio.bytes_lastsec_temp > 0) {
+				component->out_stats.audio.bytes_lastsec = 0;
+				component->out_stats.audio.bytes_lastsec_temp = 0;
+			}
+			int vindex = 0;
+			for(vindex=0; vindex < 3; vindex++) {
+				last = component->in_stats.video[vindex].updated;
+				if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->in_stats.video[vindex].bytes_lastsec_temp > 0) {
+					component->in_stats.video[vindex].bytes_lastsec = 0;
+					component->in_stats.video[vindex].bytes_lastsec_temp = 0;
+				}
+				if(vindex > 0)	/* Outgoing data only uses a single SSRC */
+					continue;
+				last = component->out_stats.video[vindex].updated;
+				if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->out_stats.video[vindex].bytes_lastsec_temp > 0) {
+					component->out_stats.video[vindex].bytes_lastsec = 0;
+					component->out_stats.video[vindex].bytes_lastsec_temp = 0;
+				}
+			}
+		}
+		if(handle->video_stream && handle->video_stream->rtp_component) {
+			janus_ice_component *component = handle->video_stream->rtp_component;
+			int vindex = 0;
+			for(vindex=0; vindex < 3; vindex++) {
+				gint64 last = component->in_stats.video[vindex].updated;
+				if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->in_stats.video[vindex].bytes_lastsec_temp > 0) {
+					component->in_stats.video[vindex].bytes_lastsec = 0;
+					component->in_stats.video[vindex].bytes_lastsec_temp = 0;
+				}
+				last = component->out_stats.video[vindex].updated;
+				if(last && now > last && now-last >= 2*G_USEC_PER_SEC && component->out_stats.video[vindex].bytes_lastsec_temp > 0) {
+					component->out_stats.video[vindex].bytes_lastsec = 0;
+					component->out_stats.video[vindex].bytes_lastsec_temp = 0;
+				}
+			}
+		}
+		/* Let's see if we need to notify the user about no incoming audio or video */
 		if(no_media_timer > 0 && now-before >= G_USEC_PER_SEC) {
 			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
-				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.audio.bytes_lastsec ? g_queue_peek_tail(component->in_stats.audio.bytes_lastsec) : NULL);
-				if(!component->in_stats.audio.notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				gint64 last = component->in_stats.audio.updated;
+				if(!component->in_stats.audio.notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio.notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
 					janus_ice_notify_media(handle, FALSE, FALSE);
 				}
+				/* Note that for video we only use the base stream as a reference, not the simulcast streams */
 				if(!component->in_stats.video[0].notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					last = (janus_ice_stats_item *)(component->in_stats.video[0].bytes_lastsec ? g_queue_peek_tail(component->in_stats.video[0].bytes_lastsec) : NULL);
-					if(last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+					last = component->in_stats.video[0].updated;
+					if(last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 						/* We missed more than no_second_timer seconds of video! */
 						component->in_stats.video[0].notified_lastsec = TRUE;
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than %d seconds...\n", handle->handle_id, no_media_timer);
@@ -3495,10 +3510,11 @@ void *janus_ice_send_thread(void *data) {
 					}
 				}
 			}
+			/* Note that for video we only use the base stream as a reference, not the simulcast streams */
 			if(handle->video_stream && handle->video_stream->rtp_component) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
-				janus_ice_stats_item *last = (janus_ice_stats_item *)(component->in_stats.video[0].bytes_lastsec ? g_queue_peek_tail(component->in_stats.video[0].bytes_lastsec) : NULL);
-				if(!component->in_stats.video[0].notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				gint64 last = component->in_stats.video[0].updated;
+				if(!component->in_stats.video[0].notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video[0].notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
@@ -3644,6 +3660,8 @@ void *janus_ice_send_thread(void *data) {
 						json_object_set_new(info, "packets-sent", json_integer(stream->rtp_component->out_stats.audio.packets));
 						json_object_set_new(info, "bytes-received", json_integer(stream->rtp_component->in_stats.audio.bytes));
 						json_object_set_new(info, "bytes-sent", json_integer(stream->rtp_component->out_stats.audio.bytes));
+						json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->rtp_component->in_stats.audio.bytes_lastsec));
+						json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->rtp_component->out_stats.audio.bytes_lastsec));
 						json_object_set_new(info, "nacks-received", json_integer(stream->rtp_component->in_stats.audio.nacks));
 						json_object_set_new(info, "nacks-sent", json_integer(stream->rtp_component->out_stats.audio.nacks));
 					}
@@ -3675,6 +3693,8 @@ void *janus_ice_send_thread(void *data) {
 							json_object_set_new(info, "packets-sent", json_integer(stream->rtp_component->out_stats.video[vindex].packets));
 							json_object_set_new(info, "bytes-received", json_integer(stream->rtp_component->in_stats.video[vindex].bytes));
 							json_object_set_new(info, "bytes-sent", json_integer(stream->rtp_component->out_stats.video[vindex].bytes));
+							json_object_set_new(info, "bytes-received-lastsec", json_integer(stream->rtp_component->in_stats.video[vindex].bytes_lastsec));
+							json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->rtp_component->out_stats.video[vindex].bytes_lastsec));
 							json_object_set_new(info, "nacks-received", json_integer(stream->rtp_component->in_stats.video[vindex].nacks));
 							json_object_set_new(info, "nacks-sent", json_integer(stream->rtp_component->out_stats.video[vindex].nacks));
 						}
@@ -3910,7 +3930,18 @@ void *janus_ice_send_thread(void *data) {
 							guint32 timestamp = ntohl(header->timestamp);
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
 								component->out_stats.audio.packets++;
-								component->out_stats.audio.bytes += sent;
+								component->out_stats.audio.bytes += pkt->length;
+								/* Last second outgoing audio */
+								gint64 now = janus_get_monotonic_time();
+								if(component->out_stats.audio.updated == 0)
+									component->out_stats.audio.updated = now;
+								if(now > component->out_stats.audio.updated &&
+										now - component->out_stats.audio.updated >= G_USEC_PER_SEC) {
+									component->out_stats.audio.bytes_lastsec = component->out_stats.audio.bytes_lastsec_temp;
+									component->out_stats.audio.bytes_lastsec_temp = 0;
+									component->out_stats.audio.updated = now;
+								}
+								component->out_stats.audio.bytes_lastsec_temp += pkt->length;
 								stream->audio_last_ts = timestamp;
 								if(stream->audio_first_ntp_ts == 0) {
 									struct timeval tv;
@@ -3925,7 +3956,18 @@ void *janus_ice_send_thread(void *data) {
 									rtcp_ctx->tb = 8000;
 							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 								component->out_stats.video[0].packets++;
-								component->out_stats.video[0].bytes += sent;
+								component->out_stats.video[0].bytes += pkt->length;
+								/* Last second outgoing video */
+								gint64 now = janus_get_monotonic_time();
+								if(component->out_stats.video[0].updated == 0)
+									component->out_stats.video[0].updated = now;
+								if(now > component->out_stats.video[0].updated &&
+										now - component->out_stats.video[0].updated >= G_USEC_PER_SEC) {
+									component->out_stats.video[0].bytes_lastsec = component->out_stats.video[0].bytes_lastsec_temp;
+									component->out_stats.video[0].bytes_lastsec_temp = 0;
+									component->out_stats.video[0].updated = now;
+								}
+								component->out_stats.video[0].bytes_lastsec_temp += pkt->length;
 								stream->video_last_ts = timestamp;
 								if(stream->video_first_ntp_ts[0] == 0) {
 									struct timeval tv;

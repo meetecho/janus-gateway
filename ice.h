@@ -193,7 +193,9 @@ typedef struct janus_ice_stats_info {
 	/*! \brief Bytes sent or received */
 	guint64 bytes;
 	/*! \brief Bytes sent or received in the last second */
-	GQueue *bytes_lastsec;
+	guint32 bytes_lastsec, bytes_lastsec_temp;
+	/*! \brief Time we last updated the last second counter */
+	gint64 updated;
 	/*! \brief Whether or not we notified about lastsec issues already */
 	gboolean notified_lastsec;
 	/*! \brief Number of NACKs sent or received */
@@ -216,19 +218,6 @@ typedef struct janus_ice_stats {
 	/*! \brief Count of recent NACKs (for slow_link) */
 	guint sl_nack_recent_cnt;
 } janus_ice_stats;
-
-/*! \brief Janus media statistics: received packet info
- * \note To improve with more stuff */
-typedef struct janus_ice_stats_item {
-	/*! \brief Bytes sent or received */
-	guint64 bytes;
-	/*! \brief Time at which this happened */
-	gint64 when;
-} janus_ice_stats_item;
-
-/*! \brief Quick helper method to reset stats
- * @param stats The janus_ice_stats instance to reset */
-void janus_ice_stats_reset(janus_ice_stats *stats);
 
 /*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
  * @param handle The janus_ice_handle instance this event refers to
