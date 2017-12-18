@@ -890,8 +890,8 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		/* Update stats (TODO Do the same for the last second window as well)
 		 * FIXME: the Data stats includes the bytes used for the handshake */
 		if(bytes > 0) {
-			component->out_stats.data_packets++;
-			component->out_stats.data_bytes += bytes;
+			component->out_stats.data.packets++;
+			component->out_stats.data.bytes += bytes;
 		}
 		/* Check if there's anything left to send (e.g., fragmented packets) */
 		pending = BIO_ctrl_pending(dtls->filter_bio);
