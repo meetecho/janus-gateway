@@ -3681,7 +3681,6 @@ void *janus_ice_send_thread(void *data) {
 							json_object_set_new(info, "media", json_string("video-sim1"));
 						else
 							json_object_set_new(info, "media", json_string("video-sim2"));
-						json_object_set_new(info, "media", json_string("video"));
 						json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
 						json_object_set_new(info, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx[vindex])));
 						json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE)));
