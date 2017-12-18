@@ -2272,7 +2272,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				if (component->nack_sent_recent_cnt &&
 						(now - component->nack_sent_log_ts) > 5*G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%10"SCNu64"] Sent NACKs for %u missing packets (%s stream #%d)\n",
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sent NACKs for %u missing packets (%s stream #%d)\n",
 						handle->handle_id, component->nack_sent_recent_cnt, video ? "video" : "audio", vindex);
 					component->nack_sent_recent_cnt = 0;
 					component->nack_sent_log_ts = now;
@@ -2423,10 +2423,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					g_slist_free(nacks);
 					nacks = NULL;
 				}
-				if (component->retransmit_recent_cnt &&
-				    now - component->retransmit_log_ts > 5 * G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%10"SCNu64"]  retransmitted %u packets due to NACK\n",
-					                      handle->handle_id,    component->retransmit_recent_cnt);
+				if(component->retransmit_recent_cnt &&
+						now - component->retransmit_log_ts > 5*G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Retransmitted %u packets due to NACK (%s stream #%d)\n",
+						handle->handle_id, component->retransmit_recent_cnt, video ? "video" : "audio", vindex);
 					component->retransmit_recent_cnt = 0;
 					component->retransmit_log_ts = now;
 				}
