@@ -1617,11 +1617,16 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
+	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
-	if(g_atomic_int_get(&session->destroyed))
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_refcount_decrease(&session->ref);
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	}
+	if(g_atomic_int_add(&session->hangingup, 1)) {
+		janus_refcount_decrease(&session->ref);
 		return;
+	}
 	g_atomic_int_set(&session->started, 0);
 
 	/* Reset the media properties */
@@ -1654,6 +1659,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	lua_call(t, 1, 0);
 	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
+	janus_refcount_decrease(&session->ref);
 }
 
 /* Helpers to quickly relay RTP and data packets to the intended recipients */
