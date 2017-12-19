@@ -712,7 +712,7 @@ echotest.createOffer(
  * application callbacks: as such, be prepared to see those callbacks called
  * for the same PeerConnection more than once during the course of a media session.
  *
- * \section ICE restarts
+ * \section restarts ICE restarts
  * While ICE restarts can be achieved with a renegotiation, they're complex
  * enough to deserve a specific subsection. In fact, ICE restarts don't
  * address changes in the media, but in the underlying transport itself.
