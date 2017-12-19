@@ -1368,6 +1368,7 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 					}
 				}
+#ifdef HAVE_SCTP
 				if(!offer) {
 					/* Were datachannels just added? */
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
@@ -1383,6 +1384,7 @@ int janus_process_incoming_request(janus_request *request) {
 						}
 					}
 				}
+#endif
 			}
 			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
@@ -3222,6 +3224,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_mutex_unlock(&ice_handle->mutex);
 		}
 	}
+#ifdef HAVE_SCTP
 	if(!offer) {
 		/* Check if datachannels were just added on an existing PeerConnection */
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
@@ -3237,6 +3240,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 	}
+#endif
 
 	/* Prepare JSON event */
 	json_t *jsep = json_object();

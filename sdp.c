@@ -965,7 +965,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	/* Iterate on available media */
 	int audio = 0;
 	int video = 0;
+#ifdef HAVE_SCTP
 	int data = 0;
+#endif
 	GList *temp = anon->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
