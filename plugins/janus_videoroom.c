@@ -1229,6 +1229,8 @@ static janus_videoroom_publisher *janus_videoroom_session_get_publisher_nodebug(
 
 static void janus_videoroom_notify_participants(janus_videoroom_publisher *participant, json_t *msg) {
 	/* participant->room->mutex has to be locked. */
+	if(participant->room == NULL)
+		return;
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, participant->room->participants);
