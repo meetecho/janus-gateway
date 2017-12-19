@@ -183,6 +183,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 14)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 16)
+#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
 
 
 /*! \brief Janus media statistics
@@ -239,6 +240,7 @@ typedef struct janus_seq_info {
 	struct janus_seq_info *next;
 	struct janus_seq_info *prev;
 } janus_seq_info;
+void janus_seq_list_free(janus_seq_info **head);
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
@@ -287,6 +289,8 @@ struct janus_ice_handle {
 	guint video_id;
 	/*! \brief libnice ICE DataChannels ID */
 	guint data_id;
+	/*! \brief Stream ID used when bundling (will be one of the above) */
+	guint bundle_id;
 	/*! \brief Audio mid (media ID) */
 	gchar *audio_mid;
 	/*! \brief Video mid (media ID) */
@@ -346,23 +350,27 @@ struct janus_ice_stream {
 	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
 	guint32 video_ssrc;
 	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
-	guint32 audio_ssrc_peer;
+	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
 	/*! \brief Video SSRC(s) of the peer for this stream (may be bundled, and simulcasting) */
-	guint32 video_ssrc_peer[3];
+	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
-	guint32 video_ssrc_peer_rtx;
+	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new, video_ssrc_peer_rtx_orig;
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
+	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect for audio */
 	GList *audio_payload_types;
 	/*! \brief List of payload types we can expect for video */
 	GList *video_payload_types;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
+	/*! \brief Media direction */
+	gboolean audio_send, audio_recv, video_send, video_recv;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
-	rtcp_context *audio_rtcp_ctx;
+	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context(s) for the video stream (may be bundled, and simulcasting) */
-	rtcp_context *video_rtcp_ctx[3];
+	janus_rtcp_context *video_rtcp_ctx[3];
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
@@ -599,6 +607,9 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
  * @param[in] handle The Janus ICE handle this callback refers to
  * @param[in] component The Janus ICE component that is now ready to be used */
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
+/*! \brief Method to restart ICE and the connectivity checks
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_restart(janus_ice_handle *handle);
 ///@}
 
 #endif

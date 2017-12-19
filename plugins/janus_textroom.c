@@ -247,6 +247,8 @@ static char *admin_key = NULL;
 
 typedef struct janus_textroom_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	GHashTable *rooms;			/* Map of rooms this user is in, and related participant instance */
 	janus_mutex mutex;			/* Mutex to lock this session */
 	volatile gint setup;
@@ -752,7 +754,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			json_decref(jsep);
 		g_free(transaction);
 		return result;
-	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack")) {
+	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "restart")) {
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
 		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
@@ -1910,7 +1912,7 @@ static void *janus_textroom_handler(void *data) {
 	int error_code = 0;
 	char error_cause[512];
 	json_t *root = NULL;
-	gboolean do_offer = FALSE;
+	gboolean do_offer = FALSE, sdp_update = FALSE;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
@@ -1956,6 +1958,8 @@ static void *janus_textroom_handler(void *data) {
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
+		do_offer = FALSE;
+		sdp_update = FALSE;
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		do_offer = FALSE;
@@ -1966,6 +1970,15 @@ static void *janus_textroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "PeerConnection already setup");
 				goto error;
 			}
+			do_offer = TRUE;
+		} else if(!strcasecmp(request_text, "restart")) {
+			if(!g_atomic_int_get(&session->setup)) {
+				JANUS_LOG(LOG_ERR, "PeerConnection not setup\n");
+				error_code = JANUS_TEXTROOM_ERROR_ALREADY_SETUP;
+				g_snprintf(error_cause, 512, "PeerConnection not setup");
+				goto error;
+			}
+			sdp_update = TRUE;
 			do_offer = TRUE;
 		} else if(!strcasecmp(request_text, "ack")) {
 			/* The peer sent their answer back: do nothing */
@@ -1984,12 +1997,21 @@ static void *janus_textroom_handler(void *data) {
 			int ret = gateway->push_event(msg->handle, &janus_textroom_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
-			/* Send an offer */
+			/* Send an offer (whether it's for an ICE restart or not) */
+			if(sdp_update) {
+				/* Renegotiation: increase version */
+				session->sdp_version++;
+			} else {
+				/* New session: generate new values */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			char sdp[500];
 			g_snprintf(sdp, sizeof(sdp), sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time());			/* We need current time here */
+				session->sdp_sessid, session->sdp_version);
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+			if(sdp_update)
+				json_object_set_new(jsep, "restart", json_true());
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();

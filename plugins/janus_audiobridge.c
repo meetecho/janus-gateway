@@ -717,7 +717,8 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
-	{"display", JSON_STRING, 0}
+	{"display", JSON_STRING, 0},
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -812,6 +813,8 @@ static char *admin_key = NULL;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
@@ -2866,6 +2869,9 @@ static void *janus_audiobridge_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		if(!strcasecmp(request_text, "join")) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			janus_audiobridge_participant *participant = session->participant;
@@ -3143,6 +3149,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
+			json_t *update = json_object_get(root, "update");
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
 			if(quality) {
@@ -3263,6 +3270,10 @@ static void *janus_audiobridge_handler(void *data) {
 					participant->arc = NULL;
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
+			}
+			gboolean do_update = update ? json_is_true(update) : FALSE;
+			if(do_update && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'update' request, but no SDP update? Ignoring...\n");
 			}
 			/* Done */
 			event = json_object();
@@ -3668,6 +3679,15 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
 				goto error;
 			}
+			if(sdp_update) {
+				/* Renegotiation: make sure the user provided an offer, and send answer */
+				JANUS_LOG(LOG_VERB, "Request to update existing connection\n");
+				session->sdp_version++;		/* This needs to be increased when it changes */
+			} else {
+				/* New PeerConnection */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			/* What is the Opus payload type? */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 			participant->opus_pt = janus_sdp_get_codec_pt(offer, "opus");
@@ -3736,6 +3756,9 @@ static void *janus_audiobridge_handler(void *data) {
 					"%d%s %s\r\n", extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 			}
+			/* Let's overwrite a couple o= fields, in case this is a renegotiation */
+			answer->o_sessid = session->sdp_sessid;
+			answer->o_version = session->sdp_version;
 			/* Prepare the response */
 			char *sdp = janus_sdp_write(answer);
 			janus_sdp_free(offer);

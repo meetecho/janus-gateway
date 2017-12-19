@@ -300,7 +300,10 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
-	{"display", JSON_STRING, 0}
+	{"display", JSON_STRING, 0},
+	/* The following are just to force a renegotiation and/or an ICE restart */
+	{"update", JANUS_JSON_BOOL, 0},
+	{"restart", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -338,7 +341,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* The following is to handle a renegotiation */
+	{"update", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter listener_parameters[] = {
 	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -568,6 +573,8 @@ static void janus_videoroom_free(janus_videoroom *room);
 
 typedef struct janus_videoroom_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	janus_videoroom_p_type participant_type;
 	gpointer participant;
 	gboolean started;
@@ -1404,9 +1411,12 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 						json_object_set_new(info, "feed_display", json_string(feed->display));
 				}
 				json_t *media = json_object();
-				json_object_set_new(media, "audio", json_integer(participant->audio_offered));
-				json_object_set_new(media, "video", json_integer(participant->video_offered));
-				json_object_set_new(media, "data", json_integer(participant->data_offered));
+				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
+				json_object_set_new(media, "audio-offered", participant->audio_offered ? json_true() : json_false());
+				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
+				json_object_set_new(media, "video-offered", participant->video_offered ? json_true() : json_false());
+				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
+				json_object_set_new(media, "data-offered", participant->data_offered ? json_true() : json_false());
 				if(feed && feed->ssrc[0] != 0) {
 					json_object_set_new(info, "simulcast", json_true());
 					json_object_set_new(info, "substream", json_integer(participant->substream));
@@ -3449,6 +3459,9 @@ static void *janus_videoroom_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		/* 'create' and 'destroy' are handled synchronously: what kind of participant is this session referring to? */
 		if(session->participant_type == janus_videoroom_p_type_none) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
@@ -3700,14 +3713,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Initialize the listener context */
 					janus_rtp_switching_context_reset(&listener->context);
 					listener->audio_offered = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
-					if(!publisher->audio)
-						listener->audio_offered = FALSE;	/* ... unless the publisher isn't sending any audio */
 					listener->video_offered = offer_video ? json_is_true(offer_video) : TRUE;	/* True by default */
-					if(!publisher->video)
-						listener->video_offered = FALSE;	/* ... unless the publisher isn't sending any video */
 					listener->data_offered = offer_data ? json_is_true(offer_data) : TRUE;	/* True by default */
-					if(!publisher->data)
-						listener->data_offered = FALSE;	/* ... unless the publisher isn't sending any data */
 					if((!publisher->audio || !listener->audio_offered) &&
 							(!publisher->video || !listener->video_offered) &&
 							(!publisher->data || !listener->data_offered)) {
@@ -3759,6 +3766,7 @@ static void *janus_videoroom_handler(void *data) {
 					session->participant_type = janus_videoroom_p_type_subscriber;
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 					/* Negotiate by sending the selected publisher SDP back */
+					janus_mutex_lock(&publisher->listeners_mutex);
 					if(publisher->sdp != NULL) {
 						/* Check if there's something the original SDP has that we should remove */
 						char *sdp = publisher->sdp;
@@ -3776,9 +3784,11 @@ static void *janus_videoroom_handler(void *data) {
 							sdp = janus_sdp_write(offer);
 							janus_sdp_free(offer);
 						}
+						session->sdp_version = 1;
 						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
 						if(sdp != publisher->sdp)
 							g_free(sdp);
+						janus_mutex_unlock(&publisher->listeners_mutex);
 						/* How long will the gateway take to push the event? */
 						g_atomic_int_set(&session->hangingup, 0);
 						gint64 start = janus_get_monotonic_time();
@@ -3798,6 +3808,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						continue;
 					}
+					janus_mutex_unlock(&publisher->listeners_mutex);
 				}
 			} else {
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
@@ -3853,6 +3864,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
+				json_t *update = json_object_get(root, "update");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(session->started && audio_active && !participant->audio_active) {
@@ -3991,6 +4003,11 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&participant->room->participants_mutex);
 					json_decref(display_event);
 				}
+				/* A renegotiation may be taking place */
+				gboolean do_update = update ? json_is_true(update) : FALSE;
+				if(do_update && !sdp_update) {
+					JANUS_LOG(LOG_WARN, "Got an 'update' request, but no SDP update? Ignoring...\n");
+				}
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
@@ -4096,6 +4113,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
+				json_t *restart = json_object_get(root, "restart");
+				json_t *update = json_object_get(root, "update");
 				json_t *spatial = json_object_get(root, "spatial_layer");
 				json_t *temporal = json_object_get(root, "temporal_layer");
 				json_t *sc_substream = json_object_get(root, "substream");
@@ -4232,6 +4251,45 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "configured", json_string("ok"));
+				/* The user may be interested in an ICE restart */
+				gboolean do_restart = restart ? json_is_true(restart) : FALSE;
+				gboolean do_update = update ? json_is_true(update) : FALSE;
+				if(sdp_update || do_restart || do_update) {
+					/* Negotiate by sending the selected publisher SDP back, and/or force an ICE restart */
+					if(publisher->sdp != NULL) {
+						char temp_error[512];
+						JANUS_LOG(LOG_VERB, "Munging SDP offer to adapt it to the listener's requirements\n");
+						janus_sdp *offer = janus_sdp_parse(publisher->sdp, temp_error, sizeof(temp_error));
+						if(publisher->audio && !listener->audio_offered)
+							janus_sdp_mline_remove(offer, JANUS_SDP_AUDIO);
+						if(publisher->video && !listener->video_offered)
+							janus_sdp_mline_remove(offer, JANUS_SDP_VIDEO);
+						if(publisher->data && !listener->data_offered)
+							janus_sdp_mline_remove(offer, JANUS_SDP_APPLICATION);
+						session->sdp_version++;
+						offer->o_version = session->sdp_version;
+						char *newsdp = janus_sdp_write(offer);
+						janus_sdp_free(offer);
+						JANUS_LOG(LOG_VERB, "Updating subscriber:\n%s\n", newsdp);
+						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", newsdp);
+						if(do_restart)
+							json_object_set_new(jsep, "restart", json_true());
+						/* How long will the gateway take to push the event? */
+						gint64 start = janus_get_monotonic_time();
+						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, jsep);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+						json_decref(event);
+						json_decref(jsep);
+						g_free(newsdp);
+						/* Any update in the media directions? */
+						listener->audio = publisher->audio;
+						listener->video = publisher->video;
+						listener->data = publisher->data;
+						/* Done */
+						janus_videoroom_message_free(msg);
+						continue;
+					}
+				}
 			} else if(!strcasecmp(request_text, "pause")) {
 				/* Stop receiving the publisher streams for a while */
 				listener->paused = TRUE;
@@ -4371,16 +4429,27 @@ static void *janus_videoroom_handler(void *data) {
 
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-		/* Any SDP to handle? */
+		/* Any SDP or update to handle? */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(!msg_sdp) {
+			/* No SDP to send */
 			int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
 		} else {
+			/* Generate offer or answer */
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			if(sdp_update) {
+				/* Renegotiation: make sure the user provided an offer, and send answer */
+				JANUS_LOG(LOG_VERB, "  -- Updating existing publisher\n");
+				session->sdp_version++;		/* This needs to be increased when it changes */
+			} else {
+				/* New PeerConnection */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			const char *type = NULL;
 			if(!strcasecmp(msg_sdp_type, "offer")) {
 				/* We need to answer */
@@ -4661,26 +4730,28 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
+				if(!sdp_update) {
+					/* Is this room recorded? */
+					janus_mutex_lock(&participant->rec_mutex);
+					if(videoroom->record || participant->recording_active) {
+						janus_videoroom_recorder_create(participant, participant->audio, participant->video, participant->data);
+					}
+					/* Is simulcasting involved */
+					if(msg_simulcast && participant->vcodec == JANUS_VIDEOROOM_VP8) {
+						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
+						participant->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+						participant->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
+						participant->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+					} else {
+						/* No simulcasting involved */
+						participant->ssrc[0] = 0;
+						participant->ssrc[1] = 0;
+						participant->ssrc[2] = 0;
+					}
+					janus_mutex_unlock(&participant->rec_mutex);
+				}
 				janus_sdp_free(offer);
 				janus_sdp_free(answer);
-				/* Is this room recorded? */
-				janus_mutex_lock(&participant->rec_mutex);
-				if(videoroom->record || participant->recording_active) {
-					janus_videoroom_recorder_create(participant, participant->audio, participant->video, participant->data);
-				}
-				/* Is simulcasting involved */
-				if(msg_simulcast && participant->vcodec == JANUS_VIDEOROOM_VP8) {
-					JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
-					participant->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-					participant->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-					participant->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-				} else {
-					/* No simulcasting involved */
-					participant->ssrc[0] = 0;
-					participant->ssrc[1] = 0;
-					participant->ssrc[2] = 0;
-				}
-				janus_mutex_unlock(&participant->rec_mutex);
 				/* Send the answer back to the publisher */
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, answer_sdp);
 				json_t *jsep = json_pack("{ssss}", "type", type, "sdp", answer_sdp);
@@ -4698,6 +4769,28 @@ static void *janus_videoroom_handler(void *data) {
 					/* Store the participant's SDP for interested listeners */
 					participant->sdp = offer_sdp;
 					/* We'll wait for the setup_media event before actually telling listeners */
+				}
+				/* Unless this is an update, in which case schedule a new offer for all viewers */
+				if(sdp_update) {
+					json_t *update = json_object();
+					json_object_set_new(update, "request", json_string("configure"));
+					json_object_set_new(update, "update", json_true());
+					janus_mutex_lock(&participant->listeners_mutex);
+					GSList *s = participant->listeners;
+					while(s) {
+						janus_videoroom_listener *listener = (janus_videoroom_listener *)s->data;
+						if(listener && listener->session && listener->session->handle) {
+							/* Enqueue the fake request: this will trigger a renegotiation */
+							janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
+							msg->handle = listener->session->handle;
+							msg->message = update;
+							json_incref(update);
+							g_async_queue_push(messages, msg);
+						}
+						s = s->next;
+					}
+					janus_mutex_unlock(&participant->listeners_mutex);
+					json_decref(update);
 				}
 				json_decref(event);
 				json_decref(jsep);
