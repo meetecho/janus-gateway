@@ -1228,10 +1228,12 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 
 static void janus_videoroom_notify_participants(janus_videoroom_participant *participant, json_t *msg) {
 	/* participant->room->participants_mutex has to be locked. */
+	if(participant->room == NULL)
+		return;
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, participant->room->participants);
-	while (participant->room && !participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+	while(!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_participant *p = value;
 		if(p && p->session && p != participant) {
 			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
