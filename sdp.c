@@ -794,10 +794,10 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 		} else {
 			/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
 			if(stream->rid[0]) {
-				if(stream->video_ssrc_peer[1] == 0) {
+				if(stream->video_ssrc_peer_new[1] == 0) {
 					stream->video_ssrc_peer_new[1] = ssrc;
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[1]);
-				} else if(stream->video_ssrc_peer[2] == 0) {
+				} else if(stream->video_ssrc_peer_new[2] == 0) {
 					stream->video_ssrc_peer_new[2] = ssrc;
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[2]);
 				} else {
