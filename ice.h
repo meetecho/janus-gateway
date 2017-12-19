@@ -442,6 +442,8 @@ struct janus_ice_component {
 	gboolean do_video_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GQueue *retransmit_buffer;
+	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
+	GHashTable *retransmit_seqs;
 	/*! \brief Last time a log message about sending retransmits was printed */
 	gint64 retransmit_log_ts;
 	/*! \brief Number of retransmitted packets since last log message */

@@ -529,6 +529,7 @@ void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 }
 
 int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
+#ifdef HAVE_SCTP
 	if(dtls == NULL)
 		return -1;
 	janus_ice_component *component = (janus_ice_component *)dtls->component;
@@ -558,6 +559,10 @@ int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
 		return -7;
 	}
 	return 0;
+#else
+	/* Support for datachannels hasn't been built in */
+	return -1;
+#endif
 }
 
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len) {
