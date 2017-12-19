@@ -307,10 +307,10 @@ uint janus_get_no_media_timer(void) {
 }
 
 
-/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=300ms) */
-#define DEFAULT_MAX_NACK_QUEUE	300
-/* Maximum ignore count after retransmission (100ms) */
-#define MAX_NACK_IGNORE			100000
+/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=500ms) */
+#define DEFAULT_MAX_NACK_QUEUE	500
+/* Maximum ignore count after retransmission (200ms) */
+#define MAX_NACK_IGNORE			200000
 
 static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
 void janus_set_max_nack_queue(uint mnq) {
@@ -333,6 +333,11 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
 			while(p && (now - p->created >= (gint64)max_nack_queue*1000)) {
 				/* Packet is too old, get rid of it */
 				g_queue_pop_head(component->retransmit_buffer);
+				/* Remove from hashtable too */
+				janus_rtp_header *header = (janus_rtp_header *)p->data;
+				guint16 seq = ntohs(header->seq_number);
+				g_hash_table_remove(component->retransmit_seqs, GUINT_TO_POINTER(seq));
+				/* Free the packet */
 				g_free(p->data);
 				p->data = NULL;
 				g_free(p);
@@ -1410,11 +1415,17 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	if(component->retransmit_buffer != NULL) {
 		janus_rtp_packet *p = NULL;
 		while((p = (janus_rtp_packet *)g_queue_pop_head(component->retransmit_buffer)) != NULL) {
+			/* Remove from hashtable too */
+			janus_rtp_header *header = (janus_rtp_header *)p->data;
+			guint16 seq = ntohs(header->seq_number);
+			g_hash_table_remove(component->retransmit_seqs, GUINT_TO_POINTER(seq));
+			/* Free the packet */
 			g_free(p->data);
 			p->data = NULL;
 			g_free(p);
 		}
 		g_queue_free(component->retransmit_buffer);
+		g_hash_table_destroy(component->retransmit_seqs);
 	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
@@ -2356,34 +2367,34 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
-						GList *rp = g_queue_peek_head_link(component->retransmit_buffer);
-						while(rp) {
-							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
-							if(p) {
-								janus_rtp_header *rh = (janus_rtp_header *)p->data;
-								if(ntohs(rh->seq_number) == seqnr) {
-									/* Should we retransmit this packet? */
-									if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
-										JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
-										break;
-									}
-									JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
-									p->last_retransmit = now;
-									retransmits_cnt++;
-									/* Enqueue it */
-									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
-									pkt->data = g_malloc0(p->length);
-									memcpy(pkt->data, p->data, p->length);
-									pkt->length = p->length;
-									pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-									pkt->control = FALSE;
-									pkt->encrypted = TRUE;	/* This was already encrypted before */
-									if(handle->queued_packets != NULL)
-										g_async_queue_push(handle->queued_packets, pkt);
-									break;
-								}
+						/* Check if we have the packet */
+						janus_rtp_packet *p = g_hash_table_lookup(component->retransmit_seqs, GUINT_TO_POINTER(seqnr));
+						if(p == NULL) {
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
+						} else {
+							/* Should we retransmit this packet? */
+							if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
+								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
+								list = list->next;
+								continue;
 							}
-							rp = rp->next;
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
+							p->last_retransmit = now;
+							retransmits_cnt++;
+							/* Enqueue it */
+							janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+							pkt->data = g_malloc0(p->length);
+							memcpy(pkt->data, p->data, p->length);
+							pkt->length = p->length;
+							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+							pkt->control = FALSE;
+							pkt->encrypted = TRUE;	/* This was already encrypted before */
+							if(handle->queued_packets != NULL)
+#if GLIB_CHECK_VERSION(2, 46, 0)
+								g_async_queue_push_front(handle->queued_packets, pkt);
+#else
+								g_async_queue_push(handle->queued_packets, pkt);
+#endif
 						}
 						list = list->next;
 					}
@@ -3040,6 +3051,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->do_audio_nacks = FALSE;
 		audio_rtp->do_video_nacks = FALSE;
 		audio_rtp->retransmit_buffer = NULL;
+		audio_rtp->retransmit_seqs = NULL;
 		audio_rtp->retransmit_log_ts = 0;
 		audio_rtp->retransmit_recent_cnt = 0;
 		audio_rtp->nack_sent_log_ts = 0;
@@ -3104,6 +3116,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->do_audio_nacks = FALSE;
 			audio_rtcp->do_video_nacks = FALSE;
 			audio_rtcp->retransmit_buffer = NULL;
+			audio_rtcp->retransmit_seqs = NULL;
 			audio_rtcp->retransmit_log_ts = 0;
 			audio_rtcp->retransmit_recent_cnt = 0;
 			janus_mutex_init(&audio_rtcp->mutex);
@@ -3193,6 +3206,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->do_audio_nacks = FALSE;
 		video_rtp->do_video_nacks = FALSE;
 		video_rtp->retransmit_buffer = NULL;
+		video_rtp->retransmit_seqs = NULL;
 		video_rtp->retransmit_log_ts = 0;
 		video_rtp->retransmit_recent_cnt = 0;
 		video_rtp->nack_sent_log_ts = 0;
@@ -3257,6 +3271,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->do_audio_nacks = FALSE;
 			video_rtcp->do_video_nacks = FALSE;
 			video_rtcp->retransmit_buffer = NULL;
+			video_rtcp->retransmit_seqs = NULL;
 			video_rtcp->retransmit_log_ts = 0;
 			video_rtcp->retransmit_recent_cnt = 0;
 			janus_mutex_init(&video_rtcp->mutex);
@@ -3347,6 +3362,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->do_audio_nacks = FALSE;
 		data_component->do_video_nacks = FALSE;
 		data_component->retransmit_buffer = NULL;
+		data_component->retransmit_seqs = NULL;
 		data_component->retransmit_log_ts = 0;
 		data_component->retransmit_recent_cnt = 0;
 		janus_mutex_init(&data_component->mutex);
@@ -3994,9 +4010,15 @@ void *janus_ice_send_thread(void *data) {
 							p->created = janus_get_monotonic_time();
 							p->last_retransmit = 0;
 							janus_mutex_lock(&component->mutex);
-							if(component->retransmit_buffer == NULL)
+							if(component->retransmit_buffer == NULL) {
 								component->retransmit_buffer = g_queue_new();
+								component->retransmit_seqs = g_hash_table_new(NULL, NULL);
+							}
 							g_queue_push_tail(component->retransmit_buffer, p);
+							/* Insert in the table too, for quick lookup */
+							janus_rtp_header *header = (janus_rtp_header *)sbuf;
+							guint16 seq = ntohs(header->seq_number);
+							g_hash_table_insert(component->retransmit_seqs, GUINT_TO_POINTER(seq), p);
 							janus_mutex_unlock(&component->mutex);
 						}
 					}
