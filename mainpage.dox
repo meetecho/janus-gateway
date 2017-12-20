@@ -3186,7 +3186,7 @@ ldd janus | grep asan
  *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=cSV0X1JgcKY">WebRTC Rockstars Tour (Singapore)</a>;
  *    - Presentation at <a href="https://youtu.be/dsVDzh9sS1A?t=51m00s">WebRTC Meetup Tokyo #17</a> (in Japanese);
- *    - Interview on the origins of Janus, at <a href="https://www.youtube.com/watch?v=bzBvupsBA44">AllThingRTC.org</a>. \n\n
+ *    - Interview on the origins of Janus, at <a href="http://www.allthingsrtc.org/2017/10/30/lorenzo-miniero-creator-janus/">AllThingRTC.org</a>. \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
