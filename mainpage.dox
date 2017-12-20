@@ -3183,7 +3183,10 @@ ldd janus | grep asan
  *    - Presentation at <a href="https://www.youtube.com/watch?v=gArqopeNQY0">DevDay Napoli</a> (in Italian);
  *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>;
  *    - Presentation on different SIP options in Janus at <a href="https://www.youtube.com/watch?v=anmyMC6Ovl8&t=25112s">OpenSIPS 2017</a>;
- *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>. \n\n
+ *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>;
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=cSV0X1JgcKY">WebRTC Rockstars Tour (Singapore)</a>;
+ *    - Presentation at <a href="https://youtu.be/dsVDzh9sS1A?t=51m00s">WebRTC Meetup Tokyo #17</a> (in Japanese);
+ *    - Interview on the origins of Janus, at <a href="https://www.youtube.com/watch?v=bzBvupsBA44">AllThingRTC.org</a>. \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
