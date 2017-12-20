@@ -318,7 +318,7 @@ void janus_set_max_nack_queue(uint mnq) {
 	if(max_nack_queue == 0)
 		JANUS_LOG(LOG_VERB, "Disabling NACK queue\n");
 	else
-		JANUS_LOG(LOG_VERB, "Setting max NACK queue to %ds\n", max_nack_queue);
+		JANUS_LOG(LOG_VERB, "Setting max NACK queue to %dms\n", max_nack_queue);
 }
 uint janus_get_max_nack_queue(void) {
 	return max_nack_queue;
