@@ -15,6 +15,7 @@
  
 #include <math.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #include "debug.h"
 #include "rtp.h"
@@ -144,6 +145,27 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%"SCNu32"\n", jitter, fraction, total);
 		ctx->lost_remote = total;
 		ctx->jitter_remote = jitter;
+		/* FIXME Compute round trip time */
+		uint32_t lsr = ntohl(rr->rb[0].lsr);
+		uint32_t dlsr = ntohl(rr->rb[0].delay);
+		if(lsr == 0)	/* Not enough info yet */
+			return;
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		uint32_t s = tv.tv_sec + 2208988800u;
+		uint32_t u = tv.tv_usec;
+		uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+		uint32_t ntp_ts_msw = htonl(s);
+		uint32_t ntp_ts_lsw = htonl(f);
+		uint64_t temp = ntohl(ntp_ts_msw);
+		temp = (temp << 32) | ntohl(ntp_ts_lsw);
+		uint32_t a = (uint32_t)(temp >> 16);
+		uint32_t rtt = a - lsr - dlsr;
+		uint32_t rtt_msw = (rtt & 0xFFFF0000) >> 16;
+		uint32_t rtt_lsw = (rtt & 0x0000FFFF) << 16;
+		tv.tv_sec = rtt_msw;
+		tv.tv_usec = ((rtt_lsw << 6) / 3650) - (rtt_lsw >> 12) - (rtt_lsw >> 8);
+		ctx->rtt = tv.tv_sec + tv.tv_usec / 1000;	/* We need milliseconds */
 	}
 }
 
@@ -484,8 +506,8 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 }
 
 
-uint32_t janus_rtcp_context_get_lsr(janus_rtcp_context *ctx) {
-	return ctx ? ctx->lsr : 0;
+uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx) {
+	return ctx ? ctx->rtt : 0;
 }
 
 uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {

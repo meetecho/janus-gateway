@@ -3546,7 +3546,7 @@ void *janus_ice_send_thread(void *data) {
 			before = now;
 		}
 		/* Let's check if it's time to send a RTCP SR/SDES/RR as well */
-		if(now-rtcp_last_sr_rr >= 5*G_USEC_PER_SEC) {
+		if(now-rtcp_last_sr_rr >= 1*G_USEC_PER_SEC) {
 			rtcp_last_sr_rr = now;
 			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->bundle_id)) : handle->audio_stream;
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio.packets > 0) {
@@ -3672,7 +3672,7 @@ void *janus_ice_send_thread(void *data) {
 					json_t *info = json_object();
 					json_object_set_new(info, "media", json_string("audio"));
 					json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
-					json_object_set_new(info, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
+					json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx)));
 					json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
 					json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, TRUE)));
 					json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, FALSE)));
@@ -3704,7 +3704,8 @@ void *janus_ice_send_thread(void *data) {
 						else
 							json_object_set_new(info, "media", json_string("video-sim2"));
 						json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx[vindex]->tb));
-						json_object_set_new(info, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx[vindex])));
+						if(vindex == 0)
+							json_object_set_new(info, "rtt", json_integer(janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[vindex])));
 						json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], FALSE)));
 						json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[vindex], TRUE)));
 						json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx[vindex], FALSE)));

@@ -442,8 +442,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				/* FIXME Reset the RTCP context */
 				janus_ice_component *component = stream->rtp_component;
 				janus_mutex_lock(&component->mutex);
-				if(stream->audio_rtcp_ctx)
+				if(stream->audio_rtcp_ctx) {
 					memset(stream->audio_rtcp_ctx, 0, sizeof(*stream->audio_rtcp_ctx));
+					stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+				}
 				if(component->last_seqs_audio)
 					janus_seq_list_free(&component->last_seqs_audio);
 				janus_mutex_unlock(&component->mutex);
@@ -460,8 +462,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					/* FIXME Reset the RTCP context */
 					janus_ice_component *component = stream->rtp_component;
 					janus_mutex_lock(&component->mutex);
-					if(stream->video_rtcp_ctx[vindex])
+					if(stream->video_rtcp_ctx[vindex]) {
 						memset(stream->video_rtcp_ctx[vindex], 0, sizeof(*stream->video_rtcp_ctx[vindex]));
+						stream->video_rtcp_ctx[vindex]->tb = 90000;
+					}
 					if(component->last_seqs_video[vindex])
 						janus_seq_list_free(&component->last_seqs_video[vindex]);
 					janus_mutex_unlock(&component->mutex);
