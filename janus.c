@@ -2521,6 +2521,18 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	json_object_set_new(sd, "video-send", stream->video_send ? json_true() : json_false());
 	json_object_set_new(sd, "video-recv", stream->video_recv ? json_true() : json_false());
 	json_object_set_new(s, "direction", sd);
+	if(stream->audio_payload_type > -1 || stream->video_payload_type > -1) {
+		json_t *sc = json_object();
+		if(stream->audio_payload_type > -1)
+			json_object_set_new(sc, "audio-pt", json_integer(stream->audio_payload_type));
+		if(stream->audio_codec != NULL)
+			json_object_set_new(sc, "audio-codec", json_string(stream->audio_codec));
+		if(stream->video_payload_type > -1)
+			json_object_set_new(sc, "video-pt", json_integer(stream->video_payload_type));
+		if(stream->video_codec != NULL)
+			json_object_set_new(sc, "video-codec", json_string(stream->video_codec));
+		json_object_set_new(s, "codecs", sc);
+	}
 	json_t *components = json_array();
 	if(stream->rtp_component) {
 		json_t *c = janus_admin_component_summary(stream->rtp_component);

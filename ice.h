@@ -363,8 +363,12 @@ struct janus_ice_stream {
 	GList *audio_payload_types;
 	/*! \brief List of payload types we can expect for video */
 	GList *video_payload_types;
-	/*! \brief RTP payload type of this stream */
-	gint payload_type;
+	/*! \brief RTP payload types of this stream */
+	gint audio_payload_type, video_payload_type;
+	/*! \brief Codecs used by this stream */
+	char *audio_codec, *video_codec;
+	/*! \brief Pointer to function to check if a packet is a keyframe (depends on negotiated codec) */
+	gboolean (* video_is_keyframe)(char* buffer, int len);
 	/*! \brief Media direction */
 	gboolean audio_send, audio_recv, video_send, video_recv;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
@@ -441,9 +445,9 @@ struct janus_ice_component {
 	/*! \brief Whether we should do NACKs (in or out) for video */
 	gboolean do_video_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
-	GQueue *retransmit_buffer;
+	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
-	GHashTable *retransmit_seqs;
+	GHashTable *audio_retransmit_seqs, *video_retransmit_seqs;
 	/*! \brief Last time a log message about sending retransmits was printed */
 	gint64 retransmit_log_ts;
 	/*! \brief Number of retransmitted packets since last log message */
