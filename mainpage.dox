@@ -81,7 +81,6 @@
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
@@ -3055,7 +3054,6 @@ ldd janus | grep asan
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
