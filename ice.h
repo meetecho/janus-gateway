@@ -108,21 +108,6 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
-/*! \brief Method to check whether BUNDLE support is forced or not
- * @returns true if BUNDLE is mandatory, false otherwise */
-gboolean janus_ice_is_bundle_forced(void);
-/*! \brief Method to set the BUNDLE support mode (true means mandatory, false means optional)
- * @param forced whether BUNDLE support must be forced or not (default is false) */
-void janus_ice_force_bundle(gboolean forced);
-/*! \brief Method to check whether rtcp-mux support is forced or not
- * @returns true if rtcp-mux is mandatory, false otherwise */
-gboolean janus_ice_is_rtcpmux_forced(void);
-/*! \brief Method to set the rtcp-mux support mode (true means mandatory, false means optional)
- * @param forced whether rtcp-mux support must be forced or not (default is false) */
-void janus_ice_force_rtcpmux(gboolean forced);
-/*! \brief Method to get the port that has been assigned for the RTCP component blackhole in case of rtcp-mux
- * @returns The blackhole port */
-gint janus_ice_get_rtcpmux_blackhole_port(void);
 /*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @param[in] mnq The new max NACK value */
 void janus_set_max_nack_queue(uint mnq);
@@ -171,8 +156,6 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_READY				(1 << 2)
 #define JANUS_ICE_HANDLE_WEBRTC_STOP				(1 << 3)
 #define JANUS_ICE_HANDLE_WEBRTC_ALERT				(1 << 4)
-#define JANUS_ICE_HANDLE_WEBRTC_BUNDLE				(1 << 5)
-#define JANUS_ICE_HANDLE_WEBRTC_RTCPMUX				(1 << 6)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE				(1 << 7)
 #define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
@@ -265,10 +248,6 @@ struct janus_ice_handle {
 	janus_plugin_session *app_handle;
 	/*! \brief Mask of WebRTC-related flags for this handle */
 	janus_flags webrtc_flags;
-	/*! \brief Whether we have to force BUNDLE when negotiating (if true, overrides global configuration) */
-	gboolean force_bundle;
-	/*! \brief Whether we have to force rtcp-mux when negotiating (if true, overrides global configuration) */
-	gboolean force_rtcp_mux;
 	/*! \brief Number of gathered candidates */
 	gint cdone;
 	/*! \brief GLib context for libnice */
@@ -283,30 +262,16 @@ struct janus_ice_handle {
 	gint64 agent_created;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
-	/*! \brief libnice ICE audio ID */
-	guint audio_id;
-	/*! \brief libnice ICE video ID */
-	guint video_id;
-	/*! \brief libnice ICE DataChannels ID */
-	guint data_id;
-	/*! \brief Stream ID used when bundling (will be one of the above) */
-	guint bundle_id;
 	/*! \brief Audio mid (media ID) */
 	gchar *audio_mid;
 	/*! \brief Video mid (media ID) */
 	gchar *video_mid;
 	/*! \brief Data channel mid (media ID) */
 	gchar *data_mid;
-	/*! \brief Number of streams */
-	gint streams_num;
-	/*! \brief GLib hash table of streams (IDs are the keys) */
-	GHashTable *streams;
-	/*! \brief Audio stream */
-	janus_ice_stream *audio_stream;
-	/*! \brief Video stream */
-	janus_ice_stream *video_stream;
-	/*! \brief SCTP/DataChannel stream */
-	janus_ice_stream *data_stream;
+	/*! \brief ICE Stream ID */
+	guint stream_id;
+	/*! \brief ICE stream */
+	janus_ice_stream *stream;
 	/*! \brief RTP profile set by caller (so that we can match it) */
 	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
@@ -343,17 +308,15 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
-	/*! \brief Whether the medium associated with this stream has been disabled (e.g., m=audio 0) */
-	guint disabled;
-	/*! \brief Audio SSRC of the gateway for this stream (may be bundled) */
+	/*! \brief Audio SSRC of the gateway for this stream */
 	guint32 audio_ssrc;
-	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
+	/*! \brief Video SSRC of the gateway for this stream */
 	guint32 video_ssrc;
-	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
+	/*! \brief Audio SSRC of the peer for this stream */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
-	/*! \brief Video SSRC(s) of the peer for this stream (may be bundled, and simulcasting) */
+	/*! \brief Video SSRC(s) of the peer for this stream (may be simulcasting) */
 	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
-	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
+	/*! \brief Video retransmissions SSRC of the peer for this stream */
 	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new, video_ssrc_peer_rtx_orig;
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
@@ -371,9 +334,9 @@ struct janus_ice_stream {
 	gboolean (* video_is_keyframe)(char* buffer, int len);
 	/*! \brief Media direction */
 	gboolean audio_send, audio_recv, video_send, video_recv;
-	/*! \brief RTCP context for the audio stream (may be bundled) */
+	/*! \brief RTCP context for the audio stream */
 	janus_rtcp_context *audio_rtcp_ctx;
-	/*! \brief RTCP context(s) for the video stream (may be bundled, and simulcasting) */
+	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
 	janus_rtcp_context *video_rtcp_ctx[3];
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
@@ -399,10 +362,8 @@ struct janus_ice_stream {
 	gchar *rpass;
 	/*! \brief GLib hash table of components (IDs are the keys) */
 	GHashTable *components;
-	/*! \brief RTP (or SCTP, if this is the data stream) component */
-	janus_ice_component *rtp_component;
-	/*! \brief RTCP component */
-	janus_ice_component *rtcp_component;
+	/*! \brief ICE component */
+	janus_ice_component *component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
@@ -539,13 +500,11 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
 void janus_ice_webrtc_free(janus_ice_handle *handle);
 /*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
- * @param[in] container The map containing the list of all streams for the handle
  * @param[in] stream The Janus ICE stream instance to free */
-void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream);
+void janus_ice_stream_free(janus_ice_stream *stream);
 /*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
- * @param[in] container The map containing the list of all components for the stream
  * @param[in] component The Janus ICE component instance to free */
-void janus_ice_component_free(GHashTable *container, janus_ice_component *component);
+void janus_ice_component_free(janus_ice_component *component);
 ///@}
 
 
@@ -590,11 +549,9 @@ void *janus_ice_send_thread(void *data);
  * @param[in] audio Whether audio is enabled
  * @param[in] video Whether video is enabled
  * @param[in] data Whether SCTP data channels are enabled
- * @param[in] bundle Whether BUNDLE is supported or not
- * @param[in] rtcpmux Whether rtcp-mux is supported or not
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle);
 /*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] mline The Janus SDP m-line object to add candidates to
