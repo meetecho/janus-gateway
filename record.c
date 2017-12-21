@@ -99,21 +99,21 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	const char *rec_file = NULL;
 	char *copy_for_parent = NULL;
 	char *copy_for_base = NULL;
-	/* check dir and filename values */
+	/* Check dir and filename values */
 	if (filename != NULL) {
-		/* helper copies to avoid overwriting */
+		/* Helper copies to avoid overwriting */
 		copy_for_parent = g_strdup(filename);
 		copy_for_base = g_strdup(filename);
-		/* get filename parent folder */
+		/* Get filename parent folder */
 		const char *filename_parent = dirname(copy_for_parent);
-		/* get filename base file */
+		/* Get filename base file */
 		const char *filename_base = basename(copy_for_base);
-		/* if "filename" is a actual file name and not a path, then dirname returns "." and basename "filename" */
+		/* If "filename" is a actual file name and not a path, then dirname returns "." and basename "filename" */
 		if (dir && !strcasecmp(filename_parent, ".") && !strcasecmp(filename_base, filename)) {
-			/* in this case we have to create rec_dir and filename*/
+			/* In this case we have to create dir and filename*/
 			rec_dir = dir;
 			rec_file = filename;
-		/* if dir is NULL we have to create filename_parent and filename_base */
+		/* If dir is NULL we have to create filename_parent and filename_base */
 		} else if (!dir) {
 			rec_dir = filename_parent;
 			rec_file = filename_base;
