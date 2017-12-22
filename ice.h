@@ -350,6 +350,12 @@ struct janus_ice_stream {
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
 	guint32 video_last_ts;
+	/*! \brief  Wether we do transport wide cc for video*/
+	gboolean do_transport_wide_cc;
+	/*! \brief Transport wide cc rtp ext ID */
+	guint transport_wide_cc_ext_id;
+	/*! \brief GLib list of local candidates for this component (summary) */
+	GSList *transport_wide_received_seq_nums;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
