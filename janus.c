@@ -1159,7 +1159,7 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				} else {
 					/* Check if transport wide CC is supported */
-					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp,JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = TRUE;
 					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 				}
