@@ -1245,6 +1245,8 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream->video_rtcp_ctx[1] = NULL;
 	g_free(stream->video_rtcp_ctx[2]);
 	stream->video_rtcp_ctx[2] = NULL;
+	g_slist_free(stream->transport_wide_received_seq_nums);
+	stream->transport_wide_received_seq_nums = NULL;
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
 	stream->video_first_ntp_ts[0] = 0;
@@ -2023,6 +2025,32 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
 					}
 				}
+				/* If we need to handle transport wide cc*/
+				if (stream->do_transport_wide_cc) 
+				{
+					guint16 transportSeqNum;
+					/* Get transport wide seq num */
+					if (janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, stream->transport_wide_cc_ext_id, &transportSeqNum)==0) {
+						/* Get current timestamp */
+						struct timeval now;
+						gettimeofday(&now,0);
+						
+						/* Create <seq num, time> pair */
+						janus_ice_transport_wide_cc_stats* stats = g_malloc0(sizeof(janus_ice_transport_wide_cc_stats));
+						if(stats == NULL) {
+							JANUS_LOG(LOG_FATAL, "Memory error!\n");
+							return;
+						}
+						stats->transportSeqNum = transportSeqNum;
+						stats->timestamp =  (((guint64)now.tv_sec)*1E6+now.tv_usec);
+						
+						/* Append to received list*/
+						janus_mutex_lock(&stream->mutex);
+						stream->transport_wide_received_seq_nums =  g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
+						janus_mutex_unlock(&stream->mutex);
+					}
+				}
+
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)

@@ -149,6 +149,8 @@ typedef struct janus_ice_stream janus_ice_stream;
 typedef struct janus_ice_component janus_ice_component;
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 typedef struct janus_ice_trickle janus_ice_trickle;
+/*! \brief Stores transport wide packet reception statistics */
+typedef struct janus_ice_transport_wide_cc_stats janus_ice_transport_wide_cc_stats;
 
 
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
@@ -354,7 +356,7 @@ struct janus_ice_stream {
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	guint transport_wide_cc_ext_id;
-	/*! \brief GLib list of local candidates for this component (summary) */
+	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
@@ -447,6 +449,14 @@ struct janus_ice_trickle {
 	char *transaction;
 	/*! \brief JSON object of the trickle candidate(s) */
 	json_t *candidate;
+};
+
+/*! \brief Stores transport wide packet reception statistics */
+struct janus_ice_transport_wide_cc_stats {
+	/*! \brief Transwport wide sequence number */
+	guint16 transportSeqNum;
+	/*! \brief Reception time */
+	gint64 timestamp;
 };
 
 /** @name Janus ICE trickle candidates methods
