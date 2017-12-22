@@ -44,6 +44,7 @@ Makefile.in
 /postprocessing/*.o
 
 /conf/janus.cfg.sample
+/conf/janus.yaml.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
 /conf/janus.plugin.voicemail.cfg.sample
