@@ -150,7 +150,6 @@ typedef struct janus_ice_component janus_ice_component;
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 typedef struct janus_ice_trickle janus_ice_trickle;
 
-
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
 #define JANUS_ICE_HANDLE_WEBRTC_START				(1 << 1)
 #define JANUS_ICE_HANDLE_WEBRTC_READY				(1 << 2)
@@ -350,6 +349,20 @@ struct janus_ice_stream {
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
 	guint32 video_last_ts;
+	/*! \brief  Wether we do transport wide cc for video*/
+	gboolean do_transport_wide_cc;
+	/*! \brief Transport wide cc rtp ext ID */
+	guint transport_wide_cc_ext_id;
+	/*! \brief Last received transport wide seq num */
+	guint32 transport_wide_cc_last_seq_num;
+	/*! \brief Last transport wide seq num sent on feedback*/
+	guint32 transport_wide_cc_last_feedback_seq_num;
+	/*! \brief Transport wide cc transport seq num wrap cycles */
+	guint16 transport_wide_cc_cycles;
+	/*! \brief Transport wide cc rtp ext ID */
+	guint transport_wide_cc_feedback_count;
+	/*! \brief GLib list of transport wide cc stats in reverse received order */
+	GSList *transport_wide_received_seq_nums;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
