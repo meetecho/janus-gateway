@@ -108,18 +108,17 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 		const char *filename_parent = dirname(copy_for_parent);
 		/* Get filename base file */
 		const char *filename_base = basename(copy_for_base);
-		/* If "filename" is a actual file name and not a path, then dirname returns "." and basename "filename" */
-		if (dir && !strcasecmp(filename_parent, ".") && !strcasecmp(filename_base, filename)) {
-			/* In this case we have to create dir and filename*/
-			rec_dir = dir;
-			rec_file = filename;
-		/* If dir is NULL we have to create filename_parent and filename_base */
-		} else if (!dir) {
+		if (!dir) {
+			/* If dir is NULL we have to create filename_parent and filename_base */
 			rec_dir = filename_parent;
 			rec_file = filename_base;
 		} else {
-			JANUS_LOG(LOG_ERR, "Invalid combination of dir and filename %s %s\n", dir, filename);
-			return NULL;
+			/* If dir is valid we have to create dir and filename*/
+			rec_dir = dir;
+			rec_file = filename;
+			if (strcasecmp(filename_parent, ".") || strcasecmp(filename_base, filename)) {
+				JANUS_LOG(LOG_WARN, "Unsupported combination of dir and filename %s %s\n", dir, filename);
+			}
 		}
 	}
 	if(rec_dir != NULL) {
@@ -192,10 +191,8 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
 	janus_mutex_init(&rc->mutex);
-	if (copy_for_parent)
-		g_free(copy_for_parent);
-	if (copy_for_base)
-		g_free(copy_for_base);
+	g_free(copy_for_parent);
+	g_free(copy_for_base);
 	return rc;
 }
 
