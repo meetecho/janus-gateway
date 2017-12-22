@@ -222,6 +222,19 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	return 0;
 }
 
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
+	uint16_t* transSeqNum) {
+	uint32_t bytes = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL) < 0)
+		return -1;
+	//  0                   1                   2                   3
+	//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// |  ID   | L=1   |transport-wide sequence number | zero padding  |
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
+	return 0;
+}
 
 /* RTP context related methods */
 void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
