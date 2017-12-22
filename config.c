@@ -173,7 +173,7 @@ janus_config *janus_config_parse(const char *config_file) {
 					value = (char *)event.data.scalar.value;
 					if(depth == 1) {
 						/* New category or category-level attribute? */
-						if(value == NULL || strlen(value) == 0) {
+						if(value == NULL || strlen(value) == 0 || !strcmp(value, "null")) {
 							/* Create empty category */
 							if(name != NULL) {
 								cg = janus_config_add_category(jc, name);
