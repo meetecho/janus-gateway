@@ -174,7 +174,7 @@ static gchar *server_name = NULL;
  * we don't get any activity (i.e., no request) on this session for more
  * than 60 seconds, then it's considered expired and we destroy it. That's
  * why we have a keep-alive method in the API. This can be overridden in
- * either janus.cfg or from the command line. Setting this to 0 will
+ * either janus.cfg/.yaml or from the command line. Setting this to 0 will
  * disable the timeout mechanism, which is NOT suggested as it may risk
  * having orphaned sessions (sessions not controlled by any transport
  * and never freed). Besides, notice that if you make this shorter than
@@ -3417,20 +3417,28 @@ gint main(int argc, char *argv[])
 	}
 	if(config_file == NULL) {
 		char file[255];
-		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
+		g_snprintf(file, 255, "%s/janus.yaml", configs_folder);
 		config_file = g_strdup(file);
 	}
 	if((config = janus_config_parse(config_file)) == NULL) {
-		if(args_info.config_given) {
-			/* We only give up if the configuration file was explicitly provided */
-			g_print("Error reading configuration from %s\n", config_file);
-			exit(1);
-		}
-		g_print("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
-		config = janus_config_create("janus.cfg");
-		if(config == NULL) {
-			/* If we can't even create an empty configuration, something's definitely wrong */
-			exit(1);
+		/* We failed to load the YAML configuration file, let's try the INI */
+		g_print("Failed to load %s, trying the INI instead...\n", config_file);
+		g_free(config_file);
+		char file[255];
+		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
+		config_file = g_strdup(file);
+		if((config = janus_config_parse(config_file)) == NULL) {
+			if(args_info.config_given) {
+				/* We only give up if the configuration file was explicitly provided */
+				g_print("Error reading configuration from %s\n", config_file);
+				exit(1);
+			}
+			g_print("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
+			config = janus_config_create("janus.cfg");
+			if(config == NULL) {
+				/* If we can't even create an empty configuration, something's definitely wrong */
+				exit(1);
+			}
 		}
 	}
 

@@ -197,6 +197,7 @@ AC_ARG_ENABLE([rabbitmq-event-handler],
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
+                    yaml-0.1
                     nice
                     jansson >= $jansson_version
                     libssl >= $ssl_version

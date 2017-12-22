@@ -19,6 +19,7 @@ on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
+* [libyaml](https://github.com/yaml/libyaml)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
@@ -59,7 +60,7 @@ instance, is very simple:
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
-       libtool autoconf automake
+       libyaml-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're
 attempting an installation on a CentOS machine instead.
@@ -69,7 +70,7 @@ On Ubuntu or Debian, it would require something like this:
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev pkg-config gengetopt \
-		libtool automake
+		libyaml-dev libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
@@ -285,7 +286,9 @@ MacOS as well, there are a few aspects to highlight when doing that.
 First of all, you can use `brew` to install most of the dependencies:
 
 	brew tap homebrew/boneyard
-	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson libnice openssl libusrsctp libmicrohttpd \
+		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
+		libyaml pkg-config gengetopt autoconf automake libtool
 
 For what concerns `libsrtp`, which needs to be installed manually, just
 pass `/usr/local` as a prefix when configuring, and proceed as normal:

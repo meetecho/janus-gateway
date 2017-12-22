@@ -2,7 +2,7 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Configuration files parsing (headers)
- * \details  Implementation of a parser of INI configuration files.
+ * \details  Implementation of a parser of INI and YAML configuration files.
  * 
  * \ingroup core
  * \ref core
@@ -13,24 +13,28 @@
 
 #include <glib.h>
 
-/*! \brief Configuration item (name=value) */
+/*! \brief Configuration item */
 typedef struct janus_config_item {
-	/*! \brief Name of the item */
+	/*! \brief Whether this is a category, or an item */
+	gboolean category;
+	/*! \brief Name of the item/category */
 	const char *name;
-	/*! \brief Value of the item */
+	/*! \brief Value of the item (item only) */
 	const char *value;
+	/*! \brief Linked list of items (category only) */
+	GList *items;
+	/*! \brief Linked list of subcategories (category only)
+	 * \note Currently unused, will be useful in the future */
+	GList *subcategories;
 } janus_config_item;
 
-/*! \brief Configuration category ([category]) */
-typedef struct janus_config_category {
-	/*! \brief Name of the category */
-	const char *name;
-	/*! \brief Linked list of items */
-	GList *items;
-} janus_config_category;
+/*! \brief Configuration category (defined for backwards compatibility) */
+typedef struct janus_config_item janus_config_category;
 
 /*! \brief Configuration container */
 typedef struct janus_config {
+	/*! \brief Whether this is a YAML or an INI config */
+	gboolean is_yaml;
 	/*! \brief Name of the configuration */
 	const char *name;
 	/*! \brief Linked list of uncategorized items */

@@ -2,7 +2,7 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Configuration files parsing
- * \details  Implementation of a parser of INI configuration files.
+ * \details  Implementation of a parser of INI and YAML configuration files.
  * 
  * \ingroup core
  * \ref core
@@ -13,6 +13,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+
+#include <yaml.h>
 
 #include "config.h"
 #include "debug.h"
@@ -25,6 +27,12 @@ static char *get_filename(const char *path) {
 	if(path)
 		filename = strrchr(path, '/')+1;
 	return filename;
+}
+
+static gboolean is_yaml_config(const char *path) {
+	if(path == NULL)
+		return FALSE;
+	return strstr(path, ".yaml") != NULL;
 }
 
 /* Trimming helper */
@@ -60,19 +68,16 @@ static void janus_config_free_item(gpointer data) {
 			g_free((gpointer)i->name);
 		if(i->value)
 			g_free((gpointer)i->value);
+		if(i->items)
+			g_list_free_full(i->items, janus_config_free_item);
+		if(i->subcategories)
+			g_list_free_full(i->subcategories, janus_config_free_item);
 		g_free(i);
 	}
 }
 
 static void janus_config_free_category(gpointer data) {
-	janus_config_category *c = (janus_config_category *)data;
-	if(c) {
-		if(c->name)
-			g_free((gpointer)c->name);
-		if(c->items)
-			g_list_free_full(c->items, janus_config_free_item);
-		g_free(c);
-	}
+	janus_config_free_item(data);
 }
 
 
@@ -94,7 +99,148 @@ janus_config *janus_config_parse(const char *config_file) {
 	/* Create configuration instance */
 	janus_config *jc = g_malloc0(sizeof(janus_config));
 	jc->name = g_strdup(filename);
-	/* Traverse and parse it */
+	/* Is this a YAML or INI config file? */
+	jc->is_yaml = is_yaml_config(jc->name);
+	if(jc->is_yaml) {
+		/* Parse with libyaml and not manually */
+		yaml_parser_t parser;
+		if(!yaml_parser_initialize(&parser)) {
+			JANUS_LOG(LOG_ERR, "Error initializing YAML parser\n");
+			goto error;
+		}
+		yaml_parser_set_input_file(&parser, file);
+		/* Traverse the document */
+		yaml_event_t event;
+		gboolean error = FALSE;
+		int depth = 0;
+		janus_config_category *cg = NULL;
+		char *name = NULL, *value = NULL;
+		while(!error) {
+			if(!yaml_parser_parse(&parser, &event)) {
+				error = TRUE;
+				break;
+			}
+			switch(event.type) {
+				case YAML_NO_EVENT:
+					JANUS_LOG(LOG_WARN, "No event!\n");
+					break;
+				/* Stream start/end */
+				case YAML_STREAM_START_EVENT:
+					break;
+				case YAML_STREAM_END_EVENT:
+					break;
+				/* Block delimeters */
+				case YAML_DOCUMENT_START_EVENT:
+					break;
+				case YAML_DOCUMENT_END_EVENT:
+					break;
+				case YAML_SEQUENCE_START_EVENT:
+					/* TODO: we need to support sequences */
+					break;
+				case YAML_SEQUENCE_END_EVENT:
+					/* TODO: we need to support sequences */
+					break;
+				case YAML_MAPPING_START_EVENT:
+					depth++;
+					if(depth == 2) {
+						/* Create category */
+						if(name != NULL) {
+							cg = janus_config_add_category(jc, name);
+							if(cg == NULL) {
+								JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", event.data.scalar.value, filename);
+								error = TRUE;
+								break;
+							}
+							g_free(name);
+							name = NULL;
+						}
+					}
+					/* TODO: add support for more innested categories and items */
+					break;
+				case YAML_MAPPING_END_EVENT:
+					depth--;
+					g_free(name);
+					name = NULL;
+					cg = NULL;
+					break;
+				/* Data */
+				case YAML_ALIAS_EVENT:
+					/* TODO: should we support these? */
+					break;
+				case YAML_SCALAR_EVENT:
+					/* depth=1 is a category or category level attribute, depth=2 is an attribute
+					 * TODO: support more innested stuff for the future (API-wise too) */
+					value = (char *)event.data.scalar.value;
+					if(depth == 1) {
+						/* New category or category-level attribute? */
+						if(value == NULL || strlen(value) == 0) {
+							/* Create empty category */
+							if(name != NULL) {
+								cg = janus_config_add_category(jc, name);
+								if(cg == NULL) {
+									JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", value, filename);
+									error = TRUE;
+									break;
+								}
+								g_free(name);
+								name = NULL;
+								cg = NULL;
+							}
+							break;
+						}
+						if(name != NULL) {
+							if(value != NULL && strlen(value) > 0) {
+								if(janus_config_add_item(jc, NULL, name, value) == NULL) {
+									JANUS_LOG(LOG_ERR, "Error adding item %s (%s)\n", name, filename);
+									error = TRUE;
+									break;
+								}
+							}
+						} else if(value != NULL && strlen(value) > 0) {
+							name = g_strdup(value);
+						}
+					} else if(depth == 2) {
+						if(value == NULL || strlen(value) == 0) {
+							/* Drop attribute without value */
+							JANUS_LOG(LOG_WARN, "Dropping value-less attribute %s (%s)\n", name, filename);
+							g_free(name);
+							name = NULL;
+							break;
+						}
+						if(name == NULL) {
+							/* Take note of the attribute name */
+							name = g_strdup(value);
+						} else if(name != NULL) {
+							/* Add new item to the current category */
+							if(janus_config_add_item(jc, cg->name, name, value) == NULL) {
+								JANUS_LOG(LOG_ERR, "Error adding item %s to category %s (%s)\n", name, cg->name, filename);
+								error = TRUE;
+								break;
+							}
+							g_free(name);
+							name = NULL;
+						}
+					}
+					break;
+				default:
+					JANUS_LOG(LOG_WARN, "??\n");
+					break;
+			}
+			if(event.type == YAML_STREAM_END_EVENT)
+				break;
+			yaml_event_delete(&event);
+		}
+		g_free(name);
+		yaml_parser_delete(&parser);
+		if(error) {
+			JANUS_LOG(LOG_ERR, "Error parsing YAML configuration file (%s)\n", filename);
+			goto error;
+		}
+		yaml_event_delete(&event);
+		/* We're done */
+		goto done;
+	}
+	/* Not YAML: assume INI, traverse manually and parse it */
 	int line_number = 0;
 	char line_buffer[BUFSIZ];
 	janus_config_category *cg = NULL;
@@ -177,6 +323,7 @@ janus_config *janus_config_parse(const char *config_file) {
 			}
 		}
 	}
+done:
 	fclose(file);
 	return jc;
 
@@ -187,14 +334,12 @@ error:
 }
 
 janus_config *janus_config_create(const char *name) {
-	janus_config *jc = g_malloc0(sizeof(janus_config));
-	if(jc == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+	if(name == NULL)
 		return NULL;
-	}
-	if(name != NULL) {
-		jc->name = g_strdup(name);
-	}
+	janus_config *jc = g_malloc0(sizeof(janus_config));
+	jc->name = g_strdup(name);
+	/* Is this a YAML or INI config file? */
+	jc->is_yaml = is_yaml_config(jc->name);
 	return jc;
 }
 
@@ -212,7 +357,7 @@ janus_config_category *janus_config_get_category(janus_config *config, const cha
 	GList *l = config->categories;
 	while(l) {
 		janus_config_category *c = (janus_config_category *)l->data;
-		if(c && c->name && !strcasecmp(name, c->name))
+		if(c && c->category && c->name && !strcasecmp(name, c->name))
 			return c;
 		l = l->next;
 	}
@@ -258,10 +403,7 @@ janus_config_category *janus_config_add_category(janus_config *config, const cha
 		return c;
 	}
 	c = g_malloc0(sizeof(janus_config_category));
-	if(c == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	c->category = TRUE;
 	c->name = g_strdup(category);
 	config->categories = g_list_append(config->categories, c);
 	return c;
@@ -293,10 +435,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	if(item == NULL) {
 		/* Create it */
 		item = g_malloc0(sizeof(janus_config_item));
-		if(item == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
+		item->category = FALSE;
 		item->name = g_strdup(name);
 		item->value = g_strdup(value);
 		if(c != NULL) {
@@ -363,41 +502,88 @@ void janus_config_print(janus_config *config) {
 gboolean janus_config_save(janus_config *config, const char *folder, const char *filename) {
 	if(config == NULL)
 		return -1;
+	/* If this is a YAML configuration, create an emitter */
+	yaml_emitter_t emitter;
+	yaml_event_t output_event;
+    if(config->is_yaml && !yaml_emitter_initialize(&emitter)) {
+        JANUS_LOG(LOG_ERR, "Could not inialize the YAML emitter object\n");
+        return -1;
+    }
+	/* Open the file */
 	FILE *file = NULL;
 	char path[1024];
 	if(folder != NULL) {
 		/* Create folder, if needed */
 		if(janus_mkdir(folder, 0755) < 0) {
 			JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error creating folder '%s'...\n", folder);
+			if(config->is_yaml)
+				yaml_emitter_delete(&emitter);
 			return -2;
 		}
-		g_snprintf(path, 1024, "%s/%s.cfg", folder, filename);
+		g_snprintf(path, 1024, "%s/%s.%s", folder, filename, config->is_yaml ? "yaml" : "cfg");
 	} else {
-		g_snprintf(path, 1024, "%s.cfg", filename);
+		g_snprintf(path, 1024, "%s.%s", filename, config->is_yaml ? "yaml" : "cfg");
 	}
 	file = fopen(path, "wt");
 	if(file == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error opening file '%s'...\n", path);
+		if(config->is_yaml)
+			yaml_emitter_delete(&emitter);
 		return -3;
 	}
-	/* Print a header */
+	/* Print a header/comment */
 	char date[64], header[256];
 	struct tm tmresult;
 	time_t ltime = time(NULL);
 	localtime_r(&ltime, &tmresult);
 	strftime(date, sizeof(date), "%a %b %e %T %Y", &tmresult);
-	g_snprintf(header, 256, ";\n; File automatically generated on %s\n;\n\n", date);
+	char comment = config->is_yaml ? '#' : ';';
+	g_snprintf(header, 256, "%c\n%c File automatically generated on %s\n%c\n\n",
+		comment, comment, date, comment);
 	fwrite(header, sizeof(char), strlen(header), file);
+	/* If this is a YAML output file, do some preparations */
+	if(config->is_yaml) {
+		yaml_emitter_set_output_file(&emitter, file);
+		yaml_stream_start_event_initialize(&output_event, YAML_UTF8_ENCODING);
+		yaml_emitter_emit(&emitter, &output_event);
+		yaml_document_start_event_initialize(&output_event, NULL, NULL, NULL, 0);
+		yaml_emitter_emit(&emitter, &output_event);
+		yaml_mapping_start_event_initialize(&output_event,
+			NULL, (yaml_char_t *)"tag:yaml.org,2002:map", 1,
+			YAML_BLOCK_MAPPING_STYLE);
+		yaml_emitter_emit(&emitter, &output_event);
+	}
 	/* Go on with the configuration */
 	if(config->items) {
 		GList *l = config->items;
 		while(l) {
 			janus_config_item *i = (janus_config_item *)l->data;
 			if(i->name && i->value) {
-				fwrite(i->name, sizeof(char), strlen(i->name), file);
-				fwrite(" = ", sizeof(char), 3, file);
-				fwrite(i->value, sizeof(char), strlen(i->value), file);
-				fwrite("\n", sizeof(char), 1, file);
+				if(config->is_yaml) {
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->name,
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(&emitter, &output_event);
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->value,
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(&emitter, &output_event);
+				} else {
+					fwrite(i->name, sizeof(char), strlen(i->name), file);
+					fwrite(" = ", sizeof(char), 3, file);
+					/* If the value contains a semicolon, escape it */
+					if(strchr(i->value, ';')) {
+						char *value = g_strdup(i->value);
+						value = janus_string_replace((char *)value, ";", "\\;");
+						fwrite(value, sizeof(char), strlen(value), file);
+						fwrite("\n", sizeof(char), 1, file);
+						g_free(value);
+					} else {
+						/* No need to escape */
+						fwrite(i->value, sizeof(char), strlen(i->value), file);
+						fwrite("\n", sizeof(char), 1, file);
+					}
+				}
 			}
 			l = l->next;
 		}
@@ -407,37 +593,86 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 		while(l) {
 			janus_config_category *c = (janus_config_category *)l->data;
 			if(c->name) {
-				fwrite("[", sizeof(char), 1, file);
-				fwrite(c->name, sizeof(char), strlen(c->name), file);
-				fwrite("]\n", sizeof(char), 2, file);
-				if(c->items) {
+				if(config->is_yaml) {
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)c->name,
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(&emitter, &output_event);
+				} else {
+					fwrite("[", sizeof(char), 1, file);
+					fwrite(c->name, sizeof(char), strlen(c->name), file);
+					fwrite("]\n", sizeof(char), 2, file);
+				}
+				if(c->items == NULL) {
+					/* Empty category */
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)"",
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(&emitter, &output_event);
+				} else {
+					/* None-empty category */
+					if(config->is_yaml) {
+						yaml_mapping_start_event_initialize(&output_event,
+							NULL, (yaml_char_t *)"tag:yaml.org,2002:map", 1,
+							YAML_BLOCK_MAPPING_STYLE);
+						yaml_emitter_emit(&emitter, &output_event);
+					}
 					GList *li = c->items;
 					while(li) {
 						janus_config_item *i = (janus_config_item *)li->data;
 						if(i->name && i->value) {
-							fwrite(i->name, sizeof(char), strlen(i->name), file);
-							fwrite(" = ", sizeof(char), 3, file);
-							/* If the value contains a semicolon, escape it */
-							if(strchr(i->value, ';')) {
-								char *value = g_strdup(i->value);
-								value = janus_string_replace((char *)value, ";", "\\;");
-								fwrite(value, sizeof(char), strlen(value), file);
-								fwrite("\n", sizeof(char), 1, file);
-								g_free(value);
+							if(config->is_yaml) {
+								yaml_scalar_event_initialize(&output_event,
+									NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->name,
+									-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+								yaml_emitter_emit(&emitter, &output_event);
+								yaml_scalar_event_initialize(&output_event,
+									NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->value,
+									-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+								yaml_emitter_emit(&emitter, &output_event);
 							} else {
-								/* No need to escape */
-								fwrite(i->value, sizeof(char), strlen(i->value), file);
-								fwrite("\n", sizeof(char), 1, file);
+								fwrite(i->name, sizeof(char), strlen(i->name), file);
+								fwrite(" = ", sizeof(char), 3, file);
+								/* If the value contains a semicolon, escape it */
+								if(strchr(i->value, ';')) {
+									char *value = g_strdup(i->value);
+									value = janus_string_replace((char *)value, ";", "\\;");
+									fwrite(value, sizeof(char), strlen(value), file);
+									fwrite("\n", sizeof(char), 1, file);
+									g_free(value);
+								} else {
+									/* No need to escape */
+									fwrite(i->value, sizeof(char), strlen(i->value), file);
+									fwrite("\n", sizeof(char), 1, file);
+								}
 							}
 						}
 						li = li->next;
 					}
+					/* TODO: implement subcategories */
+					if(config->is_yaml) {
+						yaml_mapping_end_event_initialize(&output_event);
+						yaml_emitter_emit(&emitter, &output_event);
+					}
 				}
 			}
-			fwrite("\r\n", sizeof(char), 2, file);
+			if(!config->is_yaml)
+				fwrite("\r\n", sizeof(char), 2, file);
 			l = l->next;
 		}
 	}
+	/* If this is a YAML output file, do some preparations */
+	if(config->is_yaml) {
+		yaml_mapping_end_event_initialize(&output_event);
+		yaml_emitter_emit(&emitter, &output_event);
+		yaml_document_end_event_initialize(&output_event, 0);
+		yaml_emitter_emit(&emitter, &output_event);
+		yaml_stream_end_event_initialize(&output_event);
+		yaml_emitter_emit(&emitter, &output_event);
+		yaml_event_delete(&output_event);
+		yaml_emitter_delete(&emitter);
+	}
+	/* Done */
 	fclose(file);
 	return 0;
 }

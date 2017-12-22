@@ -41,7 +41,7 @@ eventsheaderdir = $(includedir)/janus/events
 eventsheader_HEADERS = events/eventhandler.h
 
 confdir = $(sysconfdir)/janus
-conf_DATA = conf/janus.cfg.sample
+conf_DATA = conf/janus.cfg.sample conf/janus.yaml.sample
 
 certdir = $(datadir)/janus/certs
 cert_DATA = certs/mycert.key certs/mycert.pem
@@ -83,8 +83,8 @@ jsmodules_DATA = html/janus.js
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
-EXTRA_DIST += conf/janus.cfg.sample.in
-CLEANFILES += conf/janus.cfg.sample
+EXTRA_DIST += conf/janus.cfg.sample.in conf/janus.yaml.sample.in
+CLEANFILES += conf/janus.cfg.sample conf/janus.yaml.sample
 
 ##
 # Janus
