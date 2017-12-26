@@ -1100,7 +1100,9 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	gboolean first_received	= FALSE;
 	guint64 reference_time	= 0;
 	guint packet_status_count = g_queue_get_length(transport_wide_cc_stats) + 1;
-
+	
+	//JANUS_LOG(LOG_DBG, "base_seq_num:%u packet_status_count:%u feedback_packet_count:%u\n",base_seq_num, packet_status_count, feedback_packet_count);
+	
 	/*
 		0                   1                   2                   3
 		0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -1127,7 +1129,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	len += 8;
 	
 	/* Initial time in us */
-	guint64 time = 0;
+	guint64 timestamp = 0;
 	
 	/* Store delta array */
 	GQueue* deltas = g_queue_new();
@@ -1153,27 +1155,28 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Set it */
 				reference_time = (stat->timestamp/64000);
 				/* Get initial time */
-				time = reference_time * 64000;
+				timestamp = reference_time * 64000;
 				/* also in bufffer */
 				set3(data,reference_time_pos,reference_time);
 			}
 			
 			/* Get delta */
-			if (stat->timestamp>time)
-				delta = (stat->timestamp-time)/250;
+			if (stat->timestamp>timestamp)
+				delta = (stat->timestamp-timestamp)/250;
 			else
-				delta = -(int)((stat->timestamp)/250);
-			/* If it is negative or to big */
+				delta = -(int)((timestamp-stat->timestamp)/250);
+			/* If it is negative or too big */
 			if (delta<0 || delta> 127)
 				/* Big one */
 				status = LargeOrNegativeDelta;
 			else
 				/* Small */
 				status = SmallDelta;
+			//JANUS_LOG(LOG_DBG, "status:%u delta:%d time:%llu ref:%llu\n",status, delta, stat->timestamp, timestamp);
 			/* Store delta */
 			g_queue_push_tail(deltas,GINT_TO_POINTER(delta));
-			/* Set next time */
-			time = stat->timestamp;
+			/* Set last time */
+			timestamp = stat->timestamp;
 		}
 		
 		/* Push back statuses, it will be handled later */
@@ -1352,7 +1355,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	while (!g_queue_is_empty(deltas))
 	{
 		/* Check size */
-		if (delta<0 || delta>128)
+		if (delta<0 || delta>127)
 		{
 			/* 2 bytes */
 			set2(data,len,(short)delta);
