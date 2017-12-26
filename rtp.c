@@ -91,8 +91,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_TOFFSET;
 					if(strstr(extension, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						return JANUS_RTP_EXTMAP_ABS_SEND_TIME;
-					if(strstr(extension, JANUS_RTP_EXTMAP_CC_EXTENSIONS))
-						return JANUS_RTP_EXTMAP_CC_EXTENSIONS;
+					if(strstr(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+						return JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC;
 					if(strstr(extension, JANUS_RTP_EXTMAP_RTP_STREAM_ID))
 						return JANUS_RTP_EXTMAP_RTP_STREAM_ID;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
@@ -139,9 +139,9 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 						if(byte)
 							*byte = buf[hlen+i+1];
 						if(word)
-							*word = *(uint32_t *)(buf+hlen+i);
+							*word = ntohl(*(uint32_t *)(buf+hlen+i));
 						if(ref)
-							*ref = &buf[hlen];
+							*ref = &buf[hlen+i];
 						return 0;
 					}
 					i += 1 + idlen;

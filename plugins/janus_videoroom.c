@@ -3065,10 +3065,11 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			} else if(participant->remb_latest > 0 && janus_get_monotonic_time()-participant->remb_latest >= 5*G_USEC_PER_SEC) {
 				/* 5 seconds have passed since the last REMB, send a new one */
 				send_remb = TRUE;
-			}		
-			if(send_remb) {
+			}
+			
+			if(send_remb && participant->bitrate) {
 				/* We send a few incremental REMB messages at startup */
-				uint32_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
+				uint32_t bitrate = participant->bitrate;
 				if(participant->remb_startup > 0) {
 					bitrate = bitrate/participant->remb_startup;
 					participant->remb_startup--;
@@ -3208,7 +3209,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("slow_link"));
 				/* Also add info on what the current bitrate cap is */
-				uint32_t bitrate = (publisher->bitrate ? publisher->bitrate : 256*1024);
+				uint32_t bitrate = publisher->bitrate;
 				json_object_set_new(event, "current-bitrate", json_integer(bitrate));
 				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -3959,7 +3960,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(session->started)
 						participant->remb_latest = janus_get_monotonic_time();
 					char rtcpbuf[24];
-					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate ? participant->bitrate : 256*1024);
+					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate);
 					gateway->relay_rtcp(msg->handle, 1, rtcpbuf, 24);
 				}
 				janus_mutex_lock(&participant->rec_mutex);
@@ -4566,14 +4567,15 @@ static void *janus_videoroom_handler(void *data) {
 									participant->video_orient_extmap_id = atoi(a->value);
 									video_orient_extmap = TRUE;
 									video_orient_mdir = a->direction;
+								} else if(videoroom->transport_wide_cc_ext && strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
+									participant->transport_wide_cc_extmap_id = atoi(a->value);
+									transport_wide_cc_extmap = TRUE;
 								} else if(videoroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
 									participant->playout_delay_extmap_id = atoi(a->value);
 									playout_delay_extmap = TRUE;
 									playout_delay_mdir = a->direction;
-								} else if(videoroom->transport_wide_cc_ext && strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
-									participant->transport_wide_cc_extmap_id = atoi(a->value);
-									transport_wide_cc_extmap = TRUE;
 								}
+								
 							}
 							ma = ma->next;
 						}

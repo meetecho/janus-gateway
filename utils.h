@@ -292,6 +292,6 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
  * @param[in] val Value of bits to push
  * @returns 0  New word value*/
 inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
-	return (word << num) | (num & (0xFFFFFFFF>>(32-num)));
+	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
 }
 #endif
