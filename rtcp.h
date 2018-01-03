@@ -248,6 +248,9 @@ typedef struct rtcp_context
 	/* Last RR/SR we sent */
 	int64_t last_sent;
 
+	/* Estimated round-trip time */
+	uint32_t rtt;
+
 	/* RFC 3550 A.3 */
 	uint32_t received;
 	uint32_t received_prior;
@@ -256,10 +259,10 @@ typedef struct rtcp_context
 	uint32_t lost, lost_remote;
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
-/*! \brief Method to retrieve the LSR from an existing RTCP context
+/*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @returns The last SR received */
-uint32_t janus_rtcp_context_get_lsr(janus_rtcp_context *ctx);
+ * @returns The estimated round-trip time */
+uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
 /*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info

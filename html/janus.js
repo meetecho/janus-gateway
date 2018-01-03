@@ -858,12 +858,6 @@ function Janus(gatewayCallbacks) {
 			request["perc"] = true;
 		else
 			callbacks.percLite = false;
-		// If we know the browser supports BUNDLE and/or rtcp-mux, let's advertise those right away
-		if(Janus.webRTCAdapter.browserDetails.browser == "chrome" || Janus.webRTCAdapter.browserDetails.browser == "firefox" ||
-				Janus.webRTCAdapter.browserDetails.browser == "safari") {
-			request["force-bundle"] = true;
-			request["force-rtcp-mux"] = true;
-		}
 		if(websockets) {
 			transactions[transaction] = function(json) {
 				Janus.debug(json);
