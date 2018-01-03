@@ -312,7 +312,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.2.6
+	janus 0.3.0
 
 	Usage: janus [OPTIONS]...
 
@@ -351,11 +351,6 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-U, --bundle                  Whether to force BUNDLE or not (whether audio,
-                                  video and data will always be bundled)
-                                  (default=off)
-	-u, --rtcp-mux                Whether to force rtcp-mux or not (whether RTP
-                                  and RTCP will always be muxed)  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
