@@ -2828,8 +2828,6 @@ static void *janus_audiobridge_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
@@ -4158,7 +4156,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 			continue;
 		}
 		mixedpkt = g_async_queue_pop(participant->outbuf);
-		if(mixedpkt != NULL && session->destroyed == 0) {
+		if(session->destroyed == 0) {
 			/* Encode raw frame to Opus */
 			if(participant->active && participant->encoder) {
 				participant->working = TRUE;
@@ -4197,8 +4195,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	/* Empty the outgoing queue if there was something still in */
 	while(g_async_queue_length(participant->outbuf) > 0) {
 		janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);
-		if(pkt == NULL)
-			continue;
 		if(pkt->data)
 			g_free(pkt->data);
 		pkt->data = NULL;
