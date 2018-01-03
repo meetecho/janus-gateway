@@ -1,0 +1,30 @@
+FROM cmacq2/janus-build-env:base
+
+#
+# Apart from the generic base build environment/configuration a 'sane' npm + node are required.
+# To obtain a useful npm, turn to the NodeSource repositories.
+# Unfortunately, the canonical way to "install" NodeSource's node & npm versions is a byzantine installation script.
+# See: https://deb.nodesource.com/setup_8.x
+#
+# The command below tries to replicate the useful bits assuming a fixed Node version, 8, which is the current LTS release at the time of writing.
+#
+RUN apt-get update -qq && apt-get install -qq -y --no-install-recommends wget gnupg ca-certificates \
+    && echo 'deb https://deb.nodesource.com/node_8.x sid main' >> /etc/apt/sources.list.d/nodesource.list \
+    && wget -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | tee | apt-key add - \
+    && apt-get remove --purge  -qq -y wget gnupg \
+    && apt-get update -qq && apt-get install -qq -y --no-install-recommends \
+        nodejs
+
+CMD ["--enable-all-js-modules", \
+     "--disable-dependency-tracking", \
+     "--disable-all-plugins", \
+     "--disable-all-transports", \
+     "--disable-all-handlers", \
+     "--disable-turn-rest-api", \
+     "--disable-unix-sockets", \
+     "--disable-rest", \
+     "--disable-mqtt", \
+     "--disable-websockets", \
+     "--disable-rabbitmq", \
+     "--disable-data-channels" \
+    ]

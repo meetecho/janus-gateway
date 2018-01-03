@@ -1,0 +1,30 @@
+FROM debian:sid-slim
+
+ENV LANG=C.UTF-8 \
+    LANGUAGE=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+RUN apt-get update -qq \
+    && apt-get install -qq -y --no-install-recommends \
+        locales \
+        autoconf \
+        automake \
+        make \
+        libtool \
+        pkg-config \
+        gengetopt \
+        git \
+        libglib2.0-dev \
+        libjansson-dev \
+        libnice-dev \
+        libsrtp2-dev \
+        libssl-dev \
+        libcurl4-gnutls-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && /usr/sbin/locale-gen C.UTF-8 \
+    && /usr/sbin/update-locale LANG=C.UTF-8 \
+    && mkdir -p /janus/src \
+    && mkdir -p /janus/dist
+
+COPY entrypoint.sh /build-janus.sh
+ENTRYPOINT ["/build-janus.sh"]
