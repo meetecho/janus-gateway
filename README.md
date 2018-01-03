@@ -285,13 +285,14 @@ MacOS as well, there are a few aspects to highlight when doing that.
 First of all, you can use `brew` to install most of the dependencies:
 
 	brew tap homebrew/boneyard
-	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
 
-For what concerns `libsrtp`, which needs to be installed manually, just
-pass `/usr/local` as a prefix when configuring, and proceed as normal:
+For what concerns `libsrtp`, if not installed with `brew` by the command above, just
+pass `/usr/local` as a prefix when configuring as well as `PKG_CONFIG_PATH` to find 
+`openssl` crypto libraries, and proceed as normal:
 
 	[..]
-	./configure --prefix=/usr/local
+	./configure --prefix=/usr/local PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 	[..]
 
 Finally, you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
