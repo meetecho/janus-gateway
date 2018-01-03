@@ -2772,6 +2772,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
 	janus_ice_stream *stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 	janus_refcount_init(&stream->ref, janus_ice_stream_free);
+	janus_refcount_increase(&handle->ref);
 	stream->stream_id = handle->stream_id;
 	stream->handle = handle;
 	stream->audio_payload_type = -1;
