@@ -724,7 +724,7 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_LIBSRTP_2],
-	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "SSL/crypto library:        BoringSSL"
