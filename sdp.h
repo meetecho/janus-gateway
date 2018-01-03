@@ -41,11 +41,8 @@
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines
  * @param[out] data The number of SCTP m-lines
- * @param[out] bundle Whether BUNDLE has been negotiated or not
- * @param[out] rtcpmux Whether rtcp-mux has been negotiated or not
- * @param[out] trickle Whether ICE trickling is being used (no candidates) or not
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle);
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
 
 /*! \brief Method to process a parsed session description
  * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly
