@@ -2331,6 +2331,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Inform the plugin about the slow uplink in case it's needed */
 					janus_slow_link_update(component, handle, retransmits_cnt, video, 1, now);
 					janus_mutex_unlock(&component->mutex);
+				}
+				if (nacks_count) {
 					g_slist_free(nacks);
 					nacks = NULL;
 				}
