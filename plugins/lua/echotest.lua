@@ -21,6 +21,26 @@ logger.print("Loading...")
 sessions = {}
 tasks = {}
 
+-- Just for fun, let's override the plugin info with our own
+function getVersion()
+	return 12
+end
+function getVersionString()
+	return "0.0.12"
+end
+function getDescription()
+	return "This is echotest.lua, a Lua based clone of janus.plugin.echotest"
+end
+function getName()
+	return "Lua based EchoTest"
+end
+function getAuthor()
+	return "Lorenzo Miniero"
+end
+function getPackage()
+	return "janus.plugin.echolua"
+end
+
 -- Methods
 function init(config)
 	-- This is where we initialize the plugin, for static properties

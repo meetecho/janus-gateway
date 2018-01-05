@@ -50,7 +50,13 @@
  * make sense to handle incoming data channel messages with \c incomingData()
  * though, the performance impact of directly processing and manipulating
  * RTP an RTCP packets is probably too high, and so their usage is currently
- * discouraged.
+ * discouraged. As an additional note, Lua scripts can also decide to
+ * implement the functions that return information about the plugin itself,
+ * namely \c getVersion() \c getVersionString() \c getDescription()
+ * \c getName() \c getAuthor() and \c getPackage(). If not implemented,
+ * the Lua plugin will return its own info (i.e., "janus.plugin.lua", etc.).
+ * Most of the times, Lua scripts will not need to override this information,
+ * unless they really want to register their own name spaces and versioning.
  *
  * \section capi C interfaces
  *
@@ -63,6 +69,7 @@
  * The following are the functions the C code exposes:
  *
  * - \c pushEvent(): push an event to the user via Janus API;
+ * - \c eventsIsEnabled(): check if Event Handlers are enabled in the core;
  * - \c notifyEvent(): send an event to Event Handlers;
  * - \c closePc(): force the closure of a PeerConnection;
  * - \c configureMedium(): specify whether audio/video/data can be received/sent;
@@ -73,13 +80,14 @@
  * - \c sendPli(): send a PLI (keyframe request);
  * - \c startRecording(): start recording audio, video and or data for a user;
  * - \c stopRecording(): start recording audio, video and or data for a user;
- * - \c pokeScheduler(): notify the C code that there's a coroutine to resume.
+ * - \c pokeScheduler(): notify the C code that there's a coroutine to resume;
+ * - \c timeCallback(): trigger the execution of a Lua function after X milliseconds.
  *
  * As anticipated in the previous section, almost all these methods also
  * expect the unique session identifier to address a specific user in the
- * plugin. This is true for all the above methods expect \c pokeScheduler()
- * which, together with Lua's \c resumeScheduler(), will be clearer in
- * the next section.
+ * plugin. This is true for all the above methods expect \c eventsIsEnabled
+ * and, more importantly, both \c timeCallback() and \c pokeScheduler() which,
+ * together with Lua's \c resumeScheduler(), will be clearer in the next section.
  *
  * \section coroutines Lua/C coroutines scheduler
  *
@@ -108,7 +116,8 @@
  *
  * This simple mechanism is what the sample Lua scripts provided in this
  * repo use, for instance, to handle incoming messages asynchronously,
- * so you can refer to those to have an idea of how it can be used.
+ * so you can refer to those to have an idea of how it can be used. The
+ * next section will address \ref timers instead.
  *
  * \note You can implement asynchronous behaviour any way you want, and
  * you're not required to use this C scheduler. Anyway, you must implement
@@ -116,7 +125,46 @@
  * its presence and fails if it's not there. If you don't need it, just
  * create an empty function that does nothing and you'll be fine.
  *
+ * \section timers Lua/C time-based scheduler
+ *
+ * Another helpful way to implement asynchronous behaviour is with the
+ * help of the \c timeCallback() function. Specifically, this function
+ * implements a mechanism to ask for a specific Lua method to be invoked
+ * after a provided amount of time. To specify the function to invoke,
+ * an optional argument to pass (which MUST be a string) and the time to
+ * wait to do that. This is particularly helpful when you're handling
+ * asynchronous behaviour that you want to inspect on a regular basis.
+ *
+ * The \c timeCallback() function expects three arguments:
+ *
+ * \verbatim
+timeCallback(function, argument, milliseconds)
 \endverbatim
+ *
+ * The only mandatory parameter is \c function: if you set \c argument
+ * to \c nil no argument will be passed to \c function when it's executed;
+ * it \c milliseconds is 0, \c function will be executed as soon as possible.
+ *
+ * \verbatim
+-- This will cause an error (timeCallback needs three arguments)
+timeCallback()
+-- Invoke test() in 500 milliseconds
+timeCallback("test", nil, 500)
+-- Invoke test("ciccio") in 2 seconds
+timeCallback("test", "ciccio", 2000)
+\endverbatim
+ *
+ * Notice that \c timeCallback() allows you to formally recreate the
+ * mechanism \c pokeScheduler() and \c resumeScheduler() implement, as
+ * the following is pretty much an equivalent of that:
+ *
+ * \verbatim
+timeCallback("resumeScheduler", nil, 0)
+\endverbatim
+ *
+ * Anyway, \c pokeScheduler() and \c resumeScheduler() is much more
+ * compact and less verbose, and as such is preferred in cases where
+ * timing and opaque arguments are not needed.
  *
  * \ingroup plugins
  * \ingroup luapapi
@@ -208,6 +256,19 @@ static const char *lua_functions[] = {
 	"setupMedia", "hangupMedia"
 };
 static uint lua_funcsize = sizeof(lua_functions)/sizeof(*lua_functions);
+/* Some bindings are optional */
+static gboolean has_get_version = FALSE;
+static int lua_script_version = -1;
+static gboolean has_get_version_string = FALSE;
+static char *lua_script_version_string = NULL;
+static gboolean has_get_description = FALSE;
+static char *lua_script_description = NULL;
+static gboolean has_get_name = FALSE;
+static char *lua_script_name = NULL;
+static gboolean has_get_author = FALSE;
+static char *lua_script_author = NULL;
+static gboolean has_get_package = FALSE;
+static char *lua_script_package = NULL;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
@@ -432,6 +493,11 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 		lua_pushnumber(s, -1);
 		return 1;
 	}
+	if(!janus_core->events_is_enabled()) {
+		/* Event handlers are disabled in the core, ignoring */
+		lua_pushnumber(s, 0);
+		return 1;
+	}
 	guint32 id = lua_tonumber(s, 1);
 	const char *event_text = lua_tostring(s, 2);
 	/* Parse the event/jsep strings to Jansson objects */
@@ -453,6 +519,19 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 	if(session != NULL)
 		janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
+	return 1;
+}
+
+static int janus_lua_method_eventsisenabled(lua_State *s) {
+	/* Get the arguments from the provided state */
+	int n = lua_gettop(s);
+	if(n != 0) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 0)\n", n);
+		lua_pushnumber(s, -1);
+		return 1;
+	}
+	/* Event handlers are disabled in the core, ignoring */
+	lua_pushnumber(s, janus_core->events_is_enabled());
 	return 1;
 }
 
@@ -1035,6 +1114,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_register(lua_state, "timeCallback", janus_lua_method_timecallback);
 	lua_register(lua_state, "pushEvent", janus_lua_method_pushevent);
 	lua_register(lua_state, "notifyEvent", janus_lua_method_notifyevent);
+	lua_register(lua_state, "eventsIsEnabled", janus_lua_method_eventsisenabled);
 	lua_register(lua_state, "closePc", janus_lua_method_closepc);
 	lua_register(lua_state, "configureMedium", janus_lua_method_configuremedium);
 	lua_register(lua_state, "addRecipient", janus_lua_method_addrecipient);
@@ -1071,8 +1151,27 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 			return -1;
 		}
 	}
-	/* Some Lua functions are optional, e.g., those to directly handle RTP, RTCP and data,
-	 * as those will typically be kept at a C level, with Lua only dictating the logic */
+	/* Some Lua functions are optional (e.g., those to directly handle RTP, RTCP and
+	 * data, as those will typically be kept at a C level, with Lua only dictating
+	 * the logic, or those overriding the plugin namespace and versioning information */
+	lua_getglobal(lua_state, "getVersion");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_version = TRUE;
+	lua_getglobal(lua_state, "getVersionString");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_version_string = TRUE;
+	lua_getglobal(lua_state, "getDescription");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_description = TRUE;
+	lua_getglobal(lua_state, "getName");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_name = TRUE;
+	lua_getglobal(lua_state, "getAuthor");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_author = TRUE;
+	lua_getglobal(lua_state, "getPackage");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_get_package = TRUE;
 	lua_getglobal(lua_state, "incomingRtp");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtp = TRUE;
@@ -1182,6 +1281,12 @@ void janus_lua_destroy(void) {
 	lua_state = NULL;
 	janus_mutex_unlock(&lua_mutex);
 
+	g_free(lua_script_version_string);
+	g_free(lua_script_description);
+	g_free(lua_script_name);
+	g_free(lua_script_author);
+	g_free(lua_script_package);
+
 	g_atomic_int_set(&lua_initialized, 0);
 	g_atomic_int_set(&lua_stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_LUA_NAME);
@@ -1193,26 +1298,144 @@ int janus_lua_get_api_compatibility(void) {
 }
 
 int janus_lua_get_version(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_version) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_version != -1) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_version;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getVersion");
+		lua_call(t, 0, 1);
+		lua_script_version = (int)lua_tonumber(t, -1);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_version;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_VERSION;
 }
 
 const char *janus_lua_get_version_string(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_version_string) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_version_string != NULL) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_version_string;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getVersionString");
+		lua_call(t, 0, 1);
+		const char *version = lua_tostring(t, -1);
+		if(version != NULL)
+			lua_script_version_string = g_strdup(version);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_version_string;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_VERSION_STRING;
 }
 
 const char *janus_lua_get_description(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_description) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_description != NULL) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_description;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getDescription");
+		lua_call(t, 0, 1);
+		const char *description = lua_tostring(t, -1);
+		if(description != NULL)
+			lua_script_description = g_strdup(description);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_description;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_DESCRIPTION;
 }
 
 const char *janus_lua_get_name(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_name) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_description != NULL) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_description;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getName");
+		lua_call(t, 0, 1);
+		const char *name = lua_tostring(t, -1);
+		if(name != NULL)
+			lua_script_name = g_strdup(name);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_name;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_NAME;
 }
 
 const char *janus_lua_get_author(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_author) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_author != NULL) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_author;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getAuthor");
+		lua_call(t, 0, 1);
+		const char *author = lua_tostring(t, -1);
+		if(author != NULL)
+			lua_script_author = g_strdup(author);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_author;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_AUTHOR;
 }
 
 const char *janus_lua_get_package(void) {
+	/* Check if the Lua script wants to override this method and return info itself */
+	if(has_get_package) {
+		/* Yep, pass the request to the Lua script and return the info */
+		janus_mutex_lock(&lua_mutex);
+		/* Unless we asked already */
+		if(lua_script_package != NULL) {
+			janus_mutex_unlock(&lua_mutex);
+			return lua_script_package;
+		}
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "getPackage");
+		lua_call(t, 0, 1);
+		const char *package = lua_tostring(t, -1);
+		if(package != NULL)
+			lua_script_package = g_strdup(package);
+		lua_pop(t, 1);
+		janus_mutex_unlock(&lua_mutex);
+		return lua_script_package;
+	}
+	/* No override, return the Janus Lua plugin info */
 	return JANUS_LUA_PACKAGE;
 }
 
