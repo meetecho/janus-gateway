@@ -3115,7 +3115,7 @@ ldd janus | grep asan
  * -# <a href="#certificates">I'm trying the demos, but I get "Janus down" or certificate errors!</a>\n
  * -# <a href="#nodejs">Can I use Janus with node.js or other frameworks?</a>\n
  * -# <a href="#monitoring">How do I monitor/manage my Janus instance?</a>\n
- * -# <a href="#plugins">I want to write my own plugin, where do I start?</a>\n
+ * -# <a href="#writeplugin">I want to write my own plugin, where do I start?</a>\n
  * -# <a href="#ulimit">I'm using the VideoRoom plugin and, when several users are handled, I get
  *    a "Too many open files" errors and Janus crashes</a>\n
  * -# <a href="#https">When I enable the HTTPS web server in Janus, the CPU goes crazy</a>\n
@@ -3436,7 +3436,7 @@ ldd janus | grep asan
  *    page from where this effort was merged. More guidelines and implementations
  *    will definitely follow. \n\n
  *    .
- * \anchor plugins
+ * \anchor writeplugin
  * -# <b>I want to write my own plugin, where do I start?</b>\n
  *    .
  *    Great! Depending on the kind of plugin you want to implement (application plugin,
