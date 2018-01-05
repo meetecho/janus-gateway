@@ -1373,9 +1373,9 @@ const char *janus_lua_get_name(void) {
 		/* Yep, pass the request to the Lua script and return the info */
 		janus_mutex_lock(&lua_mutex);
 		/* Unless we asked already */
-		if(lua_script_description != NULL) {
+		if(lua_script_name != NULL) {
 			janus_mutex_unlock(&lua_mutex);
-			return lua_script_description;
+			return lua_script_name;
 		}
 		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "getName");
