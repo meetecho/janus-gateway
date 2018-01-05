@@ -412,7 +412,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		/* Any change in SSRCs we should be aware of? */
 		if(stream->audio_ssrc_peer_new > 0) {
 			if(stream->audio_ssrc_peer > 0 && stream->audio_ssrc_peer != stream->audio_ssrc_peer_new) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Audio SSRC changed: %"SCNu32" --> %"SCNu32"\n",
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Audio SSRC changed: %"SCNu32" --> %"SCNu32"\n",
 					handle->handle_id, stream->audio_ssrc_peer, stream->audio_ssrc_peer_new);
 				/* FIXME Reset the RTCP context */
 				janus_ice_component *component = stream->component;
@@ -432,7 +432,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		for(vindex=0; vindex<3; vindex++) {
 			if(stream->video_ssrc_peer_new[vindex] > 0) {
 				if(stream->video_ssrc_peer[vindex] > 0 && stream->video_ssrc_peer[vindex] != stream->video_ssrc_peer_new[vindex]) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (#%d) changed: %"SCNu32" --> %"SCNu32"\n",
+					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Video SSRC (#%d) changed: %"SCNu32" --> %"SCNu32"\n",
 						handle->handle_id, vindex, stream->video_ssrc_peer[vindex], stream->video_ssrc_peer_new[vindex]);
 					/* FIXME Reset the RTCP context */
 					janus_ice_component *component = stream->component;
@@ -459,7 +459,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		}
 		if(stream->video_ssrc_peer_rtx_new > 0) {
 			if(stream->video_ssrc_peer_rtx > 0 && stream->video_ssrc_peer_rtx != stream->video_ssrc_peer_rtx_new) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Video SSRC (rtx) changed: %"SCNu32" --> %"SCNu32"\n",
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Video SSRC (rtx) changed: %"SCNu32" --> %"SCNu32"\n",
 					handle->handle_id, stream->video_ssrc_peer_rtx, stream->video_ssrc_peer_rtx_new);
 			}
 			stream->video_ssrc_peer_rtx = stream->video_ssrc_peer_rtx_new;

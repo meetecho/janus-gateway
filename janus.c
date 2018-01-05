@@ -1161,7 +1161,7 @@ int janus_process_incoming_request(janus_request *request) {
 			} else {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
 				 * direction and ICE restarts: anything more complex than that will result in an error */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
 				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_free(parsed_sdp);
@@ -1173,7 +1173,7 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				renegotiation = TRUE;
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
+					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
 					/* Update remote credentials for ICE */
 					if(handle->stream) {
 						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
