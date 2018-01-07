@@ -5,8 +5,7 @@
   "main": "html/janus.js",
   "files": [
     "html/janus.js",
-    "html/janus.nojquery.js",
-    "html/adapter.js"
+    "html/janus.es.js"
   ],
   "repository": {
     "type": "git",
@@ -16,6 +15,13 @@
   "license": "GPL-3.0",
   "bugs": {
     "url": "https://github.com/meetecho/janus-gateway/issues"
+  },
+  "scripts": {
+    "postinstall": "cd npm && rollup -c rollup.config.js -f es -o ../html/janus.es.js"
+  },
+  "devDependencies": {
+    "rollup": "^0.50.0",
+    "rollup-plugin-replace": "^2.0.0"
   },
   "homepage": "https://github.com/meetecho/janus-gateway#readme"
 }
