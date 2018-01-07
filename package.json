@@ -19,7 +19,7 @@
     "url": "https://github.com/meetecho/janus-gateway/issues"
   },
   "scripts": {
-    "postinstall": "cd npm && rollup -c rollup.config.js -f es -o ../html/janus.es.js"
+    "postinstall": "cd npm && rollup -c rollup.config.js"
   },
   "dependencies": {
     "rollup": "^0.50.0",
