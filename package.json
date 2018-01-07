@@ -6,8 +6,7 @@
   "files": [
     "html/janus.js",
     "html/janus.es.js",
-    "npm/rollup.config.js",
-    "npm/module.js"
+    "npm/*.js"
   ],
   "repository": {
     "type": "git",
