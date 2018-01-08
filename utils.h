@@ -291,7 +291,34 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
  * @param[in] num Number of bits to push
  * @param[in] val Value of bits to push
  * @returns 0  New word value*/
-inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
-	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
-}
+guint32 janus_push_bits(guint32 word, size_t num, guint32 val);
+
+/*! \brief Helper method to set one byte at a memory position
+ * @param[in] data memory data pointer
+ * @param[in] i position in memory to change
+ * @param[in] val value to write
+ */
+void janus_set1(guint8 *data,size_t i,guint8 val);
+
+/*! \brief Helper method to set two bytes at a memory position
+ * @param[in] data memory data pointer
+ * @param[in] i position in memory to change
+ * @param[in] val value to write
+ */
+void janus_set2(guint8 *data,size_t i,guint32 val);
+
+/*! \brief Helper method to set three bytes at a memory position
+ * @param[in] data memory data pointer
+ * @param[in] i position in memory to change
+ * @param[in] val value to write
+ */
+void janus_set3(guint8 *data,size_t i,guint32 val);
+
+/*! \brief Helper method to set four bytes at a memory position
+ * @param[in] data memory data pointer
+ * @param[in] i position in memory to change
+ * @param[in] val value to write
+ */
+void janus_set4(guint8 *data,size_t i,guint32 val);
+
 #endif
