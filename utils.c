@@ -937,3 +937,29 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 	}
 	return 0;
 }
+
+inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
+}
+
+inline void janus_set1(guint8 *data,size_t i,guint8 val) {
+	data[i] = val;
+}
+
+inline void janus_set2(guint8 *data,size_t i,guint32 val) {
+	data[i+1] = (guint8)(val);
+	data[i]   = (guint8)(val>>8);
+}
+
+inline void janus_set3(guint8 *data,size_t i,guint32 val) {
+	data[i+2] = (guint8)(val);
+	data[i+1] = (guint8)(val>>8);
+	data[i]   = (guint8)(val>>16);
+}
+
+inline void janus_set4(guint8 *data,size_t i,guint32 val) {
+	data[i+3] = (guint8)(val);
+	data[i+2] = (guint8)(val>>8);
+	data[i+1] = (guint8)(val>>16);
+	data[i]   = (guint8)(val>>24);
+}
