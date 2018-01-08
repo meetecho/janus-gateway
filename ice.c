@@ -1245,7 +1245,7 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream->video_rtcp_ctx[1] = NULL;
 	g_free(stream->video_rtcp_ctx[2]);
 	stream->video_rtcp_ctx[2] = NULL;
-	g_slist_free(stream->transport_wide_received_seq_nums);
+	g_slist_free_full(stream->transport_wide_received_seq_nums,(GDestroyNotify)g_free);
 	stream->transport_wide_received_seq_nums = NULL;
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
@@ -3005,7 +3005,7 @@ void janus_ice_restart(janus_ice_handle *handle) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 }
 
-gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
+static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
 	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
 }
 
@@ -3242,8 +3242,7 @@ void *janus_ice_send_thread(void *data) {
 				GQueue* packets = g_queue_new();
 				
 				/* For all packets */
-				for (GSList *it = sorted; it; it = it->next)
-				{
+				for (GSList *it = sorted; it; it = it->next) {
 					/* Get stat */
 					janus_rtcp_transport_wide_cc_stats* stats = (janus_rtcp_transport_wide_cc_stats*)it->data;
 					
@@ -3256,11 +3255,9 @@ void *janus_ice_send_thread(void *data) {
 						continue;
 					
 					/* If not first */
-					if (handle->stream->transport_wide_cc_last_feedback_seq_num)
-					{
+					if (handle->stream->transport_wide_cc_last_feedback_seq_num) {
 						/* For each lost */
-						for (guint32 i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i)
-						{
+						for (guint32 i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
 							/* Create new stat */
 							janus_rtcp_transport_wide_cc_stats* missing = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
 							/* Add missing packet */
