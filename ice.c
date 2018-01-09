@@ -3289,10 +3289,10 @@ void *janus_ice_send_thread(void *data) {
 				
 				/* Create rtcp packet */
 				int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size, handle->stream->video_ssrc, stream->video_ssrc_peer[0] , feedback_packet_count, packets);
-				
+
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
-				
+
 				/* Free mem */
 				g_queue_free(packets);
 			}
