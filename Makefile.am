@@ -184,6 +184,8 @@ endif
 
 version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
+	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
+	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
@@ -474,6 +476,7 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
 	log.c \
+	version.c \
 	$(NULL)
 
 janus_pp_rec_CFLAGS = \

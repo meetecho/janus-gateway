@@ -443,7 +443,9 @@ void janus_dtls_srtp_cleanup(void) {
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 	}
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 	g_free(janus_dtls_locks);
+#endif
 }
 
 
