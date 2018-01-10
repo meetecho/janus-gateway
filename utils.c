@@ -563,7 +563,7 @@ gboolean janus_vp8_is_keyframe(char* buffer, int len) {
 				unsigned char *c = (unsigned char *)buffer+3;
 				/* vet via sync code */
 				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-					JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
 				} else {
 					int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
 					int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
@@ -936,4 +936,30 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		}
 	}
 	return 0;
+}
+
+inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
+}
+
+inline void janus_set1(guint8 *data,size_t i,guint8 val) {
+	data[i] = val;
+}
+
+inline void janus_set2(guint8 *data,size_t i,guint32 val) {
+	data[i+1] = (guint8)(val);
+	data[i]   = (guint8)(val>>8);
+}
+
+inline void janus_set3(guint8 *data,size_t i,guint32 val) {
+	data[i+2] = (guint8)(val);
+	data[i+1] = (guint8)(val>>8);
+	data[i]   = (guint8)(val>>16);
+}
+
+inline void janus_set4(guint8 *data,size_t i,guint32 val) {
+	data[i+3] = (guint8)(val);
+	data[i+2] = (guint8)(val>>8);
+	data[i+1] = (guint8)(val>>16);
+	data[i]   = (guint8)(val>>24);
 }

@@ -64,6 +64,7 @@
 #include <jansson.h>
 
 #include "../debug.h"
+#include "../version.h"
 #include "pp-rtp.h"
 #include "pp-webm.h"
 #include "pp-h264.h"
@@ -97,6 +98,10 @@ int main(int argc, char *argv[])
 {
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
+
+	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
