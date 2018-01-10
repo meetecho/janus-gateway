@@ -1245,7 +1245,7 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream->video_rtcp_ctx[1] = NULL;
 	g_free(stream->video_rtcp_ctx[2]);
 	stream->video_rtcp_ctx[2] = NULL;
-	g_slist_free_full(stream->transport_wide_received_seq_nums,(GDestroyNotify)g_free);
+	g_slist_free_full(stream->transport_wide_received_seq_nums, (GDestroyNotify)g_free);
 	stream->transport_wide_received_seq_nums = NULL;
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
@@ -2025,9 +2025,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
 					}
 				}
-				/* If we need to handle transport wide cc*/
-				if (stream->do_transport_wide_cc) 
-				{
+				/* Check if we need to handle transport wide cc */
+				if (stream->do_transport_wide_cc) {
 					guint16 transport_seq_num;
 					/* Get transport wide seq num */
 					if (janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, stream->transport_wide_cc_ext_id, &transport_seq_num)==0) {
@@ -2037,10 +2036,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						
 						/* Create <seq num, time> pair */
 						janus_rtcp_transport_wide_cc_stats* stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
-						if(stats == NULL) {
-							JANUS_LOG(LOG_FATAL, "Memory error!\n");
-							return;
-						}
 						/* Check if we have a sequence wrap */
 						if (transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000)
 							/* Increase cycles */
@@ -3225,7 +3220,7 @@ void *janus_ice_send_thread(void *data) {
 				}
 			}
 			if (stream && stream->do_transport_wide_cc) {
-				/* Create a transport wide feedback message*/
+				/* Create a transport wide feedback message */
 				size_t size = 1300;
 				char rtcpbuf[1300];
 				
@@ -3233,7 +3228,7 @@ void *janus_ice_send_thread(void *data) {
 				janus_mutex_lock(&handle->stream->mutex);
 				
 				/* Order packet list */
-				GSList* sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums,rtcp_transport_wide_cc_stats_comparator);
+				GSList* sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums, rtcp_transport_wide_cc_stats_comparator);
 				
 				/* Create full stats queue */
 				GQueue* packets = g_queue_new();

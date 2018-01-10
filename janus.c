@@ -2772,7 +2772,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 	} else {
 		/* Check if transport wide CC is supported */
-		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp,JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 		ice_handle->stream->do_transport_wide_cc = TRUE;
 		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}

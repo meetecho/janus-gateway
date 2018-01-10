@@ -149,7 +149,7 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
  * @param[out] transport wide sequence number
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
-	uint16_t* transSeqNum);
+	uint16_t *transSeqNum);
 
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {

@@ -222,8 +222,7 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	return 0;
 }
 
-int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
-	uint16_t* transSeqNum) {
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum) {
 	uint32_t bytes = 0;
 	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL) < 0)
 		return -1;

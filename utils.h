@@ -298,27 +298,27 @@ guint32 janus_push_bits(guint32 word, size_t num, guint32 val);
  * @param[in] i position in memory to change
  * @param[in] val value to write
  */
-void janus_set1(guint8 *data,size_t i,guint8 val);
+void janus_set1(guint8 *data, size_t i, guint8 val);
 
 /*! \brief Helper method to set two bytes at a memory position
  * @param[in] data memory data pointer
  * @param[in] i position in memory to change
  * @param[in] val value to write
  */
-void janus_set2(guint8 *data,size_t i,guint32 val);
+void janus_set2(guint8 *data, size_t i, guint32 val);
 
 /*! \brief Helper method to set three bytes at a memory position
  * @param[in] data memory data pointer
  * @param[in] i position in memory to change
  * @param[in] val value to write
  */
-void janus_set3(guint8 *data,size_t i,guint32 val);
+void janus_set3(guint8 *data, size_t i, guint32 val);
 
 /*! \brief Helper method to set four bytes at a memory position
  * @param[in] data memory data pointer
  * @param[in] i position in memory to change
  * @param[in] val value to write
  */
-void janus_set4(guint8 *data,size_t i,guint32 val);
+void janus_set4(guint8 *data, size_t i, guint32 val);
 
 #endif

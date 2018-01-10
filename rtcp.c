@@ -1045,13 +1045,13 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	return words*4+4;
 }
 
-enum janus_rtp_packet_status
+typedef enum janus_rtp_packet_status
 {
 	NotReceived = 0,
 	SmallDelta = 1,
 	LargeOrNegativeDelta = 2,
 	Reserved = 3
-};
+} janus_rtp_packet_status;
 		
 int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssrc, guint32 media, guint8 feedback_packet_count, GQueue *transport_wide_cc_stats) {
 	if(packet == NULL || size < sizeof(janus_rtcp_header) || transport_wide_cc_stats == NULL || g_queue_is_empty(transport_wide_cc_stats))
@@ -1072,9 +1072,9 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	janus_rtcp_transport_wide_cc_stats* stat = (janus_rtcp_transport_wide_cc_stats*) g_queue_pop_head (transport_wide_cc_stats);
 	
 	/* Calculate temporal info */
-	guint16 base_seq_num	= stat->transport_seq_num;
+	guint16 base_seq_num = stat->transport_seq_num;
 	gboolean first_received	= FALSE;
-	guint64 reference_time	= 0;
+	guint64 reference_time = 0;
 	guint packet_status_count = g_queue_get_length(transport_wide_cc_stats) + 1;
 	
 	/*
@@ -1093,11 +1093,11 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	size_t len = sizeof(janus_rtcp_header) + 8;
 
 	/* Set header data */
-	janus_set2(data,len,base_seq_num);
-	janus_set2(data,len+2,packet_status_count);
+	janus_set2(data, len, base_seq_num);
+	janus_set2(data, len+2, packet_status_count);
 	/* Set3 referenceTime when first received */
 	size_t reference_time_pos = len + 4;
-	janus_set1(data,len+7,feedback_packet_count);
+	janus_set1(data, len+7, feedback_packet_count);
 	
 	/* Next byte */
 	len += 8;
@@ -1108,13 +1108,13 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	/* Store delta array */
 	GQueue* deltas = g_queue_new();
 	GQueue* statuses = g_queue_new();
-	enum janus_rtp_packet_status last_status = Reserved;
-	enum janus_rtp_packet_status max_status = NotReceived;
+	janus_rtp_packet_status last_status = Reserved;
+	janus_rtp_packet_status max_status = NotReceived;
 	gboolean all_same = TRUE;
 	
 	/* For each packet  */
 	while (stat!=NULL) {
-		enum janus_rtp_packet_status status = NotReceived;
+		janus_rtp_packet_status status = NotReceived;
 		
 		/* If got packet */
 		if (stat->timestamp) {
@@ -1128,7 +1128,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Get initial time */
 				timestamp = reference_time * 64000;
 				/* also in bufffer */
-				janus_set3(data,reference_time_pos,reference_time);
+				janus_set3(data, reference_time_pos, reference_time);
 			}
 			
 			/* Get delta */
@@ -1144,7 +1144,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Small */
 				status = SmallDelta;
 			/* Store delta */
-			g_queue_push_tail(deltas,GINT_TO_POINTER(delta));
+			g_queue_push_tail(deltas, GINT_TO_POINTER(delta));
 			/* Set last time */
 			timestamp = stat->timestamp;
 		}
@@ -1164,11 +1164,11 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 					T = 0
 				 */
-				word = janus_push_bits(word,1,0);
-				word = janus_push_bits(word,2,last_status);
-				word = janus_push_bits(word,13,g_queue_get_length(statuses));
+				word = janus_push_bits(word, 1, 0);
+				word = janus_push_bits(word, 2, last_status);
+				word = janus_push_bits(word, 13, g_queue_get_length(statuses));
 				/* Write word */
-				janus_set2(data,len, word);
+				janus_set2(data, len, word);
 				len += 2;
 				/* Remove all statuses */
 				g_queue_clear(statuses);
@@ -1183,7 +1183,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		}
 		
 		/* Push back statuses, it will be handled later */
-		g_queue_push_tail(statuses,GUINT_TO_POINTER(status));
+		g_queue_push_tail(statuses, GUINT_TO_POINTER(status));
 		
 		/* If it is bigger */
 		if (status>max_status)
@@ -1206,17 +1206,17 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 					T = 1
 					S = 1
 				 */
-				word = janus_push_bits(word,1,1);
-				word = janus_push_bits(word,1,1);
+				word = janus_push_bits(word, 1, 1);
+				word = janus_push_bits(word, 1, 1);
 				/* Set next 7 */
 				for (guint32 i=0;i<7;++i) {
 					/* Get status */
-					enum janus_rtp_packet_status status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+					janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 					/* Write */
-					word = janus_push_bits(word,2,(guint8)status);
+					word = janus_push_bits(word, 2, (guint8)status);
 				}
 				/* Write word */
-				janus_set2(data,len, word);
+				janus_set2(data, len, word);
 				len += 2;
 				/* REset */
 				last_status = Reserved;
@@ -1227,7 +1227,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				for (size_t i=0; i<g_queue_get_length(statuses); ++i)
 				{
 					//Get status
-					status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_peek_nth(statuses, i));
+					status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_peek_nth(statuses, i));
 					//If it is bigger
 					if (status>max_status)
 						//Store it
@@ -1250,17 +1250,17 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 					 T = 1
 					 S = 0
 				 */
-				word = janus_push_bits(word,1,1);
-				word = janus_push_bits(word,1,0);
+				word = janus_push_bits(word, 1, 1);
+				word = janus_push_bits(word, 1, 0);
 				/* Set next 7 */
 				for (guint32 i=0;i<14;++i) {
 					/* Get status */
-					enum janus_rtp_packet_status status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+					janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 					/* Write */
-					word = janus_push_bits(word,1,(guint8)status);
+					word = janus_push_bits(word, 1, (guint8)status);
 				}
 				/* Write word */
-				janus_set2(data,len, word);
+				janus_set2(data, len, word);
 				len += 2;
 				/* REset */
 				last_status = Reserved;
@@ -1284,51 +1284,51 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		if (all_same) {
 			guint32 word = 0;
 			/* Write run! */
-			word = janus_push_bits(word,1,0);
-			word = janus_push_bits(word,2,last_status);
-			word = janus_push_bits(word,13,statuses_len);
+			word = janus_push_bits(word, 1, 0);
+			word = janus_push_bits(word, 2, last_status);
+			word = janus_push_bits(word, 13, statuses_len);
 			/* Write word */
-			janus_set2(data,len, word);
+			janus_set2(data, len, word);
 			len += 2;
-		} else if (max_status==LargeOrNegativeDelta) {
+		} else if (max_status == LargeOrNegativeDelta) {
 			guint32 word = 0;
 			/* Write chunk */
-			word = janus_push_bits(word,1,1);
-			word = janus_push_bits(word,1,1);
+			word = janus_push_bits(word, 1, 1);
+			word = janus_push_bits(word, 1, 1);
 			/* Get fist status */
-			enum janus_rtp_packet_status status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+			janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			/* Write rest */
 			while(!g_queue_is_empty(statuses))
 			{
 				/* Write */
-				word = janus_push_bits(word,2,(guint8)status);
+				word = janus_push_bits(word, 2, (guint8)status);
 				/* Next */
-				status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+				status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			}
 			/* Write pending */
-			word = janus_push_bits(word,14-statuses_len*2,0);
+			word = janus_push_bits(word, 14-statuses_len*2, 0);
 			/* Write word */
-			janus_set2(data,len, word);
+			janus_set2(data , len, word);
 			len += 2;
 		} else {
 			guint32 word = 0;
 			/* Write chunck */
-			word = janus_push_bits(word,1,1);
-			word = janus_push_bits(word,1,0);
+			word = janus_push_bits(word, 1, 1);
+			word = janus_push_bits(word, 1, 0);
 			/* Get fist status */
-			enum janus_rtp_packet_status status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+			janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			/* Write rest */
 			while(!g_queue_is_empty(statuses))
 			{
 				/* Write */
-				word = janus_push_bits(word,1,(guint8)status);
+				word = janus_push_bits(word, 1, (guint8)status);
 				/* Next */
-				status = (enum janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
+				status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			}
 			/* Write pending */
-			word = janus_push_bits(word,14-statuses_len,0);
+			word = janus_push_bits(word, 14-statuses_len, 0);
 			/* Write word */
-			janus_set2(data,len, word);
+			janus_set2(data, len, word);
 			len += 2;
 		}
 		
@@ -1342,12 +1342,12 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		/* Check size */
 		if (delta<0 || delta>127) {
 			/* 2 bytes */
-			janus_set2(data,len,(short)delta);
+			janus_set2(data, len, (short)delta);
 			/* Inc */
 			len += 2;
 		} else {
 			/* 1 byte */
-			janus_set1(data,len,(guint8)delta);
+			janus_set1(data, len, (guint8)delta);
 			/* Inc */
 			len ++;
 		}
@@ -1360,7 +1360,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	/* Add zero padding */
 	while (len%4)
 		/* Add padding */
-		janus_set1(data,len++,0);
+		janus_set1(data, len++, 0);
 	
 	/* Set RTCP Len */
 	rtcp->length = htons((len/4)-1);
