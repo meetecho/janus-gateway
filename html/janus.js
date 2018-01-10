@@ -854,12 +854,6 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
-		// If we know the browser supports BUNDLE and/or rtcp-mux, let's advertise those right away
-		if(Janus.webRTCAdapter.browserDetails.browser == "chrome" || Janus.webRTCAdapter.browserDetails.browser == "firefox" ||
-				Janus.webRTCAdapter.browserDetails.browser == "safari") {
-			request["force-bundle"] = true;
-			request["force-rtcp-mux"] = true;
-		}
 		if(websockets) {
 			transactions[transaction] = function(json) {
 				Janus.debug(json);
@@ -1307,39 +1301,6 @@ function Janus(gatewayCallbacks) {
 			Janus.debug("  -- Audio tracks:", stream.getAudioTracks());
 			Janus.debug("  -- Video tracks:", stream.getVideoTracks());
 		}
-		// If we're updating, check if we need to remove/replace one of the tracks
-		if(media.update && !config.streamExternal) {
-			if(media.removeAudio || media.replaceAudio) {
-				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
-					Janus.log("Removing audio track:", config.myStream.getAudioTracks()[0]);
-					config.myStream.removeTrack(config.myStream.getAudioTracks()[0]);
-				}
-				if(config.pc.getSenders() && config.pc.getSenders().length) {
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "audio") {
-							Janus.log("Removing audio sender:", s);
-							config.pc.removeTrack(s);
-						}
-					}
-				}
-			}
-			if(media.removeVideo || media.replaceVideo) {
-				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
-					Janus.log("Removing video track:", config.myStream.getVideoTracks()[0]);
-					config.myStream.removeTrack(config.myStream.getVideoTracks()[0]);
-				}
-				if(config.pc.getSenders() && config.pc.getSenders().length) {
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "video") {
-							Janus.log("Removing video sender:", s);
-							config.pc.removeTrack(s);
-						}
-					}
-				}
-			}
-		}
 		// We're now capturing the new stream: check if we're updating or if it's a new thing
 		var addTracks = false;
 		if(!config.myStream || !media.update || config.streamExternal) {
@@ -1501,6 +1462,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
+		config.trickle = isTrickleEnabled(callbacks.trickle);
 		// Are we updating a session?
 		if(config.pc === undefined || config.pc === null) {
 			// Nope, new PeerConnection
@@ -1605,7 +1567,47 @@ function Janus(gatewayCallbacks) {
 					media.data = true;
 			}
 		}
-		config.trickle = isTrickleEnabled(callbacks.trickle);
+		// If we're updating, check if we need to remove/replace one of the tracks
+		if(media.update && !config.streamExternal) {
+			if(media.removeAudio || media.replaceAudio) {
+				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
+					var s = config.myStream.getAudioTracks()[0];
+					Janus.log("Removing audio track:", s);
+					config.myStream.removeTrack(s);
+					try {
+						s.stop();
+					} catch(e) {};
+				}
+				if(config.pc.getSenders() && config.pc.getSenders().length) {
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "audio") {
+							Janus.log("Removing audio sender:", s);
+							config.pc.removeTrack(s);
+						}
+					}
+				}
+			}
+			if(media.removeVideo || media.replaceVideo) {
+				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
+					var s = config.myStream.getVideoTracks()[0];
+					Janus.log("Removing video track:", s);
+					config.myStream.removeTrack(s);
+					try {
+						s.stop();
+					} catch(e) {};
+				}
+				if(config.pc.getSenders() && config.pc.getSenders().length) {
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "video") {
+							Janus.log("Removing video sender:", s);
+							config.pc.removeTrack(s);
+						}
+					}
+				}
+			}
+		}
 		// Was a MediaStream object passed, or do we need to take care of that?
 		if(callbacks.stream !== null && callbacks.stream !== undefined) {
 			var stream = callbacks.stream;

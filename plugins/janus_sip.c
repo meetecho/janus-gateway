@@ -1449,8 +1449,6 @@ static void *janus_sip_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
@@ -3382,11 +3380,20 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_object_set_new(info, "proxy", json_string(session->account.proxy));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
-			} else if(status == 401) {
-				/* Get scheme/realm from 401 error */
-				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
-				char const* scheme = www_auth->au_scheme;
-				const char* realm = msg_params_find(www_auth->au_params, "realm=");
+			} else if(status == 401 || status == 407) {
+				const char* scheme;
+				const char* realm;
+				if(status == 401) {
+ 					/* Get scheme/realm from 401 error */
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+ 					/* Get scheme/realm from 407 error, proxy-auth */
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
 				char authuser[100], secret[100];
 				memset(authuser, 0, sizeof(authuser));
 				memset(secret, 0, sizeof(secret));

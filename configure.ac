@@ -15,6 +15,11 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
+JANUS_VERSION=30
+AC_SUBST(JANUS_VERSION)
+JANUS_VERSION_STRING="0.3.0"
+AC_SUBST(JANUS_VERSION_STRING)
+
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include -I/usr/local/include"
@@ -724,7 +729,7 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_LIBSRTP_2],
-	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "SSL/crypto library:        BoringSSL"
