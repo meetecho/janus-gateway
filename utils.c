@@ -563,7 +563,7 @@ gboolean janus_vp8_is_keyframe(char* buffer, int len) {
 				unsigned char *c = (unsigned char *)buffer+3;
 				/* vet via sync code */
 				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-					JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
 				} else {
 					int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
 					int vp8ws = swap2(*(unsigned short*)(c+3))>>14;

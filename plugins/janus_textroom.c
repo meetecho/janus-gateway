@@ -1915,8 +1915,6 @@ static void *janus_textroom_handler(void *data) {
 	gboolean do_offer = FALSE, sdp_update = FALSE;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {

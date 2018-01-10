@@ -1275,8 +1275,6 @@ static void *janus_recordplay_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
@@ -1409,7 +1407,7 @@ static void *janus_recordplay_handler(void *data) {
 				rec->vcodec = NULL;
 			video = (rec->vcodec != NULL);
 			if(video) {
-				JANUS_LOG(LOG_WARN, "Video codec: %s\n", rec->acodec);
+				JANUS_LOG(LOG_WARN, "Video codec: %s\n", rec->vcodec);
 			}
 			rec->audio_pt = AUDIO_PT;
 			if(rec->acodec) {

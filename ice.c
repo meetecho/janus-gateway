@@ -2929,7 +2929,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	if(video) {
 		stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
-		stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		stream->video_rtcp_ctx[0] = g_malloc0(sizeof(janus_rtcp_context));
 		stream->video_rtcp_ctx[0]->tb = 90000;
 	}
@@ -3025,12 +3024,10 @@ void *janus_ice_send_thread(void *data) {
 		}
 		if(pkt == &janus_ice_dtls_alert) {
 			/* The session is over, send an alert on all streams and components */
-			if(handle->stream != NULL) {
-				if(handle->stream) {
-					janus_ice_stream *stream = handle->stream;
-					if(stream->component)
-						janus_dtls_srtp_send_alert(stream->component->dtls);
-				}
+			if(handle->stream) {
+				janus_ice_stream *stream = handle->stream;
+				if(stream->component)
+					janus_dtls_srtp_send_alert(stream->component->dtls);
 			}
 			while(g_async_queue_length(handle->queued_packets) > 0) {
 				pkt = g_async_queue_try_pop(handle->queued_packets);

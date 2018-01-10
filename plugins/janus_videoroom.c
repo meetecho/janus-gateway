@@ -2365,6 +2365,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_rtcp_pli((char *)&buf, 12);
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+			/* Update the time of when we last sent a keyframe request */
+			publisher->fir_latest = janus_get_monotonic_time();
 			/* Done */
 			if(video_handle[0] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
@@ -3054,7 +3056,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		janus_mutex_lock_nodebug(&participant->listeners_mutex);
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
 		janus_mutex_unlock_nodebug(&participant->listeners_mutex);
-		
+
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
 		if(video && participant->video_active) {
 			/* Did we send a REMB already, or is it time to send one? */
@@ -3083,8 +3085,23 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			}
 			/* Generate FIR/PLI too, if needed */
 			if(video && participant->video_active && (participant->room->fir_freq > 0)) {
-				/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
+				/* We generate RTCP every tot seconds/frames */
 				gint64 now = janus_get_monotonic_time();
+				/* First check if this is a keyframe, though: if so, we reset the timer */
+				int plen = 0;
+				char *payload = janus_rtp_payload(buf, len, &plen);
+				if(payload == NULL)
+					return;
+				if(participant->vcodec == JANUS_VIDEOROOM_VP8) {
+					if(janus_vp8_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOROOM_VP9) {
+					if(janus_vp9_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOROOM_H264) {
+					if(janus_h264_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				}
 				if((now-participant->fir_latest) >= ((gint64)participant->room->fir_freq*G_USEC_PER_SEC)) {
 					/* FIXME We send a FIR every tot seconds */
 					participant->fir_latest = now;
@@ -3126,6 +3143,8 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 					janus_rtcp_fir((char *)&rtcpbuf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "Got a FIR from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 20);
+					/* Update the time of when we last sent a keyframe request */
+					p->fir_latest = janus_get_monotonic_time();
 				}
 			}
 		}
@@ -3138,6 +3157,8 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 					janus_rtcp_pli((char *)&rtcpbuf, 12);
 					JANUS_LOG(LOG_VERB, "Got a PLI from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 12);
+					/* Update the time of when we last sent a keyframe request */
+					p->fir_latest = janus_get_monotonic_time();
 				}
 			}
 		}
@@ -3432,8 +3453,6 @@ static void *janus_videoroom_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
@@ -3998,6 +4017,8 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_LOG(LOG_VERB, "Recording video, sending PLI to %"SCNu64" (%s)\n",
 								participant->user_id, participant->display ? participant->display : "??");
 							gateway->relay_rtcp(participant->session->handle, 1, buf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							participant->fir_latest = janus_get_monotonic_time();
 						}
 					}
 				}
@@ -4163,6 +4184,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Restoring video for listener, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 							gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							publisher->fir_latest = janus_get_monotonic_time();
 						}
 					}
 					if(data && publisher->data && listener->data_offered)
@@ -4190,6 +4213,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Simulcasting substream change, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 							gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							publisher->fir_latest = janus_get_monotonic_time();
 						}
 					}
 					if(sc_temporal && publisher->ssrc[0] != 0) {
@@ -4214,6 +4239,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Simulcasting temporal layer change, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 							gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							publisher->fir_latest = janus_get_monotonic_time();
 						}
 					}
 				}
@@ -4242,6 +4269,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Need to downscale spatially, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 							gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							publisher->fir_latest = janus_get_monotonic_time();
 						}
 						listener->target_spatial_layer = spatial_layer;
 					}
@@ -4395,6 +4424,8 @@ static void *janus_videoroom_handler(void *data) {
 				janus_rtcp_pli((char *)&buf, 12);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+				/* Update the time of when we last sent a keyframe request */
+				publisher->fir_latest = janus_get_monotonic_time();
 				/* Done */
 				listener->paused = paused;
 				event = json_object();
@@ -5031,8 +5062,11 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 						char rtcpbuf[12];
 						memset(rtcpbuf, 0, 12);
 						janus_rtcp_pli((char *)&rtcpbuf, 12);
-						if(listener->feed && listener->feed->session && listener->feed->session->handle)
+						if(listener->feed && listener->feed->session && listener->feed->session->handle) {
 							gateway->relay_rtcp(listener->feed->session->handle, 1, rtcpbuf, 12);
+							/* Update the time of when we last sent a keyframe request */
+							listener->feed->fir_latest = janus_get_monotonic_time();
+						}
 						/* Notify the viewer */
 						json_t *event = json_object();
 						json_object_set_new(event, "videoroom", json_string("event"));
