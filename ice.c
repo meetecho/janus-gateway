@@ -1245,6 +1245,8 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream->video_rtcp_ctx[1] = NULL;
 	g_free(stream->video_rtcp_ctx[2]);
 	stream->video_rtcp_ctx[2] = NULL;
+	g_slist_free_full(stream->transport_wide_received_seq_nums,(GDestroyNotify)g_free);
+	stream->transport_wide_received_seq_nums = NULL;
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
 	stream->video_first_ntp_ts[0] = 0;
@@ -2023,6 +2025,44 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
 					}
 				}
+				/* If we need to handle transport wide cc*/
+				if (stream->do_transport_wide_cc) 
+				{
+					guint16 transport_seq_num;
+					/* Get transport wide seq num */
+					if (janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, stream->transport_wide_cc_ext_id, &transport_seq_num)==0) {
+						/* Get current timestamp */
+						struct timeval now;
+						gettimeofday(&now,0);
+						
+						/* Create <seq num, time> pair */
+						janus_rtcp_transport_wide_cc_stats* stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
+						if(stats == NULL) {
+							JANUS_LOG(LOG_FATAL, "Memory error!\n");
+							return;
+						}
+						/* Check if we have a sequence wrap */
+						if (transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000)
+							/* Increase cycles */
+							stream->transport_wide_cc_cycles++;
+
+						/* Get extended value */
+						guint32 transport_ext_seq_num = stream->transport_wide_cc_cycles<<16 | transport_seq_num;
+						
+						/* Store last received transport seq num */
+						stream->transport_wide_cc_last_seq_num = transport_seq_num;
+
+						/* Set stats values */
+						stats->transport_seq_num = transport_ext_seq_num;
+						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
+						
+						/* Lock & append to received list*/
+						janus_mutex_lock(&stream->mutex);
+						stream->transport_wide_received_seq_nums =  g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
+						janus_mutex_unlock(&stream->mutex);
+					}
+				}
+
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
@@ -2964,6 +3004,10 @@ void janus_ice_restart(janus_ice_handle *handle) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 }
 
+static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
+	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
+}
+
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	janus_session *session = (janus_session *)handle->session;
@@ -3179,6 +3223,75 @@ void *janus_ice_send_thread(void *data) {
 						janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, 32, FALSE);
 					}
 				}
+			}
+			if (stream && stream->do_transport_wide_cc) {
+				/* Create a transport wide feedback message*/
+				size_t size = 1300;
+				char rtcpbuf[1300];
+				
+				/* Lock session */
+				janus_mutex_lock(&handle->stream->mutex);
+				
+				/* Order packet list */
+				GSList* sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums,rtcp_transport_wide_cc_stats_comparator);
+				
+				/* Create full stats queue */
+				GQueue* packets = g_queue_new();
+				
+				/* For all packets */
+				for (GSList *it = sorted; it; it = it->next) {
+					/* Get stat */
+					janus_rtcp_transport_wide_cc_stats* stats = (janus_rtcp_transport_wide_cc_stats*)it->data;
+					
+					/* Get transport seq */
+					guint32 transport_seq_num = stats->transport_seq_num;
+					
+					/* Check if it is an out of order  */
+					if (transport_seq_num < handle->stream->transport_wide_cc_last_feedback_seq_num)
+						/* Skip, it was already reported as lost */
+						continue;
+					
+					/* If not first */
+					if (handle->stream->transport_wide_cc_last_feedback_seq_num) {
+						/* For each lost */
+						for (guint32 i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
+							/* Create new stat */
+							janus_rtcp_transport_wide_cc_stats* missing = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
+							/* Add missing packet */
+							missing->transport_seq_num = i;
+							missing->timestamp = 0;
+							/* Add it */
+							g_queue_push_tail(packets, missing);
+						}
+					}
+					
+					/* Store last */
+					handle->stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
+
+					/* Add this one */
+					g_queue_push_tail(packets, stats);
+				}
+				
+				/* Clear stats */
+				g_slist_free(handle->stream->transport_wide_received_seq_nums);
+				
+				/* Reset list */
+				handle->stream->transport_wide_received_seq_nums = NULL;
+				
+				/* Get feedback pacakte count and increase it for next one */
+				guint8 feedback_packet_count = handle->stream->transport_wide_cc_feedback_count++;
+				
+				/* Unlock session */
+				janus_mutex_unlock(&handle->stream->mutex);
+				
+				/* Create rtcp packet */
+				int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size, handle->stream->video_ssrc, stream->video_ssrc_peer[0] , feedback_packet_count, packets);
+
+				/* Enqueue it, we'll send it later */
+				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
+
+				/* Free mem */
+				g_queue_free(packets);
 			}
 		}
 		/* We tell event handlers once per second about RTCP-related stuff

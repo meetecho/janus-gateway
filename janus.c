@@ -1155,6 +1155,11 @@ int janus_process_incoming_request(janus_request *request) {
 							janus_ice_setup_remote_candidates(handle, handle->stream_id, 1);
 						}
 					}
+				} else {
+					/* Check if transport wide CC is supported */
+					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+					handle->stream->do_transport_wide_cc = TRUE;
+					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 				}
 			} else {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
@@ -2765,6 +2770,11 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
 		}
+	} else {
+		/* Check if transport wide CC is supported */
+		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp,JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+		ice_handle->stream->do_transport_wide_cc = TRUE;
+		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
 	if(!updating) {
 		/* Wait for candidates-done callback */
