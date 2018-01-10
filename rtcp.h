@@ -259,6 +259,17 @@ typedef struct rtcp_context
 	uint32_t lost, lost_remote;
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
+
+/*! \brief Stores transport wide packet reception statistics */
+typedef struct rtcp_transport_wide_cc_stats
+{
+	/*! \brief Transwport wide sequence number */
+	guint32 transport_seq_num;
+	/*! \brief Reception time */
+	guint64 timestamp;
+} rtcp_transport_wide_cc_stats;
+typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
+
 /*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @returns The estimated round-trip time */
@@ -421,5 +432,15 @@ int janus_rtcp_pli(char *packet, int len);
  * @param[in] nacks List of packets to NACK
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
+
+/*! \brief Method to generate a new RTCP transport wide message to report reception stats
+ * @param[in] packet The buffer data (MUST be at least 16 chars)
+ * @param[in] len The message data length in bytes
+ * @param[ssrc] ssrc SSRC of the origin stream
+ * @param[media] madia SSRC of the destination stream
+ * @param[media] feedback_packet_count Feedback paccket count
+ * @param[media] transport_wide_cc_stats List of rtp packet reception stats
+ * @returns The message data length in bytes, if successful, -1 on errors */
+int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t len, guint32 ssrc, guint32 media, guint8 feedback_packet_count, GQueue *transport_wide_cc_stats);
 
 #endif

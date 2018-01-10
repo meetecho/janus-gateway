@@ -41,8 +41,6 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			30
-#define JANUS_VERSION_STRING	"0.3.0"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -201,8 +199,8 @@ static json_t *janus_info(const char *transaction) {
 	/* Prepare a summary on the gateway */
 	json_t *info = janus_create_message("server_info", 0, transaction);
 	json_object_set_new(info, "name", json_string(JANUS_NAME));
-	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
-	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
+	json_object_set_new(info, "version", json_integer(janus_version));
+	json_object_set_new(info, "version_string", json_string(janus_version_string));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
 	json_object_set_new(info, "commit-hash", json_string(janus_build_git_sha));
 	json_object_set_new(info, "compile-time", json_string(janus_build_git_time));
@@ -1171,11 +1169,16 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Set remote candidates now (we received an answer) */
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
+				} else {
+					/* Check if transport wide CC is supported */
+					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+					handle->stream->do_transport_wide_cc = TRUE;
+					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 				}
 			} else {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
 				 * direction and ICE restarts: anything more complex than that will result in an error */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
 				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
@@ -1187,7 +1190,7 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				renegotiation = TRUE;
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
+					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
 					/* Update remote credentials for ICE */
 					if(handle->stream) {
 						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
@@ -2654,6 +2657,11 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
 		}
+	} else {
+		/* Check if transport wide CC is supported */
+		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+		ice_handle->stream->do_transport_wide_cc = TRUE;
+		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
 	if(!updating) {
 		/* Wait for candidates-done callback */
@@ -3023,7 +3031,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 
 	JANUS_PRINT("---------------------------------------------------\n");
-	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
+	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
 
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
