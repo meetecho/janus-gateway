@@ -41,8 +41,6 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			30
-#define JANUS_VERSION_STRING	"0.3.0"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -192,8 +190,8 @@ static json_t *janus_info(const char *transaction) {
 	if(transaction != NULL)
 		json_object_set_new(info, "transaction", json_string(transaction));
 	json_object_set_new(info, "name", json_string(JANUS_NAME));
-	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
-	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
+	json_object_set_new(info, "version", json_integer(janus_version));
+	json_object_set_new(info, "version_string", json_string(janus_version_string));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
 	json_object_set_new(info, "commit-hash", json_string(janus_build_git_sha));
 	json_object_set_new(info, "compile-time", json_string(janus_build_git_time));
@@ -3176,7 +3174,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 
 	JANUS_PRINT("---------------------------------------------------\n");
-	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
+	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
 
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
