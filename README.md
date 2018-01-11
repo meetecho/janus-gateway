@@ -284,7 +284,7 @@ MacOS as well, there are a few aspects to highlight when doing that.
 
 First of all, you can use `brew` to install most of the dependencies:
 
-	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version
 is higher than `2.4.1`, or you might encounter the problems described in
