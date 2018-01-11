@@ -1113,7 +1113,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 	gboolean all_same = TRUE;
 	
 	/* For each packet  */
-	while (stat!=NULL) {
+	while (stat != NULL) {
 		janus_rtp_packet_status status = NotReceived;
 		
 		/* If got packet */
@@ -1137,12 +1137,13 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			else
 				delta = -(int)((timestamp-stat->timestamp)/250);
 			/* If it is negative or too big */
-			if (delta<0 || delta> 127)
+			if (delta<0 || delta> 127) {
 				/* Big one */
 				status = LargeOrNegativeDelta;
-			else
+			} else {
 				/* Small */
 				status = SmallDelta;
+			}
 			/* Store delta */
 			g_queue_push_tail(deltas, GINT_TO_POINTER(delta));
 			/* Set last time */
@@ -1152,8 +1153,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		/* Check if all previoues ones were equal and this one the firt different */
 		if (all_same && last_status!=Reserved && status!=last_status) {
 			/* How big was the same run */
-			if (g_queue_get_length(statuses)>7)
-			{
+			if (g_queue_get_length(statuses)>7) {
 				guint32 word = 0;
 				/* Write run! */
 				/*
@@ -1209,7 +1209,8 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				word = janus_push_bits(word, 1, 1);
 				word = janus_push_bits(word, 1, 1);
 				/* Set next 7 */
-				for (guint32 i=0;i<7;++i) {
+				size_t i = 0;
+				for (i=0;i<7;++i) {
 					/* Get status */
 					janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 					/* Write */
@@ -1224,8 +1225,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				all_same = TRUE;
 
 				/* We need to restore the values, as there may be more elements on the buffer */
-				for (size_t i=0; i<g_queue_get_length(statuses); ++i)
-				{
+				for (i=0; i<g_queue_get_length(statuses); ++i) {
 					//Get status
 					status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_peek_nth(statuses, i));
 					//If it is bigger
@@ -1253,7 +1253,8 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				word = janus_push_bits(word, 1, 1);
 				word = janus_push_bits(word, 1, 0);
 				/* Set next 7 */
-				for (guint32 i=0;i<14;++i) {
+				guint32 i = 0;
+				for (i=0;i<14;++i) {
 					/* Get status */
 					janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 					/* Write */

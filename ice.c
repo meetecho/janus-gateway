@@ -3234,7 +3234,8 @@ void *janus_ice_send_thread(void *data) {
 				GQueue* packets = g_queue_new();
 				
 				/* For all packets */
-				for (GSList *it = sorted; it; it = it->next) {
+				GSList *it = NULL;
+				for (it = sorted; it; it = it->next) {
 					/* Get stat */
 					janus_rtcp_transport_wide_cc_stats* stats = (janus_rtcp_transport_wide_cc_stats*)it->data;
 					
@@ -3249,7 +3250,8 @@ void *janus_ice_send_thread(void *data) {
 					/* If not first */
 					if (handle->stream->transport_wide_cc_last_feedback_seq_num) {
 						/* For each lost */
-						for (guint32 i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
+						guint32 i = 0;
+						for (i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
 							/* Create new stat */
 							janus_rtcp_transport_wide_cc_stats* missing = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
 							/* Add missing packet */
