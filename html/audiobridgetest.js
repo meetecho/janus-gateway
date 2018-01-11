@@ -264,10 +264,14 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									$('#room').removeClass('hide').show();
+									var addButtons = false;
 									if($('#roomaudio').length === 0) {
+										addButtons = true;
 										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
 									}
 									Janus.attachMediaStream($('#roomaudio').get(0), stream);
+									if(!addButtons)
+										return;
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(

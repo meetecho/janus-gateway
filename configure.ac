@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.3.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -15,6 +15,11 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
+JANUS_VERSION=30
+AC_SUBST(JANUS_VERSION)
+JANUS_VERSION_STRING="0.3.0"
+AC_SUBST(JANUS_VERSION_STRING)
+
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include -I/usr/local/include"
@@ -29,6 +34,7 @@ esac
 
 glib_version=2.34
 ssl_version=1.0.1
+jansson_version=2.5
 
 ##
 # Janus
@@ -205,7 +211,7 @@ PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
                     nice
-                    jansson
+                    jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
                   ])
@@ -367,7 +373,7 @@ fi
 PKG_CHECK_MODULES([TRANSPORTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 PKG_CHECK_MODULES([MHD],
@@ -481,7 +487,7 @@ AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 PKG_CHECK_MODULES([PLUGINS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],
@@ -640,7 +646,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xye
 PKG_CHECK_MODULES([EVENTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 
@@ -710,11 +716,11 @@ AC_ARG_ENABLE([post-processing],
 AS_IF([test "x$enable_post_processing" = "xyes"],
       [PKG_CHECK_MODULES([POST_PROCESSING],
                          [
-                           glib-2.0,
-                           jansson,
-                           libavutil,
-                           libavcodec,
-                           libavformat,
+                           glib-2.0 >= $glib_version
+                           jansson >= $jansson_version
+                           libavutil
+                           libavcodec
+                           libavformat
                            ogg
                          ])
       ])
@@ -738,7 +744,7 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_LIBSRTP_2],
-	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "SSL/crypto library:        BoringSSL"

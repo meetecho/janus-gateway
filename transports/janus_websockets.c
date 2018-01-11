@@ -308,6 +308,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		return -1;
 	}
 
+#ifndef LWS_WITH_IPV6
+	JANUS_LOG(LOG_WARN, "libwebsockets has been built without IPv6 support, will bind to IPv4 only\n");
+#endif
+
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
@@ -438,6 +442,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			wscinfo.timeout_secs = pingpong_timeout;
 		}
 #endif
+		/* Force single-thread server */
+		wscinfo.count_threads = 1;
 
 		/* Create the base context */
 		wsc = lws_create_context(&wscinfo);
@@ -872,6 +878,8 @@ static int janus_websockets_callback_http(
 				return -1;
 			}
 			break;
+		case LWS_CALLBACK_GET_THREAD_ID:
+			return (uint64_t)pthread_self();
 		default:
 			break;
 	}
