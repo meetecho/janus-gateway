@@ -2415,14 +2415,18 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		janus_dtls_srtp *dtls = component->dtls;
 		json_object_set_new(d, "fingerprint", json_string(janus_dtls_get_local_fingerprint()));
 		if(component->stream) {
-			json_object_set_new(d, "remote-fingerprint", json_string(component->stream->remote_fingerprint));
-			json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
+			if(component->stream->remote_fingerprint)
+				json_object_set_new(d, "remote-fingerprint", json_string(component->stream->remote_fingerprint));
+			if(component->stream->remote_hashing)
+				json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
 			json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
 		}
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
+		if(dtls->dtls_started > 0)
+			json_object_set_new(d, "handshake-started", json_integer(dtls->dtls_started));
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
@@ -2725,7 +2729,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	}
 	gboolean updating = FALSE;
 	if(offer) {
-		/* We still don't have a local ICE setup */
+		/* We may still not have a local ICE setup */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated\n", ice_handle->handle_id, audio ? "has" : "has NOT");
 		if(audio > 1) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", ice_handle->handle_id);
@@ -2884,8 +2888,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 	}
 #ifdef HAVE_SCTP
-	if(!offer) {
-		/* Check if datachannels were just added on an existing PeerConnection */
+	if(!offer && janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
+		/* Renegotiation: check if datachannels were just added on an existing PeerConnection */
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
 			janus_ice_stream *stream = ice_handle->stream;
 			if(stream != NULL && stream->component != NULL &&

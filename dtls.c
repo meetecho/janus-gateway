@@ -476,14 +476,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	BIO_push(dtls->filter_bio, dtls->write_bio);
 	/* Set the filter as the BIO to use for outgoing data */
 	SSL_set_bio(dtls->ssl, dtls->read_bio, dtls->filter_bio);
+	/* The role may change later, depending on the negotiation */
 	dtls->dtls_role = role;
-	if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting connect state (DTLS client)\n", handle->handle_id);
-		SSL_set_connect_state(dtls->ssl);
-	} else {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting accept state (DTLS server)\n", handle->handle_id);
-		SSL_set_accept_state(dtls->ssl);
-	}
 	/* https://code.google.com/p/chromium/issues/detail?id=406458
 	 * Specify an ECDH group for ECDHE ciphers, otherwise they cannot be
 	 * negotiated when acting as the server. Use NIST's P-256 which is
@@ -519,8 +513,16 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 	if(dtls == NULL || dtls->ssl == NULL)
 		return;
-	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED)
+	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED) {
+		/* Starting the handshake now: enforce the role */
+		dtls->dtls_started = janus_get_monotonic_time();
+		if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
+			SSL_set_connect_state(dtls->ssl);
+		} else {
+			SSL_set_accept_state(dtls->ssl);
+		}
 		dtls->dtls_state = JANUS_DTLS_STATE_TRYING;
+	}
 	SSL_do_handshake(dtls->ssl);
 	janus_dtls_fd_bridge(dtls);
 
@@ -960,6 +962,13 @@ gboolean janus_dtls_retry(gpointer stack) {
 		goto stoptimer;
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
+		goto stoptimer;
+	}
+	if(janus_get_monotonic_time() - dtls->dtls_started >= 20*G_USEC_PER_SEC) {
+		/* FIXME Should we really give up after 20 seconds waiting for DTLS? */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] DTLS taking too much time for component %d in stream %d...\n",
+			handle->handle_id, component->component_id, stream->stream_id);
+		janus_ice_webrtc_hangup(handle, "DTLS timeout");
 		goto stoptimer;
 	}
 	struct timeval timeout = {0};

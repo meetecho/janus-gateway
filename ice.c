@@ -1102,7 +1102,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			handle->handle_id, reason, plugin->get_name());
 		if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->hangup_media(handle->app_handle);
-		/* user will be notified only after the actual hangup */
+		/* User will be notified only after the actual hangup */
 		handle->hangup_reason = reason;
 	}
 	if(handle->queued_packets != NULL && handle->send_thread_created)
@@ -1472,14 +1472,7 @@ static gboolean janus_ice_check_failed(gpointer data) {
 		/* FIXME Should we really give up for what may be a failure in only one of the media? */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n",
 			handle->handle_id, component->component_id, stream->stream_id);
-		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-		janus_plugin *plugin = (janus_plugin *)handle->app;
-		if(plugin != NULL) {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-			if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
-				plugin->hangup_media(handle->app_handle);
-		}
-		janus_ice_notify_hangup(handle, "ICE failed");
+		janus_ice_webrtc_hangup(handle, "ICE failed");
 		goto stoptimer;
 	}
 	/* Let's wait a little longer */
@@ -1672,21 +1665,16 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 		json_object_set_new(info, "component_id", json_integer(component_id));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 	}
+	/* Have we been here before? (might happen, when trickling) */
+	if(component->component_connected > 0)
+		return;
 	/* Now we can start the DTLS handshake (FIXME This was on the 'connected' state notification, before) */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready enough, starting DTLS handshake...\n", handle->handle_id);
-	/* Have we been here before? (might happen, when trickling) */
-	if(component->dtls != NULL)
-		return;
 	component->component_connected = janus_get_monotonic_time();
-	/* Create DTLS-SRTP context, at last */
-	component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
-	if(!component->dtls) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS-SRTP session??\n", handle->handle_id);
-		return;
-	}
+	/* Start the DTLS handshake, at last */
 	janus_dtls_srtp_handshake(component->dtls);
 	/* Create retransmission timer */
-	component->dtlsrt_source = g_timeout_source_new(100);
+	component->dtlsrt_source = g_timeout_source_new(50);
 	g_source_set_callback(component->dtlsrt_source, janus_dtls_retry, component->dtls, NULL);
 	guint id = g_source_attach(component->dtlsrt_source, handle->icectx);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
@@ -1872,7 +1860,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	}
 	janus_session *session = (janus_session *)handle->session;
 	if(!component->dtls) {	/* Still waiting for the DTLS stack */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still waiting for the DTLS stack for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still waiting for the DTLS stack for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
 	/* What is this? */
@@ -2976,6 +2964,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		turnrest_credentials = NULL;
 	}
 #endif
+	/* Create DTLS-SRTP context, at last */
+	component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
+	if(!component->dtls) {
+		/* FIXME We should clear some resources... */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating DTLS-SRTP stack...\n", handle->handle_id);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		return -1;
+	}
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
@@ -3011,6 +3007,7 @@ void *janus_ice_send_thread(void *data) {
 	gint64 before = janus_get_monotonic_time(),
 		rtcp_last_sr_rr = before, last_event = before,
 		last_srtp_summary = before, last_nack_cleanup = before;
+	gboolean alert_sent = FALSE;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		if(handle->queued_packets != NULL) {
 			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
@@ -3019,10 +3016,9 @@ void *janus_ice_send_thread(void *data) {
 		}
 		if(pkt == &janus_ice_dtls_alert) {
 			/* The session is over, send an alert on all streams and components */
-			if(handle->stream) {
-				janus_ice_stream *stream = handle->stream;
-				if(stream->component)
-					janus_dtls_srtp_send_alert(stream->component->dtls);
+			if(!alert_sent && handle->stream && handle->stream->component && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
+				janus_dtls_srtp_send_alert(handle->stream->component->dtls);
+				alert_sent = TRUE;
 			}
 			while(g_async_queue_length(handle->queued_packets) > 0) {
 				pkt = g_async_queue_try_pop(handle->queued_packets);
@@ -3048,6 +3044,8 @@ void *janus_ice_send_thread(void *data) {
 			pkt = NULL;
 			continue;
 		}
+		if(alert_sent)
+			alert_sent = FALSE;
 		/* Reset the last second counters if too much time passed with no data in or out */
 		gint64 now = janus_get_monotonic_time();
 		janus_ice_stream *stream = handle->stream;
