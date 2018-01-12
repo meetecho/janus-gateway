@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
 							exit(1);
 						}
-					} else if(!strcasecmp(c, "g711")) {
+					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = 1;
 						if(extension && strcasecmp(extension, ".wav")) {
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
