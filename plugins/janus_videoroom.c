@@ -1336,7 +1336,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 				g_clear_pointer(&p->room, janus_videoroom_room_dereference);
 			}
 			janus_videoroom_publisher_destroy(p);
-			janus_refcount_decrease(&p->ref);
+			if(p)
+				janus_refcount_decrease(&p->ref);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)session->participant;
 			session->participant = NULL;
