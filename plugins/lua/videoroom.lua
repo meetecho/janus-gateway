@@ -204,11 +204,13 @@ function handleMessage(id, tr, msg, jsep)
 		return 0, responsejson
 	elseif request == "exists" then
 		-- Check if an existing room exists
-		local roomId = msgT["room"]
-		logger.print("Checking if room exists: " .. roomId)
 		local exists = false
-		if rooms[roomId] ~= nil then
-			exists = true
+		local roomId = msgT["room"]
+		if roomId ~= nil then
+			logger.print("Checking if room exists: " .. roomId)
+			if rooms[roomId] ~= nil then
+				exists = true
+			end
 		end
 		local response = { videoroom = "success", room = roomId, exists = exists }
 		local responsejson = json.encode(response)
