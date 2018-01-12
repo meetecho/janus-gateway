@@ -2223,8 +2223,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				const char *codec = NULL;
 				if(strstr(mp->codecs.audio_rtpmap, "opus") || strstr(mp->codecs.audio_rtpmap, "OPUS"))
 					codec = "opus";
-				else if(strstr(mp->codecs.audio_rtpmap, "pcm") || strstr(mp->codecs.audio_rtpmap, "PCM"))
-					codec = "g711";
+				else if(strstr(mp->codecs.audio_rtpmap, "pcma") || strstr(mp->codecs.audio_rtpmap, "PCMA"))
+					codec = "pcma";
+				else if(strstr(mp->codecs.audio_rtpmap, "pcmu") || strstr(mp->codecs.audio_rtpmap, "PCMU"))
+					codec = "pcmu";
 				else if(strstr(mp->codecs.audio_rtpmap, "g722") || strstr(mp->codecs.audio_rtpmap, "G722"))
 					codec = "g722";
 				const char *audiofile = json_string_value(audio);

@@ -270,10 +270,15 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				} else if(!strcasecmp(a->name, "setup")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS setup (local):  %s\n", handle->handle_id, a->value);
 					if(!update) {
-						if(!strcasecmp(a->value, "actpass") || !strcasecmp(a->value, "passive"))
+						if(!strcasecmp(a->value, "actpass") || !strcasecmp(a->value, "passive")) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting connect state (DTLS client)\n", handle->handle_id);
 							stream->dtls_role = JANUS_DTLS_ROLE_CLIENT;
-						else if(!strcasecmp(a->value, "active"))
+						} else if(!strcasecmp(a->value, "active")) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting accept state (DTLS server)\n", handle->handle_id);
 							stream->dtls_role = JANUS_DTLS_ROLE_SERVER;
+						}
+						if(stream->component && stream->component->dtls)
+							stream->component->dtls->dtls_role = stream->dtls_role;
 					}
 					/* TODO Handle holdconn... */
 				} else if(!strcasecmp(a->name, "ice-ufrag")) {
