@@ -150,6 +150,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtp.h"
+#include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../record.h"
 #include "../sdp-utils.h"
@@ -324,7 +325,9 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"audio_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_crypto", JSON_STRING, 0}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -598,6 +601,10 @@ typedef struct janus_videoroom_rtp_forwarder {
 	int payload_type;
 	int substream;
 	struct sockaddr_in serv_addr;
+	/* Only needed for SRTP forwarders */
+	gboolean is_srtp;
+	srtp_t srtp_ctx;
+	srtp_policy_t srtp_policy;
 } janus_videoroom_rtp_forwarder;
 
 typedef struct janus_videoroom_participant {
@@ -651,7 +658,9 @@ typedef struct janus_videoroom_participant {
 static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
-	const gchar* host, int port, int pt, uint32_t ssrc, int substream, gboolean is_video, gboolean is_data);
+	const gchar* host, int port, int pt, uint32_t ssrc,
+	int srtp_suite, const char *srtp_crypto,
+	int substream, gboolean is_video, gboolean is_data);
 
 typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
@@ -714,11 +723,47 @@ typedef struct janus_videoroom_rtp_relay_packet {
 
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
-		const gchar* host, int port, int pt, uint32_t ssrc, int substream, gboolean is_video, gboolean is_data) {
+		const gchar* host, int port, int pt, uint32_t ssrc,
+		int srtp_suite, const char *srtp_crypto,
+		int substream, gboolean is_video, gboolean is_data) {
 	if(!p || !host) {
 		return 0;
 	}
 	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
+	/* First of all, let's check if we need to setup an SRTP forwarder */
+	if(!is_data && srtp_suite > 0 && srtp_crypto != NULL) {
+		/* Base64 decode the crypto string and set it as the SRTP context */
+		gsize len = 0;
+		guchar *decoded = g_base64_decode(srtp_crypto, &len);
+		if(len < SRTP_MASTER_LENGTH) {
+			JANUS_LOG(LOG_ERR, "Invalid SRTP crypto (%s)\n", srtp_crypto);
+			g_free(decoded);
+			g_free(forward);
+			return 0;
+		}
+		/* Set SRTP policy */
+		srtp_policy_t *policy = &forward->srtp_policy;
+		srtp_crypto_policy_set_rtp_default(&(policy->rtp));
+		if(srtp_suite == 32) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+		} else if(srtp_suite == 80) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+		}
+		policy->ssrc.type = ssrc_any_inbound;
+		policy->key = decoded;
+		policy->next = NULL;
+		/* Create SRTP context */
+		srtp_err_status_t res = srtp_create(&forward->srtp_ctx, policy);
+		if(res != srtp_err_status_ok) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Error creating forwarder SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+			g_free(decoded);
+			policy->key = NULL;
+			g_free(forward);
+			return 0;
+		}
+		forward->is_srtp = TRUE;
+	}
 	forward->is_video = is_video;
 	forward->payload_type = pt;
 	forward->ssrc = ssrc;
@@ -764,6 +809,10 @@ static void janus_videoroom_rtp_forwarder_free_helper(gpointer data) {
 	if(data) {
 		janus_videoroom_rtp_forwarder* forward = (janus_videoroom_rtp_forwarder*)data;
 		if(forward) {
+			if(forward->is_srtp) {
+				srtp_dealloc(forward->srtp_ctx);
+				g_free(forward->srtp_policy.key);
+			}
 			g_free(forward);
 			forward = NULL;
 		}
@@ -2253,6 +2302,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		int audio_port = -1, audio_pt = 0;
 		uint32_t audio_ssrc = 0;
 		int data_port = -1;
+		int srtp_suite = 0;
+		const char *srtp_crypto = NULL;
 		/* There may be multiple target video ports (e.g., publisher simulcasting) */
 		json_t *vid_port = json_object_get(root, "video_port");
 		if(vid_port) {
@@ -2301,6 +2352,19 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			data_port = json_integer_value(d_port);
 		}
 		json_t *json_host = json_object_get(root, "host");
+		/* Besides, we may need to SRTP-encrypt this stream */
+		json_t *s_suite = json_object_get(root, "srtp_suite");
+		json_t *s_crypto = json_object_get(root, "srtp_crypto");
+		if(s_suite && s_crypto) {
+			srtp_suite = json_integer_value(s_suite);
+			if(srtp_suite != 32 && srtp_suite != 80) {
+				JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
+				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+				g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
+				goto plugin_response;
+			}
+			srtp_crypto = json_string_value(s_crypto);
+		}
 		
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
@@ -2334,19 +2398,23 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint32 video_handle[3] = {0, 0, 0};
 		guint32 data_handle = 0;
 		if(audio_port > 0) {
-			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_pt, audio_ssrc, 0, FALSE, FALSE);
+			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_pt, audio_ssrc,
+				srtp_suite, srtp_crypto, 0, FALSE, FALSE);
 		}
 		if(video_port[0] > 0) {
-			video_handle[0] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[0], video_pt[0], video_ssrc[0], 0, TRUE, FALSE);
+			video_handle[0] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[0], video_pt[0], video_ssrc[0],
+				srtp_suite, srtp_crypto, 0, TRUE, FALSE);
 		}
 		if(video_port[1] > 0) {
-			video_handle[1] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[1], video_pt[1], video_ssrc[1], 1, TRUE, FALSE);
+			video_handle[1] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[1], video_pt[1], video_ssrc[1],
+				srtp_suite, srtp_crypto, 1, TRUE, FALSE);
 		}
 		if(video_port[2] > 0) {
-			video_handle[2] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[2], video_pt[2], video_ssrc[2], 2, TRUE, FALSE);
+			video_handle[2] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[2], video_pt[2], video_ssrc[2],
+				srtp_suite, srtp_crypto, 2, TRUE, FALSE);
 		}
 		if(data_port > 0) {
-			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, 0, FALSE, TRUE);
+			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, 0, NULL, 0, FALSE, TRUE);
 		}
 		janus_mutex_unlock(&videoroom->participants_mutex);
 		response = json_object();
@@ -2750,6 +2818,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 						json_object_set_new(fl, "pt", json_integer(rpv->payload_type));
 					if(rpv->ssrc)
 						json_object_set_new(fl, "ssrc", json_integer(rpv->ssrc));
+					if(rpv->substream)
+						json_object_set_new(fl, "substream", json_integer(rpv->substream));
 				} else {
 					json_object_set_new(fl, "audio_stream_id", json_integer(rpk));
 					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
@@ -2758,6 +2828,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 					if(rpv->ssrc)
 						json_object_set_new(fl, "ssrc", json_integer(rpv->ssrc));
 				}
+				if(rpv->is_srtp)
+					json_object_set_new(fl, "srtp", json_true());
 				json_array_append_new(flist, fl);
 			}		
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
@@ -2998,15 +3070,33 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				rtp->type = rtp_forward->payload_type;
 			if(rtp_forward->ssrc > 0)
 				rtp->ssrc = htonl(rtp_forward->ssrc);
-			if(video && rtp_forward->is_video && (sc == -1 || rtp_forward->substream == sc)) {
-				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
-					JANUS_LOG(LOG_HUGE, "Error forwarding RTP video packet for %s... %s (len=%d)...\n",
-						participant->display, strerror(errno), len);
-				}
-			} else if(!video && !rtp_forward->is_video && !rtp_forward->is_data) {
-				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
-					JANUS_LOG(LOG_HUGE, "Error forwarding RTP audio packet for %s... %s (len=%d)...\n",
-						participant->display, strerror(errno), len);
+			if((video && rtp_forward->is_video && (sc == -1 || rtp_forward->substream == sc)) ||
+					(!video && !rtp_forward->is_video && !rtp_forward->is_data)) {
+				/* Check if this is an RTP or SRTP forwarder */
+				if(!rtp_forward->is_srtp) {
+					/* Plain RTP */
+					if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+						JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
+							(video ? "video" : "audio"), participant->display, strerror(errno), len);
+					}
+				} else {
+					/* SRTP */
+					char sbuf[2048];
+					memcpy(&sbuf, buf, len);
+					int protected = len;
+					int res = srtp_protect(rtp_forward->srtp_ctx, &sbuf, &protected);
+					if(res != srtp_err_status_ok) {
+						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
+						guint32 timestamp = ntohl(header->timestamp);
+						guint16 seq = ntohs(header->seq_number);
+						JANUS_LOG(LOG_ERR, "Error encrypting %s packet for %s... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+							(video ? "Video" : "Audio"), participant->display, janus_srtp_error_str(res), len, protected, timestamp, seq);
+					} else {
+						if(sendto(participant->udp_sock, sbuf, protected, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+							JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
+								(video ? "video" : "audio"), participant->display, strerror(errno), protected);
+						}
+					}
 				}
 			}
 			/* Restore original values of payload type and SSRC before going on */
