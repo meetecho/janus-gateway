@@ -2359,7 +2359,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			srtp_suite = json_integer_value(s_suite);
 			if(srtp_suite != 32 && srtp_suite != 80) {
 				JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
-				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
 				goto plugin_response;
 			}

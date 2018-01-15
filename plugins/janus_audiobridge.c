@@ -34,11 +34,14 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	[The following lines are only needed if you want the mixed audio
 	to be automatically forwarded via plain RTP to an external component
 	(e.g., an ffmpeg script, or a gstreamer pipeline) for processing]
+	By default plain RTP is used, SRTP must be configured if needed
 rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 rtp_forward_host = host address to forward RTP packets of mixed audio to
 rtp_forward_port = port to forward RTP packets of mixed audio to
 rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
+rtp_forward_srtp_suite = length of authentication tag (32 or 80)
+rtp_forward_srtp_crypto = key to use as crypto (base64 encoded key as in SDES)
 rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
 \endverbatim
  *
@@ -347,6 +350,8 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
 	"port" : <port to forward the RTP packets to>,
+	"srtp_suite" : <length of authentication tag (32 or 80)>,
+	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES)>",
 	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
 }
 \endverbatim
@@ -588,6 +593,7 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtp.h"
+#include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../record.h"
 #include "../sdp-utils.h"
@@ -726,6 +732,8 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"ptype", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_crypto", JSON_STRING, 0},
 	{"always_on", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
@@ -876,11 +884,52 @@ typedef struct janus_audiobridge_rtp_forwarder {
 	uint16_t seq_number;
 	uint32_t timestamp;
 	gboolean always_on;
+	/* Only needed for SRTP forwarders */
+	gboolean is_srtp;
+	srtp_t srtp_ctx;
+	srtp_policy_t srtp_policy;
 } janus_audiobridge_rtp_forwarder;
-static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room, const gchar* host, uint16_t port, uint32_t ssrc, int pt, gboolean always_on, guint32 stream_id) {
+static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room,
+		const gchar* host, uint16_t port, uint32_t ssrc, int pt,
+		int srtp_suite, const char *srtp_crypto,
+		gboolean always_on, guint32 stream_id) {
 	if(room == NULL || host == NULL)
 		return 0;
 	janus_audiobridge_rtp_forwarder *rf = g_malloc0(sizeof(janus_audiobridge_rtp_forwarder));
+	/* First of all, let's check if we need to setup an SRTP forwarder */
+	if(srtp_suite > 0 && srtp_crypto != NULL) {
+		/* Base64 decode the crypto string and set it as the SRTP context */
+		gsize len = 0;
+		guchar *decoded = g_base64_decode(srtp_crypto, &len);
+		if(len < SRTP_MASTER_LENGTH) {
+			JANUS_LOG(LOG_ERR, "Invalid SRTP crypto (%s)\n", srtp_crypto);
+			g_free(decoded);
+			g_free(rf);
+			return 0;
+		}
+		/* Set SRTP policy */
+		srtp_policy_t *policy = &rf->srtp_policy;
+		srtp_crypto_policy_set_rtp_default(&(policy->rtp));
+		if(srtp_suite == 32) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+		} else if(srtp_suite == 80) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+		}
+		policy->ssrc.type = ssrc_any_inbound;
+		policy->key = decoded;
+		policy->next = NULL;
+		/* Create SRTP context */
+		srtp_err_status_t res = srtp_create(&rf->srtp_ctx, policy);
+		if(res != srtp_err_status_ok) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Error creating forwarder SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+			g_free(decoded);
+			policy->key = NULL;
+			g_free(rf);
+			return 0;
+		}
+		rf->is_srtp = TRUE;
+	}
 	/* Resolve address */
 	rf->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
@@ -1052,7 +1101,23 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	if(host_item == NULL || host_item->value == NULL || strlen(host_item->value) == 0) {
 		return 0;
 	}
-	const gchar* host = g_strdup(host_item->value);
+	const gchar *host = g_strdup(host_item->value);
+
+	/* We may need to SRTP-encrypt this stream */
+	int srtp_suite = 0;
+	const char *srtp_crypto = NULL;
+	janus_config_item *s_suite = janus_config_get_item(cat, "srtp_suite");
+	janus_config_item *s_crypto = janus_config_get_item(cat, "srtp_crypto");
+	if(s_suite && s_suite->value) {
+		srtp_suite = atoi(s_suite->value);
+		if(srtp_suite != 32 && srtp_suite != 80) {
+			JANUS_LOG(LOG_ERR, "Can't add static RTP forwarder for room %"SCNu64", invalid SRTP suite...\n", audiobridge->room_id);
+			g_free((char *)host);
+			return 0;
+		}
+		if(s_crypto && s_crypto->value)
+			srtp_crypto = s_crypto->value;
+	}
 
 	janus_config_item *always_on_item = janus_config_get_item(cat, "rtp_forward_always_on");
 	gboolean always_on = FALSE;
@@ -1076,7 +1141,9 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		return -1;
 	}
 
-	janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on, forwarder_id);
+	janus_audiobridge_rtp_forwarder_add_helper(audiobridge,
+		host, port, ssrc_value, ptype, srtp_suite, srtp_crypto,
+		always_on, forwarder_id);
 
 	janus_mutex_unlock(&audiobridge->mutex);
 	janus_mutex_unlock(&rooms_mutex);
@@ -2332,6 +2399,21 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		const gchar* host = json_string_value(json_host);
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
+		/* Besides, we may need to SRTP-encrypt this stream */
+		int srtp_suite = 0;
+		const char *srtp_crypto = NULL;
+		json_t *s_suite = json_object_get(root, "srtp_suite");
+		json_t *s_crypto = json_object_get(root, "srtp_crypto");
+		if(s_suite && s_crypto) {
+			srtp_suite = json_integer_value(s_suite);
+			if(srtp_suite != 32 && srtp_suite != 80) {
+				JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
+				goto plugin_response;
+			}
+			srtp_crypto = json_string_value(s_crypto);
+		}
 		/* Update room */
 		janus_mutex_lock(&rooms_mutex);
 		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms, &room_id);
@@ -2375,7 +2457,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto plugin_response;
 		}
 
-		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on, 0);
+		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge,
+			host, port, ssrc_value, ptype, srtp_suite, srtp_crypto, always_on, 0);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 
