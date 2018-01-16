@@ -4961,9 +4961,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_decref(event);
 				json_decref(jsep);
 			}
+			if(participant != NULL)
+				janus_refcount_decrease(&participant->ref);
 		}
-		if(participant != NULL)
-			janus_refcount_decrease(&participant->ref);
 		janus_videoroom_message_free(msg);
 
 		continue;
