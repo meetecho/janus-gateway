@@ -521,10 +521,6 @@ janus_session *janus_session_create(guint64 session_id) {
 	}
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
 	janus_session *session = (janus_session *)g_malloc(sizeof(janus_session));
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	session->session_id = session_id;
 	session->source = NULL;
 	g_atomic_int_set(&session->destroy, 0);

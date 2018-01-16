@@ -45,11 +45,6 @@ static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, 
 	janus_turnrest_buffer *buf = (struct janus_turnrest_buffer *)data;
 	/* (Re)allocate if needed */
 	buf->buffer = g_realloc(buf->buffer, buf->size+realsize+1);
-	if(buf->buffer == NULL) {
-		/* Memory error! */ 
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return 0;
-	}
 	/* Update the buffer */
 	memcpy(&(buf->buffer[buf->size]), payload, realsize);
 	buf->size += realsize;

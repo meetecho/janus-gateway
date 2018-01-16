@@ -161,10 +161,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		/* Replace string */
@@ -187,10 +183,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		outgoing[strlen(outgoing)] = '\0';

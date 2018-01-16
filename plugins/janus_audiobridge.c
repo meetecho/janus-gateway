@@ -4107,16 +4107,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				outBuffer[i] = sumBuffer[i];
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
-			if(mixedpkt != NULL) {
-				mixedpkt->data = g_malloc(samples*2);
-				memcpy(mixedpkt->data, outBuffer, samples*2);
-				mixedpkt->length = samples;	/* We set the number of samples here, not the data length */
-				mixedpkt->timestamp = ts;
-				mixedpkt->seq_number = seq;
-				mixedpkt->ssrc = audiobridge->room_id;
-				mixedpkt->silence = FALSE;
-				g_async_queue_push(p->outbuf, mixedpkt);
-			}
+			mixedpkt->data = g_malloc(samples*2);
+			memcpy(mixedpkt->data, outBuffer, samples*2);
+			mixedpkt->length = samples;	/* We set the number of samples here, not the data length */
+			mixedpkt->timestamp = ts;
+			mixedpkt->seq_number = seq;
+			mixedpkt->ssrc = audiobridge->room_id;
+			mixedpkt->silence = FALSE;
+			g_async_queue_push(p->outbuf, mixedpkt);
 			if(pkt) {
 				if(pkt->data)
 					g_free(pkt->data);

@@ -188,10 +188,6 @@ error:
 
 janus_config *janus_config_create(const char *name) {
 	janus_config *jc = g_malloc0(sizeof(janus_config));
-	if(jc == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	if(name != NULL) {
 		jc->name = g_strdup(name);
 	}
@@ -258,10 +254,6 @@ janus_config_category *janus_config_add_category(janus_config *config, const cha
 		return c;
 	}
 	c = g_malloc0(sizeof(janus_config_category));
-	if(c == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	c->name = g_strdup(category);
 	config->categories = g_list_append(config->categories, c);
 	return c;
@@ -293,10 +285,6 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	if(item == NULL) {
 		/* Create it */
 		item = g_malloc0(sizeof(janus_config_item));
-		if(item == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
 		item->name = g_strdup(name);
 		item->value = g_strdup(value);
 		if(c != NULL) {

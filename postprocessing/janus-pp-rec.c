@@ -421,10 +421,6 @@ int main(int argc, char *argv[])
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
 			janus_pp_frame_packet *p = g_malloc(sizeof(janus_pp_frame_packet));
-			if(p == NULL) {
-				JANUS_LOG(LOG_ERR, "Memory error!\n");
-				return -1;
-			}
 			p->seq = 0;
 			/* We "abuse" the timestamp field for the timing info */
 			p->ts = when-c_time;
@@ -474,10 +470,6 @@ int main(int argc, char *argv[])
 		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
-		if(p == NULL) {
-			JANUS_LOG(LOG_ERR, "Memory error!\n");
-			return -1;
-		}
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
 		/* Due to resets, we need to mess a bit with the original timestamps */

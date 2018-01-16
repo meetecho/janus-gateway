@@ -317,10 +317,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	} else {
 		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
 		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
-		if(rmq_client == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			goto error;
-		}
 		/* Connect */
 		rmq_client->rmq_conn = amqp_new_connection();
 		amqp_socket_t *socket = NULL;

@@ -1122,12 +1122,6 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		JANUS_LOG(LOG_DBG, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
-		if(msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-			MHD_destroy_response(response);
-			goto done;
-		}
 		msg->connection = connection;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
@@ -1245,12 +1239,6 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 				msg->payload = g_malloc0(*upload_data_size+1);
 			else
 				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
-			if(msg->payload == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-				MHD_destroy_response(response);
-				goto done;
-			}
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			msg->len += *upload_data_size;
 			memset(msg->payload + msg->len, '\0', 1);
@@ -1485,12 +1473,6 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
-		if(msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-			MHD_destroy_response(response);
-			goto done;
-		}
 		msg->connection = connection;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
@@ -1610,12 +1592,6 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 				msg->payload = g_malloc0(*upload_data_size+1);
 			else
 				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
-			if(msg->payload == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-				MHD_destroy_response(response);
-				goto done;
-			}
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			msg->len += *upload_data_size;
 			memset(msg->payload + msg->len, '\0', 1);

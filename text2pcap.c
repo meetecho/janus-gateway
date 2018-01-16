@@ -54,10 +54,6 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 		return NULL;
 	/* Create the text2pcap instance */
 	janus_text2pcap *tp = g_malloc0(sizeof(janus_text2pcap));
-	if(tp == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	tp->filename = NULL;
 	tp->file = NULL;
 	tp->truncate = truncate;

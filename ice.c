@@ -911,10 +911,6 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 	}
 	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
 	janus_ice_handle *handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
-	if(handle == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	handle->session = gateway_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
@@ -958,10 +954,6 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	}
 	int error = 0;
 	janus_plugin_session *session_handle = g_malloc(sizeof(janus_plugin_session));
-	if(session_handle == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
-	}
 	session_handle->gateway_handle = handle;
 	session_handle->plugin_handle = NULL;
 	session_handle->stopped = 0;
