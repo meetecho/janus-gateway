@@ -70,7 +70,6 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 		}
 	}
 	char newname[1024];
-	memset(newname, 0, 1024);
 	if(filename == NULL) {
 		/* Choose a random username */
 		g_snprintf(newname, 1024, "janus-text2pcap-%"SCNu32".txt", janus_random_uint32());
@@ -87,7 +86,6 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 			tp->filename = g_strdup(newname);
 	} else {
 		char path[1024];
-		memset(path, 0, 1024);
 		g_snprintf(path, 1024, "%s/%s", dir, newname);
 		tp->file = fopen(path, "ab");
 		if(tp->file == NULL)

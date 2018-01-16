@@ -994,7 +994,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
-		janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
+		janus_recordplay_message *msg = g_malloc(sizeof(janus_recordplay_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -2048,7 +2048,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
-		janus_recordplay_frame_packet *p = g_malloc0(sizeof(janus_recordplay_frame_packet));
+		janus_recordplay_frame_packet *p = g_malloc(sizeof(janus_recordplay_frame_packet));
 		p->seq = ntohs(rtp->seq_number);
 		if(reset == 0) {
 			/* Simple enough... */
@@ -2214,7 +2214,6 @@ static void *janus_recordplay_playout_thread(void *data) {
 
 	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes;
 	char *buffer = (char *)g_malloc0(1500);
-	memset(buffer, 0, 1500);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;
 

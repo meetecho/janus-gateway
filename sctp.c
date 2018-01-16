@@ -473,7 +473,6 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
 	req = g_malloc0(sizeof(janus_datachannel_open_request) + label_size);
-	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
 	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
@@ -716,7 +715,6 @@ void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp) {
 	if(srs == NULL) {
 		return;
 	}
-	memset(srs, 0, len);
 	srs->srs_flags = SCTP_STREAM_RESET_OUTGOING;
 	srs->srs_number_streams = sctp->stream_buffer_counter;
 	for(i = 0; i < sctp->stream_buffer_counter; i++) {
@@ -829,7 +827,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	char *label = NULL;
 	guint len = ntohs(req->label_length);
 	if(len > 0 && len < length) {
-		label = g_malloc0(len+1);
+		label = g_malloc(len+1);
 		memcpy(label, req->label, len);
 		label[len] = '\0'; 
 	}
@@ -1347,10 +1345,10 @@ void *janus_sctp_thread(void *data) {
 janus_sctp_message *janus_sctp_message_create(gboolean incoming, char *buffer, size_t length) {
 	if(buffer == NULL || length == 0)
 		return NULL;
-	janus_sctp_message *message = g_malloc0(sizeof(janus_sctp_message));
+	janus_sctp_message *message = g_malloc(sizeof(janus_sctp_message));
 	if(message == NULL)
 		return NULL;
-	message->buffer = g_malloc0(length);
+	message->buffer = g_malloc(length);
 	if(message->buffer == NULL) {
 		g_free(message);
 		message = NULL;

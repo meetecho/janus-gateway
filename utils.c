@@ -52,10 +52,8 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	if(strlen((char *)string2) > maxlen)
 		maxlen = strlen((char *)string2);
 	unsigned char *buf1 = g_malloc0(maxlen+1);
-	memset(buf1, 0, maxlen);
 	memcpy(buf1, string1, strlen(str1));
 	unsigned char *buf2 = g_malloc0(maxlen+1);
-	memset(buf2, 0, maxlen);
 	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
@@ -90,8 +88,8 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *numdup = g_malloc0(sizeof(guint64));
-	memcpy(numdup, &num, sizeof(num));
+	guint64 *numdup = g_malloc(sizeof(guint64));
+	*numdup = num;
 	return numdup;
 }
 

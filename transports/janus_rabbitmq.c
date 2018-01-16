@@ -600,7 +600,7 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
-	janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
+	janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
 	response->payload = message;
 	response->correlation_id = (char *)request_id;

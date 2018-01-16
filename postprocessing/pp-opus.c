@@ -161,8 +161,8 @@ void le16(unsigned char *p, int v) {
 /* Manufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -196,8 +196,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus post-processing";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -225,7 +225,7 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc0(sizeof(*op));
+	ogg_packet *op = g_malloc(sizeof(*op));
 	if(!op) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
 		return NULL;
@@ -235,6 +235,8 @@ ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
 	op->bytes = len;
 	op->b_o_s = 0;
 	op->e_o_s = 0;
+	op->granulepos = 0;
+	op->packetno = 0;
 
 	return op;
 }

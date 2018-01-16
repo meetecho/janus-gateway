@@ -2460,7 +2460,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "switch")) {
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
-		janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
+		janus_streaming_message *msg = g_malloc(sizeof(janus_streaming_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -3801,7 +3801,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		curl_easy_setopt(curl, CURLOPT_PASSWORD, source->rtsp_password);
 	}
 	/* Send an RTSP DESCRIBE */
-	janus_streaming_buffer *curldata = g_malloc0(sizeof(janus_streaming_buffer));
+	janus_streaming_buffer *curldata = g_malloc(sizeof(janus_streaming_buffer));
 	curldata->buffer = g_malloc0(1);
 	curldata->size = 0;
 	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_url);
@@ -4671,7 +4671,7 @@ static void *janus_streaming_relay_thread(void *data) {
 							janus_mutex_lock(&source->keyframe.mutex);
 							JANUS_LOG(LOG_HUGE, "[%s] ... other part of keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-							pkt->data = g_malloc0(bytes);
+							pkt->data = g_malloc(bytes);
 							memcpy(pkt->data, buffer, bytes);
 							pkt->data->ssrc = htons(1);
 							pkt->data->type = mountpoint->codecs.video_pt;
@@ -4713,7 +4713,7 @@ static void *janus_streaming_relay_thread(void *data) {
 									JANUS_LOG(LOG_HUGE, "[%s] New keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 									janus_mutex_lock(&source->keyframe.mutex);
 									janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-									pkt->data = g_malloc0(bytes);
+									pkt->data = g_malloc(bytes);
 									memcpy(pkt->data, buffer, bytes);
 									pkt->data->ssrc = htons(1);
 									pkt->data->type = mountpoint->codecs.video_pt;
@@ -4780,7 +4780,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					/* Get a string out of the data */
-					char *text = g_malloc0(bytes+1);
+					char *text = g_malloc(bytes+1);
 					memcpy(text, buffer, bytes);
 					*(text+bytes) = '\0';
 					/* Relay on all sessions */
@@ -4793,7 +4793,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(source->buffermsg) {
 						janus_mutex_lock(&source->buffermsg_mutex);
 						janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-						pkt->data = g_malloc0(bytes+1);
+						pkt->data = g_malloc(bytes+1);
 						memcpy(pkt->data, text, bytes+1);
 						packet.is_rtp = FALSE;
 						pkt->length = bytes+1;

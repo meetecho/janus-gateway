@@ -1036,7 +1036,7 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
-	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
+	janus_http_session *session = g_malloc(sizeof(janus_http_session));
 	session->events = g_async_queue_new();
 	session->destroyed = 0;
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
@@ -1129,13 +1129,6 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			goto done;
 		}
 		msg->connection = connection;
-		msg->acrh = NULL;
-		msg->acrm = NULL;
-		msg->payload = NULL;
-		msg->len = 0;
-		msg->session_id = 0;
-		msg->got_response = FALSE;
-		msg->response = NULL;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
@@ -1353,7 +1346,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		gateway->incoming_request(&janus_http_transport, msg, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
-			char *location = (char *)g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
+			char *location = (char *)g_malloc(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
@@ -1499,13 +1492,6 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			goto done;
 		}
 		msg->connection = connection;
-		msg->acrh = NULL;
-		msg->acrm = NULL;
-		msg->payload = NULL;
-		msg->len = 0;
-		msg->session_id = 0;
-		msg->got_response = FALSE;
-		msg->response = NULL;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
