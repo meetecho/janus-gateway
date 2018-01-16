@@ -4936,6 +4936,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(subscriber && subscriber->session && subscriber->session->handle) {
 							/* Enqueue the fake request: this will trigger a renegotiation */
 							janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
+							janus_refcount_increase(&subscriber->session->ref);
 							msg->handle = subscriber->session->handle;
 							msg->message = update;
 							json_incref(update);
