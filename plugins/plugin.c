@@ -28,7 +28,7 @@ janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, cons
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy
  * @note Will decrease the reference counter of the JSON content, if available
- * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+ */
 void janus_plugin_result_destroy(janus_plugin_result *result) {
 	JANUS_LOG(LOG_HUGE, "Destroying plugin result...\n");
 	result->text = NULL;
