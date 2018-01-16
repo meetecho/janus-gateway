@@ -3441,18 +3441,14 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
-		if (participant->recording_base) {
-			g_free(participant->recording_base);
-			participant->recording_base = NULL;
-		}
+		g_free(participant->recording_base);
+		participant->recording_base = NULL;
 		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
 		/* Use subscribers_mutex to protect fields used in janus_videoroom_incoming_rtp */
 		janus_mutex_lock(&participant->subscribers_mutex);
-		if (participant->sdp) {
-			g_free(participant->sdp);
-			participant->sdp = NULL;
-		}
+		g_free(participant->sdp);
+		participant->sdp = NULL;
 		participant->firefox = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
