@@ -408,6 +408,12 @@ function handleMessage(id, tr, msg, jsep)
 						-- Check if there's an SDP offer
 						local answerjson = nil
 						if cojsep ~= nil then
+							-- There's an SDP: is this a new offer, or a renegotiation?
+							if cojsep["update"] == true then
+								logger.print("Renegotiation occurring on the publisher")
+							else
+								logger.print("Setting up new PeerConnection for publisher")
+							end
 							-- Make sure the publisher is sendonly
 							local room = rooms[s["roomId"]]
 							local sdpoffer = string.gsub(cojsep["sdp"], "sendrecv", "sendonly")
@@ -494,9 +500,20 @@ function handleMessage(id, tr, msg, jsep)
 						elseif comsg["data"] == false then
 							configureMedium(id, "data", "in", false)
 						end
+						-- Also check if we need to send an ICE restart
+						local restartjson = nil
+						if comsg["restart"] == true then
+							-- Prepare new offer and send it back
+							local f = sessions[s["feedSessionId"]]
+							if f ~= nil then
+								logger.print("Preparing new offer (ICE restart) from publisher: " .. f["sdp"])
+								local offer = { type = "offer", sdp = f["sdp"], restart = true }
+								restartjson = json.encode(offer)
+							end
+						end
 						local event = { videoroom = "event", room = s["roomId"], configured = "ok" }
 						local eventjson = json.encode(event)
-						pushEvent(id, tr, eventjson, nil)
+						pushEvent(id, tr, eventjson, restartjson)
 					end
 				elseif request == "unpublish" then
 					-- Stop publishing in a room (publishers only)
