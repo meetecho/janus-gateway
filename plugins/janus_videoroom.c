@@ -695,9 +695,15 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
 	g_free(p->display);
-	g_free(p->sdp);
+	if (p->sdp) {
+		g_free(p->sdp);
+		p->sdp = NULL;
+	}
+	if (p->recording_base) {
+		g_free(p->recording_base);
+		p->recording_base = NULL;
+	}
 
-	g_free(p->recording_base);
 	janus_recorder_destroy(p->arc);
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
@@ -3436,6 +3442,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);
+		participant->recording_base = NULL;
 		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
 		/* Use subscribers_mutex to protect fields used in janus_videoroom_incoming_rtp */
@@ -4950,9 +4957,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_decref(event);
 				json_decref(jsep);
 			}
+			if(participant != NULL)
+				janus_refcount_decrease(&participant->ref);
 		}
-		if(participant != NULL)
-			janus_refcount_decrease(&participant->ref);
 		janus_videoroom_message_free(msg);
 
 		continue;
