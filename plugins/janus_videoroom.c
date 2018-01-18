@@ -717,9 +717,15 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
 	g_free(p->display);
-	g_free(p->sdp);
+	if (p->sdp) {
+		g_free(p->sdp);
+		p->sdp = NULL;
+	}
+	if (p->recording_base) {
+		g_free(p->recording_base);
+		p->recording_base = NULL;
+	}
 
-	g_free(p->recording_base);
 	janus_recorder_destroy(p->arc);
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
@@ -3598,6 +3604,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);
+		participant->recording_base = NULL;
 		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
 		/* Use subscribers_mutex to protect fields used in janus_videoroom_incoming_rtp */
@@ -3757,13 +3764,16 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VALIDATE_JSON_OBJECT(root, publisher_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
+				}
 				/* A token might be required to join */
 				if(videoroom->check_tokens) {
 					json_t *token = json_object_get(root, "token");
 					const char *token_text = token ? json_string_value(token) : NULL;
 					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
+						janus_refcount_decrease(&videoroom->ref);
 						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 						g_snprintf(error_cause, 512, "Unauthorized (not in the allowed list)");
@@ -3779,6 +3789,7 @@ static void *janus_videoroom_handler(void *data) {
 					user_id = json_integer_value(id);
 					if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
 						janus_mutex_unlock(&videoroom->mutex);
+						janus_refcount_decrease(&videoroom->ref);
 						/* User ID already taken */
 						JANUS_LOG(LOG_ERR, "User ID %"SCNu64" already exists\n", user_id);
 						error_code = JANUS_VIDEOROOM_ERROR_ID_EXISTS;
@@ -3812,6 +3823,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
 				if(publisher == NULL) {
+					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Memory error");
@@ -4124,24 +4136,28 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			if(participant->room == NULL) {
+				janus_refcount_decrease(&participant->ref);
 				JANUS_LOG(LOG_ERR, "No such room\n");
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room");
 				goto error;
 			}
 			if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")) {
+				janus_refcount_decrease(&participant->ref);
 				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 				g_snprintf(error_cause, 512, "Already in as a publisher on this handle");
 				goto error;
 			} else if(!strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish")) {
 				if(!strcasecmp(request_text, "publish") && participant->sdp) {
+					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Can't publish, already published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED;
 					g_snprintf(error_cause, 512, "Can't publish, already published");
 					goto error;
 				}
 				if(participant->kicked) {
+					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Unauthorized, you have been kicked\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
@@ -4151,8 +4167,10 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VALIDATE_JSON_OBJECT(root, publish_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_refcount_decrease(&participant->ref);
 					goto error;
+				}
 				json_t *audio = json_object_get(root, "audio");
 				json_t *audiocodec = json_object_get(root, "audiocodec");
 				json_t *video = json_object_get(root, "video");
@@ -4189,6 +4207,7 @@ static void *janus_videoroom_handler(void *data) {
 							acodec != participant->room->acodec[2])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for audio codec '%s', but it's not allowed (room %"SCNu64", user %"SCNu64")\n",
 							json_string_value(audiocodec), participant->room->room_id, participant->user_id);
+						janus_refcount_decrease(&participant->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Audio codec unavailable in this room");
 						goto error;
@@ -4223,6 +4242,7 @@ static void *janus_videoroom_handler(void *data) {
 							vcodec != participant->room->vcodec[2])) {
 						JANUS_LOG(LOG_ERR, "Participant asked for video codec '%s', but it's not allowed (room %"SCNu64", user %"SCNu64")\n",
 							json_string_value(videocodec), participant->room->room_id, participant->user_id);
+						janus_refcount_decrease(&participant->ref);
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Video codec unavailable in this room");
 						goto error;
@@ -4338,6 +4358,7 @@ static void *janus_videoroom_handler(void *data) {
 			} else if(!strcasecmp(request_text, "unpublish")) {
 				/* This participant wants to unpublish */
 				if(!participant->sdp) {
+					janus_refcount_decrease(&participant->ref);
 					JANUS_LOG(LOG_ERR, "Can't unpublish, not published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED;
 					g_snprintf(error_cause, 512, "Can't unpublish, not published");
@@ -4367,6 +4388,7 @@ static void *janus_videoroom_handler(void *data) {
 				session->started = FALSE;
 				//~ session->destroy = TRUE;
 			} else {
+				janus_refcount_decrease(&participant->ref);
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
@@ -5113,17 +5135,15 @@ static void *janus_videoroom_handler(void *data) {
 				json_decref(event);
 				json_decref(jsep);
 			}
+			if(participant != NULL)
+				janus_refcount_decrease(&participant->ref);
 		}
-		if(participant != NULL)
-			janus_refcount_decrease(&participant->ref);
 		janus_videoroom_message_free(msg);
 
 		continue;
 		
 error:
 		{
-			janus_refcount_decrease(&videoroom->ref);
-			janus_refcount_decrease(&participant->ref);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "videoroom", json_string("event"));
