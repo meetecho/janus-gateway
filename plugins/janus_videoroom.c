@@ -717,15 +717,11 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
 	g_free(p->display);
-	if (p->sdp) {
-		g_free(p->sdp);
-		p->sdp = NULL;
-	}
-	if (p->recording_base) {
-		g_free(p->recording_base);
-		p->recording_base = NULL;
-	}
-
+	p->display = NULL;
+	g_free(p->sdp);
+	p->sdp = NULL;
+	g_free(p->recording_base);
+	p->recording_base = NULL;
 	janus_recorder_destroy(p->arc);
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
