@@ -3084,7 +3084,9 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_component *component = stream->component;
 				/* Audio */
 				gint64 last = component->in_stats.audio.updated;
-				if(!component->in_stats.audio.notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.audio.notified_lastsec && last &&
+						!component->in_stats.audio.bytes_lastsec && !component->in_stats.audio.bytes_lastsec_temp &&
+							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio.notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
@@ -3092,7 +3094,9 @@ void *janus_ice_send_thread(void *data) {
 				}
 				/* Video */
 				last = component->in_stats.video[0].updated;
-				if(!component->in_stats.video[0].notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.video[0].notified_lastsec && last &&
+						!component->in_stats.video[0].bytes_lastsec && !component->in_stats.video[0].bytes_lastsec_temp &&
+							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video[0].notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
