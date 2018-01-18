@@ -595,6 +595,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
 		return;
 	}
+	if(dtls->dtls_started == 0) {
+		/* Handshake not started yet: maybe we're still waiting for the answer and the DTLS role? */
+		return;
+	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
 	if(written != len) {
