@@ -87,6 +87,15 @@ dataiface = network interface or IP address to bind to, if any (binds to all oth
 databuffermsg = yes|no (whether the plugin should store the latest
 	message and send it immediately for new viewers)
 
+In case you want to use SRTP for your RTP-based mountpoint, you'll need
+to configure the SRTP-related properties as well, namely the suite to
+use for hashing (32 or 80) and the crypto information for decrypting
+the stream (as a base64 encoded string the way SDES does it). Notice
+that with SRTP involved you'll have to pay extra attention to what you
+feed the mountpoint, as you may risk getting SRTP decrypt errors:
+srtpsuite = 32
+srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
+
 The following options are only valid for the 'rstp' type:
 url = RTSP stream URL (only if type=rtsp)
 rtsp_user = RTSP authorization username (only if type=rtsp)
@@ -152,6 +161,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtp.h"
+#include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../record.h"
 #include "../utils.h"
@@ -248,7 +258,9 @@ static struct janus_json_parameter rtp_parameters[] = {
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0}
+	{"data", JANUS_JSON_BOOL, 0},
+	{"srtpsuite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtpcrypto", JSON_STRING, 0}
 };
 static struct janus_json_parameter live_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -428,6 +440,10 @@ typedef struct janus_streaming_rtp_source {
 	janus_network_address audio_iface;
 	janus_network_address video_iface;
 	janus_network_address data_iface;
+	/* Only needed for SRTP forwarders */
+	gboolean is_srtp;
+	srtp_t srtp_ctx;
+	srtp_policy_t srtp_policy;
 } janus_streaming_rtp_source;
 
 typedef struct janus_streaming_file_source {
@@ -481,8 +497,9 @@ static char *admin_key = NULL;
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
-		gboolean doaudio, char* amcast, const janus_network_address *aiface, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
-		gboolean dovideo, char* vmcast, const janus_network_address *viface, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
+		int srtpsuite, char *srtpcrypto,
+		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
+		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 			gboolean simulcast, uint16_t vport2, uint16_t vport3,
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean buffermsg);
 /* Helper to create a file/ondemand live source */
@@ -732,6 +749,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vport3 = janus_config_get_item(cat, "videoport3");
 				janus_config_item *dport = janus_config_get_item(cat, "dataport");
 				janus_config_item *dbm = janus_config_get_item(cat, "databuffermsg");
+				janus_config_item *ssuite = janus_config_get_item(cat, "srtpsuite");
+				janus_config_item *scrypto = janus_config_get_item(cat, "srtpcrypto");
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
@@ -813,6 +832,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
+				if(ssuite && ssuite->value && atoi(ssuite->value) != 32 && atoi(ssuite->value) != 80) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid SRTP suite...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
 				if(id == NULL || id->value == NULL) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
@@ -835,6 +859,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						ssuite && ssuite->value ? atoi(ssuite->value) : 0,
+						scrypto && scrypto->value ? (char *)scrypto->value : NULL,
 						doaudio,
 						amcast ? (char *)amcast->value : NULL,
 						doaudio && aiface && aiface->value ? &audio_iface : NULL,
@@ -1417,6 +1443,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_object_set_new(ml, "filename", json_string(source->filename));
 		} else if(mp->streaming_source == janus_streaming_source_rtp) {
 			janus_streaming_rtp_source *source = mp->source;
+			if(source->is_srtp) {
+				json_object_set_new(ml, "srtp", json_true());
+			}
 			gint64 now = janus_get_monotonic_time();
 #ifdef HAVE_LIBCURL
 			if(source->rtsp) {
@@ -1528,6 +1557,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *data = json_object_get(root, "data");
+			json_t *ssuite = json_object_get(root, "srtpsuite");
+			json_t *scrypto = json_object_get(root, "srtpcrypto");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean dodata = data ? json_is_true(data) : FALSE;
@@ -1535,6 +1566,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio, video or data have to be streamed...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, no audio or video have to be streamed...");
+				goto plugin_response;
+			}
+			if(ssuite && json_integer_value(ssuite) != 32 && json_integer_value(ssuite) != 80) {
+				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, invalid SRTP suite...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, invalid SRTP suite...");
 				goto plugin_response;
 			}
 			uint16_t aport = 0;
@@ -1666,6 +1703,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					id ? json_integer_value(id) : 0,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					ssuite ? json_integer_value(ssuite) : 0,
+					scrypto ? (char *)json_string_value(scrypto) : NULL,
 					doaudio, amcast, &audio_iface, aport, acodec, artpmap, afmtp,
 					dovideo, vmcast, &video_iface, vport, vcodec, vrtpmap, vfmtp, bufferkf,
 					simulcast, vport2, vport3,
@@ -3268,6 +3307,10 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 		source->last_msg = NULL;
 	}
 	janus_mutex_unlock(&source->buffermsg_mutex);
+	if(source->is_srtp) {
+		srtp_dealloc(source->srtp_ctx);
+		g_free(source->srtp_policy.key);
+	}
 #ifdef HAVE_LIBCURL
 	janus_mutex_lock(&source->rtsp_mutex);
 	if(source->curl) {
@@ -3300,6 +3343,7 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
+		int srtpsuite, char *srtpcrypto,
 		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 			gboolean simulcast, uint16_t vport2, uint16_t vport3,
@@ -3441,9 +3485,66 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->streaming_type = janus_streaming_type_live;
 	live_rtp->streaming_source = janus_streaming_source_rtp;
 	janus_streaming_rtp_source *live_rtp_source = g_malloc0(sizeof(janus_streaming_rtp_source));
-	if(live_rtp_source == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
+	/* First of all, let's check if we need to setup an SRTP mountpoint */
+	if(srtpsuite > 0 && srtpcrypto != NULL) {
+		/* Base64 decode the crypto string and set it as the SRTP context */
+		gsize len = 0;
+		guchar *decoded = g_base64_decode(srtpcrypto, &len);
+		if(len < SRTP_MASTER_LENGTH) {
+			JANUS_LOG(LOG_ERR, "Invalid SRTP crypto (%s)\n", srtpcrypto);
+			g_free(decoded);
+			if(audio_fd > -1)
+				close(audio_fd);
+			if(video_fd[0] > -1)
+				close(video_fd[0]);
+			if(video_fd[1] > -1)
+				close(video_fd[1]);
+			if(video_fd[2] > -1)
+				close(video_fd[2]);
+			if(data_fd > -1)
+				close(data_fd);
+			janus_mutex_unlock(&mountpoints_mutex);
+			g_free(live_rtp_source);
+			g_free(live_rtp->name);
+			g_free(live_rtp->description);
+			g_free(live_rtp);
+			return NULL;
+		}
+		/* Set SRTP policy */
+		srtp_policy_t *policy = &live_rtp_source->srtp_policy;
+		srtp_crypto_policy_set_rtp_default(&(policy->rtp));
+		if(srtpsuite == 32) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+		} else if(srtpsuite == 80) {
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+		}
+		policy->ssrc.type = ssrc_any_inbound;
+		policy->key = decoded;
+		policy->next = NULL;
+		/* Create SRTP context */
+		srtp_err_status_t res = srtp_create(&live_rtp_source->srtp_ctx, policy);
+		if(res != srtp_err_status_ok) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Error creating forwarder SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+			g_free(decoded);
+			if(audio_fd > -1)
+				close(audio_fd);
+			if(video_fd[0] > -1)
+				close(video_fd[0]);
+			if(video_fd[1] > -1)
+				close(video_fd[1]);
+			if(video_fd[2] > -1)
+				close(video_fd[2]);
+			if(data_fd > -1)
+				close(data_fd);
+			janus_mutex_unlock(&mountpoints_mutex);
+			g_free(live_rtp_source);
+			g_free(live_rtp->name);
+			g_free(live_rtp->description);
+			g_free(live_rtp);
+			return NULL;
+		}
+		live_rtp_source->is_srtp = TRUE;
 	}
 	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_iface = doaudio && !janus_network_address_is_null(aiface) ? *aiface : nil;
@@ -4538,6 +4639,20 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(!mountpoint->enabled)
 						continue;
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+					/* Is this SRTP? */
+					if(source->is_srtp) {
+						int buflen = bytes;
+						srtp_err_status_t res = srtp_unprotect(source->srtp_ctx, buffer, &buflen);
+						//~ if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
+						if(res != srtp_err_status_ok) {
+							guint32 timestamp = ntohl(rtp->timestamp);
+							guint16 seq = ntohs(rtp->seq_number);
+							JANUS_LOG(LOG_ERR, "[%s] Audio SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
+								name, janus_srtp_error_str(res), bytes, buflen, timestamp, seq);
+							continue;
+						}
+						bytes = buflen;
+					}
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay on all sessions */
@@ -4591,6 +4706,20 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+					/* Is this SRTP? */
+					if(source->is_srtp) {
+						int buflen = bytes;
+						srtp_err_status_t res = srtp_unprotect(source->srtp_ctx, buffer, &buflen);
+						//~ if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
+						if(res != srtp_err_status_ok) {
+							guint32 timestamp = ntohl(rtp->timestamp);
+							guint16 seq = ntohs(rtp->seq_number);
+							JANUS_LOG(LOG_ERR, "[%s] Video SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
+								name, janus_srtp_error_str(res), bytes, buflen, timestamp, seq);
+							continue;
+						}
+						bytes = buflen;
+					}
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
 					if(source->keyframe.enabled) {
 						if(source->keyframe.temp_ts > 0 && ntohl(rtp->timestamp) != source->keyframe.temp_ts) {
