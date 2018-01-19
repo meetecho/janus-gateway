@@ -2524,7 +2524,7 @@ function Janus(gatewayCallbacks) {
 					if(match) {
 						mslabel = match[1];
 					}
-					match = lines[i].match('a=ssrc:' + ssrc + ' label:(.+)')
+					match = lines[i].match('a=ssrc:' + ssrc[0] + ' label:(.+)')
 					if(match) {
 						label = match[1];
 					}
@@ -2566,11 +2566,11 @@ function Janus(gatewayCallbacks) {
 				insertAt++;
 			}
 			if(mslabel) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' mslabel:' + msid);
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' mslabel:' + mslabel);
 				insertAt++;
 			}
 			if(label) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' label:' + msid);
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' label:' + label);
 				insertAt++;
 			}
 		}
