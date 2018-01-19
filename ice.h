@@ -166,6 +166,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 16)
 #define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX			(1 << 18)
 
 
 /*! \brief Janus media statistics
@@ -311,12 +312,14 @@ struct janus_ice_stream {
 	guint32 audio_ssrc;
 	/*! \brief Video SSRC of the gateway for this stream */
 	guint32 video_ssrc;
+	/*! \brief Video retransmission SSRC of the peer for this stream */
+	guint32 video_ssrc_rtx;
 	/*! \brief Audio SSRC of the peer for this stream */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
 	/*! \brief Video SSRC(s) of the peer for this stream (may be simulcasting) */
 	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
-	/*! \brief Video retransmissions SSRC of the peer for this stream */
-	guint32 video_ssrc_peer_rtx, video_ssrc_peer_rtx_new, video_ssrc_peer_rtx_orig;
+	/*! \brief Video retransmissions SSRC(s) of the peer for this stream */
+	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
 	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
@@ -325,8 +328,10 @@ struct janus_ice_stream {
 	GList *audio_payload_types;
 	/*! \brief List of payload types we can expect for video */
 	GList *video_payload_types;
+	/*! \brief Mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types;
 	/*! \brief RTP payload types of this stream */
-	gint audio_payload_type, video_payload_type;
+	gint audio_payload_type, video_payload_type, video_rtx_payload_type;
 	/*! \brief Codecs used by this stream */
 	char *audio_codec, *video_codec;
 	/*! \brief Pointer to function to check if a packet is a keyframe (depends on negotiated codec) */
@@ -422,6 +427,8 @@ struct janus_ice_component {
 	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
 	GHashTable *audio_retransmit_seqs, *video_retransmit_seqs;
+	/*! \brief Current sequence number for the RFC4588 rtx SSRC session */
+	guint16 rtx_seq_number;
 	/*! \brief Last time a log message about sending retransmits was printed */
 	gint64 retransmit_log_ts;
 	/*! \brief Number of retransmitted packets since last log message */
