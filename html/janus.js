@@ -2586,11 +2586,11 @@ function Janus(gatewayCallbacks) {
 				insertAt++;
 			}
 			if(mslabel) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' mslabel:' + msid);
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' mslabel:' + mslabel);
 				insertAt++;
 			}
 			if(label) {
-				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' label:' + msid);
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' label:' + label);
 				insertAt++;
 			}
 		}
