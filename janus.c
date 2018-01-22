@@ -212,6 +212,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -2773,8 +2774,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		if(ice_handle->agent == NULL) {
-			/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
-			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
+			if(janus_is_rfc4588_enabled()) {
+				/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
+				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
+			}
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
@@ -3375,6 +3378,9 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add_item(config, "media", "no_media_timer", nmt);
 	}
+	if(args_info.no_rfc_4588_given) {
+		janus_config_add_item(config, "media", "rfc_4588", "no");
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3668,6 +3674,11 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_set_no_media_timer(nmt);
 		}
+	}
+	/* RFC4588 support */
+	item = janus_config_get_item_drilldown(config, "media", "rfc_4588");
+	if(item && item->value) {
+		janus_set_rfc4588_enabled(janus_is_true(item->value));
 	}
 
 	/* Setup OpenSSL stuff */

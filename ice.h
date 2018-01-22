@@ -120,6 +120,12 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to enable or disable the RFC4588 support negotiation
+ * @param[in] enabled The new timer value, in seconds */
+void janus_set_rfc4588_enabled(gboolean enabled);
+/*! \brief Method to check whether the RFC4588 support is enabled
+ * @returns TRUE if it's enabled, FALSE otherwise */
+gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] timer The new timer value, in seconds */
 void janus_ice_set_event_stats_period(int period);

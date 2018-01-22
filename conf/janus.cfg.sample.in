@@ -67,7 +67,8 @@ cert_key = @certdir@/mycert.key
 
 
 ; Media-related stuff: you can configure whether if you want
-; to enable IPv6 support (still WIP, so handle with care), the maximum size
+; to enable IPv6 support (still WIP, so handle with care), if RFC4588
+; support should be negotiated or not (they are by default), the maximum size
 ; of the NACK queue (in milliseconds, defaults to 500ms) for retransmissions, the
 ; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
 ; starting MTU for DTLS (1472 by default, it adapts automatically), and
@@ -77,6 +78,7 @@ cert_key = @certdir@/mycert.key
 [media]
 ;ipv6 = true
 ;max_nack_queue = 500
+;rfc_4588 = no
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
 ;no_media_timer = 1

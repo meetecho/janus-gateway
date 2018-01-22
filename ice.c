@@ -244,6 +244,17 @@ uint janus_get_no_media_timer(void) {
 }
 
 
+/* RFC4588 support */
+static gboolean rfc4588_enabled = TRUE;
+void janus_set_rfc4588_enabled(gboolean enabled) {
+	rfc4588_enabled = enabled;
+	JANUS_LOG(LOG_VERB, "RFC4588 support is %s\n", rfc4588_enabled ? "enabled" : "disabled");
+}
+gboolean janus_is_rfc4588_enabled(void) {
+	return rfc4588_enabled;
+}
+
+
 /* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=500ms) */
 #define DEFAULT_MAX_NACK_QUEUE	500
 /* Maximum ignore count after retransmission (200ms) */
