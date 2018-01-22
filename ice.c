@@ -2012,7 +2012,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
-					size_t hsize = payload-buf-2;
+					size_t hsize = payload-buf;
 					memmove(buf+2, buf, hsize);
 					buf += 2;
 					header = (janus_rtp_header *)buf;
@@ -2138,9 +2138,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 
-				/* Update the RTCP context as well */
-				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
+				/* Update the RTCP context as well (but not if it's a retransmission) */
+				if(!rtx) {
+					rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
+					janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
+				}
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
