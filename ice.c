@@ -910,7 +910,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
-	janus_ice_handle *handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
+	janus_ice_handle *handle = g_malloc0(sizeof(janus_ice_handle));
 	handle->session = gateway_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
@@ -2313,7 +2313,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							p->last_retransmit = now;
 							retransmits_cnt++;
 							/* Enqueue it */
-							janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc(sizeof(janus_ice_queued_packet));
+							janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 							pkt->data = g_malloc(p->length);
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
@@ -2885,7 +2885,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->stream_id = 0;
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
-	janus_ice_stream *stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
+	janus_ice_stream *stream = g_malloc0(sizeof(janus_ice_stream));
 	stream->stream_id = handle->stream_id;
 	stream->handle = handle;
 	stream->audio_payload_type = -1;
@@ -2933,7 +2933,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 	}
 	handle->stream = stream;
-	janus_ice_component *component = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
+	janus_ice_component *component = g_malloc0(sizeof(janus_ice_component));
 	component->stream = stream;
 	component->stream_id = stream->stream_id;
 	component->component_id = 1;
@@ -3650,8 +3650,8 @@ void *janus_ice_send_thread(void *data) {
 								pkt = NULL;
 								continue;
 							}
-							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc(sizeof(janus_rtp_packet));
-							p->data = (char *)g_malloc(protected);
+							janus_rtp_packet *p = g_malloc(sizeof(janus_rtp_packet));
+							p->data = g_malloc(protected);
 							memcpy(p->data, sbuf, protected);
 							p->length = protected;
 							p->created = janus_get_monotonic_time();
@@ -3753,7 +3753,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc(sizeof(janus_ice_queued_packet));
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
@@ -3791,7 +3791,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 			video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 	}
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc(sizeof(janus_ice_queued_packet));
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 	pkt->data = g_malloc(len);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
@@ -3815,7 +3815,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!handle || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc(sizeof(janus_ice_queued_packet));
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;

@@ -1331,7 +1331,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		gateway->incoming_request(&janus_http_transport, msg, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
-			char *location = (char *)g_malloc(strlen(ws_path) + strlen(session_path) + 2);
+			char *location = g_malloc(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);

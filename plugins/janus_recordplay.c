@@ -809,7 +809,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_recordplay_session *session = (janus_recordplay_session *)g_malloc0(sizeof(janus_recordplay_session));
+	janus_recordplay_session *session = g_malloc0(sizeof(janus_recordplay_session));
 	session->handle = handle;
 	session->active = FALSE;
 	session->recorder = FALSE;
@@ -1384,7 +1384,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 			}
 			JANUS_LOG(LOG_VERB, "Starting new recording with ID %"SCNu64"\n", id);
-			rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
+			rec = g_malloc0(sizeof(janus_recordplay_recording));
 			rec->id = id;
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
@@ -1766,7 +1766,7 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_config_destroy(nfo);
 			continue;
 		}
-		rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
+		rec = g_malloc0(sizeof(janus_recordplay_recording));
 		rec->id = id;
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
@@ -2213,7 +2213,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 	gettimeofday(&vbefore, NULL);
 
 	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes;
-	char *buffer = (char *)g_malloc0(1500);
+	char *buffer = g_malloc0(1500);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;
 

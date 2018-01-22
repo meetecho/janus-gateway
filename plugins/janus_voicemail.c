@@ -456,7 +456,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_voicemail_session *session = (janus_voicemail_session *)g_malloc0(sizeof(janus_voicemail_session));
+	janus_voicemail_session *session = g_malloc0(sizeof(janus_voicemail_session));
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
 	session->start_time = 0;

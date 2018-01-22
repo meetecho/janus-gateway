@@ -624,7 +624,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
+	janus_textroom_session *session = g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	session->destroyed = 0;

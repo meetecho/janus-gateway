@@ -1247,7 +1247,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_streaming_session *session = (janus_streaming_session *)g_malloc0(sizeof(janus_streaming_session));
+	janus_streaming_session *session = g_malloc0(sizeof(janus_streaming_session));
 	session->handle = handle;
 	session->mountpoint = NULL;	/* This will happen later */
 	session->started = FALSE;	/* This will happen later */

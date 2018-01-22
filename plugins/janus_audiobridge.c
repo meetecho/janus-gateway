@@ -1502,7 +1502,7 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) 
 		*error = -1;
 		return;
 	}	
-	janus_audiobridge_session *session = (janus_audiobridge_session *)g_malloc0(sizeof(janus_audiobridge_session));
+	janus_audiobridge_session *session = g_malloc0(sizeof(janus_audiobridge_session));
 	session->handle = handle;
 	session->started = FALSE;
 	session->stopping = FALSE;
@@ -4217,7 +4217,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 	/* Output buffer */
 	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
-	outpkt->data = (janus_rtp_header *)g_malloc0(1500);
+	outpkt->data = g_malloc0(1500);
 	outpkt->ssrc = 0;
 	outpkt->timestamp = 0;
 	outpkt->seq_number = 0;

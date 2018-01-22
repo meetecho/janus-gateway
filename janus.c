@@ -520,7 +520,7 @@ janus_session *janus_session_create(guint64 session_id) {
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
-	janus_session *session = (janus_session *)g_malloc(sizeof(janus_session));
+	janus_session *session = g_malloc(sizeof(janus_session));
 	session->session_id = session_id;
 	session->source = NULL;
 	g_atomic_int_set(&session->destroy, 0);
@@ -596,7 +596,7 @@ void janus_session_free(janus_session *session) {
 
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message) {
-	janus_request *request = (janus_request *)g_malloc(sizeof(janus_request));
+	janus_request *request = g_malloc(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
 	request->request_id = request_id;

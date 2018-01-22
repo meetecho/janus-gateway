@@ -120,7 +120,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	 * be encapsulated in DTLS and actually sent/received by libnice, and not by
 	 * usrsctp itself... as such, we make use of the AF_CONN approach */
 
-	janus_sctp_association *sctp = (janus_sctp_association *)g_malloc0(sizeof(janus_sctp_association));
+	janus_sctp_association *sctp = g_malloc0(sizeof(janus_sctp_association));
 	sctp->dtls = dtls;
 	sctp->handle_id = handle_id;
 	sctp->local_port = 5000;	/* FIXME We always use this one */
@@ -707,7 +707,7 @@ void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp) {
 		return;
 	}
 	len = sizeof(sctp_assoc_t) + (2 + sctp->stream_buffer_counter) * sizeof(uint16_t);
-	srs = (struct sctp_reset_streams *)g_malloc0(len);
+	srs = g_malloc0(len);
 	srs->srs_flags = SCTP_STREAM_RESET_OUTGOING;
 	srs->srs_number_streams = sctp->stream_buffer_counter;
 	for(i = 0; i < sctp->stream_buffer_counter; i++) {
