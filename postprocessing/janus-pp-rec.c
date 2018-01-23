@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
 			/* First element becomes the list itself (and the last item), at least for now */
 			list = p;
 			last = p;
-		} else {
+		} else if(!p->drop) {
 			/* Check where we should insert this, starting from the end */
 			int added = 0;
 			janus_pp_frame_packet *tmp = last;
@@ -591,12 +591,20 @@ int main(int argc, char *argv[])
 						tmp->next = p;
 						p->prev = tmp;
 						break;
+					} else if(tmp->seq == p->seq) {
+						/* Maybe a retransmission? Skip */
+						JANUS_LOG(LOG_WARN, "Skipping duplicate packet (seq=%"SCNu16")\n", p->seq);
+						p->drop = 1;
+						break;
 					}
 				}
 				/* If either the timestamp ot the sequence number we just got is smaller, keep going back */
 				tmp = tmp->prev;
 			}
-			if(!added) {
+			if(p->drop) {
+				/* We don't need this */
+				g_free(p);
+			} else if(!added) {
 				/* We reached the start */
 				p->next = list;
 				list->prev = p;
