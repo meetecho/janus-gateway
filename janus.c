@@ -363,7 +363,9 @@ static janus_transport_callbacks janus_handler_transport =
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_transport_notify_event,
 	};
-GThreadPool *tasks = NULL;
+static GAsyncQueue *requests = NULL;
+static janus_request exit_message;
+static GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
 ///@}
 
@@ -606,7 +608,7 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
 }
 
 void janus_request_destroy(janus_request *request) {
-	if(request == NULL)
+	if(request == NULL || request == &exit_message)
 		return;
 	request->transport = NULL;
 	request->instance = NULL;
@@ -2502,16 +2504,8 @@ void janus_transport_incoming_request(janus_transport *plugin, void *transport, 
 	JANUS_LOG(LOG_VERB, "Got %s API request from %s (%p)\n", admin ? "an admin" : "a Janus", plugin->get_package(), transport);
 	/* Create a janus_request instance to handle the request */
 	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
-	GError *tperror = NULL;
-	g_thread_pool_push(tasks, request, &tperror);
-	if(tperror != NULL) {
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
-		json_t *transaction = json_object_get(message, "transaction");
-		const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
-		janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
-		janus_request_destroy(request);
-	}
+	/* Enqueue the request, the thread will pick it up */
+	g_async_queue_push(requests, request);
 }
 
 void janus_transport_gone(janus_transport *plugin, void *transport) {
@@ -2583,6 +2577,51 @@ void janus_transport_task(gpointer data, gpointer user_data) {
 		janus_process_incoming_admin_request(request);
 	/* Done */
 	janus_request_destroy(request);
+}
+
+
+/* Thread to handle incoming requests: may involve an asynchronous task for plugin messaging */
+static void *janus_transport_requests(void *data) {
+	JANUS_LOG(LOG_INFO, "Joining Janus requests handler thread\n");
+	janus_request *request = NULL;
+	gboolean destroy = FALSE;
+	while(!g_atomic_int_get(&stop)) {
+		request = g_async_queue_pop(requests);
+		if(request == &exit_message)
+			break;
+		/* Should we process the request synchronously or with a task from the thread pool? */
+		destroy = TRUE;
+		if(!request->admin) {
+			/* Process the request synchronously only it's not a message for a plugin */
+			json_t *message = json_object_get(request->message, "janus");
+			const gchar *message_text = json_string_value(message);
+			if(message_text && !strcasecmp(message_text, "message")) {
+				/* Spawn a task thread */
+				GError *tperror = NULL;
+				g_thread_pool_push(tasks, request, &tperror);
+				if(tperror != NULL) {
+					/* Something went wrong... */
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+					json_t *transaction = json_object_get(message, "transaction");
+					const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+					janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+				} else {
+					/* Don't destroy the request now, the task will take care of that */
+					destroy = FALSE;
+				}
+			} else {
+				janus_process_incoming_request(request);
+			}
+		} else {
+			/* Admin requests are always handled synchronously */
+			janus_process_incoming_admin_request(request);
+		}
+		/* Done */
+		if(destroy)
+			janus_request_destroy(request);
+	}
+	JANUS_LOG(LOG_INFO, "Leaving Janus requests handler thread\n");
+	return NULL;
 }
 
 
@@ -3674,6 +3713,21 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
 		exit(1);
 	}
+	/* Start the thread that will dispatch incoming requests */
+	requests = g_async_queue_new_full((GDestroyNotify) janus_request_destroy);
+	GThread *requests_thread = g_thread_try_new("sessions requests", &janus_transport_requests, NULL, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n", error->code, error->message ? error->message : "??");
+		exit(1);
+	}
+	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
+	error = NULL;
+	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
+		exit(1);
+	}
 
 	/* Load event handlers */
 	const char *path = EVENTDIR;
@@ -3943,15 +3997,6 @@ gint main(int argc, char *argv[])
 		g_strfreev(disabled_plugins);
 	disabled_plugins = NULL;
 
-	/* Create a thread pool to handle incoming requests, no matter what the transport */
-	error = NULL;
-	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
-	if(error != NULL) {
-		/* Something went wrong... */
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
-		exit(1);
-	}
-
 	/* Load transports */
 	gboolean janus_api_enabled = FALSE, admin_api_enabled = FALSE;
 	path = TRANSPORTDIR;
@@ -4127,7 +4172,13 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
 		g_hash_table_destroy(transports_so);
 	}
+	/* Get rid of requests tasks and thread too */
 	g_thread_pool_free(tasks, FALSE, FALSE);
+	JANUS_LOG(LOG_INFO, "Ending requests thread...\n");
+	g_async_queue_push(requests, &exit_message);
+	g_thread_join(requests_thread);
+	requests_thread = NULL;
+	g_async_queue_unref(requests);
 
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
 	g_clear_pointer(&sessions, g_hash_table_destroy);
