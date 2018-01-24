@@ -592,7 +592,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("No provided notification callback");
 			}
 		} else {
-			Janus.warn("Unkown message/event  '" + json["janus"] + "' on session " + sessionId);
+			Janus.warn("Unknown message/event  '" + json["janus"] + "' on session " + sessionId);
 			Janus.debug(json);
 		}
 	}
