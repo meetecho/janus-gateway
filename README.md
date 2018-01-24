@@ -348,7 +348,7 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-R, --no-rfc-4588             Whether to disable RFC4588 retransmissions
+	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
                                   support or not  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions

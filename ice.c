@@ -245,7 +245,7 @@ uint janus_get_no_media_timer(void) {
 
 
 /* RFC4588 support */
-static gboolean rfc4588_enabled = TRUE;
+static gboolean rfc4588_enabled = FALSE;
 void janus_set_rfc4588_enabled(gboolean enabled) {
 	rfc4588_enabled = enabled;
 	JANUS_LOG(LOG_VERB, "RFC4588 support is %s\n", rfc4588_enabled ? "enabled" : "disabled");

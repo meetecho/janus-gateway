@@ -3375,8 +3375,8 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add_item(config, "media", "no_media_timer", nmt);
 	}
-	if(args_info.no_rfc_4588_given) {
-		janus_config_add_item(config, "media", "rfc_4588", "no");
+	if(args_info.rfc_4588_given) {
+		janus_config_add_item(config, "media", "rfc_4588", "yes");
 	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
