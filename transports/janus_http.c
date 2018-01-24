@@ -1036,7 +1036,7 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
-	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
+	janus_http_session *session = g_malloc(sizeof(janus_http_session));
 	session->events = g_async_queue_new();
 	session->destroyed = 0;
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
@@ -1122,20 +1122,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		JANUS_LOG(LOG_DBG, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
-		if(msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-			MHD_destroy_response(response);
-			goto done;
-		}
 		msg->connection = connection;
-		msg->acrh = NULL;
-		msg->acrm = NULL;
-		msg->payload = NULL;
-		msg->len = 0;
-		msg->session_id = 0;
-		msg->got_response = FALSE;
-		msg->response = NULL;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
@@ -1248,16 +1235,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	if(!strcasecmp(method, "POST")) {
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
-			if(msg->payload == NULL)
-				msg->payload = g_malloc0(*upload_data_size+1);
-			else
-				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
-			if(msg->payload == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-				MHD_destroy_response(response);
-				goto done;
-			}
+			msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			msg->len += *upload_data_size;
 			memset(msg->payload + msg->len, '\0', 1);
@@ -1353,7 +1331,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		gateway->incoming_request(&janus_http_transport, msg, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
-			char *location = (char *)g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
+			char *location = g_malloc(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
@@ -1492,20 +1470,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
-		if(msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-			MHD_destroy_response(response);
-			goto done;
-		}
 		msg->connection = connection;
-		msg->acrh = NULL;
-		msg->acrm = NULL;
-		msg->payload = NULL;
-		msg->len = 0;
-		msg->session_id = 0;
-		msg->got_response = FALSE;
-		msg->response = NULL;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
@@ -1620,16 +1585,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	if(!strcasecmp(method, "POST")) {
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
-			if(msg->payload == NULL)
-				msg->payload = g_malloc0(*upload_data_size+1);
-			else
-				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
-			if(msg->payload == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-				MHD_destroy_response(response);
-				goto done;
-			}
+			msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			msg->len += *upload_data_size;
 			memset(msg->payload + msg->len, '\0', 1);

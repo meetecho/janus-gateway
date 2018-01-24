@@ -45,11 +45,6 @@ static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, 
 	janus_turnrest_buffer *buf = (struct janus_turnrest_buffer *)data;
 	/* (Re)allocate if needed */
 	buf->buffer = g_realloc(buf->buffer, buf->size+realsize+1);
-	if(buf->buffer == NULL) {
-		/* Memory error! */ 
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return 0;
-	}
 	/* Update the buffer */
 	memcpy(&(buf->buffer[buf->size]), payload, realsize);
 	buf->size += realsize;
@@ -218,7 +213,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		return NULL;
 	}
 	/* Turn the response into a janus_turnrest_response object we can use */
-	janus_turnrest_response *response = g_malloc0(sizeof(janus_turnrest_response));
+	janus_turnrest_response *response = g_malloc(sizeof(janus_turnrest_response));
 	response->username = g_strdup(json_string_value(username));
 	response->password = g_strdup(json_string_value(password));
 	response->ttl = ttl ? json_integer_value(ttl) : 0;
@@ -235,7 +230,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (not a TURN URI)...\n", turn_uri);
 			continue;
 		}
-		janus_turnrest_instance *instance = g_malloc0(sizeof(janus_turnrest_instance));
+		janus_turnrest_instance *instance = g_malloc(sizeof(janus_turnrest_instance));
 		instance->transport = NICE_RELAY_TYPE_TURN_UDP;
 		if(strstr(turn_uri, "turns:") == turn_uri)
 			instance->transport = NICE_RELAY_TYPE_TURN_TLS;

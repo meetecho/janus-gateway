@@ -52,10 +52,8 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	if(strlen((char *)string2) > maxlen)
 		maxlen = strlen((char *)string2);
 	unsigned char *buf1 = g_malloc0(maxlen+1);
-	memset(buf1, 0, maxlen);
 	memcpy(buf1, string1, strlen(str1));
 	unsigned char *buf2 = g_malloc0(maxlen+1);
-	memset(buf2, 0, maxlen);
 	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
@@ -90,8 +88,8 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *numdup = g_malloc0(sizeof(guint64));
-	memcpy(numdup, &num, sizeof(num));
+	guint64 *numdup = g_malloc(sizeof(guint64));
+	*numdup = num;
 	return numdup;
 }
 
@@ -163,10 +161,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		/* Replace string */
@@ -189,10 +183,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		outgoing[strlen(outgoing)] = '\0';
