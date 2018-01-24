@@ -561,7 +561,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_videocall_session *session = (janus_videocall_session *)g_malloc0(sizeof(janus_videocall_session));
+	janus_videocall_session *session = g_malloc0(sizeof(janus_videocall_session));
 	session->handle = handle;
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -668,7 +668,7 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_videocall_message *msg = g_malloc0(sizeof(janus_videocall_message));
+	janus_videocall_message *msg = g_malloc(sizeof(janus_videocall_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -894,7 +894,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 			return;
 		if(buf == NULL || len <= 0)
 			return;
-		char *text = g_malloc0(len+1);
+		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);

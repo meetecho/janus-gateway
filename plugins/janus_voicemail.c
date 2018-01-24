@@ -456,7 +456,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_voicemail_session *session = (janus_voicemail_session *)g_malloc0(sizeof(janus_voicemail_session));
+	janus_voicemail_session *session = g_malloc0(sizeof(janus_voicemail_session));
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
 	session->start_time = 0;
@@ -531,7 +531,7 @@ json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
+	janus_voicemail_message *msg = g_malloc(sizeof(janus_voicemail_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -582,7 +582,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((now-session->start_time) >= 10*G_USEC_PER_SEC) {
 		/* FIXME Simulate a "stop" coming from the browser */
 		session->started = FALSE;
-		janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
+		janus_voicemail_message *msg = g_malloc(sizeof(janus_voicemail_message));
 		msg->handle = handle;
 		msg->message = json_pack("{ss}", "request", "stop");
 		msg->transaction = NULL;
@@ -709,12 +709,6 @@ static void *janus_voicemail_handler(void *data) {
 				goto error;
 			}
 			session->stream = g_malloc0(sizeof(ogg_stream_state));
-			if(session->stream == NULL) {
-				JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
-				error_code = JANUS_VOICEMAIL_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Couldn't allocate stream struct");
-				goto error;
-			}
 			if(ogg_stream_init(session->stream, rand()) < 0) {
 				JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
 				error_code = JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR;
@@ -888,17 +882,8 @@ void le16(unsigned char *p, int v) {
 /* ;anufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
-
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	memcpy(data, "OpusHead", 8);  /* identifier */
 	data[8] = 1;                  /* version */
@@ -923,17 +908,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
-
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	memcpy(data, identifier, 8);
 	le32(data + 8, strlen(vendor));
@@ -952,16 +928,14 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc0(sizeof(*op));
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
-		return NULL;
-	}
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	op->packet = (unsigned char *)pkt;
 	op->bytes = len;
 	op->b_o_s = 0;
 	op->e_o_s = 0;
+	op->granulepos = 0;
+	op->packetno = 0;
 
 	return op;
 }

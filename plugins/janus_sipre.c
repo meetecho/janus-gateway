@@ -297,7 +297,7 @@ typedef struct janus_sipre_mqueue_payload {
 	void *data;					/* Payload specific data */
 } janus_sipre_mqueue_payload;
 static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode, void *data) {
-	janus_sipre_mqueue_payload *payload = g_malloc0(sizeof(janus_sipre_mqueue_payload));
+	janus_sipre_mqueue_payload *payload = g_malloc(sizeof(janus_sipre_mqueue_payload));
 	payload->session = session;
 	payload->msg = msg;
 	payload->rcode = rcode;
@@ -1201,7 +1201,7 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_sipre_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+	janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -3137,7 +3137,7 @@ static void *janus_sipre_relay_thread(void *data) {
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+				janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;
