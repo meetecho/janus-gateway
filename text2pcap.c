@@ -31,6 +31,7 @@
  * \ref core
  */
 
+#include <errno.h>
 #include <sys/time.h>
  
 #include "text2pcap.h"
