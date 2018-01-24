@@ -32,10 +32,11 @@
 /*! \brief ICE stuff initialization
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
  * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
+ * @param[in] full_trickle Whether full-trickle must be used (instead of half-trickle)
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
@@ -105,6 +106,9 @@ gboolean janus_ice_is_ice_lite_enabled(void);
 /*! \brief Method to check whether ICE-TCP support is enabled/supported or not (still WIP)
  * @returns true if ICE-TCP support is enabled/supported, false otherwise */
 gboolean janus_ice_is_ice_tcp_enabled(void);
+/*! \brief Method to check whether full-trickle support is enabled or not
+ * @returns true if full-trickle support is enabled, false otherwise */
+gboolean janus_ice_is_full_trickle_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
@@ -166,6 +170,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 16)
 #define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES		(1 << 18)
 
 
 /*! \brief Janus media statistics
@@ -267,6 +272,8 @@ struct janus_ice_handle {
 	gchar *video_mid;
 	/*! \brief Data channel mid (media ID) */
 	gchar *data_mid;
+	/*! \brief Main mid (will be a pointer to one of the above) */
+	gchar *stream_mid;
 	/*! \brief ICE Stream ID */
 	guint stream_id;
 	/*! \brief ICE stream */
@@ -584,6 +591,9 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 /*! \brief Method to restart ICE and the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_restart(janus_ice_handle *handle);
+/*! \brief Method to resend all the existing candidates via trickle (e.g., after an ICE restart)
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_resend_trickles(janus_ice_handle *handle);
 ///@}
 
 #endif

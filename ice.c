@@ -83,6 +83,12 @@ gboolean janus_ice_is_ice_tcp_enabled(void) {
 	return janus_ice_tcp_enabled;
 }
 
+/* Full-trickle support */
+static gboolean janus_full_trickle_enabled;
+gboolean janus_ice_is_full_trickle_enabled(void) {
+	return janus_full_trickle_enabled;
+}
+
 /* IPv6 support (still mostly WIP) */
 static gboolean janus_ipv6_enabled;
 gboolean janus_ice_is_ipv6_enabled(void) {
@@ -445,6 +451,35 @@ static gpointer janus_ice_handles_watchdog(gpointer user_data) {
 }
 
 
+static void janus_ice_notify_trickle(janus_ice_handle *handle, char *buffer) {
+	if(handle == NULL)
+		return;
+	char cbuffer[200];
+	if(buffer != NULL)
+		g_snprintf(cbuffer, sizeof(cbuffer), "candidate:%s", buffer);
+	/* Send a "trickle" event to the browser */
+	janus_session *session = (janus_session *)handle->session;
+	if(session == NULL)
+		return;
+	json_t *event = json_object();
+	json_object_set_new(event, "janus", json_string("trickle"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	json_t *candidate = json_object();
+	if(buffer != NULL) {
+		json_object_set_new(candidate, "sdpMid", json_string(handle->stream_mid));
+		json_object_set_new(candidate, "sdpMLineIndex", json_integer(0));
+		json_object_set_new(candidate, "candidate", json_string(cbuffer));
+	} else {
+		json_object_set_new(candidate, "completed", json_true());
+	}
+	json_object_set_new(event, "candidate", candidate);
+	/* Send the event */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending trickle event (%s) to transport...\n",
+		handle->handle_id, buffer ? "candidate" : "end-of-candidates");
+	janus_session_notify_event(session, event);
+}
+
 static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
 	if(handle == NULL)
 		return;
@@ -594,13 +629,15 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 
 
 /* libnice initialization */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
 	janus_ice_lite_enabled = ice_lite;
 	janus_ice_tcp_enabled = ice_tcp;
+	janus_full_trickle_enabled = full_trickle;
 	janus_ipv6_enabled = ipv6;
-	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (%s mode, ICE-TCP candidates %s, IPv6 support %s)\n",
+	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (%s mode, ICE-TCP candidates %s, %s-trickle, IPv6 support %s)\n",
 		janus_ice_lite_enabled ? "Lite" : "Full",
 		janus_ice_tcp_enabled ? "enabled" : "disabled",
+		janus_full_trickle_enabled ? "full" : "half",
 		janus_ipv6_enabled ? "enabled" : "disabled");
 	if(janus_ice_tcp_enabled) {
 #ifndef HAVE_LIBNICE_TCP
@@ -1177,6 +1214,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	handle->local_sdp = NULL;
 	g_free(handle->remote_sdp);
 	handle->remote_sdp = NULL;
+	handle->stream_mid = NULL;
 	if(handle->audio_mid != NULL) {
 		g_free(handle->audio_mid);
 		handle->audio_mid = NULL;
@@ -1505,6 +1543,11 @@ static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream
 		return;
 	}
 	stream->cdone = 1;
+	/* If we're doing full-trickle, send an event to the user too */
+	if(janus_full_trickle_enabled) {
+		/* Send a "trickle" event with completed:true to the browser */
+		janus_ice_notify_trickle(handle, NULL);
+	}
 }
 
 static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
@@ -1680,12 +1723,103 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 }
 
+/* Candidates management */
+static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate);
+#ifndef HAVE_LIBNICE_TCP
+static void janus_ice_cb_new_local_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *foundation, gpointer ice) {
+#else
+static void janus_ice_cb_new_local_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice) {
+#endif
+	if(!janus_full_trickle_enabled) {
+		/* Ignore if we're not full-trickling: for half-trickle
+		 * janus_ice_candidates_to_sdp() is used instead */
+		return;
+	}
+	janus_ice_handle *handle = (janus_ice_handle *)ice;
+	if(!handle)
+		return;
+#ifndef HAVE_LIBNICE_TCP
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Discovered new local candidate for component %d in stream %d: foundation=%s\n", handle ? handle->handle_id : 0, component_id, stream_id, foundation);
+#else
+	const char *ctype = NULL;
+	switch(candidate->type) {
+		case NICE_CANDIDATE_TYPE_HOST:
+			ctype = "host";
+			break;
+		case NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE:
+			ctype = "srflx";
+			break;
+		case NICE_CANDIDATE_TYPE_PEER_REFLEXIVE:
+			ctype = "prflx";
+			break;
+		case NICE_CANDIDATE_TYPE_RELAYED:
+			ctype = "relay";
+			break;
+		default:
+			break;
+	}
+	guint stream_id = candidate->stream_id;
+	guint component_id = candidate->component_id;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Discovered new local candidate for component %d in stream %d: type=%s\n", handle ? handle->handle_id : 0, component_id, stream_id, ctype);
+#endif
+	if(component_id > 1) {
+		/* New remote candidate for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
+	janus_ice_stream *stream = handle->stream;
+	if(!stream || stream->stream_id != stream_id) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
+		return;
+	}
+	janus_ice_component *component = stream->component;
+	if(!component || component->component_id != component_id) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
+		return;
+	}
+#ifndef HAVE_LIBNICE_TCP
+	/* Get local candidates and look for the related foundation */
+	NiceCandidate *candidate = NULL;
+	GSList *candidates = nice_agent_get_local_candidates(agent, component_id, stream_id), *tmp = candidates;
+	while(tmp) {
+		NiceCandidate *c = (NiceCandidate *)tmp->data;
+		/* Check if this is what we're looking for */
+		if(!strcasecmp(c->foundation, foundation)) {
+			/* It is! */
+			candidate = c;
+			break;
+		}
+		nice_candidate_free(c);
+		tmp = tmp->next;
+	}
+	g_slist_free(candidates);
+	if(candidate == NULL) {
+		JANUS_LOG(LOG_WARN, "Candidate with foundation %s not found?\n", foundation);
+		return;
+	}
+#endif
+	char buffer[200];
+	if(janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE) == 0) {
+		/* Candidate encoded, send a "trickle" event to the browser (but only if it's not a 'prflx') */
+		if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
+		} else {
+			janus_ice_notify_trickle(handle, buffer);
+		}
+	}
+
+#ifndef HAVE_LIBNICE_TCP
+	nice_candidate_free(candidate);
+#endif
+}
+
 #ifndef HAVE_LIBNICE_TCP
 static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *foundation, gpointer ice) {
 #else
 static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice) {
 #endif
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
+	if(!handle)
+		return;
 #ifndef HAVE_LIBNICE_TCP
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Discovered new remote candidate for component %d in stream %d: foundation=%s\n", handle ? handle->handle_id : 0, component_id, stream_id, foundation);
 #else
@@ -1710,8 +1844,6 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 	guint component_id = candidate->component_id;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Discovered new remote candidate for component %d in stream %d: type=%s\n", handle ? handle->handle_id : 0, component_id, stream_id, ctype);
 #endif
-	if(!handle)
-		return;
 	if(component_id > 1) {
 		/* New remote candidate for a component we don't need anymore (rtcp-mux) */
 		return;
@@ -2416,9 +2548,165 @@ void *janus_ice_thread(void *data) {
 	return NULL;
 }
 
-/* Helper: candidates */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id)
-{
+/* Helper: encoding local candidates to string/SDP */
+static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate) {
+	if(!handle || !handle->agent || !c || !buffer || buflen < 1)
+		return -1;
+	janus_ice_stream *stream = handle->stream;
+	if(!stream)
+		return -2;
+	janus_ice_component *component = stream->component;
+	if(!component)
+		return -3;
+	char *host_ip = NULL;
+	if(nat_1_1_enabled) {
+		/* A 1:1 NAT mapping was specified, overwrite all the host addresses with the public IP */
+		host_ip = janus_get_public_ip();
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
+	}
+	/* Encode the candidate to a string */
+	gchar address[NICE_ADDRESS_STRING_LEN], base_address[NICE_ADDRESS_STRING_LEN];
+	gint port = 0, base_port = 0;
+	nice_address_to_string(&(c->addr), (gchar *)&address);
+	port = nice_address_get_port(&(c->addr));
+	nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
+	base_port = nice_address_get_port(&(c->base_addr));
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
+	/* Start */
+	if(c->type == NICE_CANDIDATE_TYPE_HOST) {
+		/* 'host' candidate */
+		if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+			g_snprintf(buffer, buflen,
+				"%s %d %s %d %s %d typ host",
+					c->foundation, c->component_id,
+					"udp", c->priority,
+					host_ip ? host_ip : address, port);
+		} else {
+			if(!janus_ice_tcp_enabled) {
+				/* ICE-TCP support disabled */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+				return -4;
+			}
+#ifndef HAVE_LIBNICE_TCP
+			/* TCP candidates are only supported since libnice 0.1.8 */
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
+			return -4;
+#else
+			const char *type = NULL;
+			switch(c->transport) {
+				case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
+					type = "active";
+					break;
+				case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
+					type = "passive";
+					break;
+				case NICE_CANDIDATE_TRANSPORT_TCP_SO:
+					type = "so";
+					break;
+				default:
+					break;
+			}
+			if(type == NULL) {
+				/* FIXME Unsupported transport */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP host candidate...\n", handle->handle_id);
+				return -5;
+			}
+			g_snprintf(buffer, buflen,
+				"%s %d %s %d %s %d typ host tcptype %s",
+					c->foundation, c->component_id,
+					"tcp", c->priority,
+					host_ip ? host_ip : address, port, type);
+#endif
+		}
+	} else if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE ||
+			c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE ||
+			c->type == NICE_CANDIDATE_TYPE_RELAYED) {
+		/* 'srflx', 'prflx', or 'relay' candidate: what is this, exactly? */
+		const char *ltype = NULL;
+		switch(c->type) {
+			case NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE:
+				ltype = "srflx";
+				break;
+			case NICE_CANDIDATE_TYPE_PEER_REFLEXIVE:
+				ltype = "prflx";
+				break;
+			case NICE_CANDIDATE_TYPE_RELAYED:
+				ltype = "relay";
+				break;
+			default:
+				break;
+		}
+		if(ltype == NULL)
+			return -5;
+		if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+			nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
+			gint base_port = nice_address_get_port(&(c->base_addr));
+			g_snprintf(buffer, buflen,
+				"%s %d %s %d %s %d typ %s raddr %s rport %d",
+					c->foundation, c->component_id,
+					"udp", c->priority,
+					address, port, ltype,
+					base_address, base_port);
+		} else {
+			if(!janus_ice_tcp_enabled) {
+				/* ICE-TCP support disabled */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+				return -4;
+			}
+#ifndef HAVE_LIBNICE_TCP
+			/* TCP candidates are only supported since libnice 0.1.8 */
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
+			return -4;
+#else
+			const char *type = NULL;
+			switch(c->transport) {
+				case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
+					type = "active";
+					break;
+				case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
+					type = "passive";
+					break;
+				case NICE_CANDIDATE_TRANSPORT_TCP_SO:
+					type = "so";
+					break;
+				default:
+					break;
+			}
+			if(type == NULL) {
+				/* FIXME Unsupported transport */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP srflx candidate...\n", handle->handle_id);
+				return -5;
+			} else {
+				g_snprintf(buffer, buflen,
+					"%s %d %s %d %s %d typ %s raddr %s rport %d tcptype %s",
+						c->foundation, c->component_id,
+						"tcp", c->priority,
+						address, port, ltype,
+						base_address, base_port, type);
+			}
+#endif
+		}
+	}
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);
+	if(log_candidate) {
+		/* Save for the summary, in case we need it */
+		component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer));
+		/* Notify event handlers */
+		if(janus_events_is_enabled()) {
+			janus_session *session = (janus_session *)handle->session;
+			json_t *info = json_object();
+			json_object_set_new(info, "local-candidate", json_string(buffer));
+			json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
+			json_object_set_new(info, "component_id", json_integer(component->component_id));
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+		}
+	}
+	return 0;
+}
+
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id) {
 	if(!handle || !handle->agent || !mline)
 		return;
 	janus_ice_stream *stream = handle->stream;
@@ -2431,230 +2719,22 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
-	NiceAgent* agent = handle->agent;
-	/* adding a stream should cause host candidates to be generated */
-	char *host_ip = NULL;
-	if(nat_1_1_enabled) {
-		/* A 1:1 NAT mapping was specified, overwrite all the host addresses with the public IP */
-		host_ip = janus_get_public_ip();
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
-	}
+	NiceAgent *agent = handle->agent;
+	/* Iterate on all */
+	gchar buffer[200];
 	GSList *candidates, *i;
 	candidates = nice_agent_get_local_candidates (agent, stream_id, component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n", handle->handle_id, g_slist_length(candidates), stream_id, component_id);
 	gboolean log_candidates = (component->local_candidates == NULL);
 	for (i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
-		gchar address[NICE_ADDRESS_STRING_LEN], base_address[NICE_ADDRESS_STRING_LEN];
-		gint port = 0, base_port = 0;
-		nice_address_to_string(&(c->addr), (gchar *)&address);
-		port = nice_address_get_port(&(c->addr));
-		nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
-		base_port = nice_address_get_port(&(c->base_addr));
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
-		/* SDP time */
-		gchar buffer[200];
-		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
-			/* 'host' candidate */
-			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				g_snprintf(buffer, sizeof(buffer),
-					"%s %d %s %d %s %d typ host",
-						c->foundation,
-						c->component_id,
-						"udp",
-						c->priority,
-						host_ip ? host_ip : address,
-						port);
+		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates) == 0) {
+			/* Candidate encoded, add to the SDP (but only if it's not a 'prflx') */
+			if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 			} else {
-				if(!janus_ice_tcp_enabled) {
-					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				}
-#ifndef HAVE_LIBNICE_TCP
-				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
-				nice_candidate_free(c);
-				continue;
-#else
-				const char *type = NULL;
-				switch(c->transport) {
-					case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
-						type = "active";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
-						type = "passive";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_SO:
-						type = "so";
-						break;
-					default:
-						break;
-				}
-				if(type == NULL) {
-					/* FIXME Unsupported transport */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP host candidate...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				} else {
-					g_snprintf(buffer, sizeof(buffer),
-						"%s %d %s %d %s %d typ host tcptype %s",
-							c->foundation,
-							c->component_id,
-							"tcp",
-							c->priority,
-							host_ip ? host_ip : address,
-							port,
-							type);
-				}
-#endif
-			}
-		} else if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE) {
-			/* 'srflx' candidate */
-			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
-				gint base_port = nice_address_get_port(&(c->base_addr));
-				g_snprintf(buffer, sizeof(buffer),
-					"%s %d %s %d %s %d typ srflx raddr %s rport %d",
-						c->foundation,
-						c->component_id,
-						"udp",
-						c->priority,
-						address,
-						port,
-						base_address,
-						base_port);
-			} else {
-				if(!janus_ice_tcp_enabled) {
-					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				}
-#ifndef HAVE_LIBNICE_TCP
-				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
-				nice_candidate_free(c);
-				continue;
-#else
-				const char *type = NULL;
-				switch(c->transport) {
-					case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
-						type = "active";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
-						type = "passive";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_SO:
-						type = "so";
-						break;
-					default:
-						break;
-				}
-				if(type == NULL) {
-					/* FIXME Unsupported transport */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP srflx candidate...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				} else {
-					g_snprintf(buffer, sizeof(buffer),
-						"%s %d %s %d %s %d typ srflx raddr %s rport %d tcptype %s",
-							c->foundation,
-							c->component_id,
-							"tcp",
-							c->priority,
-							address,
-							port,
-							base_address,
-							base_port,
-							type);
-				}
-#endif
-			}
-		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
-			/* 'prflx' candidate: skip it, we don't add them to the SDP */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
-			nice_candidate_free(c);
-			continue;
-		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
-			/* 'relay' candidate */
-			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				g_snprintf(buffer, sizeof(buffer),
-					"%s %d %s %d %s %d typ relay raddr %s rport %d",
-						c->foundation,
-						c->component_id,
-						"udp",
-						c->priority,
-						address,
-						port,
-						base_address,
-						base_port);
-			} else {
-				if(!janus_ice_tcp_enabled) {
-					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping relay TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				}
-#ifndef HAVE_LIBNICE_TCP
-				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping relay TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
-				nice_candidate_free(c);
-				continue;
-#else
-				const char *type = NULL;
-				switch(c->transport) {
-					case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
-						type = "active";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
-						type = "passive";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_SO:
-						type = "so";
-						break;
-					default:
-						break;
-				}
-				if(type == NULL) {
-					/* FIXME Unsupported transport */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP relay candidate...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				} else {
-					g_snprintf(buffer, sizeof(buffer),
-						"%s %d %s %d %s %d typ relay raddr %s rport %d tcptype %s",
-							c->foundation,
-							c->component_id,
-							"tcp",
-							c->priority,
-							address,
-							port,
-							base_address,
-							base_port,
-							type);
-				}
-#endif
-			}
-		}
-		janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
-		mline->attributes = g_list_append(mline->attributes, a);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); /* buffer already newline terminated */
-		if(log_candidates) {
-			/* Save for the summary, in case we need it */
-			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer));
-			/* Notify event handlers */
-			if(janus_events_is_enabled()) {
-				janus_session *session = (janus_session *)handle->session;
-				json_t *info = json_object();
-				json_object_set_new(info, "local-candidate", json_string(buffer));
-				json_object_set_new(info, "stream_id", json_integer(stream_id));
-				json_object_set_new(info, "component_id", json_integer(component_id));
-				janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
+				mline->attributes = g_list_append(mline->attributes, a);
 			}
 		}
 		nice_candidate_free(c);
@@ -2743,6 +2823,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES);
 
 	/* Note: in case this is not an OFFER, we don't know whether any medium are supported on the other side or not yet */
 	if(audio) {
@@ -2826,6 +2907,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	g_signal_connect (G_OBJECT (handle->agent), "new-selected-pair-full",
 #endif
 		G_CALLBACK (janus_ice_cb_new_selected_pair), handle);
+	if(janus_full_trickle_enabled) {
+#ifndef HAVE_LIBNICE_TCP
+		g_signal_connect (G_OBJECT (handle->agent), "new-candidate",
+#else
+		g_signal_connect (G_OBJECT (handle->agent), "new-candidate-full",
+#endif
+			G_CALLBACK (janus_ice_cb_new_local_candidate), handle);
+	}
 #ifndef HAVE_LIBNICE_TCP
 	g_signal_connect (G_OBJECT (handle->agent), "new-remote-candidate",
 #else
@@ -2891,6 +2980,29 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 	handle->cdone = 0;
 	handle->stream_id = 0;
+	/* If this is our first offer, let's generate some mids */
+	if(!offer) {
+		if(audio) {
+			if(handle->audio_mid == NULL)
+				handle->audio_mid = g_strdup("audio");
+			if(handle->stream_mid == NULL)
+				handle->stream_mid = handle->audio_mid;
+		}
+		if(video) {
+			if(handle->video_mid == NULL)
+				handle->video_mid = g_strdup("video");
+			if(handle->stream_mid == NULL)
+				handle->stream_mid = handle->video_mid;
+		}
+#ifdef HAVE_SCTP
+		if(data) {
+			if(handle->data_mid == NULL)
+				handle->data_mid = g_strdup("data");
+			if(handle->stream_mid == NULL)
+				handle->stream_mid = handle->data_mid;
+		}
+#endif
+	}
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
 	janus_ice_stream *stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
@@ -2988,6 +3100,37 @@ void janus_ice_restart(janus_ice_handle *handle) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE restart failed...\n", handle->handle_id);
 	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+}
+
+void janus_ice_resend_trickles(janus_ice_handle *handle) {
+	if(!handle || !handle->agent)
+		return;
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES);
+	janus_ice_stream *stream = handle->stream;
+	if(!stream)
+		return;
+	janus_ice_component *component = stream->component;
+	if(!component)
+		return;
+	NiceAgent *agent = handle->agent;
+	/* Iterate on all existing local candidates */
+	gchar buffer[200];
+	GSList *candidates, *i;
+	candidates = nice_agent_get_local_candidates (agent, stream->stream_id, component->component_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n",
+		handle->handle_id, g_slist_length(candidates), stream->stream_id, component->component_id);
+	for (i = candidates; i; i = i->next) {
+		NiceCandidate *c = (NiceCandidate *) i->data;
+		if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE)
+			continue;
+		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), FALSE) == 0) {
+			/* Candidate encoded, send a "trickle" event to the browser */
+			janus_ice_notify_trickle(handle, buffer);
+		}
+		nice_candidate_free(c);
+	}
+	/* Send a "completed" trickle at the end */
+	janus_ice_notify_trickle(handle, NULL);
 }
 
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
