@@ -624,7 +624,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
+	janus_textroom_session *session = g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	session->destroyed = 0;
@@ -757,7 +757,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "restart")) {
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
-		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
+		janus_textroom_message *msg = g_malloc(sizeof(janus_textroom_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -833,7 +833,7 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *buf, int l
 		return;
 	if(buf == NULL || len <= 0)
 		return;
-	char *text = g_malloc0(len+1);
+	char *text = g_malloc(len+1);
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
@@ -1059,7 +1059,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		json_t *display = json_object_get(root, "display");
 		const char *display_text = json_string_value(display);
 		/* Create a participant instance */
-		participant = g_malloc0(sizeof(janus_textroom_participant));
+		participant = g_malloc(sizeof(janus_textroom_participant));
 		participant->session = session;
 		participant->room = textroom;
 		participant->username = g_strdup(username_text);

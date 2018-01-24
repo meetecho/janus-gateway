@@ -1336,7 +1336,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_videoroom_session *session = (janus_videoroom_session *)g_malloc0(sizeof(janus_videoroom_session));
+	janus_videoroom_session *session = g_malloc0(sizeof(janus_videoroom_session));
 	session->handle = handle;
 	session->participant_type = janus_videoroom_p_type_none;
 	session->participant = NULL;
@@ -2906,7 +2906,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* These messages are handled asynchronously */
 		janus_mutex_unlock(&sessions_mutex);
 
-		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
+		janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -3355,7 +3355,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	}
 	janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 	/* Get a string out of the data */
-	char *text = g_malloc0(len+1);
+	char *text = g_malloc(len+1);
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
@@ -4996,7 +4996,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_videoroom_listener *listener = (janus_videoroom_listener *)s->data;
 						if(listener && listener->session && listener->session->handle) {
 							/* Enqueue the fake request: this will trigger a renegotiation */
-							janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
+							janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
 							msg->handle = listener->session->handle;
 							msg->message = update;
 							json_incref(update);

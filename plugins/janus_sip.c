@@ -1155,7 +1155,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -1432,7 +1432,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
 	/* FIXME Simulate a "hangup" coming from the browser */
-	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->message = json_pack("{ss}", "request", "hangup");
 	msg->transaction = NULL;
@@ -3970,7 +3970,7 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+				janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;
