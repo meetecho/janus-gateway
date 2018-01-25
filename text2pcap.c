@@ -80,8 +80,6 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 
 	/* Try opening the file now */
 	f = fopen(fname, "ab");
-	if (f == NULL)
-		f = fopen(fname, "wb");
 	if (f == NULL) {
 		JANUS_LOG(LOG_ERR, "fopen(%s) error: %d\n", fname, errno);
 		g_free(fname);
