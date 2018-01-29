@@ -3205,7 +3205,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 /* Helper to return fd port */
 static int janus_streaming_get_fd_port(int fd) {
 	struct sockaddr_in server;
-	socklen_t len = sizeof(fd);
+	socklen_t len = sizeof(server);
 	if (getsockname(fd, &server, &len) == -1) {
 		return -1;
 	}
