@@ -597,6 +597,59 @@ function Janus(gatewayCallbacks) {
 		}
 	}
 
+	function setStereoSDP(sdp) {
+		var sdpLines = sdp.split('\r\n');
+		// Find opus payload.
+		var opusIndex = findLine(sdpLines, 'a=rtpmap', 'opus/48000/2');
+		var opusPayload;
+		if (opusIndex) {
+			opusPayload = getCodecPayloadType(sdpLines[opusIndex]);
+		}
+		if (opusPayload === undefined){
+			return sdp;
+		}
+		// Find the payload in fmtp line.
+		var fmtpLineIndex = findLine(sdpLines, 'a=fmtp:' + opusPayload.toString());
+		if (fmtpLineIndex === null) {
+			sdpLines.splice(opusIndex + 1,0,'a=fmtp:' + opusPayload.toString() + ' stereo=1;sprop-stereo=1;maxaveragebitrate=3000000');
+		}else{
+			sdpLines[fmtpLineIndex] = sdpLines[fmtpLineIndex].concat(';stereo=1;sprop-stereo=1;maxaveragebitrate=300000');
+		}
+		// Append stereo=1 to fmtp line.
+		// added maxaveragebitrate here; about 50 kbits/s
+		// added stereo=1 here for stereo audio
+		// x-google-min-bitrate=50; x-google-max-bitrate=50
+		sdp = sdpLines.join('\r\n');
+		return sdp;
+	}
+	
+	// Find the line in sdpLines that starts with |prefix|, and, if specified,
+	// contains |substr| (case-insensitive search).
+	function findLine(sdpLines, prefix, substr) {
+		return findLineInRange(sdpLines, 0, -1, prefix, substr);
+	}
+	// Find the line in sdpLines[startLine...endLine - 1] that starts with |prefix|
+	// and, if specified, contains |substr| (case-insensitive search).
+	function findLineInRange(sdpLines, startLine, endLine, prefix, substr) {
+		var realEndLine = endLine !== -1 ? endLine : sdpLines.length;
+		for (var i = startLine; i < realEndLine; ++i) {
+			if (sdpLines[i].indexOf(prefix) === 0) {
+				if (!substr ||
+						sdpLines[i].toLowerCase().indexOf(substr.toLowerCase()) !== -1) {
+					return i;
+				}
+			}
+		}
+		return null;
+	}
+	
+	// Gets the codec payload type from an a=rtpmap:X line.
+	function getCodecPayloadType(sdpLine) {
+		var pattern = new RegExp('a=rtpmap:(\\d+) \\w+\\/\\d+');
+		var result = sdpLine.match(pattern);
+		return (result && result.length === 2) ? result[1] : null;
+	}
+
 	// Private helper to send keep-alive messages on WebSockets
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
@@ -1438,6 +1491,7 @@ function Janus(gatewayCallbacks) {
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
 		} else {
+			jsep.sdp = setStereoSDP(jsep.sdp);
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -1880,6 +1934,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 			}
+
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
@@ -1953,6 +2008,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
 			}
+			jsep.sdp = setStereoSDP(jsep.sdp);
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -2020,6 +2076,7 @@ function Janus(gatewayCallbacks) {
 						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
 				}
+				offer.sdp = setStereoSDP(offer.sdp)
 				config.mySdp = offer.sdp;
 				config.pc.setLocalDescription(offer);
 				config.mediaConstraints = mediaConstraints;
@@ -2103,6 +2160,7 @@ function Janus(gatewayCallbacks) {
 						Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 					}
 				}
+				answer.sdp = setStereoSDP(answer.sdp)
 				config.mySdp = answer.sdp;
 				config.pc.setLocalDescription(answer);
 				config.mediaConstraints = mediaConstraints;
