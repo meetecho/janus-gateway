@@ -273,7 +273,7 @@ Janus.init = function(options) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
 						Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({asyncRequest: false});
+					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -738,6 +738,9 @@ function Janus(gatewayCallbacks) {
 		var asyncRequest = true;
 		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
 			asyncRequest = (callbacks.asyncRequest === true);
+		var notifyDestroyed = true;
+		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
+			notifyDestroyed = (callbacks.notifyDestroyed === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
@@ -747,7 +750,8 @@ function Janus(gatewayCallbacks) {
 		if(sessionId === undefined || sessionId === null) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
-			gatewayCallbacks.destroyed();
+			if(notifyDestroyed)
+				gatewayCallbacks.destroyed();
 			return;
 		}
 		delete Janus.sessions[sessionId];
@@ -777,13 +781,15 @@ function Janus(gatewayCallbacks) {
 				if(data.session_id == request.session_id && data.transaction == request.transaction) {
 					unbindWebSocket();
 					callbacks.success();
-					gatewayCallbacks.destroyed();
+					if(notifyDestroyed)
+						gatewayCallbacks.destroyed();
 				}
 			};
 			var onUnbindError = function(event) {
 				unbindWebSocket();
 				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			};
 
 			ws.addEventListener('message', onUnbindMessage);
@@ -806,7 +812,8 @@ function Janus(gatewayCallbacks) {
 					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				}
 				callbacks.success();
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ": " + errorThrown);	// FIXME
@@ -814,7 +821,8 @@ function Janus(gatewayCallbacks) {
 				sessionId = null;
 				connected = false;
 				callbacks.success();
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			}
 		});
 	}
