@@ -40,6 +40,15 @@
 ; databuffermsg = yes|no (whether the plugin should store the latest
 ;		message and send it immediately for new viewers)
 ;
+; In case you want to use SRTP for your RTP-based mountpoint, you'll need
+; to configure the SRTP-related properties as well, namely the suite to
+; use for hashing (32 or 80) and the crypto information for decrypting
+; the stream (as a base64 encoded string the way SDES does it). Notice
+; that with SRTP involved you'll have to pay extra attention to what you
+; feed the mountpoint, as you may risk getting SRTP decrypt errors:
+; srtpsuite = 32
+; srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
+;
 ; The following options are only valid for the 'rstp' type:
 ; url = RTSP stream URL (only for restreaming RTSP)
 ; rtsp_user = RTSP authorization username (only if type=rtsp)

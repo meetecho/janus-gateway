@@ -433,10 +433,6 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = g_malloc0(sizeof(janus_dtls_srtp));
-	if(dtls == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
 	dtls->ssl = SSL_new(ssl_ctx);
@@ -593,6 +589,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+		return;
+	}
+	if(dtls->dtls_started == 0) {
+		/* Handshake not started yet: maybe we're still waiting for the answer and the DTLS role? */
 		return;
 	}
 	janus_dtls_fd_bridge(dtls);

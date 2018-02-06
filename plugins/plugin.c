@@ -18,9 +18,7 @@
 
 janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content) {
 	JANUS_LOG(LOG_HUGE, "Creating plugin result...\n");
-	janus_plugin_result *result = (janus_plugin_result *)g_malloc0(sizeof(janus_plugin_result));
-	if(result == NULL)
-		return NULL;
+	janus_plugin_result *result = g_malloc(sizeof(janus_plugin_result));
 	result->type = type;
 	result->text = text;
 	result->content = content;
@@ -30,7 +28,7 @@ janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, cons
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy
  * @note Will decrease the reference counter of the JSON content, if available
- * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+ */
 void janus_plugin_result_destroy(janus_plugin_result *result) {
 	JANUS_LOG(LOG_HUGE, "Destroying plugin result...\n");
 	result->text = NULL;

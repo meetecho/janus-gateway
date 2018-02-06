@@ -236,14 +236,23 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					/* Found mid attribute */
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->value);
-						handle->audio_mid = g_strdup(a->value);
+						if(handle->audio_mid == NULL || strcmp(handle->audio_mid, a->value)) {
+							g_free(handle->audio_mid);
+							handle->audio_mid = g_strdup(a->value);
+						}
 					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->value);
-						handle->video_mid = g_strdup(a->value);
+						if(handle->video_mid == NULL || strcmp(handle->video_mid, a->value)) {
+							g_free(handle->video_mid);
+							handle->video_mid = g_strdup(a->value);
+						}
 #ifdef HAVE_SCTP
 					} else if(m->type == JANUS_SDP_APPLICATION) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data Channel mid: %s\n", handle->handle_id, a->value);
-						handle->data_mid = g_strdup(a->value);
+						if(handle->data_mid == NULL || strcmp(handle->data_mid, a->value)) {
+							g_free(handle->data_mid);
+							handle->data_mid = g_strdup(a->value);
+						}
 #endif
 					}
 				} else if(!strcasecmp(a->name, "fingerprint")) {

@@ -506,7 +506,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
-	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
+	janus_ice_trickle *trickle = g_malloc(sizeof(janus_ice_trickle));
 	trickle->handle = handle;
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
@@ -759,7 +759,12 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	FD_SET(fd, &readfds);
 	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
 	timeout.tv_usec = 0;
-	select(fd+1, &readfds, NULL, NULL, &timeout);
+	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
+	if(err < 0) {
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		close(fd);
+		return -1;
+	}
 	if(!FD_ISSET(fd, &readfds)) {
 		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
 		close(fd);
@@ -910,11 +915,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
-	janus_ice_handle *handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
-	if(handle == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	janus_ice_handle *handle = g_malloc0(sizeof(janus_ice_handle));
 	handle->session = gateway_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
@@ -957,11 +958,7 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 		return JANUS_ERROR_PLUGIN_ATTACH;
 	}
 	int error = 0;
-	janus_plugin_session *session_handle = g_malloc0(sizeof(janus_plugin_session));
-	if(session_handle == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
-	}
+	janus_plugin_session *session_handle = g_malloc(sizeof(janus_plugin_session));
 	session_handle->gateway_handle = handle;
 	session_handle->plugin_handle = NULL;
 	session_handle->stopped = 0;
@@ -2021,31 +2018,26 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						/* Get current timestamp */
 						struct timeval now;
 						gettimeofday(&now,0);
-						
 						/* Create <seq num, time> pair */
-						janus_rtcp_transport_wide_cc_stats* stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
+						janus_rtcp_transport_wide_cc_stats *stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
 						/* Check if we have a sequence wrap */
-						if (transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000)
+						if (transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000) {
 							/* Increase cycles */
 							stream->transport_wide_cc_cycles++;
-
+						}
 						/* Get extended value */
 						guint32 transport_ext_seq_num = stream->transport_wide_cc_cycles<<16 | transport_seq_num;
-						
 						/* Store last received transport seq num */
 						stream->transport_wide_cc_last_seq_num = transport_seq_num;
-
 						/* Set stats values */
 						stats->transport_seq_num = transport_ext_seq_num;
 						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
-						
 						/* Lock & append to received list*/
 						janus_mutex_lock(&stream->mutex);
 						stream->transport_wide_received_seq_nums =  g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
 						janus_mutex_unlock(&stream->mutex);
 					}
 				}
-
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
@@ -2326,8 +2318,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							p->last_retransmit = now;
 							retransmits_cnt++;
 							/* Enqueue it */
-							janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
-							pkt->data = g_malloc0(p->length);
+							janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+							pkt->data = g_malloc(p->length);
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -2898,7 +2890,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->stream_id = 0;
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
-	janus_ice_stream *stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
+	janus_ice_stream *stream = g_malloc0(sizeof(janus_ice_stream));
 	stream->stream_id = handle->stream_id;
 	stream->handle = handle;
 	stream->audio_payload_type = -1;
@@ -2946,7 +2938,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 	}
 	handle->stream = stream;
-	janus_ice_component *component = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
+	janus_ice_component *component = g_malloc0(sizeof(janus_ice_component));
 	component->stream = stream;
 	component->stream_id = stream->stream_id;
 	component->component_id = 1;
@@ -3084,7 +3076,9 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_component *component = stream->component;
 				/* Audio */
 				gint64 last = component->in_stats.audio.updated;
-				if(!component->in_stats.audio.notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.audio.notified_lastsec && last &&
+						!component->in_stats.audio.bytes_lastsec && !component->in_stats.audio.bytes_lastsec_temp &&
+							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio.notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
@@ -3092,7 +3086,9 @@ void *janus_ice_send_thread(void *data) {
 				}
 				/* Video */
 				last = component->in_stats.video[0].updated;
-				if(!component->in_stats.video[0].notified_lastsec && last && now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.video[0].notified_lastsec && last &&
+						!component->in_stats.video[0].bytes_lastsec && !component->in_stats.video[0].bytes_lastsec_temp &&
+							now-last >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video[0].notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
@@ -3221,37 +3217,30 @@ void *janus_ice_send_thread(void *data) {
 				/* Create a transport wide feedback message */
 				size_t size = 1300;
 				char rtcpbuf[1300];
-				
 				/* Lock session */
 				janus_mutex_lock(&handle->stream->mutex);
-				
 				/* Order packet list */
-				GSList* sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums, rtcp_transport_wide_cc_stats_comparator);
-				
+				GSList *sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums, rtcp_transport_wide_cc_stats_comparator);
 				/* Create full stats queue */
-				GQueue* packets = g_queue_new();
-				
+				GQueue *packets = g_queue_new();
 				/* For all packets */
 				GSList *it = NULL;
 				for (it = sorted; it; it = it->next) {
 					/* Get stat */
-					janus_rtcp_transport_wide_cc_stats* stats = (janus_rtcp_transport_wide_cc_stats*)it->data;
-					
+					janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
 					/* Get transport seq */
 					guint32 transport_seq_num = stats->transport_seq_num;
-					
 					/* Check if it is an out of order  */
 					if (transport_seq_num < handle->stream->transport_wide_cc_last_feedback_seq_num)
 						/* Skip, it was already reported as lost */
 						continue;
-					
 					/* If not first */
 					if (handle->stream->transport_wide_cc_last_feedback_seq_num) {
 						/* For each lost */
 						guint32 i = 0;
 						for (i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
 							/* Create new stat */
-							janus_rtcp_transport_wide_cc_stats* missing = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
+							janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
 							/* Add missing packet */
 							missing->transport_seq_num = i;
 							missing->timestamp = 0;
@@ -3259,32 +3248,23 @@ void *janus_ice_send_thread(void *data) {
 							g_queue_push_tail(packets, missing);
 						}
 					}
-					
 					/* Store last */
 					handle->stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
-
 					/* Add this one */
 					g_queue_push_tail(packets, stats);
 				}
-				
 				/* Clear stats */
 				g_slist_free(handle->stream->transport_wide_received_seq_nums);
-				
 				/* Reset list */
 				handle->stream->transport_wide_received_seq_nums = NULL;
-				
 				/* Get feedback pacakte count and increase it for next one */
 				guint8 feedback_packet_count = handle->stream->transport_wide_cc_feedback_count++;
-				
 				/* Unlock session */
 				janus_mutex_unlock(&handle->stream->mutex);
-				
 				/* Create rtcp packet */
 				int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size, handle->stream->video_ssrc, stream->video_ssrc_peer[0] , feedback_packet_count, packets);
-
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
-
 				/* Free mem */
 				g_queue_free(packets);
 			}
@@ -3434,7 +3414,6 @@ void *janus_ice_send_thread(void *data) {
 					/* There's a REMB, prepend a RR as it won't work otherwise */
 					int rrlen = 32;
 					char *rtcpbuf = g_malloc0(rrlen+pkt->length);
-					memset(rtcpbuf, 0, rrlen+pkt->length);
 					rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
@@ -3676,8 +3655,8 @@ void *janus_ice_send_thread(void *data) {
 								pkt = NULL;
 								continue;
 							}
-							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
-							p->data = (char *)g_malloc0(protected);
+							janus_rtp_packet *p = g_malloc(sizeof(janus_rtp_packet));
+							p->data = g_malloc(protected);
 							memcpy(p->data, sbuf, protected);
 							p->length = protected;
 							p->created = janus_get_monotonic_time();
@@ -3779,8 +3758,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc0(len);
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3817,8 +3796,8 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 			video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 	}
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc0(len);
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc(len);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3841,8 +3820,8 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!handle || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc0(len);
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = JANUS_ICE_PACKET_DATA;
