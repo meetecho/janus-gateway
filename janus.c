@@ -3732,25 +3732,26 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load event handlers */
-	const char *path = EVENTDIR;
-	item = janus_config_get_item_drilldown(config, "general", "events_folder");
+	const char *path = NULL;
+	DIR *dir = NULL;
+	/* Event handlers are disabled by default, though: they need to be enabled in the configuration */
+	item = janus_config_get_item_drilldown(config, "events", "broadcast");
+	gboolean enable_events = FALSE;
 	if(item && item->value)
-		path = (char *)item->value;
-	JANUS_LOG(LOG_INFO, "Event handler plugins folder: %s\n", path);
-	DIR *dir = opendir(path);
-	if(!dir) {
-		/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
-		JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
+		enable_events = janus_is_true(item->value);
+	if(!enable_events) {
+		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
 	} else {
-		/* Any event handlers to ignore? */
 		gchar **disabled_eventhandlers = NULL;
-		item = janus_config_get_item_drilldown(config, "events", "broadcast");
-		/* Event handlers are disabled by default: they need to be enabled in the configuration */
-		gboolean enable_events = FALSE;
+		path = EVENTDIR;
+		item = janus_config_get_item_drilldown(config, "general", "events_folder");
 		if(item && item->value)
-			enable_events = janus_is_true(item->value);
-		if(!enable_events) {
-			JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+			path = (char *)item->value;
+		JANUS_LOG(LOG_INFO, "Event handler plugins folder: %s\n", path);
+		dir = opendir(path);
+		if(!dir) {
+			/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
+			JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "events", "stats_period");
 			if(item && item->value) {
@@ -3766,6 +3767,7 @@ gint main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "Setting event handlers statistics period to %d seconds\n", period);
 				}
 			}
+			/* Any event handlers to ignore? */
 			item = janus_config_get_item_drilldown(config, "events", "disable");
 			if(item && item->value)
 				disabled_eventhandlers = g_strsplit(item->value, ",", -1);

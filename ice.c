@@ -771,7 +771,12 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	FD_SET(fd, &readfds);
 	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
 	timeout.tv_usec = 0;
-	select(fd+1, &readfds, NULL, NULL, &timeout);
+	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
+	if(err < 0) {
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		close(fd);
+		return -1;
+	}
 	if(!FD_ISSET(fd, &readfds)) {
 		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
 		close(fd);

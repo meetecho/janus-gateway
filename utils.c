@@ -336,9 +336,9 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "h264";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
-					if(strstr(name, "pcmu") || strstr(name, "PMCU"))
+					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
 						return "pcmu";
-					if(strstr(name, "pcma") || strstr(name, "PMCA"))
+					if(strstr(name, "pcma") || strstr(name, "PCMA"))
 						return "pcma";
 					if(strstr(name, "g722") || strstr(name, "G722"))
 						return "g722";
