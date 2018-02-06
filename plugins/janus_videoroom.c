@@ -4253,7 +4253,6 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
-				session->participant_type = janus_videoroom_p_type_none;
 				janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
@@ -4677,7 +4676,6 @@ static void *janus_videoroom_handler(void *data) {
 						janus_mutex_unlock(&owner->listeners_mutex);
 					}
 				}
-				session->participant_type = janus_videoroom_p_type_none;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
@@ -4987,19 +4985,28 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_DONE);
 				/* Add the extmap attributes, if needed */
 				if(audio_level_extmap) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", participant->audio_level_extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(offer, JANUS_SDP_AUDIO), a);
+					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
+					if(m != NULL) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+							"%d %s\r\n", participant->audio_level_extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+						janus_sdp_attribute_add_to_mline(m, a);
+					}
 				}
 				if(video_orient_extmap) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", participant->video_orient_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(offer, JANUS_SDP_VIDEO), a);
+					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
+					if(m != NULL) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+							"%d %s\r\n", participant->video_orient_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+						janus_sdp_attribute_add_to_mline(m, a);
+					}
 				}
 				if(playout_delay_extmap) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", participant->playout_delay_extmap_id, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
-					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(offer, JANUS_SDP_VIDEO), a);
+					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
+					if(m != NULL) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+							"%d %s\r\n", participant->playout_delay_extmap_id, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
+						janus_sdp_attribute_add_to_mline(m, a);
+					}
 				}
 				/* DO not send transport wide CC to subscribers */
 				/* Generate an SDP string we can offer subscribers later on */
@@ -5041,6 +5048,8 @@ static void *janus_videoroom_handler(void *data) {
 					g_free(offer_sdp);
 				} else {
 					/* Store the participant's SDP for interested listeners */
+					if(participant->sdp)
+						g_free(participant->sdp);
 					participant->sdp = offer_sdp;
 					/* We'll wait for the setup_media event before actually telling listeners */
 				}
