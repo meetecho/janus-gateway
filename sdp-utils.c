@@ -1149,7 +1149,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_SENDONLY;
 					} else {
 						/* Peer is recvonly, but we're not ok to send, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;
@@ -1161,7 +1161,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_RECVONLY;
 					} else {
 						/* Peer is sendonly, but we're not ok to receive, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;

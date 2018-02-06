@@ -680,7 +680,8 @@ typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_participant *feed;	/* Participant this listener is subscribed to */
-	guint32 pvt_id;		/* Private ID of the participant that is subscribing (if available/provided) */
+	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
+	janus_sdp *sdp;			/* Offer we sent this listener (may be updated within renegotiations) */
 	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this listener */
 	int substream;			/* Which VP8 simulcast substream we should forward, in case the publisher is simulcasting */
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
@@ -3963,24 +3964,24 @@ static void *janus_videoroom_handler(void *data) {
 					if(publisher->sdp != NULL) {
 						/* Check if there's something the original SDP has that we should remove */
 						char *sdp = publisher->sdp;
+						janus_sdp *offer = janus_sdp_parse(publisher->sdp, NULL, 0);
+						listener->sdp = offer;
+						session->sdp_version = 1;
+						listener->sdp->o_version = session->sdp_version;
 						if((publisher->audio && !listener->audio_offered) ||
 								(publisher->video && !listener->video_offered) ||
 								(publisher->data && !listener->data_offered)) {
 							JANUS_LOG(LOG_VERB, "Munging SDP offer to adapt it to the listener's requirements\n");
-							janus_sdp *offer = janus_sdp_parse(publisher->sdp, NULL, 0);
 							if(publisher->audio && !listener->audio_offered)
 								janus_sdp_mline_remove(offer, JANUS_SDP_AUDIO);
 							if(publisher->video && !listener->video_offered)
 								janus_sdp_mline_remove(offer, JANUS_SDP_VIDEO);
 							if(publisher->data && !listener->data_offered)
 								janus_sdp_mline_remove(offer, JANUS_SDP_APPLICATION);
-							sdp = janus_sdp_write(offer);
-							janus_sdp_free(offer);
 						}
-						session->sdp_version = 1;
+						sdp = janus_sdp_write(offer);
 						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
-						if(sdp != publisher->sdp)
-							g_free(sdp);
+						g_free(sdp);
 						janus_mutex_unlock(&publisher->listeners_mutex);
 						/* How long will the gateway take to push the event? */
 						g_atomic_int_set(&session->hangingup, 0);
@@ -4461,7 +4462,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Negotiate by sending the selected publisher SDP back, and/or force an ICE restart */
 					if(publisher->sdp != NULL) {
 						char temp_error[512];
-						JANUS_LOG(LOG_VERB, "Munging SDP offer to adapt it to the listener's requirements\n");
+						JANUS_LOG(LOG_VERB, "Munging SDP offer (update) to adapt it to the listener's requirements\n");
 						janus_sdp *offer = janus_sdp_parse(publisher->sdp, temp_error, sizeof(temp_error));
 						if(publisher->audio && !listener->audio_offered)
 							janus_sdp_mline_remove(offer, JANUS_SDP_AUDIO);
@@ -4469,10 +4470,68 @@ static void *janus_videoroom_handler(void *data) {
 							janus_sdp_mline_remove(offer, JANUS_SDP_VIDEO);
 						if(publisher->data && !listener->data_offered)
 							janus_sdp_mline_remove(offer, JANUS_SDP_APPLICATION);
-						session->sdp_version++;
-						offer->o_version = session->sdp_version;
-						char *newsdp = janus_sdp_write(offer);
+						/* This is an update, check if we need to update */
+						janus_sdp_mtype mtype[3] = { JANUS_SDP_AUDIO, JANUS_SDP_VIDEO, JANUS_SDP_APPLICATION };
+						int i=0;
+						for(i=0; i<3; i++) {
+							janus_sdp_mline *m = janus_sdp_mline_find(listener->sdp, mtype[i]);
+							janus_sdp_mline *m_new = janus_sdp_mline_find(offer, mtype[i]);
+							if(m != NULL && m->port > 0 && m->port != JANUS_SDP_INACTIVE) {
+								/* We have such an m-line and it's active, should it be changed? */
+								if(m_new == NULL || m_new->port == 0 || m_new->direction == JANUS_SDP_INACTIVE) {
+									/* Turn the m-line to inactive */
+									m->port = 0;
+									m->direction = JANUS_SDP_INACTIVE;
+								}
+							} else {
+								/* We don't have such an m-line or it's disabled, should it be added/enabled? */
+								if(m_new != NULL && m_new->port > 0 && m_new->direction != JANUS_SDP_INACTIVE) {
+									if(m != NULL) {
+										m->port = m_new->port;
+										m->direction = m_new->direction;
+									} else {
+										/* Add the new m-line */
+										m = janus_sdp_mline_create(m_new->type, m_new->port, m_new->proto, m_new->direction);
+										listener->sdp->m_lines = g_list_append(listener->sdp->m_lines, m);
+									}
+									/* Copy/replace the other properties */
+									m->c_ipv4 = m_new->c_ipv4;
+									if(m_new->c_addr && (m->c_addr == NULL || strcmp(m->c_addr, m_new->c_addr))) {
+										g_free(m->c_addr);
+										m->c_addr = g_strdup(m_new->c_addr);
+									}
+									if(m_new->b_name && (m->b_name == NULL || strcmp(m->b_name, m_new->b_name))) {
+										g_free(m->b_name);
+										m->b_name = g_strdup(m_new->b_name);
+									}
+									m->b_value = m_new->b_value;
+									g_list_free_full(m->fmts, (GDestroyNotify)g_free);
+									m->fmts = NULL;
+									GList *fmts = m_new->fmts;
+									while(fmts) {
+										char *fmt = (char *)fmts->data;
+										if(fmt)
+											m->fmts = g_list_append(m->fmts,g_strdup(fmt));
+										fmts = fmts->next;
+									}
+									g_list_free(m->ptypes);
+									m->ptypes = g_list_copy(m_new->ptypes);
+									g_list_free_full(m->attributes, (GDestroyNotify)janus_sdp_attribute_destroy);
+									m->attributes = NULL;
+									GList *attr = m_new->attributes;
+									while(attr) {
+										janus_sdp_attribute *a = (janus_sdp_attribute *)attr->data;
+										janus_sdp_attribute_add_to_mline(m,
+											janus_sdp_attribute_create(a->name, "%s", a->value));
+										attr = attr->next;
+									}
+								}
+							}
+						}
 						janus_sdp_free(offer);
+						session->sdp_version++;
+						listener->sdp->o_version = session->sdp_version;
+						char *newsdp = janus_sdp_write(listener->sdp);
 						JANUS_LOG(LOG_VERB, "Updating subscriber:\n%s\n", newsdp);
 						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", newsdp);
 						if(do_restart)
@@ -5353,6 +5412,7 @@ static void janus_videoroom_free(janus_videoroom *room) {
 
 static void janus_videoroom_listener_free(janus_videoroom_listener *l) {
 	JANUS_LOG(LOG_VERB, "Freeing listener\n");
+	janus_sdp_free(l->sdp);
 	g_free(l);
 }
 
