@@ -4999,6 +4999,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
 							msg->handle = listener->session->handle;
 							msg->message = update;
+							msg->transaction = NULL;
+							msg->jsep = NULL;
 							json_incref(update);
 							g_async_queue_push(messages, msg);
 						}
