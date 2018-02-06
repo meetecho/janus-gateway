@@ -41,8 +41,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			25
-#define JANUS_VERSION_STRING	"0.2.5"
+#define JANUS_VERSION			26
+#define JANUS_VERSION_STRING	"0.2.6"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -824,7 +824,7 @@ int janus_process_incoming_request(janus_request *request) {
 			error_code, error_cause, FALSE,
 			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 		if(error_code != 0) {
-			ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
@@ -1000,7 +1000,8 @@ int janus_process_incoming_request(janus_request *request) {
 					waited += 100000;
 					if(waited >= 3*G_USEC_PER_SEC) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						break;
+						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
+						goto jsondone;
 					}
 				}
 			}
@@ -1453,6 +1454,11 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(candidate != NULL && candidates != NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
+			goto jsondone;
+		}
+		if(janus_flags_is_set(&handle->webrtc_flags,JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Received a trickle, but still cleaning a previous session\n", handle->handle_id);
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
 			goto jsondone;
 		}
 		janus_mutex_lock(&handle->mutex);
@@ -2556,7 +2562,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.audio_bytes_lastsec) {
-				GList *lastsec = component->in_stats.audio_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.audio_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2576,7 +2582,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
 			if(component->in_stats.video_bytes_lastsec) {
-				GList *lastsec = component->in_stats.video_bytes_lastsec;
+				GList *lastsec = g_queue_peek_head_link(component->in_stats.video_bytes_lastsec);
 				while(lastsec) {
 					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
 					if(s && now-s->when < G_USEC_PER_SEC)
@@ -2884,7 +2890,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				waited += 100000;
 				if(waited >= 3*G_USEC_PER_SEC) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", ice_handle->handle_id);
-					break;
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Still cleaning a previous session\n", ice_handle->handle_id);
+					janus_sdp_free(parsed_sdp);
+					return NULL;
 				}
 			}
 		}
@@ -3719,7 +3727,7 @@ gint main(int argc, char *argv[])
 			*maxport = '-';
 		}
 		if(rtp_min_port > rtp_max_port) {
-			int temp_port = rtp_min_port;
+			uint16_t temp_port = rtp_min_port;
 			rtp_min_port = rtp_max_port;
 			rtp_max_port = temp_port;
 		}
@@ -4063,7 +4071,7 @@ gint main(int argc, char *argv[])
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
 		/* Initialize the event broadcaster */
-		if(janus_events_init(enable_events, eventhandlers) < 0) {
+		if(janus_events_init(enable_events, (server_name ? server_name : (char *)JANUS_SERVER_NAME), eventhandlers) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
 			exit(1);
 		}
@@ -4333,6 +4341,7 @@ gint main(int argc, char *argv[])
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "status", json_string("started"));
+		json_object_set_new(info, "info", janus_info(NULL));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
 	}
 
@@ -4362,11 +4371,11 @@ gint main(int argc, char *argv[])
 		janus_config_destroy(config);
 
 	JANUS_LOG(LOG_INFO, "Closing transport plugins:\n");
-	if(transports != NULL) {
+	if(transports != NULL && g_hash_table_size(transports) > 0) {
 		g_hash_table_foreach(transports, janus_transport_close, NULL);
 		g_hash_table_destroy(transports);
 	}
-	if(transports_so != NULL) {
+	if(transports_so != NULL && g_hash_table_size(transports_so) > 0) {
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
 		g_hash_table_destroy(transports_so);
 	}
@@ -4387,22 +4396,22 @@ gint main(int argc, char *argv[])
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
-	if(plugins != NULL) {
+	if(plugins != NULL && g_hash_table_size(plugins) > 0) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
 		g_hash_table_destroy(plugins);
 	}
-	if(plugins_so != NULL) {
+	if(plugins_so != NULL && g_hash_table_size(plugins_so) > 0) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 		g_hash_table_destroy(plugins_so);
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
 	janus_events_deinit();
-	if(eventhandlers != NULL) {
+	if(eventhandlers != NULL && g_hash_table_size(eventhandlers) > 0) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
 		g_hash_table_destroy(eventhandlers);
 	}
-	if(eventhandlers_so != NULL) {
+	if(eventhandlers_so != NULL && g_hash_table_size(eventhandlers_so) > 0) {
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
 		g_hash_table_destroy(eventhandlers_so);
 	}

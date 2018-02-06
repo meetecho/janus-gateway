@@ -266,7 +266,7 @@ $(document).ready(function() {
 										var video = msg["video_codec"];
 										if(mystream && mystream.getVideoTracks() && mystream.getVideoTracks().length > 0 && !video) {
 											// Video has been rejected
-											toastr.warning("Our video stream has been rejected, viewers won't hear us");
+											toastr.warning("Our video stream has been rejected, viewers won't see us");
 											// Hide the webcam video
 											$('#myvideo').hide();
 											$('#videolocal').append(
@@ -400,6 +400,16 @@ function publishOwnFeed(useAudio) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
 				var publish = { "request": "configure", "audio": useAudio, "video": true };
+				// You can force a specific codec to use when publishing by using the
+				// audiocodec and videocodec properties, for instance:
+				// 		publish["audiocodec"] = "opus"
+				// to force Opus as the audio codec to use, or:
+				// 		publish["videocodec"] = "vp9"
+				// to force VP9 as the videocodec to use. In both case, though, forcing
+				// a codec will only work if: (1) the codec is actually in the SDP (and
+				// so the browser supports it), and (2) the codec is in the list of
+				// allowed codecs in a room. With respect to the point (2) above,
+				// refer to the text in janus.plugin.videoroom.cfg for more details
 				sfutest.send({"message": publish, "jsep": jsep});
 			},
 			error: function(error) {
@@ -451,8 +461,10 @@ function newRemoteFeed(id, display, audio, video) {
 				// 'offer_data' properties to false (they're true by default), e.g.:
 				// 		listen["offer_video"] = false;
 				// For example, if the publisher is VP8 and this is Safari, let's avoid video
-				if(video === "vp8" && adapter.browserDetails.browser === "safari") {
-					toastr.warning("Publisher is using VP8, but Safari doesn't support it: disabling video");
+				if(video !== "h264" && Janus.webRTCAdapter.browserDetails.browser === "safari") {
+					if(video)
+						video = video.toUpperCase()
+					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
 					listen["offer_video"] = false;
 				}
 				remoteFeed.send({"message": listen});
@@ -563,7 +575,7 @@ function newRemoteFeed(id, display, audio, video) {
 					var width = this.videoWidth;
 					var height = this.videoHeight;
 					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					if(adapter.browserDetails.browser === "firefox") {
+					if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 						// Firefox Stable has a bug: width and height are not immediately available after a playing
 						setTimeout(function() {
 							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
@@ -583,8 +595,8 @@ function newRemoteFeed(id, display, audio, video) {
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
-				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
-						adapter.browserDetails.browser === "safari") {
+				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+						Janus.webRTCAdapter.browserDetails.browser === "safari") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported

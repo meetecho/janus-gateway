@@ -16,11 +16,14 @@
 #include <glib.h>
 #include <jansson.h>
 
+#define JANUS_JSON_STRING			JSON_STRING
+#define JANUS_JSON_INTEGER			JSON_INTEGER
+#define JANUS_JSON_OBJECT			JSON_OBJECT
 /* Use JANUS_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
-#define JANUS_JSON_BOOL JSON_TRUE
-#define JANUS_JSON_PARAM_REQUIRED 1
-#define JANUS_JSON_PARAM_POSITIVE 2
-#define JANUS_JSON_PARAM_NONEMPTY 4
+#define JANUS_JSON_BOOL				JSON_TRUE
+#define JANUS_JSON_PARAM_REQUIRED	1
+#define JANUS_JSON_PARAM_POSITIVE	2
+#define JANUS_JSON_PARAM_NONEMPTY	4
 
 struct janus_json_parameter {
 	const gchar *name;

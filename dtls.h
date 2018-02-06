@@ -19,6 +19,7 @@
 #include <glib.h>
 
 #include "rtp.h"
+#include "rtpsrtp.h"
 #include "sctp.h"
 #include "dtls-bio.h"
 
