@@ -2,8 +2,8 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus core
- * \details Implementation of the gateway core. This code takes care of
- * the gateway initialization (command line/configuration) and setup,
+ * \details Implementation of the gateway to the future core. This code takes care of
+ * the gateway to the future initialization (command line/configuration) and setup,
  * and makes use of the available transport plugins (by default HTTP,
  * WebSockets, RabbitMQ, if compiled) and Janus protocol (a JSON-based
  * protocol) to interact with the applications, whether they're web based
@@ -39,7 +39,7 @@
 #include "events.h"
 
 
-#define JANUS_NAME				"Janus WebRTC Gateway"
+#define JANUS_NAME				"Janus WebRTC Gateway to the Future"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
@@ -184,7 +184,7 @@ static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
 
 /* Information */
 static json_t *janus_info(const char *transaction) {
-	/* Prepare a summary on the gateway */
+	/* Prepare a summary on the gateway to the future */
 	json_t *info = json_object();
 	json_object_set_new(info, "janus", json_string("server_info"));
 	if(transaction != NULL)
@@ -305,7 +305,7 @@ static void janus_handle_signal(int signum) {
 	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
-			JANUS_PRINT("Stopping gateway, please wait...\n");
+			JANUS_PRINT("Stopping gateway to the future, please wait...\n");
 			break;
 		case 1:
 			JANUS_PRINT("In a hurry? I'm trying to free resources cleanly, here!\n");
@@ -339,9 +339,9 @@ static void janus_termination_handler(void) {
 
 
 /** @name Transport plugin callback interface
- * These are the callbacks implemented by the gateway core, as part of
+ * These are the callbacks implemented by the gateway to the future core, as part of
  * the janus_transport_callbacks interface. Everything the transport
- * plugins send the gateway is handled here.
+ * plugins send the gateway to the future is handled here.
  */
 ///@{
 void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
@@ -369,9 +369,9 @@ void janus_transport_task(gpointer data, gpointer user_data);
 
 
 /** @name Plugin callback interface
- * These are the callbacks implemented by the gateway core, as part of
+ * These are the callbacks implemented by the gateway to the future core, as part of
  * the janus_callbacks interface. Everything the plugins send the
- * gateway is handled here.
+ * gateway to the future is handled here.
  */
 ///@{
 int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
@@ -392,11 +392,11 @@ static janus_callbacks janus_handler_plugin =
 		.end_session = janus_plugin_end_session,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
-	}; 
+	};
 ///@}
 
 
-/* Gateway Sessions */
+/* Gateway to the Future Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL, *old_sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
@@ -3185,7 +3185,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 
 	JANUS_PRINT("---------------------------------------------------\n");
-	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", janus_version_string);
+	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway to the Future) v%s\n", janus_version_string);
 	JANUS_PRINT("---------------------------------------------------\n\n");
 
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */

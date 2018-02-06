@@ -3,16 +3,16 @@
  * \copyright GNU General Public License v3
  * \brief    RTCP processing (headers)
  * \details  Implementation of the RTCP messages. RTCP messages coming
- * through the gateway are parsed and, if needed (according to
+ * through the gateway to the future are parsed and, if needed (according to
  * http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00),
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
- * have been changed by the gateway). Methods to generate FIR messages
+ * have been changed by the gateway to the future). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTCP_H
 #define _JANUS_RTCP_H
 
@@ -39,7 +39,7 @@ typedef enum {
 } rtcp_type;
 typedef rtcp_type janus_rtcp_type;
 
- 
+
 /*! \brief RTCP Header (http://tools.ietf.org/html/rfc3550#section-6.1) */
 typedef struct rtcp_header
 {

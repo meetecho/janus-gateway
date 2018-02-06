@@ -3,19 +3,19 @@
  * \copyright GNU General Public License v3
  * \brief    SCTP processing for data channels (headers)
  * \details  Implementation (based on libusrsctp) of the SCTP Data Channels.
- * The code takes care of the SCTP association between peers and the gateway,
+ * The code takes care of the SCTP association between peers and the gateway to the future,
  * and allows for sending and receiving text messages (binary stuff yet to
  * be implemented) after that.
- * 
+ *
  * \note Right now, the code is heavily based on the rtcweb.c sample code
  * provided in the \c usrsctp library code, and as such the copyright notice
  * that appears at the beginning of that code is ideally present here as
- * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c 
- * 
+ * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_SCTP_H
 #define _JANUS_SCTP_H
 

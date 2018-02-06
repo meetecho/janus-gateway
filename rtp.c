@@ -2,14 +2,14 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    RTP processing
- * \details  Implementation of the RTP header. Since the gateway does not
+ * \details  Implementation of the RTP header. Since the gateway to the future does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <string.h>
 #include "rtp.h"
 #include "rtpsrtp.h"
@@ -231,7 +231,7 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	   |  ID   | L=1   |transport-wide sequence number | zero padding  |
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	*/ 
+	*/
 	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
 	return 0;
 }
