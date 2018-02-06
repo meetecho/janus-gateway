@@ -16,16 +16,16 @@
  * send them to an external tool for statistics purposes or troubleshooting.
  * Whatever the aim, the structures to make the interaction between core
  * and event handlers possible are defined here.
- * 
- * An event handler plugin that wants to register at the gateway needs to
+ *
+ * An event handler plugin that wants to register at the gateway to the future needs to
  * implement the \c janus_eventhandler interface. This includes callbacks
  * the Janus core can use to pass and request information, and a mask of
  * the events the plugin is interested in subscribing to. Besides, as an
  * event handler plugin is a shared object, and as such external to the
- * gateway itself, in order to be dynamically loaded at startup it needs
+ * gateway to the future itself, in order to be dynamically loaded at startup it needs
  * to implement the \c create_e() hook as well, that should return a
  * pointer to the plugin instance. This is an example of such a step:
- * 
+ *
 \verbatim
 static janus_eventhandler myhandler = {
 	[..]
@@ -36,18 +36,18 @@ janus_eventhandler *create(void) {
 	return &myhandler;
 }
 \endverbatim
- * 
+ *
  * This will make sure that your event handler plugin is loaded at startup
- * by the gateway, if it is deployed in the proper folder.
- * 
+ * by the gateway to the future, if it is deployed in the proper folder.
+ *
  * As anticipated and described in the above example, an event handler plugin
  * must basically be an instance of the \c janus_eventhandler type. As such,
- * it must implement the following methods and callbacks for the gateway:
- * 
- * - \c init(): this is called by the gateway as soon as your event handler
+ * it must implement the following methods and callbacks for the gateway to the future:
+ *
+ * - \c init(): this is called by the gateway to the future as soon as your event handler
  * plugin is started; this is where you should setup your event handler plugin
  * (e.g., static stuff and reading the configuration file);
- * - \c destroy(): on the other hand, this is called by the gateway when it
+ * - \c destroy(): on the other hand, this is called by the gateway to the future when it
  * is shutting down, and your event handler plugin should too;
  * - \c get_api_compatibility(): this method MUST return JANUS_EVENTHANDLER_API_VERSION;
  * - \c get_version(): this method should return a numeric version identifier (e.g., 3);
@@ -56,29 +56,29 @@ janus_eventhandler *create(void) {
  * - \c get_name(): this method should return a short display name for your event handler plugin (e.g., "My Amazing Event Handler");
  * - \c get_package(): this method should return a unique package identifier for your event handler plugin (e.g., "janus.eventhandler.myeventhandler");
  * - \c incoming_event(): this callack informs the event handler that an event is available for consumption.
- * 
+ *
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject an event handler plugin that doesn't implement any of the
  * mandatory callbacks.
- * 
+ *
  * Additionally, a \c janus_eventhandler instance must also include a
  * mask of the events it is interested in, a \c events_mask janus_flag
  * object that must refer to the available types defined in this header.
  * The core, in fact, will refer to that mask to check whether your event
- * handler is interested in a specific event or not.   
- * 
+ * handler is interested in a specific event or not.
+ *
  * Unlike other kind of modules (transports, plugins), the \c init() method
  * here only passes the path to the configurations files folder, as event
- * handlers never need to contact the gateway themselves. This path can be used to read and
+ * handlers never need to contact the gateway to the future themselves. This path can be used to read and
  * parse a configuration file for the event handler plugin: the event handler
  * plugins we made available out of the box use the package name as a
  * name for the file (e.g., \c janus.eventhandler.fake.cfg for the sample
  * event handler plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing eventhandler
- * plugins use the same INI format for configuration files the gateway
+ * plugins use the same INI format for configuration files the gateway to the future
  * uses (relying on the \c janus_config helpers for the purpose) but
- * again, if you prefer a different format (XML, JSON, etc.) that's up to you. 
- * 
+ * again, if you prefer a different format (XML, JSON, etc.) that's up to you.
+ *
  * \ingroup eventhandlerapi
  * \ref eventhandlerapi
  */
@@ -104,15 +104,15 @@ janus_eventhandler *create(void) {
 #define JANUS_EVENTHANDLER_API_VERSION	1
 
 /*! \brief Initialization of all event handler plugin properties to NULL
- * 
+ *
  * \note All event handler plugins MUST add this as the FIRST line when initializing
  * their event handler plugin structure, e.g.:
- * 
+ *
 \verbatim
 static janus_eventhandler janus_fake_eventhandler handler plugin =
 	{
 		JANUS_EVENTHANDLER_INIT,
-		
+
 		.init = janus_fake_init,
 		[..]
 \endverbatim
@@ -163,7 +163,7 @@ static janus_eventhandler janus_fake_eventhandler handler plugin =
 		## __VA_ARGS__ }
 
 
-/*! \brief Callbacks to contact the gateway */
+/*! \brief Callbacks to contact the gateway to the future */
 typedef struct janus_eventhandler_callbacks janus_eventhandler_callbacks;
 /*! \brief The event handler plugin session and callbacks interface */
 typedef struct janus_eventhandler janus_eventhandler;
@@ -220,7 +220,7 @@ struct janus_eventhandler {
 	janus_flags events_mask;
 };
 
-/*! \brief The hook that event handler plugins need to implement to be created from the gateway */
+/*! \brief The hook that event handler plugins need to implement to be created from the gateway to the future */
 typedef janus_eventhandler* create_e(void);
 
 #endif

@@ -1,9 +1,9 @@
-Janus WebRTC Gateway
-====================
+Janus WebRTC Gateway to the Future
+==================================
 
-Janus is an open source, general purpose, WebRTC gateway designed and
+Janus is an open source, general purpose, WebRTC gateway to the future designed and
 developed by [Meetecho](http://www.meetecho.com). This version
-of the gateway can only be installed on Linux systems: next versions
+of the gateway to the future can only be installed on Linux systems: next versions
 will take into account cross compilation on different environments.
 
 For some online demos and documentations, make sure you pay the
@@ -211,7 +211,7 @@ following steps:
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
-To conclude, should you be interested in building the gateway
+To conclude, should you be interested in building the gateway to the future
 documentation as well, you'll need some additional tools too:
 
 * [Doxygen](http://www.doxygen.org)
@@ -300,7 +300,7 @@ when configuring Janus as well, e.g.:
 Everything else works exactly the same way as on Linux.
 
 ## Configure and start
-To start the gateway, you can use the janus executable. There are several
+To start the gateway to the future, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
 
 	<installdir>/etc/janus/janus.cfg
@@ -326,7 +326,7 @@ or on the command line:
 	-c, --cert-pem=filename       DTLS certificate
 	-k, --cert-key=filename       DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
-								  gateway behind NAT, default=none)
+								  gateway to the future behind NAT, default=none)
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
                                   assuming a 1:1 NAT is in place (e.g., Amazon
                                   EC2 instances, default=none)
@@ -368,11 +368,11 @@ or on the command line:
 	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
-specified in the configuration file. To start the gateway, simply run:
+specified in the configuration file. To start the gateway to the future, simply run:
 
 	<installdir>/bin/janus
 
-This will start the gateway, and have it look at the configuration file.
+This will start the gateway to the future, and have it look at the configuration file.
 
 As far as transports are concerned (that is, with respect to how you can
 interact with your Janus instance), using the default configuration files

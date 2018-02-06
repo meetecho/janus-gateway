@@ -8,12 +8,12 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
- * 
+ * relay_rtcp gateway to the future callbacks instead.
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_ICE_H
 #define _JANUS_ICE_H
 
@@ -77,7 +77,7 @@ char *janus_ice_get_turn_rest_api(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
 void janus_ice_enable_nat_1_1(void);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the gateway to the future: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
  * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
  * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
@@ -88,7 +88,7 @@ void janus_ice_enforce_interface(const char *ip);
  * @returns true if the interface/IP is in the enforce list, false otherwise */
 gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the gateway to the future: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
  * adding it to the ignore list will prevent libnice from gathering a candidate for it.
  * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
@@ -307,9 +307,9 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
-	/*! \brief Audio SSRC of the gateway for this stream */
+	/*! \brief Audio SSRC of the gateway to the future for this stream */
 	guint32 audio_ssrc;
-	/*! \brief Video SSRC of the gateway for this stream */
+	/*! \brief Video SSRC of the gateway to the future for this stream */
 	guint32 video_ssrc;
 	/*! \brief Audio SSRC of the peer for this stream */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
@@ -363,7 +363,7 @@ struct janus_ice_stream {
 	guint transport_wide_cc_feedback_count;
 	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
-	/*! \brief DTLS role of the gateway for this stream */
+	/*! \brief DTLS role of the gateway to the future for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
