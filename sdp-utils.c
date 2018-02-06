@@ -635,9 +635,9 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "h264";
 					if(strstr(a->value, "opus") || strstr(a->value, "OPUS"))
 						return "opus";
-					if(strstr(a->value, "pcmu") || strstr(a->value, "PMCU"))
+					if(strstr(a->value, "pcmu") || strstr(a->value, "PCMU"))
 						return "pcmu";
-					if(strstr(a->value, "pcma") || strstr(a->value, "PMCA"))
+					if(strstr(a->value, "pcma") || strstr(a->value, "PCMA"))
 						return "pcma";
 					if(strstr(a->value, "g722") || strstr(a->value, "G722"))
 						return "g722";
@@ -1149,7 +1149,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_SENDONLY;
 					} else {
 						/* Peer is recvonly, but we're not ok to send, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;
@@ -1161,7 +1161,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_RECVONLY;
 					} else {
 						/* Peer is sendonly, but we're not ok to receive, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;
