@@ -3575,7 +3575,6 @@ void *janus_ice_send_thread(void *data) {
 					/* Encrypt SRTP */
 					int protected = pkt->length;
 					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
-
 					if(res != srtp_err_status_ok) {
 						/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
 						handle->srtp_errors_count++;

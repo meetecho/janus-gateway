@@ -429,7 +429,6 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	return exit_status;
 }
 
-
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
 	if(header == NULL || context == NULL)
 		return;
@@ -474,7 +473,6 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev;
 		context->v_prev_seq = context->v_last_seq;
 		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
-
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->v_last_ts);
 		header->seq_number = htons(context->v_last_seq);
@@ -518,7 +516,6 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev;
 		context->a_prev_seq = context->a_last_seq;
 		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
-
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->a_last_ts);
 		header->seq_number = htons(context->a_last_seq);

@@ -2014,7 +2014,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						janus_config_add_item(config, mp->name, "audioiface", json_string_value(aiface));
 					if(source->askew)
 						janus_config_add_item(config, mp->name, "askew", "yes");
-
 				}
 				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt >= 0? "yes" : "no");
 				if(mp->codecs.video_pt >= 0) {
