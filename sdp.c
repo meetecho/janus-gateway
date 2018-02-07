@@ -1023,8 +1023,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have one already)\n", handle->handle_id);
 				m->port = 0;
 			}
-			if(m->port == 0)
+			if(m->port == 0) {
 				m->direction = JANUS_SDP_INACTIVE;
+				stream->audio_ssrc = 0;
+			}
 			if(audio == 1) {
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
@@ -1054,8 +1056,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have one already)\n", handle->handle_id);
 				m->port = 0;
 			}
-			if(m->port == 0)
+			if(m->port == 0) {
 				m->direction = JANUS_SDP_INACTIVE;
+				stream->video_ssrc = 0;
+			}
 			if(video == 1) {
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
