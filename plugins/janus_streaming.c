@@ -2046,6 +2046,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(source->vskew)
 						janus_config_add_item(config, mp->name, "vskew", "yes");
 				}
+				if(source->rtp_collision > 0) {
+					g_snprintf(value, BUFSIZ, "%d", source->rtp_collision);
+					janus_config_add_item(config, mp->name, "collision", value);
+				}
 				janus_config_add_item(config, mp->name, "data", mp->data ? "yes" : "no");
 				if(source->data_port > -1) {
 					g_snprintf(value, BUFSIZ, "%d", source->data_port);
