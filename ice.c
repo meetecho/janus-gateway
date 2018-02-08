@@ -1244,7 +1244,7 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream->video_payload_types = NULL;
 	if(stream->rtx_payload_types != NULL)
 		g_hash_table_destroy(stream->rtx_payload_types);
-	old_handles = NULL;
+	stream->rtx_payload_types = NULL;
 	g_free(stream->audio_codec);
 	stream->audio_codec = NULL;
 	g_free(stream->video_codec);
