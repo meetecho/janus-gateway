@@ -279,7 +279,7 @@ typedef struct janus_sipre_mqueue_payload {
 	void *data;					/* Payload specific data */
 } janus_sipre_mqueue_payload;
 static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode, void *data) {
-	janus_sipre_mqueue_payload *payload = g_malloc0(sizeof(janus_sipre_mqueue_payload));
+	janus_sipre_mqueue_payload *payload = g_malloc(sizeof(janus_sipre_mqueue_payload));
 	payload->session = session;
 	payload->msg = msg;
 	payload->rcode = rcode;
@@ -1238,7 +1238,7 @@ struct janus_plugin_result *janus_sipre_handle_message(janus_plugin_session *han
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+	janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -3182,7 +3182,7 @@ static void *janus_sipre_relay_thread(void *data) {
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+				janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;

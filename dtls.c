@@ -79,7 +79,7 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
 	json_object_set_new(info, "component_id", json_integer(component->component_id));
 	json_object_set_new(info, "retransmissions", json_integer(dtls->retransmissions));
-	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
 
 
@@ -466,10 +466,6 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = g_malloc0(sizeof(janus_dtls_srtp));
-	if(dtls == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	g_atomic_int_set(&dtls->destroyed, 0);
 	janus_refcount_init(&dtls->ref, janus_dtls_srtp_free);
 	/* Create SSL context, at last */
@@ -632,6 +628,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+		return;
+	}
+	if(dtls->dtls_started == 0) {
+		/* Handshake not started yet: maybe we're still waiting for the answer and the DTLS role? */
 		return;
 	}
 	janus_dtls_fd_bridge(dtls);
