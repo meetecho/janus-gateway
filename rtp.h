@@ -51,6 +51,7 @@ typedef struct rtp_header
 	uint32_t ssrc;
 	uint32_t csrc[16];
 } rtp_header;
+typedef rtp_header janus_rtp_header;
 
 /*! \brief RTP packet */
 typedef struct janus_rtp_packet {
@@ -78,6 +79,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_CC_EXTENSIONS		"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
 /*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+/*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+#define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
@@ -128,5 +131,37 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	uint16_t *min_delay, uint16_t *max_delay);
+
+/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] sdes_item Buffer where the RTP stream ID will be written
+ * @param[in] sdes_len Size of the input/output buffer
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+	char *sdes_item, int sdes_len);
+
+
+/*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
+typedef struct janus_rtp_switching_context {
+	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
+			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
+	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
+			v_last_seq, v_base_seq, v_base_seq_prev;
+	gboolean a_seq_reset, v_seq_reset;
+	gint64 a_last_time, v_last_time;
+} janus_rtp_switching_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
+
+/*! \brief Use the context info to update the RTP header of a packet, if needed
+ * @param[in] header The RTP header to update
+ * @param[in] context The context to use as a reference
+ * @param[in] video Whether this is an audio or a video packet
+ * @param[in] step \b deprecated The expected timestamp step */
+void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
 #endif

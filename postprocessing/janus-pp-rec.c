@@ -69,6 +69,7 @@
 #include "pp-h264.h"
 #include "pp-opus.h"
 #include "pp-g711.h"
+#include "pp-g722.h"
 #include "pp-srt.h"
 
 #define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
@@ -80,12 +81,13 @@ gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
-int working = 0;
+static int working = 0;
+
+static int post_reset_trigger = 200;
 
 
 /* Signal handler */
-void janus_pp_handle_signal(int signum);
-void janus_pp_handle_signal(int signum) {
+static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
@@ -103,6 +105,12 @@ int main(int argc, char *argv[])
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
+	if(g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
+		if(val >= 0)
+			post_reset_trigger = val;
+		JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
+	}
 	
 	/* Evaluate arguments */
 	if(argc != 3) {
@@ -111,7 +119,7 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "       %s --parse source.mjr (only parse and re-order packets)\n", argv[0]);
 		return -1;
 	}
-	char *source = NULL, *destination = NULL;
+	char *source = NULL, *destination = NULL, *extension = NULL;
 	gboolean header_only = !strcmp(argv[1], "--header");
 	gboolean parse_only = !strcmp(argv[1], "--parse");
 	if(header_only || parse_only) {
@@ -122,6 +130,20 @@ int main(int argc, char *argv[])
 		source = argv[1];
 		destination = argv[2];
 		JANUS_LOG(LOG_INFO, "%s --> %s\n", source, destination);
+		/* Check the extension */
+		extension = strrchr(destination, '.');
+		if(extension == NULL) {
+			/* No extension? */
+			JANUS_LOG(LOG_ERR, "No extension? Unsupported target file\n");
+			exit(1);
+		}
+		if(strcasecmp(extension, ".opus") && strcasecmp(extension, ".wav") &&
+				strcasecmp(extension, ".webm") && strcasecmp(extension, ".mp4") &&
+				strcasecmp(extension, ".srt")) {
+			/* Unsupported extension? */
+			JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
+			exit(1);
+		}
 	}
 	FILE *file = fopen(source, "rb");
 	if(file == NULL) {
@@ -141,12 +163,13 @@ int main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean parsed_header = FALSE;
 	int video = 0, data = 0;
-	int opus = 0, g711 = 0, vp8 = 0, vp9 = 0, h264 = 0;
+	int opus = 0, g711 = 0, g722 = 0, vp8 = 0, vp9 = 0, h264 = 0;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
 	uint16_t len = 0;
 	uint32_t count = 0;
+	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -180,15 +203,27 @@ int main(int argc, char *argv[])
 					video = 1;
 					data = 0;
 					vp8 = 1;
+					if(extension && strcasecmp(extension, ".webm")) {
+						JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+						exit(1);
+					}
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_INFO, "This is an audio recording, assuming Opus\n");
 					video = 0;
 					data = 0;
 					opus = 1;
+					if(extension && strcasecmp(extension, ".opus")) {
+						JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
+						exit(1);
+					}
 				} else if(prebuffer[0] == 'd') {
 					JANUS_LOG(LOG_INFO, "This is a text data recording, assuming SRT\n");
 					video = 0;
 					data = 1;
+					if(extension && strcasecmp(extension, ".srt")) {
+						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
+						exit(1);
+					}
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
 					exit(1);
@@ -250,10 +285,22 @@ int main(int argc, char *argv[])
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
 						vp8 = 1;
+						if(extension && strcasecmp(extension, ".webm")) {
+							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "vp9")) {
 						vp9 = 1;
+						if(extension && strcasecmp(extension, ".webm")) {
+							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "h264")) {
 						h264 = 1;
+						if(extension && strcasecmp(extension, ".mp4")) {
+							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
+							exit(1);
+						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9 and H.264 video for now (was '%s')...\n", c);
 						exit(1);
@@ -261,8 +308,22 @@ int main(int argc, char *argv[])
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
 						opus = 1;
+						if(extension && strcasecmp(extension, ".opus")) {
+							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "g711")) {
 						g711 = 1;
+						if(extension && strcasecmp(extension, ".wav")) {
+							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
+							exit(1);
+						}
+					} else if(!strcasecmp(c, "g722")) {
+						g722 = 1;
+						if(extension && strcasecmp(extension, ".wav")) {
+							JANUS_LOG(LOG_ERR, "G.722 RTP packets can only be converted to a .wav file\n");
+							exit(1);
+						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus and G.711 audio for now (was '%s')...\n", c);
 						exit(1);
@@ -270,6 +331,10 @@ int main(int argc, char *argv[])
 				} else if(data) {
 					if(strcasecmp(c, "text")) {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports text data for now (was '%s')...\n", c);
+						exit(1);
+					}
+					if(extension && strcasecmp(extension, ".srt")) {
+						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
 						exit(1);
 					}
 				}
@@ -305,7 +370,7 @@ int main(int argc, char *argv[])
 	/* Now let's parse the frames and order them */
 	uint32_t last_ts = 0, reset = 0;
 	int times_resetted = 0;
-	uint32_t post_reset_pkts = 0;
+	int post_reset_pkts = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -386,7 +451,19 @@ int main(int argc, char *argv[])
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
-			skip = 4 + ntohs(ext->length)*4;
+			skip += 4 + ntohs(ext->length)*4;
+		}
+		if(ssrc == 0) {
+			ssrc = ntohl(rtp->ssrc);
+			JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
+		}
+		if(ssrc != ntohl(rtp->ssrc)) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n",
+				ntohl(rtp->ssrc), ssrc);
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
 		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
@@ -404,7 +481,7 @@ int main(int argc, char *argv[])
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
 			gboolean late_pkt = FALSE;
 			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				if(post_reset_pkts > 1000) {
+				if(post_reset_pkts > post_reset_trigger) {
 					reset = ntohl(rtp->timestamp);
 					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
 					times_resetted++;
@@ -412,13 +489,13 @@ int main(int argc, char *argv[])
 				}
 			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
 					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
 					late_pkt = TRUE;
 					times_resetted--;
 				}
 			} else if(ntohl(rtp->timestamp) < reset) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
 				} else {
@@ -573,6 +650,11 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
 				exit(1);
 			}
+		} else if(g722) {
+			if(janus_pp_g722_create(destination) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
+				exit(1);
+			}
 		}
 	} else if(data) {
 		if(janus_pp_srt_create(destination) < 0) {
@@ -602,6 +684,10 @@ int main(int argc, char *argv[])
 		} else if(g711) {
 			if(janus_pp_g711_process(file, list, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing G.711 RTP frames...\n");
+			}
+		} else if(g722) {
+			if(janus_pp_g722_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing G.722 RTP frames...\n");
 			}
 		}
 	} else if(data) {
@@ -634,6 +720,8 @@ int main(int argc, char *argv[])
 			janus_pp_opus_close();
 		} else if(g711) {
 			janus_pp_g711_close();
+		} else if(g722) {
+			janus_pp_g722_close();
 		}
 	}
 	fclose(file);

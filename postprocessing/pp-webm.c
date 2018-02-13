@@ -44,6 +44,10 @@
 #define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
 #endif
 
+#if LIBAVCODEC_VER_AT_LEAST(56, 56)
+#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
+#define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
+#endif
 
 /* WebM output */
 static AVFormatContext *fctx;
@@ -167,7 +171,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			uint8_t xbit = (vp8pd & 0x80);
 			uint8_t sbit = (vp8pd & 0x10);
 			/* Read the Extended control bits octet */
-			if (xbit) {
+			if(xbit) {
 				buffer++;
 				vp8pd = *buffer;
 				uint8_t ibit = (vp8pd & 0x80);
@@ -215,7 +219,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 						int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
 						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-						JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 						if(vp8w > max_width)
 							max_width = vp8w;
 						if(vp8h > max_height)
@@ -413,7 +417,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
 							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-							JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 							/* Is this the first keyframe we find? */
 							if(keyframe_ts == 0) {
 								keyframe_ts = tmp->ts;
@@ -515,7 +519,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						len--;
 						skipped++;
 						if(n_g > 0) {
-							int i=0;
+							uint i=0;
 							for(i=0; i<n_g; i++) {
 								/* Read the R bits */
 								vp9pd = *buffer;

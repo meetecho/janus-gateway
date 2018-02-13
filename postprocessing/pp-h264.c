@@ -35,6 +35,10 @@
 #define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
 #endif
 
+#if LIBAVCODEC_VER_AT_LEAST(56, 56)
+#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
+#define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
+#endif
 
 /* MP4 output */
 static AVFormatContext *fctx;
@@ -123,8 +127,12 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	int index = 1;
 	int profile_idc = *(buffer+index);
 	if(profile_idc != 66) {
-		JANUS_LOG(LOG_ERR, "Profile is not baseline (%d), unsupported stream\n", profile_idc);
-		exit(1);
+		JANUS_LOG(LOG_WARN, "Profile is not baseline (%d), can't detect resolution "
+              "let's fallback on default max resolution (1920x1080)\n",
+              profile_idc);
+    *width = 1920;
+    *height = 1080;
+    return;
 	}
 	/* Then let's skip 2 bytes and evaluate/skip the rest */
 	index += 3;
@@ -287,7 +295,9 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		frameLen = 0;
 		len = 0;
 		while(1) {
-			if(tmp->drop) {
+      if (tmp == NULL)
+        break;
+			if(tmp && tmp->drop) {
 				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
 					break;
@@ -392,16 +402,20 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				packet.flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet.dts = tmp->ts-list->ts;
-			packet.pts = tmp->ts-list->ts;
-			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
-				tmp->ts, list->ts, packet.pts);
-			if(fctx) {
-				int res = av_write_frame(fctx, &packet);
-				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
-				}
-			}
+      if (tmp) {
+        packet.dts = tmp->ts-list->ts;
+        packet.pts = tmp->ts-list->ts;
+        JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
+                  tmp->ts, list->ts, packet.pts);
+        if(fctx) {
+          int res = av_write_frame(fctx, &packet);
+          if(res < 0) {
+            JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+          }
+        }
+      }
+      else
+        break;
 		}
 		tmp = tmp->next;
 	}

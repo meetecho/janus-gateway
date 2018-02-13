@@ -51,6 +51,8 @@ else
 
 var janus = null;
 var screentest = null;
+var opaqueId = "screensharingtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myusername = null;
@@ -99,6 +101,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									screentest = pluginHandle;
@@ -140,11 +143,18 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#screencapture").parent().unblock();
-									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									if(on) {
+										bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									} else {
+										bootbox.alert("Your screen sharing session just stopped.", function() {
+											janus.destroy();
+											window.location.reload();
+										});
+									}
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var event = msg["videoroom"];
 									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
@@ -158,7 +168,7 @@ $(document).ready(function() {
 												Janus.debug("Negotiating WebRTC stream for our screen (capture " + capture + ")");
 												screentest.createOffer(
 													{
-														media: { video: capture, audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
+														media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
 														success: function(jsep) {
 															Janus.debug("Got publisher SDP!");
 															Janus.debug(jsep);
@@ -218,7 +228,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#screenmenu').hide();
 									$('#room').removeClass('hide').show();
 									if($('#screenvideo').length === 0) {
@@ -233,6 +243,11 @@ $(document).ready(function() {
 											color: 'white'
 										}
 									});
+									// Track the onended event on the video track, just in case the user
+									// stops screensharing without closing the PeerConnection too
+									screentest.webrtcStuff.myStream.getVideoTracks()[0].onended = function() {
+										screentest.hangup();
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -394,6 +409,7 @@ function newRemoteFeed(id, display) {
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
+			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
@@ -408,7 +424,7 @@ function newRemoteFeed(id, display) {
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::");
-				Janus.debug(JSON.stringify(msg));
+				Janus.debug(msg);
 				var event = msg["videoroom"];
 				Janus.debug("Event: " + event);
 				if(event != undefined && event != null) {
@@ -452,11 +468,13 @@ function newRemoteFeed(id, display) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotestream: function(stream) {
-				if($('#screenvideo').length === 0) {
-					// No remote video yet
-					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
-					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
+				if($('#screenvideo').length > 0) {
+					// Been here already
+					return;
 				}
+				// No remote video yet
+				$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
+				$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay/>');
 				// Show the video, hide the spinner and show the resolution when we get a playing event
 				$("#screenvideo").bind("playing", function () {
 					$('#waitingvideo').remove();

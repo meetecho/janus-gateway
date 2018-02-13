@@ -35,6 +35,7 @@ typedef enum {
     RTCP_APP = 204,
     RTCP_RTPFB = 205,
     RTCP_PSFB = 206,
+    RTCP_XR = 207,
 } rtcp_type;
  
  
@@ -153,8 +154,8 @@ typedef struct rtcp_remb
 	char id[4];
 	/*! \brief Num SSRC, Br Exp, Br Mantissa (bit mask) */
 	uint32_t bitrate;
-	/*! \brief SSRC feedback */
-	uint32_t ssrc[1];
+	/*! \brief SSRC feedback (we expect at max three SSRCs in there) */
+	uint32_t ssrc[3];
 } rtcp_remb;
 
 
@@ -181,6 +182,28 @@ typedef struct rtcp_fb
 	char fci[1];
 } rtcp_fb;
 
+/*! \brief RTCP Extended Report Block (https://tools.ietf.org/html/rfc3611#section-3) */
+typedef struct extended_report_block
+{
+	/*! \brief Block type (BT) */
+	uint8_t blocktype;
+	/*! \brief Type-specific */
+	uint8_t typesp;
+	/*! \brief Block length */
+	uint16_t length;
+	/*! \brief Content (variable length) */
+	char content[1];
+
+} extended_report_block;
+
+/*! \brief RTCP Extended Report (https://tools.ietf.org/html/rfc3611#section-2) */
+typedef struct rtcp_xr
+{
+	rtcp_header header;
+	uint32_t ssrc;
+	extended_report_block erb[1];
+} rtcp_xr;
+
 
 /*! \brief Internal RTCP state context (for RR/SR) */
 typedef struct rtcp_context
@@ -197,15 +220,16 @@ typedef struct rtcp_context
 	/* RFC 3550 A.8 Interarrival Jitter */
 	uint64_t transit;
 	double jitter, jitter_remote;
-	/* Timestamp base (e.g., 48000 for opus audio, or 90000 for video) */
+	/* Timestamp time base (e.g., 48000 for opus audio, or 90000 for video) */
 	uint32_t tb;
+  /* base timestamp (first timestamp forwarded, used as the reference base
+     timestamp to compute RTCP SR timestamps */
+  volatile uint32_t base_timestamp;
 
 	/* Last SR received */
 	uint32_t lsr;
 	/* Monotonic time of last SR received */
 	int64_t lsr_ts;
-	/* Monotonic time of first SR sent */
-	int64_t fsr_ts;
 
 	/* Last RR/SR we sent */
 	int64_t last_sent;
@@ -282,6 +306,12 @@ int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb);
 
+/*! \brief Method to check whether an RTCP message contains a BYE message
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE in case of success, FALSE otherwise */
+gboolean janus_rtcp_has_bye(char *packet, int len);
+
 /*! \brief Method to check whether an RTCP message contains a FIR request
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
@@ -314,14 +344,14 @@ int janus_rtcp_remove_nacks(char *packet, int len);
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns The reported bitrate if successful, 0 if no REMB packet was available */
-uint64_t janus_rtcp_get_remb(char *packet, int len);
+uint32_t janus_rtcp_get_remb(char *packet, int len);
 
 /*! \brief Method to modify an existing RTCP REMB message to cap the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @param[in] bitrate The new bitrate to report (e.g., 128000)
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
+int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate);
 
 /*! \brief Method to generate a new RTCP SDES message
  * @param[in] packet The buffer data
@@ -336,7 +366,15 @@ int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
  * @param[in] len The message data length in bytes (MUST be 24)
  * @param[in] bitrate The bitrate to report (e.g., 128000)
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_remb(char *packet, int len, uint64_t bitrate);
+int janus_rtcp_remb(char *packet, int len, uint32_t bitrate);
+
+/*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate, but for more SSRCs
+ * @param[in] packet The buffer data (MUST be at least 24 chars)
+ * @param[in] len The message data length in bytes (MUST be 24)
+ * @param[in] bitrate The bitrate to report (e.g., 128000)
+ * @param[in] numssrc The number of SSRCs to include in the request
+ * @returns The message data length in bytes, if successful, -1 on errors */
+int janus_rtcp_remb_ssrcs(char *packet, int len, uint32_t bitrate, uint8_t numssrc);
 
 /*! \brief Method to generate a new RTCP FIR message to request a key frame
  * @param[in] packet The buffer data (MUST be at least 20 chars)

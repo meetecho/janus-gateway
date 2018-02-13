@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var videocall = null;
+var opaqueId = "videocalltest-"+Janus.randomString(12);
+
 var started = false;
 var bitrateTimer = null;
 var spinner = null;
@@ -59,6 +61,9 @@ var videoenabled = false;
 
 var myusername = null;
 var yourusername = null;	
+
+var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var simulcastStarted = false;
 
 $(document).ready(function() {
 	// Initialize the library (console debug enabled)
@@ -83,6 +88,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videocall",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									videocall = pluginHandle;
@@ -131,7 +137,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["list"] !== undefined && result["list"] !== null) {
@@ -156,32 +162,60 @@ $(document).ready(function() {
 											} else if(event === 'calling') {
 												Janus.log("Waiting for the peer to answer...");
 												// TODO Any ringtone?
+												bootbox.alert("Waiting for the peer to answer...");
 											} else if(event === 'incomingcall') {
 												Janus.log("Incoming call from " + result["username"] + "!");
-												$('#peer').val(result["username"]).attr('disabled');
 												yourusername = result["username"];
-												// TODO Enable buttons to answer
-												videocall.createAnswer(
-													{
-														jsep: jsep,
-														// No media provided: by default, it's sendrecv for audio and video
-														media: { data: true },	// Let's negotiate data channels as well
-														success: function(jsep) {
-															Janus.debug("Got SDP!");
-															Janus.debug(jsep);
-															var body = { "request": "accept" };
-															videocall.send({"message": body, "jsep": jsep});
-															$('#peer').attr('disabled', true);
-															$('#call').removeAttr('disabled').html('Hangup')
-																.removeClass("btn-success").addClass("btn-danger")
-																.unbind('click').click(doHangup);
+												// Notify user
+												bootbox.hideAll();
+												incoming = bootbox.dialog({
+													message: "Incoming call from " + yourusername + "!",
+													title: "Incoming call",
+													closeButton: false,
+													buttons: {
+														success: {
+															label: "Answer",
+															className: "btn-success",
+															callback: function() {
+																incoming = null;
+																$('#peer').val(result["username"]).attr('disabled', true);
+																videocall.createAnswer(
+																	{
+																		jsep: jsep,
+																		// No media provided: by default, it's sendrecv for audio and video
+																		media: { data: true },	// Let's negotiate data channels as well
+																		// If you want to test simulcasting (Chrome and Firefox only), then
+																		// pass a ?simulcast=true when opening this demo page: it will turn
+																		// the following 'simulcast' property to pass to janus.js to true
+																		simulcast: doSimulcast,
+																		success: function(jsep) {
+																			Janus.debug("Got SDP!");
+																			Janus.debug(jsep);
+																			var body = { "request": "accept" };
+																			videocall.send({"message": body, "jsep": jsep});
+																			$('#peer').attr('disabled', true);
+																			$('#call').removeAttr('disabled').html('Hangup')
+																				.removeClass("btn-success").addClass("btn-danger")
+																				.unbind('click').click(doHangup);
+																		},
+																		error: function(error) {
+																			Janus.error("WebRTC error:", error);
+																			bootbox.alert("WebRTC error... " + JSON.stringify(error));
+																		}
+																	});
+															}
 														},
-														error: function(error) {
-															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + JSON.stringify(error));
+														danger: {
+															label: "Decline",
+															className: "btn-danger",
+															callback: function() {
+																doHangup();
+															}
 														}
-													});
+													}
+												});
 											} else if(event === 'accepted') {
+												bootbox.hideAll();
 												var peer = result["username"];
 												if(peer === null || peer === undefined) {
 													Janus.log("Call started!");
@@ -189,15 +223,16 @@ $(document).ready(function() {
 													Janus.log(peer + " accepted the call!");
 													yourusername = peer;
 												}
-												// TODO Video call can start
-												if(jsep !== null && jsep !== undefined)
+												// Video call can start
+												if(jsep)
 													videocall.handleRemoteJsep({jsep: jsep});
 												$('#call').removeAttr('disabled').html('Hangup')
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
 											} else if(event === 'hangup') {
 												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
-												// TODO Reset status
+												// Reset status
+												bootbox.hideAll();
 												videocall.hangup();
 												if(spinner !== null && spinner !== undefined)
 													spinner.stop();
@@ -212,6 +247,18 @@ $(document).ready(function() {
 												$('#bitrate').attr('disabled', true);
 												$('#curbitrate').hide();
 												$('#curres').hide();
+											} else if(event === "simulcast") {
+												// Is simulcast in place?
+												var substream = result["substream"];
+												var temporal = result["temporal"];
+												if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
+													if(!simulcastStarted) {
+														simulcastStarted = true;
+														addSimulcastButtons();
+													}
+													// We just received notice that there's been a switch, update the buttons
+													updateSimulcastButtons(substream, temporal);
+												}
 											}
 										}
 									} else {
@@ -245,7 +292,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -280,27 +327,28 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#remotevideo').length === 0)
-										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									Janus.debug(stream);
+									if($('#remotevideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#remotevideo").get(0).videoWidth)
+												$('#remotevideo').show();
+										}
+									}
+									$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the video, hide the spinner and show the resolution when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
+										if(this.videoWidth)
+											$('#remotevideo').removeClass('hide').show();
 										if(spinner !== null && spinner !== undefined)
 											spinner.stop();
 										spinner = null;
 										var width = this.videoWidth;
 										var height = this.videoHeight;
 										$('#curres').removeClass('hide').text(width+'x'+height).show();
-										if(adapter.browserDetails.browser === "firefox") {
-											// Firefox Stable has a bug: width and height are not immediately available after a playing
-											setTimeout(function() {
-												var width = $("#remotevideo").get(0).videoWidth;
-												var height = $("#remotevideo").get(0).videoHeight;
-												$('#curres').removeClass('hide').text(width+'x'+height).show();
-											}, 2000);
-										}
 									});
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
@@ -308,7 +356,7 @@ $(document).ready(function() {
 										// No remote video
 										$('#remotevideo').hide();
 										$('#videoright').append(
-											'<div class="no-video-container">' +
+											'<div id="novideo" class="no-video-container">' +
 												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 												'<span class="no-video-text">No remote video available</span>' +
 											'</div>');
@@ -351,12 +399,18 @@ $(document).ready(function() {
 										videocall.send({"message": { "request": "set", "bitrate": bitrate }});
 										return false;
 									});
-									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
+									if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+											Janus.webRTCAdapter.browserDetails.browser === "safari") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
 											var bitrate = videocall.getBitrate();
 											$('#curbitrate').text(bitrate);
+											// Check if the resolution changed too
+											var width = $("#remotevideo").get(0).videoWidth;
+											var height = $("#remotevideo").get(0).videoHeight;
+											if(width > 0 && height > 0)
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
 									}
 								},
@@ -374,6 +428,7 @@ $(document).ready(function() {
 									$('#myvideo').remove();
 									$('#remotevideo').remove();
 									$("#videoleft").parent().unblock();
+									$('.no-video-container').remove();
 									$('#callee').empty().hide();
 									yourusername = null;
 									$('#curbitrate').hide();
@@ -389,6 +444,8 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#waitingvideo').remove();
 									$('#videos').hide();
+									simulcastStarted = false;
+									$('#simulcast').remove();
 									$('#peer').removeAttr('disabled').val('');
 									$('#call').removeAttr('disabled').html('Call')
 										.removeClass("btn-danger").addClass("btn-success")
@@ -468,6 +525,10 @@ function doCall() {
 		{
 			// By default, it's sendrecv for audio and video...
 			media: { data: true },	// ... let's negotiate data channels as well
+			// If you want to test simulcasting (Chrome and Firefox only), then
+			// pass a ?simulcast=true when opening this demo page: it will turn
+			// the following 'simulcast' property to pass to janus.js to true
+			simulcast: doSimulcast,
 			success: function(jsep) {
 				Janus.debug("Got SDP!");
 				Janus.debug(jsep);
@@ -501,4 +562,131 @@ function sendData() {
 		error: function(reason) { bootbox.alert(reason); },
 		success: function() { $('#datasend').val(''); },
 	});
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+// Helpers to create Simulcast-related UI, if enabled
+function addSimulcastButtons() {
+	$('#curres').parent().append(
+		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
+		'	<div class"row">' +
+		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'			<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
+		'			<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
+		'			<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
+		'		</div>' +
+		'	</div>' +
+		'	<div class"row">' +
+		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'			<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
+		'			<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
+		'			<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
+		'		</div>' +
+		'	</div>' +
+		'</div>');
+	// Enable the VP8 simulcast selection buttons
+	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
+			if(!$('#sl-2').hasClass('btn-success'))
+				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#sl-1').hasClass('btn-success'))
+				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			videocall.send({message: { request: "set", substream: 0 }});
+		});
+	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
+			if(!$('#sl-2').hasClass('btn-success'))
+				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl-0').hasClass('btn-success'))
+				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			videocall.send({message: { request: "set", substream: 1 }});
+		});
+	$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
+			$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl-1').hasClass('btn-success'))
+				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#sl-0').hasClass('btn-success'))
+				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			videocall.send({message: { request: "set", substream: 2 }});
+		});
+	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
+			if(!$('#tl-2').hasClass('btn-success'))
+				$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#tl-1').hasClass('btn-success'))
+				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			videocall.send({message: { request: "set", temporal: 0 }});
+		});
+	$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping simulcast temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
+			if(!$('#tl-2').hasClass('btn-success'))
+				$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
+			if(!$('#tl-0').hasClass('btn-success'))
+				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			videocall.send({message: { request: "set", temporal: 1 }});
+		});
+	$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping simulcast temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
+			$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#tl-1').hasClass('btn-success'))
+				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#tl-0').hasClass('btn-success'))
+				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			videocall.send({message: { request: "set", temporal: 2 }});
+		});
+}
+
+function updateSimulcastButtons(substream, temporal) {
+	// Check the substream
+	if(substream === 0) {
+		toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
+		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+	} else if(substream === 1) {
+		toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
+		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	} else if(substream === 2) {
+		toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
+		$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	}
+	// Check the temporal layer
+	if(temporal === 0) {
+		toastr.success("Capped simulcast temporal layer! (lowest FPS)", null, {timeOut: 2000});
+		$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+	} else if(temporal === 1) {
+		toastr.success("Capped simulcast temporal layer! (medium FPS)", null, {timeOut: 2000});
+		$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	} else if(temporal === 2) {
+		toastr.success("Capped simulcast temporal layer! (highest FPS)", null, {timeOut: 2000});
+		$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	}
 }
