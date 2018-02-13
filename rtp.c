@@ -349,7 +349,8 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 		context->v_seq_offset = 0;
 		context->v_ts_offset = 0;
 		context->v_target_ts = 0;
-		context->v_new_ssrc = FALSE;	}
+		context->v_new_ssrc = FALSE;
+	}
 
 	/* N 	: a N sequence numbers jump has been performed */
 	/* 0  	: any new skew compensation has been applied */
