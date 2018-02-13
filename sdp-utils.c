@@ -158,11 +158,12 @@ int janus_sdp_mline_remove(janus_sdp *sdp, janus_sdp_mtype type) {
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) {
 	if(!name)
 		return NULL;
-	janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
+	janus_sdp_attribute *a = g_malloc(sizeof(janus_sdp_attribute));
 	g_atomic_int_set(&a->destroyed, 0);
 	janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 	a->name = g_strdup(name);
 	a->direction = JANUS_SDP_DEFAULT;
+	a->value = NULL;
 	if(value) {
 		char buffer[512];
 		va_list ap;
@@ -668,9 +669,9 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "h264";
 					if(strstr(a->value, "opus") || strstr(a->value, "OPUS"))
 						return "opus";
-					if(strstr(a->value, "pcmu") || strstr(a->value, "PMCU"))
+					if(strstr(a->value, "pcmu") || strstr(a->value, "PCMU"))
 						return "pcmu";
-					if(strstr(a->value, "pcma") || strstr(a->value, "PMCA"))
+					if(strstr(a->value, "pcma") || strstr(a->value, "PCMA"))
 						return "pcma";
 					if(strstr(a->value, "g722") || strstr(a->value, "G722"))
 						return "g722";
@@ -722,7 +723,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	janus_refcount_increase(&imported->ref);
-	char *sdp = g_malloc0(JANUS_BUFSIZE), buffer[512];
+	char *sdp = g_malloc(JANUS_BUFSIZE), buffer[512];
 	*sdp = '\0';
 	/* v= */
 	g_snprintf(buffer, sizeof(buffer), "v=%d\r\n", imported->version);
@@ -928,7 +929,7 @@ const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec) {
 }
 
 janus_sdp *janus_sdp_new(const char *name, const char *address) {
-	janus_sdp *sdp = g_malloc0(sizeof(janus_sdp));
+	janus_sdp *sdp = g_malloc(sizeof(janus_sdp));
 	g_atomic_int_set(&sdp->destroyed, 0);
 	janus_refcount_init(&sdp->ref, janus_sdp_free);
 	/* Fill in some predefined stuff */
@@ -943,6 +944,8 @@ janus_sdp *janus_sdp_new(const char *name, const char *address) {
 	sdp->t_stop = 0;
 	sdp->c_ipv4 = TRUE;
 	sdp->c_addr = g_strdup(address ? address : "127.0.0.1");
+	sdp->attributes = NULL;
+	sdp->m_lines = NULL;
 	/* Done */
 	return sdp;
 }
@@ -1114,7 +1117,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	do_data = FALSE;
 #endif
 
-	janus_sdp *answer = g_malloc0(sizeof(janus_sdp));
+	janus_sdp *answer = g_malloc(sizeof(janus_sdp));
 	g_atomic_int_set(&answer->destroyed, 0);
 	janus_refcount_init(&answer->ref, janus_sdp_free);
 	/* Start by copying some of the headers */
@@ -1129,6 +1132,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	answer->t_stop = 0;
 	answer->c_ipv4 = offer->c_ipv4;
 	answer->c_addr = g_strdup(offer->c_addr ? offer->c_addr : "127.0.0.1");
+	answer->attributes = NULL;
+	answer->m_lines = NULL;
 
 	/* Now iterate on all media, and let's see what we should do */
 	int audio = 0, video = 0, data = 0;
@@ -1191,7 +1196,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_SENDONLY;
 					} else {
 						/* Peer is recvonly, but we're not ok to send, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;
@@ -1203,7 +1208,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->direction = JANUS_SDP_RECVONLY;
 					} else {
 						/* Peer is sendonly, but we're not ok to receive, so reply with inactive */
-						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s': using 'inactive'\n",
+						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
 							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
 							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
 						am->direction = JANUS_SDP_INACTIVE;

@@ -703,7 +703,7 @@ struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *han
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_nosip_message *msg = g_malloc0(sizeof(janus_nosip_message));
+	janus_nosip_message *msg = g_malloc(sizeof(janus_nosip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;

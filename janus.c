@@ -221,6 +221,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -510,18 +511,15 @@ janus_session *janus_session_create(guint64 session_id) {
 			}
 		}
 	}
-	session = (janus_session *)g_malloc0(sizeof(janus_session));
+	session = (janus_session *)g_malloc(sizeof(janus_session));
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"; %p\n", session_id, session);
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	session->session_id = session_id;
 	janus_refcount_init(&session->ref, janus_session_free);
 	session->source = NULL;
 	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->timeout, 0);
 	session->last_activity = janus_get_monotonic_time();
+	session->ice_handles = NULL;
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
@@ -635,11 +633,7 @@ json_t *janus_session_handles_list_json(janus_session *session) {
 
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
-	janus_request *request = (janus_request *)g_malloc0(sizeof(janus_request));
-	if(request == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	janus_request *request = g_malloc(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
 	janus_refcount_increase(&instance->ref);
@@ -1107,7 +1101,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Notify event handlers */
 			if(janus_events_is_enabled()) {
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-					session_id, handle_id, "remote", jsep_type, jsep_sdp);
+					session_id, handle_id, handle->opaque_id, "remote", jsep_type, jsep_sdp);
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated, Video %s been negotiated, SCTP/DataChannels %s been negotiated\n",
@@ -1201,6 +1195,10 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_ice_restart(handle);
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+					}
+					/* If we're full-trickling, we'll need to resend the candidates later */
+					if(janus_ice_is_full_trickle_enabled()) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES);
 					}
 				}
 #ifdef HAVE_SCTP
@@ -2054,6 +2052,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "alert", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) ? json_true() : json_false());
 		json_object_set_new(flags, "trickle", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) ? json_true() : json_false());
 		json_object_set_new(flags, "all-trickles", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES) ? json_true() : json_false());
+		json_object_set_new(flags, "resend-trickles", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES) ? json_true() : json_false());
 		json_object_set_new(flags, "trickle-synced", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED) ? json_true() : json_false());
 		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
@@ -2568,10 +2567,16 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session, event);
 
+	if((restart || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES))
+			&& janus_ice_is_full_trickle_enabled()) {
+		/* We're restarting ICE, send our trickle candidates again */
+		janus_ice_resend_trickles(ice_handle);
+	}
+
 	if(jsep != NULL && janus_events_is_enabled()) {
 		/* Notify event handlers as well */
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, ice_handle->handle_id, "local", sdp_type, sdp);
+			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", sdp_type, sdp);
 	}
 
 	janus_refcount_decrease(&plugin_session->ref);
@@ -2852,6 +2857,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	if(!plugin || !event || !json_is_object(event))
 		return;
 	guint64 session_id = 0, handle_id = 0;
+	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
 		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
 			json_decref(event);
@@ -2863,6 +2869,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 			return;
 		}
 		handle_id = ice_handle->handle_id;
+		opaque_id = ice_handle->opaque_id;
 		janus_session *session = (janus_session *)ice_handle->session;
 		if(!session) {
 			json_decref(event);
@@ -2873,7 +2880,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	/* Notify event handlers */
 	if(janus_events_is_enabled()) {
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
-			session_id, handle_id, plugin->get_package(), event);
+			session_id, handle_id, opaque_id, plugin->get_package(), event);
 	} else {
 		json_decref(event);
 	}
@@ -3158,6 +3165,9 @@ gint main(int argc, char *argv[])
 	if(args_info.libnice_debug_given) {
 		janus_config_add_item(config, "nat", "nice_debug", "true");
 	}
+	if(args_info.full_trickle_given) {
+		janus_config_add_item(config, "nat", "full_trickle", "true");
+	}
 	if(args_info.ice_lite_given) {
 		janus_config_add_item(config, "nat", "ice_lite", "true");
 	}
@@ -3317,7 +3327,7 @@ gint main(int argc, char *argv[])
 #endif
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
@@ -3347,6 +3357,9 @@ gint main(int argc, char *argv[])
 	/* Check if we need to enable ICE-TCP support (warning: still broken, for debugging only) */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_tcp");
 	ice_tcp = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we need to do full-trickle instead of half-trickle */
+	item = janus_config_get_item_drilldown(config, "nat", "full_trickle");
+	full_trickle = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "stun_server");
 	if(item && item->value)
@@ -3395,7 +3408,7 @@ gint main(int argc, char *argv[])
 		turn_rest_api_method = (char *)item->value;
 #endif
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
@@ -3525,25 +3538,26 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load event handlers */
-	const char *path = EVENTDIR;
-	item = janus_config_get_item_drilldown(config, "general", "events_folder");
+	const char *path = NULL;
+	DIR *dir = NULL;
+	/* Event handlers are disabled by default, though: they need to be enabled in the configuration */
+	item = janus_config_get_item_drilldown(config, "events", "broadcast");
+	gboolean enable_events = FALSE;
 	if(item && item->value)
-		path = (char *)item->value;
-	JANUS_LOG(LOG_INFO, "Event handler plugins folder: %s\n", path);
-	DIR *dir = opendir(path);
-	if(!dir) {
-		/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
-		JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
+		enable_events = janus_is_true(item->value);
+	if(!enable_events) {
+		JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
 	} else {
-		/* Any event handlers to ignore? */
 		gchar **disabled_eventhandlers = NULL;
-		item = janus_config_get_item_drilldown(config, "events", "broadcast");
-		/* Event handlers are disabled by default: they need to be enabled in the configuration */
-		gboolean enable_events = FALSE;
+		path = EVENTDIR;
+		item = janus_config_get_item_drilldown(config, "general", "events_folder");
 		if(item && item->value)
-			enable_events = janus_is_true(item->value);
-		if(!enable_events) {
-			JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+			path = (char *)item->value;
+		JANUS_LOG(LOG_INFO, "Event handler plugins folder: %s\n", path);
+		dir = opendir(path);
+		if(!dir) {
+			/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
+			JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "events", "stats_period");
 			if(item && item->value) {
@@ -3559,6 +3573,7 @@ gint main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "Setting event handlers statistics period to %d seconds\n", period);
 				}
 			}
+			/* Any event handlers to ignore? */
 			item = janus_config_get_item_drilldown(config, "events", "disable");
 			if(item && item->value)
 				disabled_eventhandlers = g_strsplit(item->value, ",", -1);

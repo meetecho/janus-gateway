@@ -1145,7 +1145,7 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -1423,11 +1423,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_unlock(&session->rec_mutex);
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_refcount_increase(&session->ref);
-	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
+	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->message = json_pack("{ss}", "request", "hangup");
 	msg->transaction = NULL;
@@ -2052,7 +2048,9 @@ static void *janus_sip_handler(void *data) {
 				session->account.secret_type = janus_sip_secret_type_hashed;
 			}
 			/* Send INVITE */
+			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
+			g_free(session->callid);
 			session->callid = g_strdup(callid);
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
@@ -2971,7 +2969,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(!reinvite) {
 				/* New incoming call */
+				g_free(session->callee);
 				session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
+				g_free(session->callid);
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
 				if(session->callid) {
 					janus_mutex_lock(&sessions_mutex);
@@ -3428,6 +3428,39 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			} else if(status >= 400) {
 				/* Authentication failed? */
 				session->account.registration_status = janus_sip_registration_status_failed;
+				/* Cleanup registration values */
+				if(session->account.identity != NULL) {
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(identities, session->account.identity);
+					janus_mutex_unlock(&sessions_mutex);
+					g_free(session->account.identity);
+				}
+				session->account.identity = NULL;
+				session->account.force_udp = FALSE;
+				session->account.sips = TRUE;
+				if(session->account.username != NULL)
+					g_free(session->account.username);
+				session->account.username = NULL;
+				if(session->account.display_name != NULL)
+					g_free(session->account.display_name);
+				session->account.display_name = NULL;
+				if(session->account.authuser != NULL)
+					g_free(session->account.authuser);
+				session->account.authuser = NULL;
+				if(session->account.secret != NULL)
+					g_free(session->account.secret);
+				session->account.secret = NULL;
+				session->account.secret_type = janus_sip_secret_type_unknown;
+				if(session->account.proxy != NULL)
+					g_free(session->account.proxy);
+				session->account.proxy = NULL;
+				if(session->account.outbound_proxy != NULL)
+					g_free(session->account.outbound_proxy);
+				session->account.outbound_proxy = NULL;
+				if(session->account.user_agent != NULL)
+					g_free(session->account.user_agent);
+				session->account.user_agent = NULL;
+				session->account.registration_status = janus_sip_registration_status_unregistered;
 				/* Tell the browser... */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
@@ -3978,11 +4011,7 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
-				if(msg == NULL) {
-					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					break;
-				}
+				janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;

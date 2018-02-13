@@ -344,6 +344,8 @@ or on the command line:
                                   (experimental)  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not
                                   (default=off)
+	-f, --full-trickle            Do full-trickle instead of half-trickle
+                                  (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not
                                   (default=off)
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
