@@ -1033,7 +1033,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Notify event handlers */
 			if(janus_events_is_enabled()) {
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-					session_id, handle_id, "remote", jsep_type, jsep_sdp);
+					session_id, handle_id, handle->opaque_id, "remote", jsep_type, jsep_sdp);
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated, Video %s been negotiated, SCTP/DataChannels %s been negotiated\n",
@@ -2695,7 +2695,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	if(jsep != NULL && janus_events_is_enabled()) {
 		/* Notify event handlers as well */
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, ice_handle->handle_id, "local", sdp_type, sdp);
+			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", sdp_type, sdp);
 	}
 
 	return JANUS_OK;
@@ -3018,6 +3018,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	if(!plugin || !event || !json_is_object(event))
 		return;
 	guint64 session_id = 0, handle_id = 0;
+	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
 		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
 			json_decref(event);
@@ -3029,6 +3030,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 			return;
 		}
 		handle_id = ice_handle->handle_id;
+		opaque_id = ice_handle->opaque_id;
 		janus_session *session = (janus_session *)ice_handle->session;
 		if(!session) {
 			json_decref(event);
@@ -3039,7 +3041,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	/* Notify event handlers */
 	if(janus_events_is_enabled()) {
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
-			session_id, handle_id, plugin->get_package(), event);
+			session_id, handle_id, opaque_id, plugin->get_package(), event);
 	} else {
 		json_decref(event);
 	}

@@ -650,7 +650,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					json_object_set_new(info, "remote-candidate", json_string(candidate));
 					json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
 					json_object_set_new(info, "component_id", json_integer(component->component_id));
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 				}
 				/* See if we need to process this */
 				if(trickle) {
@@ -1023,8 +1023,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have one already)\n", handle->handle_id);
 				m->port = 0;
 			}
-			if(m->port == 0)
+			if(m->port == 0) {
 				m->direction = JANUS_SDP_INACTIVE;
+				stream->audio_ssrc = 0;
+			}
 			if(audio == 1) {
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
@@ -1054,8 +1056,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have one already)\n", handle->handle_id);
 				m->port = 0;
 			}
-			if(m->port == 0)
+			if(m->port == 0) {
 				m->direction = JANUS_SDP_INACTIVE;
+				stream->video_ssrc = 0;
+			}
 			if(video == 1) {
 				switch(m->direction) {
 					case JANUS_SDP_INACTIVE:
