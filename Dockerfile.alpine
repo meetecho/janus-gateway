@@ -1,33 +1,48 @@
-FROM alpine:edge
+FROM alpine
 MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
 
-# Version ENV
-ENV usrsctpVersion 0.9.3.0
+ARG USRSCTP_VERSION=0.9.3.0
 
-# Packages ENV
-ENV buildDeps "curl git build-base ca-certificates rabbitmq-c-dev "
-ENV buildJanus "jansson-dev go libtool libnice-dev rabbitmq-c libogg "
-ENV buildUsrsctp "m4 automake autoconf file cmake "
-ENV buildBoringssl "linux-headers libsrtp-dev gengetopt-dev libogg-dev ffmpeg-libs ffmpeg-dev"
+ARG JANUS_TRANSPORT_REST=disable
+ARG JANUS_TRANSPORT_WEB_SOCKET=disable
+ARG JANUS_TRANSPORT_RABBIT_MQ=enable
+ARG JANUS_TRANSPORT_MQTT=disable
+ARG JANUS_TRANSPORT_UNIX_SOCKET=disable
+
+ARG JANUS_PLUGIN_AUDIOBRIDGE=disable
+ARG JANUS_PLUGIN_ECHOTEST=disable
+ARG JANUS_PLUGIN_RECORDPLAY=disable
+ARG JANUS_PLUGIN_SIP=disable
+ARG JANUS_PLUGIN_NOSIP=disable
+ARG JANUS_PLUGIN_SIPRE=disable
+ARG JANUS_PLUGIN_STREAMING=disable
+ARG JANUS_PLUGIN_TEXTROOM=disable
+ARG JANUS_PLUGIN_VIDEOCALL=disable
+ARG JANUS_PLUGIN_VIDEOROOM=disable
+ARG JANUS_PLUGIN_VOICEMAIL=disable
 
 WORKDIR /root
 
+COPY . janus-gateway
+
 # Prepare system
-RUN apk add --update --no-cache $buildDeps $buildJanus $buildUsrsctp $buildBoringssl
-
-# Download dependency
-RUN curl -L https://github.com/sctplab/usrsctp/archive/$usrsctpVersion.tar.gz | tar zx
-RUN git clone https://boringssl.googlesource.com/boringssl
-
-# Compil dependency
-RUN cd usrsctp-$usrsctpVersion \
+RUN apk add --update --no-cache --virtual .build-dependencies \
+    git build-base ca-certificates rabbitmq-c-dev jansson-dev \
+    libtool libnice-dev m4 automake autoconf \
+    file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev \
+    ffmpeg-libs ffmpeg-dev glib-dev \
+  && apk add --no-cache curl libnice go jansson glib libogg rabbitmq-c \
+  && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
+  && git clone https://boringssl.googlesource.com/boringssl boringssl \
+  # Compil dependency
+  && cd usrsctp-$USRSCTP_VERSION \
   && ./bootstrap \
   && ./configure --prefix=/usr \
   && make \
-  && make install
-
-# Boring SSL (go lang is needed)
-RUN cd boringssl \
+  && make install \
+  && cd ../ \
+  # Boring SSL (go lang is needed)
+  && cd boringssl \
   && sed -i s/" -Werror"//g CMakeLists.txt \
   && mkdir -p build \
   && cd build \
@@ -38,22 +53,39 @@ RUN cd boringssl \
   && cp -R include /opt/boringssl/ \
   && mkdir -p /opt/boringssl/lib \
   && cp build/ssl/libssl.a /opt/boringssl/lib/ \
-  && cp build/crypto/libcrypto.a /opt/boringssl/lib/
-
-COPY / janus-gateway
-
-# Install Janus itself
-RUN cd janus-gateway \
+  && cp build/crypto/libcrypto.a /opt/boringssl/lib/ \
+  && cd ../ \
+  # Install Janus itself
+  && cd janus-gateway \
   && sh autogen.sh \
-  && ./configure --prefix=/usr/local --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
+  # && ./configure --help \
+  && ./configure --prefix=/usr/local --enable-boringssl --enable-post-processing \
+    --$JANUS_TRANSPORT_REST-rest \
+    --$JANUS_TRANSPORT_WEB_SOCKET-websockets \
+    --$JANUS_TRANSPORT_RABBIT_MQ-rabbitmq \
+    --$JANUS_TRANSPORT_MQTT-mqtt \
+    --$JANUS_TRANSPORT_UNIX_SOCKET-unix-sockets \
+    --$JANUS_PLUGIN_AUDIOBRIDGE-plugin-audiobridge \
+    --$JANUS_PLUGIN_ECHOTEST-plugin-echotest \
+    --$JANUS_PLUGIN_RECORDPLAY-plugin-recordplay \
+    --$JANUS_PLUGIN_SIP-plugin-sip \
+    --$JANUS_PLUGIN_NOSIP-plugin-nosip \
+    --$JANUS_PLUGIN_SIPRE-plugin-sipre \
+    --$JANUS_PLUGIN_STREAMING-plugin-streaming \
+    --$JANUS_PLUGIN_TEXTROOM-plugin-textroom \
+    --$JANUS_PLUGIN_VIDEOCALL-plugin-videocall \
+    --$JANUS_PLUGIN_VIDEOROOM-plugin-videoroom \
+    --$JANUS_PLUGIN_VOICEMAIL-plugin-voicemail \
   && make \
   && make configs \
-  && make install
+  && make install \
+  && cd ../ \
+  && apk del .build-dependencies \
+  && rm -R usrsctp-$USRSCTP_VERSION boringssl janus-gateway \
+  && rm -rf /var/cache/apk/*
 
-RUN rm -R usrsctp-$usrsctpVersion boringssl janus-gateway
-
-# RUN apk del $buildDeps $buildBoringssl $buildUsrsctp \
-#   && rm -rf /var/cache/apk/*
+VOLUME /usr/local/etc/janus
+VOLUME /usr/local/lib/janus/plugins
 
 # Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
