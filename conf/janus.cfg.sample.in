@@ -90,7 +90,10 @@ cert_key = @certdir@/mycert.key
 ; browsers, but in the gathering of relay candidates by Janus itself,
 ; e.g., if you want to limit the ports used by a Janus instance on a
 ; private machine. Furthermore, you can choose whether Janus should be
-; configured to work in ICE-Lite mode (by default it doesn't). Finally,
+; configured to do full-trickle (Janus also trickles its candidates to
+; users) rather than the default half-trickle (Janus supports trickle
+; candidates from users, but sends its own within the SDP), and whether
+; it should work in ICE-Lite mode (by default it doesn't). Finally,
 ; you can also enable ICE-TCP support (beware that it currently *only*
 ; works if you enable ICE Lite as well), choose which interfaces should
 ; be used for gathering candidates, and enable or disable the
@@ -99,6 +102,7 @@ cert_key = @certdir@/mycert.key
 ;stun_server = stun.voip.eutelia.it
 ;stun_port = 3478
 nice_debug = false
+;full_trickle = true
 ;ice_lite = true
 ;ice_tcp = true
 
