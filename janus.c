@@ -212,6 +212,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -1184,6 +1185,10 @@ int janus_process_incoming_request(janus_request *request) {
 						janus_ice_restart(handle);
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+					}
+					/* If we're full-trickling, we'll need to resend the candidates later */
+					if(janus_ice_is_full_trickle_enabled()) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES);
 					}
 				}
 #ifdef HAVE_SCTP
@@ -2171,6 +2176,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "alert", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) ? json_true() : json_false());
 		json_object_set_new(flags, "trickle", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) ? json_true() : json_false());
 		json_object_set_new(flags, "all-trickles", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES) ? json_true() : json_false());
+		json_object_set_new(flags, "resend-trickles", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES) ? json_true() : json_false());
 		json_object_set_new(flags, "trickle-synced", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED) ? json_true() : json_false());
 		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
@@ -2679,6 +2685,12 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session, event);
+
+	if((restart || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES))
+			&& janus_ice_is_full_trickle_enabled()) {
+		/* We're restarting ICE, send our trickle candidates again */
+		janus_ice_resend_trickles(ice_handle);
+	}
 
 	if(jsep != NULL && janus_events_is_enabled()) {
 		/* Notify event handlers as well */
@@ -3310,6 +3322,9 @@ gint main(int argc, char *argv[])
 	if(args_info.libnice_debug_given) {
 		janus_config_add_item(config, "nat", "nice_debug", "true");
 	}
+	if(args_info.full_trickle_given) {
+		janus_config_add_item(config, "nat", "full_trickle", "true");
+	}
 	if(args_info.ice_lite_given) {
 		janus_config_add_item(config, "nat", "ice_lite", "true");
 	}
@@ -3469,7 +3484,7 @@ gint main(int argc, char *argv[])
 #endif
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
@@ -3499,6 +3514,9 @@ gint main(int argc, char *argv[])
 	/* Check if we need to enable ICE-TCP support (warning: still broken, for debugging only) */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_tcp");
 	ice_tcp = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we need to do full-trickle instead of half-trickle */
+	item = janus_config_get_item_drilldown(config, "nat", "full_trickle");
+	full_trickle = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "stun_server");
 	if(item && item->value)
@@ -3547,7 +3565,7 @@ gint main(int argc, char *argv[])
 		turn_rest_api_method = (char *)item->value;
 #endif
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);

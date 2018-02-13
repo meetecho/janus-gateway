@@ -236,23 +236,23 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					/* Found mid attribute */
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->value);
-						if(handle->audio_mid == NULL || strcmp(handle->audio_mid, a->value)) {
-							g_free(handle->audio_mid);
+						if(handle->audio_mid == NULL)
 							handle->audio_mid = g_strdup(a->value);
-						}
+						if(handle->stream_mid == NULL)
+							handle->stream_mid = handle->audio_mid;
 					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->value);
-						if(handle->video_mid == NULL || strcmp(handle->video_mid, a->value)) {
-							g_free(handle->video_mid);
+						if(handle->video_mid == NULL)
 							handle->video_mid = g_strdup(a->value);
-						}
+						if(handle->stream_mid == NULL)
+							handle->stream_mid = handle->video_mid;
 #ifdef HAVE_SCTP
 					} else if(m->type == JANUS_SDP_APPLICATION) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data Channel mid: %s\n", handle->handle_id, a->value);
-						if(handle->data_mid == NULL || strcmp(handle->data_mid, a->value)) {
-							g_free(handle->data_mid);
+						if(handle->data_mid == NULL)
 							handle->data_mid = g_strdup(a->value);
-						}
+						if(handle->stream_mid == NULL)
+							handle->stream_mid = handle->data_mid;
 #endif
 					}
 				} else if(!strcasecmp(a->name, "fingerprint")) {
@@ -1112,17 +1112,17 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		}
 		/* a=mid:(audio|video|data) */
 		if(m->type == JANUS_SDP_AUDIO) {
-			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid ? handle->audio_mid : "audio");
+			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		} else if(m->type == JANUS_SDP_VIDEO) {
-			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid ? handle->video_mid : "video");
+			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* FIXME sctpmap and webrtc-datachannel should be dynamic */
 			a = janus_sdp_attribute_create("sctpmap", "5000 webrtc-datachannel 16");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
-			a = janus_sdp_attribute_create("mid", "%s", handle->data_mid ? handle->data_mid : "data");
+			a = janus_sdp_attribute_create("mid", "%s", handle->data_mid);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #endif
 		}
@@ -1188,13 +1188,15 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			a = janus_sdp_attribute_create("simulcast", " recv rid=%s", rids);
 			m->attributes = g_list_append(m->attributes, a);
 		}
-		/* And now the candidates */
-		janus_ice_candidates_to_sdp(handle, m, stream->stream_id, 1);
-		/* Since we're half-trickling, we need to notify the peer that these are all the
-		 * candidates we have for this media stream, via an end-of-candidates attribute:
-		 * https://tools.ietf.org/html/draft-ietf-mmusic-trickle-ice-02#section-4.1 */
-		janus_sdp_attribute *end = janus_sdp_attribute_create("end-of-candidates", NULL);
-		m->attributes = g_list_append(m->attributes, end);
+		if(!janus_ice_is_full_trickle_enabled()) {
+			/* And now the candidates (but only if we're half-trickling) */
+			janus_ice_candidates_to_sdp(handle, m, stream->stream_id, 1);
+			/* Since we're half-trickling, we need to notify the peer that these are all the
+			 * candidates we have for this media stream, via an end-of-candidates attribute:
+			 * https://tools.ietf.org/html/draft-ietf-mmusic-trickle-ice-02#section-4.1 */
+			janus_sdp_attribute *end = janus_sdp_attribute_create("end-of-candidates", NULL);
+			m->attributes = g_list_append(m->attributes, end);
+		}
 		/* Next */
 		temp = temp->next;
 	}

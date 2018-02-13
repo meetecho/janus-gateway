@@ -464,6 +464,40 @@ function Janus(gatewayCallbacks) {
 				delete transactions[transaction];
 			}
 			return;
+		} else if(json["janus"] === "trickle") {
+			// We got a trickle candidate from Janus
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.debug("This handle is not attached to this session");
+				return;
+			}
+			var candidate = json["candidate"];
+			Janus.debug("Got a trickled candidate on session " + sessionId);
+			Janus.debug(candidate);
+			var config = pluginHandle.webrtcStuff;
+			if(config.pc && config.remoteSdp) {
+				// Add candidate right now
+				Janus.debug("Adding remote candidate:", candidate);
+				if(!candidate || candidate.completed === true) {
+					// end-of-candidates
+					config.pc.addIceCandidate();
+				} else {
+					// New candidate
+					config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+				}
+			} else {
+				// We didn't do setRemoteDescription (trickle got here before the offer?)
+				Janus.debug("We didn't do setRemoteDescription (trickle got here before the offer?), caching candidate");
+				if(!config.candidates)
+					config.candidates = [];
+				config.candidates.push(candidate);
+				Janus.debug(config.candidates);
+			}
 		} else if(json["janus"] === "webrtcup") {
 			// The PeerConnection with the gateway is up! Notify this
 			Janus.debug("Got a webrtcup event on session " + sessionId);
@@ -1450,6 +1484,23 @@ function Janus(gatewayCallbacks) {
 					new RTCSessionDescription(jsep),
 					function() {
 						Janus.log("Remote description accepted!");
+						config.remoteSdp = jsep.sdp;
+						// Any trickle candidate we cached?
+						if(config.candidates && config.candidates.length > 0) {
+							for(var i in config.candidates) {
+								var candidate = config.candidates[i];
+								Janus.debug("Adding remote candidate:", candidate);
+								if(!candidate || candidate.completed === true) {
+									// end-of-candidates
+									config.pc.addIceCandidate();
+								} else {
+									// New candidate
+									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+								}
+							}
+							config.candidates = [];
+						}
+						// Create the answer now
 						createAnswer(handleId, media, callbacks);
 					}, callbacks.error);
 		}
@@ -1965,6 +2016,23 @@ function Janus(gatewayCallbacks) {
 					new RTCSessionDescription(jsep),
 					function() {
 						Janus.log("Remote description accepted!");
+						config.remoteSdp = jsep.sdp;
+						// Any trickle candidate we cached?
+						if(config.candidates && config.candidates.length > 0) {
+							for(var i in config.candidates) {
+								var candidate = config.candidates[i];
+								Janus.debug("Adding remote candidate:", candidate);
+								if(!candidate || candidate.completed === true) {
+									// end-of-candidates
+									config.pc.addIceCandidate();
+								} else {
+									// New candidate
+									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+								}
+							}
+							config.candidates = [];
+						}
+						// Done
 						callbacks.success();
 					}, callbacks.error);
 		} else {
@@ -2403,7 +2471,9 @@ function Janus(gatewayCallbacks) {
 				// Do nothing
 			}
 			config.pc = null;
+			config.candidates = null;
 			config.mySdp = null;
+			config.remoteSdp = null;
 			config.iceDone = false;
 			config.dataChannel = null;
 			config.dtmfSender = null;
