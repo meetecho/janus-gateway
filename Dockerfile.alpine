@@ -28,10 +28,10 @@ COPY . janus-gateway
 # Prepare system
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates rabbitmq-c-dev jansson-dev \
-    libtool libnice-dev m4 automake autoconf \
+    libnice-dev m4 automake autoconf \
     file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev \
     ffmpeg-libs ffmpeg-dev glib-dev \
-  && apk add --no-cache curl libnice go jansson glib libogg rabbitmq-c \
+  && apk add --no-cache curl libnice go jansson glib libogg rabbitmq-c libtool \
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && git clone https://boringssl.googlesource.com/boringssl boringssl \
   # Compil dependency
@@ -84,8 +84,8 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && rm -R usrsctp-$USRSCTP_VERSION boringssl janus-gateway \
   && rm -rf /var/cache/apk/*
 
-VOLUME /usr/local/etc/janus
-VOLUME /usr/local/lib/janus/plugins
+# VOLUME /usr/local/etc/janus
+# VOLUME /usr/local/lib/janus/plugins
 
 # Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
