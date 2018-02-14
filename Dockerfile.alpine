@@ -27,11 +27,10 @@ COPY . janus-gateway
 
 # Prepare system
 RUN apk add --update --no-cache --virtual .build-dependencies \
-    git build-base ca-certificates rabbitmq-c-dev jansson-dev \
-    libnice-dev m4 automake autoconf \
-    file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev \
-    ffmpeg-libs ffmpeg-dev glib-dev \
-  && apk add --no-cache curl libnice go jansson glib libogg rabbitmq-c libtool \
+    git build-base ca-certificates rabbitmq-c-dev libnice-dev m4 automake \
+    autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev \
+  && apk add --no-cache \
+    curl libnice go jansson-dev glib libogg rabbitmq-c libtool ffmpeg-dev glib-dev \
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && git clone https://boringssl.googlesource.com/boringssl boringssl \
   # Compil dependency
@@ -40,7 +39,7 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && ./configure --prefix=/usr \
   && make \
   && make install \
-  && cd ../ \
+  && cd .. \
   # Boring SSL (go lang is needed)
   && cd boringssl \
   && sed -i s/" -Werror"//g CMakeLists.txt \
@@ -54,7 +53,7 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && mkdir -p /opt/boringssl/lib \
   && cp build/ssl/libssl.a /opt/boringssl/lib/ \
   && cp build/crypto/libcrypto.a /opt/boringssl/lib/ \
-  && cd ../ \
+  && cd .. \
   # Install Janus itself
   && cd janus-gateway \
   && sh autogen.sh \
@@ -79,13 +78,11 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && make \
   && make configs \
   && make install \
-  && cd ../ \
-  && apk del .build-dependencies \
-  && rm -R usrsctp-$USRSCTP_VERSION boringssl janus-gateway \
-  && rm -rf /var/cache/apk/*
+  && cd .. \
+  && apk del --purge .build-dependencies \
+  && rm -rf usrsctp-$USRSCTP_VERSION boringssl /var/cache/apk/*
 
-# VOLUME /usr/local/etc/janus
-# VOLUME /usr/local/lib/janus/plugins
+VOLUME ["/usr/local/etc/janus", "/usr/local/lib/janus/plugins"]
 
 # Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
