@@ -1390,6 +1390,13 @@ static void janus_videoroom_participant_joining(janus_videoroom_participant *p) 
 
 static void janus_videoroom_leave_or_unpublish(janus_videoroom_participant *participant, gboolean is_leaving, gboolean kicked) {
 	/* we need to check if the room still exists, may have been destroyed already */
+	janus_mutex_lock(&rooms_mutex);
+	if (!g_hash_table_lookup(rooms, &participant->room->room_id)) {
+		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", participant->room->room_id);
+		janus_mutex_unlock(&rooms_mutex);
+		return;
+	}
+	janus_mutex_unlock(&rooms_mutex);
 	if(participant->room && !participant->room->destroyed) {
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
