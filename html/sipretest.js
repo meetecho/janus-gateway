@@ -407,7 +407,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#remotevideo').hide();
 										if($('#videoright .no-video-container').length === 0) {
