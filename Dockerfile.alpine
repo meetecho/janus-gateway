@@ -29,9 +29,9 @@ COPY . janus-gateway
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates rabbitmq-c-dev libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
-    curl libogg libtool jansson-dev \
+    curl libogg libtool \
   && apk add --no-cache \
-    libnice jansson glib-dev libogg ffmpeg-dev rabbitmq-c \
+    libnice jansson-dev glib-dev libogg ffmpeg-dev rabbitmq-c \
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && git clone https://boringssl.googlesource.com/boringssl boringssl \
   # Compil dependency
