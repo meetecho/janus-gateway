@@ -29,19 +29,17 @@ COPY . janus-gateway
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates rabbitmq-c-dev libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
-    curl libogg libtool \
+    curl libogg libtool ffmpeg-dev glib-dev jansson-dev \
   && apk add --no-cache \
-    libnice jansson-dev glib-dev libogg ffmpeg-dev rabbitmq-c \
+    libnice jansson glib libogg ffmpeg rabbitmq-c \
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && git clone https://boringssl.googlesource.com/boringssl boringssl \
-  # Compil dependency
   && cd usrsctp-$USRSCTP_VERSION \
   && ./bootstrap \
   && ./configure --prefix=/usr \
   && make \
   && make install \
   && cd .. \
-  # Boring SSL (go lang is needed)
   && cd boringssl \
   && sed -i s/" -Werror"//g CMakeLists.txt \
   && mkdir -p build \
@@ -55,10 +53,8 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && cp build/ssl/libssl.a /opt/boringssl/lib/ \
   && cp build/crypto/libcrypto.a /opt/boringssl/lib/ \
   && cd .. \
-  # Install Janus itself
   && cd janus-gateway \
   && sh autogen.sh \
-  # && ./configure --help \
   && ./configure --prefix=/usr/local --enable-boringssl --enable-post-processing \
     --$JANUS_TRANSPORT_REST-rest \
     --$JANUS_TRANSPORT_WEB_SOCKET-websockets \
@@ -81,10 +77,9 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && make install \
   && cd .. \
   && apk del --purge .build-dependencies \
-  && rm -rf usrsctp-$USRSCTP_VERSION boringssl /var/cache/apk/*
+  && rm -rf usrsctp-$USRSCTP_VERSION boringssl janus-gateway /var/cache/apk/*
 
 VOLUME ["/usr/local/etc/janus", "/usr/local/lib/janus/plugins"]
 
-# Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
 CMD ["-d4"]
