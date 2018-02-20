@@ -1969,7 +1969,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						vindex = 1;
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] RFC4588 rtx packet on video #%d (SSRC %"SCNu32")...\n",
 							handle->handle_id, vindex, packet_ssrc);
-					} else if(stream->video_ssrc_peer_rtx[1] == packet_ssrc) {
+					} else if(stream->video_ssrc_peer_rtx[2] == packet_ssrc) {
 						rtx = 1;
 						vindex = 2;
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] RFC4588 rtx packet on video #%d (SSRC %"SCNu32")...\n",
