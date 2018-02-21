@@ -213,6 +213,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -2181,6 +2182,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
 		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
+		json_object_set_new(flags, "rfc4588-rtx", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
@@ -2292,16 +2294,22 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "audio", json_integer(stream->audio_ssrc));
 	if(stream->video_ssrc)
 		json_object_set_new(ss, "video", json_integer(stream->video_ssrc));
+	if(stream->video_ssrc_rtx)
+		json_object_set_new(ss, "video-rtx", json_integer(stream->video_ssrc_rtx));
 	if(stream->audio_ssrc_peer)
 		json_object_set_new(ss, "audio-peer", json_integer(stream->audio_ssrc_peer));
 	if(stream->video_ssrc_peer[0])
 		json_object_set_new(ss, "video-peer", json_integer(stream->video_ssrc_peer[0]));
-	if(stream->video_ssrc_peer_rtx)
-		json_object_set_new(ss, "video-peer-rtx", json_integer(stream->video_ssrc_peer_rtx));
 	if(stream->video_ssrc_peer[1])
 		json_object_set_new(ss, "video-peer-sim-1", json_integer(stream->video_ssrc_peer[1]));
 	if(stream->video_ssrc_peer[2])
 		json_object_set_new(ss, "video-peer-sim-2", json_integer(stream->video_ssrc_peer[2]));
+	if(stream->video_ssrc_peer_rtx[0])
+		json_object_set_new(ss, "video-peer-rtx", json_integer(stream->video_ssrc_peer_rtx[0]));
+	if(stream->video_ssrc_peer_rtx[1])
+		json_object_set_new(ss, "video-peer-sim-1-rtx", json_integer(stream->video_ssrc_peer_rtx[1]));
+	if(stream->video_ssrc_peer_rtx[2])
+		json_object_set_new(ss, "video-peer-sim-2-rtx", json_integer(stream->video_ssrc_peer_rtx[2]));
 	if(stream->rid[0]) {
 		json_t *rid = json_array();
 		json_array_append_new(rid, json_string(stream->rid[0]));
@@ -2326,6 +2334,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 			json_object_set_new(sc, "audio-codec", json_string(stream->audio_codec));
 		if(stream->video_payload_type > -1)
 			json_object_set_new(sc, "video-pt", json_integer(stream->video_payload_type));
+		if(stream->video_rtx_payload_type > -1)
+			json_object_set_new(sc, "video-rtx-pt", json_integer(stream->video_rtx_payload_type));
 		if(stream->video_codec != NULL)
 			json_object_set_new(sc, "video-codec", json_string(stream->video_codec));
 		json_object_set_new(s, "codecs", sc);
@@ -2773,6 +2783,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		if(ice_handle->agent == NULL) {
+			if(janus_is_rfc4588_enabled()) {
+				/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
+				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
+			}
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
@@ -2818,6 +2832,40 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	if(offer && restart)
 		janus_ice_restart(ice_handle);
 	/* Add our details */
+	janus_ice_stream *stream = ice_handle->stream;
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
+			stream && stream->rtx_payload_types == NULL) {
+		/* Make sure we have a list of rtx payload types to generate, if needed */
+		janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
+		if(m && m->ptypes) {
+			stream->rtx_payload_types = g_hash_table_new(NULL, NULL);
+			GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;
+			GList *rtx_ptypes = g_hash_table_get_values(stream->rtx_payload_types);
+			while(tempP) {
+				int ptype = GPOINTER_TO_INT(tempP->data);
+				int rtx_ptype = ptype+1;
+				while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype))
+						|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
+					rtx_ptype++;
+					if(rtx_ptype > 127)
+						rtx_ptype = 96;
+					if(rtx_ptype == ptype) {
+						/* We did a whole round? should never happen... */
+						rtx_ptype = -1;
+						break;
+					}
+				}
+				if(rtx_ptype > 0)
+					g_hash_table_insert(stream->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+				g_list_free(rtx_ptypes);
+				rtx_ptypes = g_hash_table_get_values(stream->rtx_payload_types);
+				tempP = tempP->next;
+			}
+			g_list_free(ptypes);
+			g_list_free(rtx_ptypes);
+		}
+	}
+	/* Enrich the SDP the plugin gave us with all the WebRTC related stuff */
 	char *sdp_merged = janus_sdp_merge(ice_handle, parsed_sdp, offer ? TRUE : FALSE);
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
@@ -3344,6 +3392,9 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add_item(config, "media", "no_media_timer", nmt);
 	}
+	if(args_info.rfc_4588_given) {
+		janus_config_add_item(config, "media", "rfc_4588", "yes");
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3640,6 +3691,11 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_set_no_media_timer(nmt);
 		}
+	}
+	/* RFC4588 support */
+	item = janus_config_get_item_drilldown(config, "media", "rfc_4588");
+	if(item && item->value) {
+		janus_set_rfc4588_enabled(janus_is_true(item->value));
 	}
 
 	/* Setup OpenSSL stuff */
