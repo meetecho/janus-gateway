@@ -537,7 +537,7 @@ function newRemoteFeed(id, display) {
 				}
 				Janus.attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
 				var videoTracks = stream.getVideoTracks();
-				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
 					if($('#remotevideo'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
