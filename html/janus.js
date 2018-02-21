@@ -273,7 +273,7 @@ Janus.init = function(options) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
 						Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({asyncRequest: false});
+					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -464,6 +464,40 @@ function Janus(gatewayCallbacks) {
 				delete transactions[transaction];
 			}
 			return;
+		} else if(json["janus"] === "trickle") {
+			// We got a trickle candidate from Janus
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.debug("This handle is not attached to this session");
+				return;
+			}
+			var candidate = json["candidate"];
+			Janus.debug("Got a trickled candidate on session " + sessionId);
+			Janus.debug(candidate);
+			var config = pluginHandle.webrtcStuff;
+			if(config.pc && config.remoteSdp) {
+				// Add candidate right now
+				Janus.debug("Adding remote candidate:", candidate);
+				if(!candidate || candidate.completed === true) {
+					// end-of-candidates
+					config.pc.addIceCandidate();
+				} else {
+					// New candidate
+					config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+				}
+			} else {
+				// We didn't do setRemoteDescription (trickle got here before the offer?)
+				Janus.debug("We didn't do setRemoteDescription (trickle got here before the offer?), caching candidate");
+				if(!config.candidates)
+					config.candidates = [];
+				config.candidates.push(candidate);
+				Janus.debug(config.candidates);
+			}
 		} else if(json["janus"] === "webrtcup") {
 			// The PeerConnection with the gateway is up! Notify this
 			Janus.debug("Got a webrtcup event on session " + sessionId);
@@ -592,7 +626,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("No provided notification callback");
 			}
 		} else {
-			Janus.warn("Unkown message/event  '" + json["janus"] + "' on session " + sessionId);
+			Janus.warn("Unknown message/event  '" + json["janus"] + "' on session " + sessionId);
 			Janus.debug(json);
 		}
 	}
@@ -738,6 +772,9 @@ function Janus(gatewayCallbacks) {
 		var asyncRequest = true;
 		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
 			asyncRequest = (callbacks.asyncRequest === true);
+		var notifyDestroyed = true;
+		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
+			notifyDestroyed = (callbacks.notifyDestroyed === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
@@ -747,7 +784,8 @@ function Janus(gatewayCallbacks) {
 		if(sessionId === undefined || sessionId === null) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
-			gatewayCallbacks.destroyed();
+			if(notifyDestroyed)
+				gatewayCallbacks.destroyed();
 			return;
 		}
 		delete Janus.sessions[sessionId];
@@ -777,13 +815,15 @@ function Janus(gatewayCallbacks) {
 				if(data.session_id == request.session_id && data.transaction == request.transaction) {
 					unbindWebSocket();
 					callbacks.success();
-					gatewayCallbacks.destroyed();
+					if(notifyDestroyed)
+						gatewayCallbacks.destroyed();
 				}
 			};
 			var onUnbindError = function(event) {
 				unbindWebSocket();
 				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			};
 
 			ws.addEventListener('message', onUnbindMessage);
@@ -806,7 +846,8 @@ function Janus(gatewayCallbacks) {
 					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				}
 				callbacks.success();
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ": " + errorThrown);	// FIXME
@@ -814,7 +855,8 @@ function Janus(gatewayCallbacks) {
 				sessionId = null;
 				connected = false;
 				callbacks.success();
-				gatewayCallbacks.destroyed();
+				if(notifyDestroyed)
+					gatewayCallbacks.destroyed();
 			}
 		});
 	}
@@ -1442,6 +1484,23 @@ function Janus(gatewayCallbacks) {
 					new RTCSessionDescription(jsep),
 					function() {
 						Janus.log("Remote description accepted!");
+						config.remoteSdp = jsep.sdp;
+						// Any trickle candidate we cached?
+						if(config.candidates && config.candidates.length > 0) {
+							for(var i in config.candidates) {
+								var candidate = config.candidates[i];
+								Janus.debug("Adding remote candidate:", candidate);
+								if(!candidate || candidate.completed === true) {
+									// end-of-candidates
+									config.pc.addIceCandidate();
+								} else {
+									// New candidate
+									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+								}
+							}
+							config.candidates = [];
+						}
+						// Create the answer now
 						createAnswer(handleId, media, callbacks);
 					}, callbacks.error);
 		}
@@ -1957,6 +2016,23 @@ function Janus(gatewayCallbacks) {
 					new RTCSessionDescription(jsep),
 					function() {
 						Janus.log("Remote description accepted!");
+						config.remoteSdp = jsep.sdp;
+						// Any trickle candidate we cached?
+						if(config.candidates && config.candidates.length > 0) {
+							for(var i in config.candidates) {
+								var candidate = config.candidates[i];
+								Janus.debug("Adding remote candidate:", candidate);
+								if(!candidate || candidate.completed === true) {
+									// end-of-candidates
+									config.pc.addIceCandidate();
+								} else {
+									// New candidate
+									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+								}
+							}
+							config.candidates = [];
+						}
+						// Done
 						callbacks.success();
 					}, callbacks.error);
 		} else {
@@ -2395,7 +2471,9 @@ function Janus(gatewayCallbacks) {
 				// Do nothing
 			}
 			config.pc = null;
+			config.candidates = null;
 			config.mySdp = null;
+			config.remoteSdp = null;
 			config.iceDone = false;
 			config.dataChannel = null;
 			config.dtmfSender = null;
@@ -2409,7 +2487,7 @@ function Janus(gatewayCallbacks) {
 		// (based on https://gist.github.com/ggarber/a19b4c33510028b9c657)
 		var lines = sdp.split("\r\n");
 		var video = false;
-		var ssrc = [ -1 ], ssrc_fid = -1;
+		var ssrc = [ -1 ], ssrc_fid = [ -1 ];
 		var cname = null, msid = null, mslabel = null, label = null;
 		var insertAt = -1;
 		for(var i=0; i<lines.length; i++) {
@@ -2440,7 +2518,7 @@ function Janus(gatewayCallbacks) {
 			var fid = lines[i].match(/a=ssrc-group:FID (\d+) (\d+)/);
 			if(fid) {
 				ssrc[0] = fid[1];
-				ssrc_fid = fid[2];
+				ssrc_fid[0] = fid[2];
 				lines.splice(i, 1); i--;
 				continue;
 			}
@@ -2528,7 +2606,7 @@ function Janus(gatewayCallbacks) {
 					if(match) {
 						label = match[1];
 					}
-					if(lines[i].indexOf('a=ssrc:' + ssrc_fid) === 0) {
+					if(lines[i].indexOf('a=ssrc:' + ssrc_fid[0]) === 0) {
 						lines.splice(i, 1); i--;
 						continue;
 					}
@@ -2552,9 +2630,12 @@ function Janus(gatewayCallbacks) {
 			// Append at the end
 			insertAt = lines.length;
 		}
-		// Generate a couple of SSRCs
+		// Generate a couple of SSRCs (for retransmissions too)
+		// Note: should we check if there are conflicts, here?
 		ssrc[1] = Math.floor(Math.random()*0xFFFFFFFF);
 		ssrc[2] = Math.floor(Math.random()*0xFFFFFFFF);
+		ssrc_fid[1] = Math.floor(Math.random()*0xFFFFFFFF);
+		ssrc_fid[2] = Math.floor(Math.random()*0xFFFFFFFF);
 		// Add attributes to the SDP
 		for(var i=0; i<ssrc.length; i++) {
 			if(cname) {
@@ -2573,7 +2654,27 @@ function Janus(gatewayCallbacks) {
 				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' label:' + label);
 				insertAt++;
 			}
+			// Add the same info for the retransmission SSRC
+			if(cname) {
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' cname:' + cname);
+				insertAt++;
+			}
+			if(msid) {
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' msid:' + msid);
+				insertAt++;
+			}
+			if(mslabel) {
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' mslabel:' + mslabel);
+				insertAt++;
+			}
+			if(label) {
+				lines.splice(insertAt, 0, 'a=ssrc:' + ssrc_fid[i] + ' label:' + label);
+				insertAt++;
+			}
 		}
+		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[2] + ' ' + ssrc_fid[2]);
+		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[1] + ' ' + ssrc_fid[1]);
+		lines.splice(insertAt, 0, 'a=ssrc-group:FID ' + ssrc[0] + ' ' + ssrc_fid[0]);
 		lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
 		sdp = lines.join("\r\n");
 		if(!sdp.endsWith("\r\n"))

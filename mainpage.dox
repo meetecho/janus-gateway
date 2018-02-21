@@ -2956,6 +2956,18 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/davibe/cordova-webrtc-janus-gateway">cordova-webrtc-janus-gateway</a></td>
  * 		<td>cordova application that interfaces with Janus and is based on the PhoneRTC cordova plugin</td>
  * </tr>
+ * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
+ * 		<td><a href="https://github.com/atyenoria/react-native-webrtc-janus-gateway">react-native-webrtc-janus-gateway</a></td>
+ * 		<td>Video conference system for mobile application on react-native-webrtc + Janus Webrtc Gateway</td>
+ * </tr>
+ * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/WorldViews">WorldViews</a></td>
+ * 		<td><a href="https://github.com/WorldViews/JanusMobile">JanusMobile</a></td>
+ * 		<td>react-native based Janus mobile client</td>
+ * </tr>
  * </table>
  * <br/>
  *

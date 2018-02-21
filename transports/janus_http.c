@@ -1170,9 +1170,10 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			basepath = g_strsplit(url, ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = g_malloc0(3);
+			basepath = g_malloc_n(3, sizeof(char *));
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
+			basepath[2] = NULL;
 		}
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
@@ -1520,9 +1521,10 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			basepath = g_strsplit(url, admin_ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = g_malloc0(3);
+			basepath = g_malloc_n(3, sizeof(char *));
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
+			basepath[2] = NULL;
 		}
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
