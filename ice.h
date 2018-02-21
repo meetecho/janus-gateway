@@ -355,6 +355,8 @@ struct janus_ice_stream {
 	janus_rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
 	janus_rtcp_context *video_rtcp_ctx[3];
+	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
+	GHashTable *rtx_nacked[3];
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
