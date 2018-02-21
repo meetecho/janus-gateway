@@ -594,6 +594,7 @@ struct janus_videoroom_srtp_context {
 typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
+	guint64 room_id;	/* Unique room ID */
 	guint64 user_id;	/* Unique ID in the room */
 	guint32 pvt_id;		/* This is sent to the publisher for mapping purposes, but shouldn't be shared with others */
 	gchar *display;		/* Display name (just for fun) */
@@ -1393,12 +1394,19 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 
 static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, gboolean is_leaving, gboolean kicked) {
 	/* we need to check if the room still exists, may have been destroyed already */
+	janus_mutex_lock(&rooms_mutex);
+	if (participant->room_id && !g_hash_table_lookup(rooms, &participant->room_id)) {
+		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", participant->room_id);
+		janus_mutex_unlock(&rooms_mutex);
+		return;
+	}
+	janus_mutex_unlock(&rooms_mutex);
 	if(!participant->room || g_atomic_int_get(&participant->room->destroyed))
 		return;
 	janus_mutex_lock(&participant->room->mutex);
 	json_t *event = json_object();
 	json_object_set_new(event, "videoroom", json_string("event"));
-	json_object_set_new(event, "room", json_integer(participant->room->room_id));
+	json_object_set_new(event, "room", json_integer(participant->room_id));
 	json_object_set_new(event, is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished",
 		json_integer(participant->user_id));
 	janus_videoroom_notify_participants(participant, event);
@@ -3820,6 +3828,7 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				publisher->session = session;
+				publisher->room_id = videoroom->room_id;
 				publisher->room = videoroom;
 				videoroom = NULL;
 				publisher->user_id = user_id;

@@ -251,7 +251,7 @@ $(document).ready(function() {
 										});
 									}
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
@@ -295,7 +295,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
