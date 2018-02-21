@@ -584,6 +584,12 @@ static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response
 		MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 }
 
+/* Static callback that we register to */
+static void janus_http_mhd_panic(void *cls, const char *file, unsigned int line, const char *reason) {
+	JANUS_LOG(LOG_WARN, "[%s]: Error in GNU libmicrohttpd %s:%u: %s\n",
+		JANUS_REST_PACKAGE, file, line, reason);
+}
+
 /* Transport implementation */
 int janus_http_init(janus_transport_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -601,6 +607,9 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
+
+	/* Register a function to detect problems for which MHD would typically abort */
+	MHD_set_panic_func(&janus_http_mhd_panic, NULL);
 
 	/* Read configuration */
 	char filename[255];
