@@ -3424,7 +3424,9 @@ gint main(int argc, char *argv[])
 	if(args_info.token_auth_given) {
 		janus_config_add_item(config, "general", "token_auth", "yes");
 	}
-	// @TODO: token_auth_secret
+	if(args_info.token_auth_secret_given) {
+		janus_config_add_item(config, "general", "token_auth_secret", args_info.token_auth_secret_arg);
+	}
 	if(args_info.cert_pem_given) {
 		janus_config_add_item(config, "certificates", "cert_pem", args_info.cert_pem_arg);
 	}
