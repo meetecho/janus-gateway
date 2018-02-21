@@ -76,7 +76,7 @@ typedef struct janus_rtp_header_extension {
 /*! \brief a=extmap:4 urn:3gpp:video-orientation */
 #define JANUS_RTP_EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
 /*! \brief a=extmap:5 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 */
-#define JANUS_RTP_EXTMAP_CC_EXTENSIONS		"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
+#define JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC	"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
 /*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
 /*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
@@ -142,15 +142,29 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
+/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] transport wide sequence number
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
+	uint16_t *transSeqNum);
 
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_base_seq, v_base_seq_prev;
-	gboolean a_seq_reset, v_seq_reset;
-	gint64 a_last_time, v_last_time;
+	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev, a_prev_ts, a_target_ts, a_start_ts,
+			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev, v_prev_ts, v_target_ts, v_start_ts;
+	uint16_t a_last_seq, a_prev_seq, a_base_seq, a_base_seq_prev,
+			v_last_seq, v_prev_seq, v_base_seq, v_base_seq_prev;
+	gboolean a_seq_reset, a_new_ssrc,
+			v_seq_reset, v_new_ssrc;
+	gint16 a_seq_offset,
+			v_seq_offset;
+	gint32 a_prev_delay, a_active_delay, a_ts_offset,
+			v_prev_delay, v_active_delay, v_ts_offset;
+	gint64 a_last_time, a_reference_time, a_start_time,
+			v_last_time, v_reference_time, v_start_time;
 } janus_rtp_switching_context;
 
 /*! \brief Set (or reset) the context fields to their default values
@@ -163,5 +177,22 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] video Whether this is an audio or a video packet
  * @param[in] step \b deprecated The expected timestamp step */
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
+
+#define RTP_AUDIO_SKEW_TH_MS 40
+#define RTP_VIDEO_SKEW_TH_MS 40
+#define SKEW_DETECTION_WAIT_TIME_SECS 15
+
+/*! \brief Use the context info to compensate for audio source skew, if needed
+ * @param[in] header The RTP header to update
+ * @param[in] context The context to use as a reference
+ * @param[in] now \b The packet arrival monotonic time
+ * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
+int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
+/*! \brief Use the context info to compensate for video source skew, if needed
+ * @param[in] header The RTP header to update
+ * @param[in] context The context to use as a reference
+ * @param[in] now \b The packet arrival monotonic time
+ * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
+int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
 #endif

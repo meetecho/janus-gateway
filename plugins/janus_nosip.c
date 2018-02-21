@@ -722,7 +722,7 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_nosip_message *msg = g_malloc0(sizeof(janus_nosip_message));
+	janus_nosip_message *msg = g_malloc(sizeof(janus_nosip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -935,8 +935,6 @@ static void *janus_nosip_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {

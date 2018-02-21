@@ -91,8 +91,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_TOFFSET;
 					if(strstr(extension, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
 						return JANUS_RTP_EXTMAP_ABS_SEND_TIME;
-					if(strstr(extension, JANUS_RTP_EXTMAP_CC_EXTENSIONS))
-						return JANUS_RTP_EXTMAP_CC_EXTENSIONS;
+					if(strstr(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+						return JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC;
 					if(strstr(extension, JANUS_RTP_EXTMAP_RTP_STREAM_ID))
 						return JANUS_RTP_EXTMAP_RTP_STREAM_ID;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
@@ -139,9 +139,9 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 						if(byte)
 							*byte = buf[hlen+i+1];
 						if(word)
-							*word = *(uint32_t *)(buf+hlen+i);
+							*word = ntohl(*(uint32_t *)(buf+hlen+i));
 						if(ref)
-							*ref = &buf[hlen];
+							*ref = &buf[hlen+i];
 						return 0;
 					}
 					i += 1 + idlen;
@@ -222,6 +222,19 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	return 0;
 }
 
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum) {
+	uint32_t bytes = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL) < 0)
+		return -1;
+	/*  0                   1                   2                   3
+	    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	   |  ID   | L=1   |transport-wide sequence number | zero padding  |
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	*/ 
+	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
+	return 0;
+}
 
 /* RTP context related methods */
 void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
@@ -229,6 +242,192 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 		return;
 	/* Reset the context values */
 	memset(context, 0, sizeof(*context));
+}
+
+int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
+	/* Reset values if a new ssrc has been detected */
+	if (context->a_new_ssrc) {
+		context->a_reference_time = now;
+		context->a_start_ts = 0;
+		context->a_start_time = 0;
+		context->a_active_delay = 0;
+		context->a_prev_delay = 0;
+		context->a_seq_offset = 0;
+		context->a_ts_offset = 0;
+		context->a_target_ts = 0;
+		context->a_new_ssrc = FALSE;
+	}
+
+	/* N 	: a N sequence number jump has been performed */
+	/* 0  	: any new skew compensation has been applied */
+	/* -N  	: a N packet drop must be performed */
+	int exit_status = 0;
+
+	/* Do not execute skew analysis in the first seconds */
+	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+		return 0;
+	} else if (!context->a_start_time) {
+		context->a_start_time = now;
+		context->a_start_ts = context->a_last_ts;
+	}
+
+	/* Skew analysis */
+	/* Are we waiting for a target timestamp? (a negative skew has been evaluated in a previous iteration) */
+	if (context->a_target_ts > 0 && (gint32)(context->a_target_ts - context->a_last_ts) > 0) {
+		context->a_seq_offset--;
+		exit_status = -1;
+	} else {
+		context->a_target_ts = 0;
+		/* Do not execute analysis for out of order packets or multi-packets frame */
+		if (context->a_last_seq == context->a_prev_seq + 1 && context->a_last_ts != context->a_prev_ts) {
+			/* Set the sample rate according to the header */
+			guint32 akhz = 48; /* 48khz for Opus */
+			if(header->type == 0 || header->type == 8 || header->type == 9)
+				akhz = 8;
+			/* Evaluate the local RTP timestamp according to the local clock */
+			guint32 expected_ts = ((now - context->a_start_time)*akhz)/1000 + context->a_start_ts;
+			/* Evaluate current delay */
+			gint32 delay_now = context->a_last_ts - expected_ts;
+			/* Exponentially weighted moving average estimation */
+			gint32 delay_estimate = (31*context->a_prev_delay + delay_now)/32;
+			/* Save previous delay for the next iteration*/
+			context->a_prev_delay = delay_estimate;
+			/* Evaluate the distance between active delay and current delay estimate */
+			gint32 offset = context->a_active_delay - delay_estimate;
+			JANUS_LOG(LOG_HUGE, "audio skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->a_last_ssrc, context->a_last_ts, expected_ts, offset, context->a_ts_offset, context->a_seq_offset);
+			/* Check if the offset has surpassed the threshold */
+			gint32 skew_th = RTP_AUDIO_SKEW_TH_MS*akhz;
+			if (offset >= skew_th) {
+				/* The source is slowing down */
+				/* Update active delay */
+				context->a_active_delay = delay_estimate;
+				/* Adjust ts offset */
+				context->a_ts_offset += skew_th;
+				/* Calculate last ts increase */
+				guint32 ts_incr = context->a_last_ts-context->a_prev_ts;
+				/* Evaluate sequence number jump */
+				guint16 jump = (skew_th+ts_incr-1)/ts_incr;
+				/* Adjust seq num offset */
+				context->a_seq_offset += jump;
+				exit_status = jump;
+			} else if (offset <= -skew_th) {
+				/* The source is speeding up*/
+				/* Update active delay */
+				context->a_active_delay = delay_estimate;
+				/* Adjust ts offset */
+				context->a_ts_offset -= skew_th;
+				/* Set target ts */
+				context->a_target_ts = context->a_last_ts + skew_th;
+				if (context->a_target_ts == 0)
+					context->a_target_ts = 1;
+				/* Adjust seq num offset */
+				context->a_seq_offset--;
+				exit_status = -1;
+			}
+		}
+	}
+
+	/* Skew compensation */
+	/* Fix header timestamp considering the active offset */
+	guint32 fixed_rtp_ts = context->a_last_ts + context->a_ts_offset;
+	header->timestamp = htonl(fixed_rtp_ts);
+	/* Fix header sequence number considering the total offset */
+	guint16 fixed_rtp_seq = context->a_last_seq + context->a_seq_offset;
+	header->seq_number = htons(fixed_rtp_seq);
+
+	return exit_status;
+}
+
+int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
+	/* Reset values if a new ssrc has been detected */
+	if (context->v_new_ssrc) {
+		context->v_reference_time = now;
+		context->v_start_ts = 0;
+		context->v_start_time = 0;
+		context->v_active_delay = 0;
+		context->v_prev_delay = 0;
+		context->v_seq_offset = 0;
+		context->v_ts_offset = 0;
+		context->v_target_ts = 0;
+		context->v_new_ssrc = FALSE;
+	}
+
+	/* N 	: a N sequence numbers jump has been performed */
+	/* 0  	: any new skew compensation has been applied */
+	/* -N  	: a N packets drop must be performed */
+	int exit_status = 0;
+
+	/* Do not execute skew analysis in the first seconds */
+	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+		return 0;
+	} else if (!context->v_start_time) {
+		context->v_start_time = now;
+		context->v_start_ts = context->v_last_ts;
+	}
+
+	/* Skew analysis */
+	/* Are we waiting for a target timestamp? (a negative skew has been evaluated in a previous iteration) */
+	if (context->v_target_ts > 0 && (gint32)(context->v_target_ts - context->v_last_ts) > 0) {
+		context->v_seq_offset--;
+		exit_status = -1;
+	} else {
+		context->v_target_ts = 0;
+		/* Do not execute analysis for out of order packets or multi-packets frame */
+		if (context->v_last_seq == context->v_prev_seq + 1 && context->v_last_ts != context->v_prev_ts) {
+			/* Set the sample rate */
+			guint32 vkhz = 90; /* 90khz */
+			/* Evaluate the local RTP timestamp according to the local clock */
+			guint32 expected_ts = ((now - context->v_start_time)*vkhz)/1000 + context->v_start_ts;
+			/* Evaluate current delay */
+			gint32 delay_now = context->v_last_ts - expected_ts;
+			/* Exponentially weighted moving average estimation */
+			gint32 delay_estimate = (31*context->v_prev_delay + delay_now)/32;
+			/* Save previous delay for the next iteration*/
+			context->v_prev_delay = delay_estimate;
+			/* Evaluate the distance between active delay and current delay estimate */
+			gint32 offset = context->v_active_delay - delay_estimate;
+			JANUS_LOG(LOG_HUGE, "video skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->v_last_ssrc, context->v_last_ts, expected_ts, offset, context->v_ts_offset, context->v_seq_offset);
+			/* Check if the offset has surpassed the threshold */
+			gint32 skew_th = RTP_VIDEO_SKEW_TH_MS*vkhz;
+			if (offset >= skew_th) {
+				/* The source is slowing down */
+				/* Update active delay */
+				context->v_active_delay = delay_estimate;
+				/* Adjust ts offset */
+				context->v_ts_offset += skew_th;
+				/* Calculate last ts increase */
+				guint32 ts_incr = context->v_last_ts-context->v_prev_ts;
+				/* Evaluate sequence number jump */
+				guint16 jump = (skew_th+ts_incr-1)/ts_incr;
+				/* Adjust seq num offset */
+				context->v_seq_offset += jump;
+				exit_status = jump;
+			} else if (offset <= -skew_th) {
+				/* The source is speeding up*/
+				/* Update active delay */
+				context->v_active_delay = delay_estimate;
+				/* Adjust ts offset */
+				context->v_ts_offset -= skew_th;
+				/* Set target ts */
+				context->v_target_ts = context->v_last_ts + skew_th;
+				if (context->v_target_ts == 0)
+					context->v_target_ts = 1;
+				/* Adjust seq num offset */
+				context->v_seq_offset--;
+				exit_status = -1;
+			}
+		}
+	}
+
+	/* Skew compensation */
+	/* Fix header timestamp considering the active offset */
+	guint32 fixed_rtp_ts = context->v_last_ts + context->v_ts_offset;
+	header->timestamp = htonl(fixed_rtp_ts);
+	/* Fix header sequence number considering the total offset */
+	guint16 fixed_rtp_seq = context->v_last_seq + context->v_seq_offset;
+	header->seq_number = htons(fixed_rtp_seq);
+
+	return exit_status;
 }
 
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
@@ -254,13 +453,15 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 			/* How much time since the last video RTP packet? We compute an offset accordingly */
 			if(context->v_last_time > 0) {
 				gint64 time_diff = janus_get_monotonic_time() - context->v_last_time;
-				time_diff = (time_diff/1000)*90;	/* We're assuming 90khz here */
+				time_diff = (time_diff*90)/1000; 	/* We're assuming 90khz here */
 				if(time_diff == 0)
 					time_diff = 1;
 				context->v_base_ts_prev += (guint32)time_diff;
 				context->v_last_ts += (guint32)time_diff;
 				JANUS_LOG(LOG_VERB, "Computed offset for video RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
 			}
+			/* Reset skew compensation data */
+			context->v_new_ssrc = TRUE;
 		}
 		if(context->v_seq_reset) {
 			/* Video sequence number was paused for a while: just update that */
@@ -269,7 +470,9 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 			context->v_base_seq = seq;
 		}
 		/* Compute a coherent timestamp and sequence number */
+		context->v_prev_ts = context->v_last_ts;
 		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev;
+		context->v_prev_seq = context->v_last_seq;
 		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->v_last_ts);
@@ -292,13 +495,16 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 				int akhz = 48;
 				if(header->type == 0 || header->type == 8 || header->type == 9)
 					akhz = 8;	/* We're assuming 48khz here (Opus), unless it's G.711/G.722 (8khz) */
-				time_diff = (time_diff/1000)*(akhz);
+				time_diff = (time_diff*akhz)/1000;
 				if(time_diff == 0)
 					time_diff = 1;
 				context->a_base_ts_prev += (guint32)time_diff;
+				context->a_prev_ts += (guint32)time_diff;
 				context->a_last_ts += (guint32)time_diff;
 				JANUS_LOG(LOG_VERB, "Computed offset for audio RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
 			}
+			/* Reset skew compensation data */
+			context->a_new_ssrc = TRUE;
 		}
 		if(context->a_seq_reset) {
 			/* Audio sequence number was paused for a while: just update that */
@@ -307,7 +513,9 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 			context->a_base_seq = seq;
 		}
 		/* Compute a coherent timestamp and sequence number */
+		context->a_prev_ts = context->a_last_ts;
 		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev;
+		context->a_prev_seq = context->a_last_seq;
 		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
 		header->timestamp = htonl(context->a_last_ts);

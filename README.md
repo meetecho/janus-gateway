@@ -285,20 +285,18 @@ MacOS as well, there are a few aspects to highlight when doing that.
 
 First of all, you can use `brew` to install most of the dependencies:
 
-	brew tap homebrew/boneyard
-	brew install jansson libnice openssl libusrsctp libmicrohttpd \
+	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
 		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
 		libyaml pkg-config gengetopt autoconf automake libtool
 
-For what concerns `libsrtp`, which needs to be installed manually, just
-pass `/usr/local` as a prefix when configuring, and proceed as normal:
+For what concerns libwebsockets, though, make sure that the installed version
+is higher than `2.4.1`, or you might encounter the problems described in
+[this post](https://groups.google.com/forum/#!topic/meetecho-janus/HsFaEXBz4Cg).
+If `brew` doesn't provide a more recent version, you'll have to install
+the library manually.
 
-	[..]
-	./configure --prefix=/usr/local
-	[..]
-
-Finally, you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
-when configuring Janus as well:
+Notice that you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
+when configuring Janus as well, e.g.:
 
 	./configure --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 
@@ -348,11 +346,15 @@ or on the command line:
                                   (experimental)  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not
                                   (default=off)
+	-f, --full-trickle            Do full-trickle instead of half-trickle
+                                  (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not
                                   (default=off)
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
+	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
+                                  support or not  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions
 	-t, --no-media-timer=number   Time (in s) that should pass with no media

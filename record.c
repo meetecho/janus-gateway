@@ -74,8 +74,6 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		type = JANUS_RECORDER_AUDIO;
-		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))
-			codec = "g711";
 	} else if(!strcasecmp(codec, "text")) {
 		/* FIXME We only handle text on data channels, so that's the only thing we can save too */
 		type = JANUS_RECORDER_DATA;
@@ -86,10 +84,6 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	}
 	/* Create the recorder */
 	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
-	if(rc == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;

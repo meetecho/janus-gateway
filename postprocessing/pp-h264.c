@@ -127,8 +127,7 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	int index = 1;
 	int profile_idc = *(buffer+index);
 	if(profile_idc != 66) {
-		JANUS_LOG(LOG_ERR, "Profile is not baseline (%d), unsupported stream\n", profile_idc);
-		exit(1);
+		JANUS_LOG(LOG_WARN, "Profile is not baseline (%d != 66)\n", profile_idc);
 	}
 	/* Then let's skip 2 bytes and evaluate/skip the rest */
 	index += 3;
