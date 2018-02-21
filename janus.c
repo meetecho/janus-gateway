@@ -1871,7 +1871,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token(token_value)) {
+			if(!janus_auth_check_token_exists(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -1952,7 +1952,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token(token_value)) {
+			if(!janus_auth_check_token_exists(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -3424,6 +3424,7 @@ gint main(int argc, char *argv[])
 	if(args_info.token_auth_given) {
 		janus_config_add_item(config, "general", "token_auth", "yes");
 	}
+	// @TODO: token_auth_secret
 	if(args_info.cert_pem_given) {
 		janus_config_add_item(config, "certificates", "cert_pem", args_info.cert_pem_arg);
 	}
@@ -3600,7 +3601,12 @@ gint main(int argc, char *argv[])
 	}
 	/* Also check if the token based authentication mechanism needs to be enabled */
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
-	janus_auth_init(item && item->value && janus_is_true(item->value));
+	gboolean auth_enabled = item && item->value && janus_is_true(item->value);
+	item = janus_config_get_item_drilldown(config, "general", "token_auth_secret");
+	const char* auth_secret = NULL;
+	if (item && item->value)
+		auth_secret = item->value;
+	janus_auth_init(auth_enabled, auth_secret);
 
 	/* Initialize the recorder code */
 	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");

@@ -18,23 +18,34 @@
 #include "auth.h"
 #include "debug.h"
 #include "mutex.h"
+#include "utils.h"
+
+#include <string.h>
+#include <openssl/hmac.h>
 
 /* Hash table to contain the tokens to match */
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
 static gboolean auth_enabled = FALSE;
 static janus_mutex mutex;
+static char *auth_secret = NULL;
 
 static void janus_auth_free_token(char *token) {
 	g_free(token);
 }
 
 /* Setup */
-void janus_auth_init(gboolean enabled) {
+void janus_auth_init(gboolean enabled, const char *secret) {
 	if(enabled) {
-		JANUS_LOG(LOG_INFO, "Token based authentication enabled\n");
-		tokens = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
-		allowed_plugins = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
-		auth_enabled = TRUE;
+		if(secret == NULL) {
+			JANUS_LOG(LOG_INFO, "Stored-Token based authentication enabled\n");
+			tokens = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
+			allowed_plugins = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)janus_auth_free_token, NULL);
+			auth_enabled = TRUE;
+		} else {
+			JANUS_LOG(LOG_INFO, "Signed-Token based authentication enabled\n");
+			auth_secret = g_strdup(secret);
+			auth_enabled = TRUE;
+		}
 	} else {
 		JANUS_LOG(LOG_WARN, "Token based authentication disabled\n");
 	}
@@ -53,13 +64,77 @@ void janus_auth_deinit(void) {
 	if(allowed_plugins != NULL)
 		g_hash_table_destroy(allowed_plugins);
 	allowed_plugins = NULL;
+	if(auth_secret != NULL)
+		g_free(auth_secret);
+	auth_secret = NULL;
 	janus_mutex_unlock(&mutex);
+}
+
+gboolean janus_auth_check_signature(const char *token) {
+	gchar *token_signature = strchr(token, ':') + 1;
+	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
+	gchar **list = g_strsplit(token_metadata, ",", 2);
+	/* need at least an expiry timestamp */
+	if(!list[0]) {
+		JANUS_LOG(LOG_ERR, "Malformed signed token\n");
+		return FALSE;
+	}
+	int expiry_time = atoi(list[0]);
+	int real_time = janus_get_real_time() / 1000000;
+	if(real_time > expiry_time)
+		return FALSE;
+	/* verify HMAC-SHA1 */
+	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned int len;
+	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), token_metadata, strlen(token_metadata), signature, &len);
+	gchar *base64 = g_base64_encode(signature, len);
+	gboolean result = janus_strcmp_const_time(token_signature, base64);
+	g_strfreev(list);
+	g_free(base64);
+	g_free(token_metadata);
+	return result;
+}
+
+gboolean janus_auth_check_signature_contains(const char *token, const char *desc) {
+	gchar *token_signature = strchr(token, ':') + 1;
+	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
+	gchar **list = g_strsplit(token_metadata, ",", 0);
+	/* need at least an expiry timestamp */
+	if(!list[0]) {
+		JANUS_LOG(LOG_ERR, "Malformed signed token\n");
+		return FALSE;
+	}
+	int expiry_time = atoi(list[0]);
+	int real_time = janus_get_real_time() / 1000000;
+	if(real_time > expiry_time)
+		return FALSE;
+
+	gboolean result = FALSE;
+	int i = 1;
+	for(i = 1; list[i]; i++) {
+		if (!strcmp(desc, list[i])) {
+			result = TRUE;
+			break;
+		}
+	}
+	if (!result)
+		return result;
+	/* verify HMAC-SHA1 */
+	unsigned char signature[EVP_MAX_MD_SIZE];
+	unsigned int len;
+	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), token_metadata, strlen(token_metadata), signature, &len);
+	gchar *base64 = g_base64_encode(signature, len);
+	result = janus_strcmp_const_time(token_signature, base64);
+	g_strfreev(list);
+	g_free(base64);
+	g_free(token_metadata);
+	return result;
 }
 
 /* Tokens manipulation */
 gboolean janus_auth_add_token(const char *token) {
 	if(!auth_enabled || tokens == NULL) {
-		JANUS_LOG(LOG_ERR, "Can't add token, authentication mechanism is disabled\n");
+		JANUS_LOG(LOG_ERR, "Can't add token, stored-authentication mechanism is disabled\n");
 		return FALSE;
 	}
 	if(token == NULL)
@@ -76,7 +151,7 @@ gboolean janus_auth_add_token(const char *token) {
 	return TRUE;
 }
 
-gboolean janus_auth_check_token(const char *token) {
+gboolean janus_auth_check_token_exists(const char *token) {
 	/* Always TRUE if the mechanism is disabled, of course */
 	if(!auth_enabled || tokens == NULL)
 		return TRUE;
@@ -87,6 +162,16 @@ gboolean janus_auth_check_token(const char *token) {
 	}
 	janus_mutex_unlock(&mutex);
 	return FALSE;
+}
+
+gboolean janus_auth_check_token(const char *token) {
+	/* Always TRUE if the mechanism is disabled, of course */
+	if(!auth_enabled)
+		return TRUE;
+	if (tokens == NULL) {
+		return janus_auth_check_signature(token);
+	}
+	return janus_auth_check_token_exists(token);
 }
 
 GList *janus_auth_list_tokens(void) {
@@ -110,7 +195,7 @@ GList *janus_auth_list_tokens(void) {
 
 gboolean janus_auth_remove_token(const char *token) {
 	if(!auth_enabled || tokens == NULL) {
-		JANUS_LOG(LOG_ERR, "Can't remove token, authentication mechanism is disabled\n");
+		JANUS_LOG(LOG_ERR, "Can't remove token, stored-authentication mechanism is disabled\n");
 		return FALSE;
 	}
 	janus_mutex_lock(&mutex);
@@ -126,7 +211,7 @@ gboolean janus_auth_remove_token(const char *token) {
 }
 
 /* Plugins access */
-gboolean janus_auth_allow_plugin(const char *token, void *plugin) {
+gboolean janus_auth_allow_plugin(const char *token, janus_plugin *plugin) {
 	if(!auth_enabled || allowed_plugins == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't allow access to plugin, authentication mechanism is disabled\n");
 		return FALSE;
@@ -160,10 +245,12 @@ gboolean janus_auth_allow_plugin(const char *token, void *plugin) {
 	return TRUE;
 }
 
-gboolean janus_auth_check_plugin(const char *token, void *plugin) {
+gboolean janus_auth_check_plugin(const char *token, janus_plugin *plugin) {
 	/* Always TRUE if the mechanism is disabled, of course */
-	if(!auth_enabled || allowed_plugins == NULL)
+	if(!auth_enabled)
 		return TRUE;
+	if (allowed_plugins == NULL)
+		return janus_auth_check_signature_contains(token, plugin->get_package());
 	janus_mutex_lock(&mutex);
 	if(!g_hash_table_lookup(tokens, token)) {
 		janus_mutex_unlock(&mutex);
@@ -195,7 +282,7 @@ GList *janus_auth_list_plugins(const char *token) {
 	return list;
 }
 
-gboolean janus_auth_disallow_plugin(const char *token, void *plugin) {
+gboolean janus_auth_disallow_plugin(const char *token, janus_plugin *plugin) {
 	if(!auth_enabled || allowed_plugins == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't disallow access to plugin, authentication mechanism is disabled\n");
 		return FALSE;
