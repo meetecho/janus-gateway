@@ -30,7 +30,9 @@ debug_level = 4				; Debug/logging level, valid values are 0-7
 ;							mechanism to force users to always provide
 ;							a valid token in all requests. Useful if
 ;							you want to authenticate requests from web
-;							users. For this to work, the Admin API MUST
+;							users.
+;token_auth_secret = janus	; Use HMAC-SHA1 signed tokens (with token_auth)
+;							without this, the Admin API MUST
 ;							be enabled, as tokens are added and removed
 ;							through messages sent there.
 admin_secret = janusoverlord	; String that all Janus requests must contain
