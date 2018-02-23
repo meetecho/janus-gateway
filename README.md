@@ -309,7 +309,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.3.0
+	janus 0.3.1
 
 	Usage: janus [OPTIONS]...
 
