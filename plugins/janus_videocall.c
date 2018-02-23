@@ -898,6 +898,9 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+		/* Save the frame if we're recording */
+		janus_recorder_save_frame(session->drc, buf, len);
+		/* Forward the packet to the peer */
 		gateway->relay_data(session->peer->handle, text, strlen(text));
 		g_free(text);
 	}
