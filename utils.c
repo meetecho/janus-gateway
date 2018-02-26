@@ -630,7 +630,7 @@ gboolean janus_vp9_is_keyframe(char* buffer, int len) {
 				int vp9h = ntohs(*h);
 				buffer += 2;
 				if(vp9w || vp9h) {
-					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
 					return TRUE;
 				}
 			}
