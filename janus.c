@@ -4248,8 +4248,8 @@ gint main(int argc, char *argv[])
 		exit(1);	/* FIXME Should we really give up? */
 	}
 	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
-	if(!admin_api_enabled && janus_auth_is_enabled()) {
-		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
+	if(!admin_api_enabled && janus_auth_is_stored_mode()) {
+		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the stored token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API or set the token auth secret.\n");
 		exit(1);	/* FIXME Should we really give up? */
 	}
 

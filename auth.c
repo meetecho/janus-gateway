@@ -56,6 +56,10 @@ gboolean janus_auth_is_enabled(void) {
 	return auth_enabled;
 }
 
+gboolean janus_auth_is_stored_mode(void) {
+  return auth_enabled && tokens != NULL;
+}
+
 void janus_auth_deinit(void) {
 	janus_mutex_lock(&mutex);
 	if(tokens != NULL)
