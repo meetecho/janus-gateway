@@ -36,13 +36,25 @@
 #endif
 
 #if LIBAVCODEC_VER_AT_LEAST(56, 56)
+#ifndef AV_CODEC_FLAG_GLOBAL_HEADER
 #define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
+#endif
+#ifndef AV_INPUT_BUFFER_PADDING_SIZE
 #define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
 #endif
+#endif
+
+#if LIBAVCODEC_VER_AT_LEAST(57, 14)
+#define USE_CODECPAR
+#endif
+
 
 /* MP4 output */
 static AVFormatContext *fctx;
 static AVStream *vStream;
+#ifdef USE_CODECPAR
+static AVCodecContext *vEncoder;
+#endif
 static int max_width = 0, max_height = 0, fps = 0;
 
 
@@ -70,6 +82,30 @@ int janus_pp_h264_create(char *destination) {
 		return -1;
 	}
 	snprintf(fctx->filename, sizeof(fctx->filename), "%s", destination);
+#ifdef USE_CODECPAR
+	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	if(!codec) {
+		/* Error opening video codec */
+		JANUS_LOG(LOG_ERR, "Encoder not available\n");
+		return -1;
+	}
+	fctx->video_codec = codec;
+	fctx->oformat->video_codec = codec->id;
+	vStream = avformat_new_stream(fctx, codec);
+	vStream->id = fctx->nb_streams-1;
+	vEncoder = avcodec_alloc_context3(codec);
+	vEncoder->width = max_width;
+	vEncoder->height = max_height;
+	vEncoder->time_base = (AVRational){ 1, fps };
+	vEncoder->pix_fmt = AV_PIX_FMT_YUV420P;
+	vEncoder->flags |= CODEC_FLAG_GLOBAL_HEADER;
+	if(avcodec_open2(vEncoder, codec, NULL) < 0) {
+		/* Error opening video codec */
+		JANUS_LOG(LOG_ERR, "Encoder error\n");
+		return -1;
+	}
+	avcodec_parameters_from_context(vStream->codecpar, vEncoder);
+#else
 	vStream = avformat_new_stream(fctx, 0);
 	if(vStream == NULL) {
 		JANUS_LOG(LOG_ERR, "Error adding stream\n");
@@ -93,6 +129,7 @@ int janus_pp_h264_create(char *destination) {
 	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
 	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+#endif
 	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
 		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
 		return -1;
@@ -417,10 +454,17 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 void janus_pp_h264_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
+#ifdef USE_CODECPAR
+	if(vEncoder != NULL)
+		avcodec_close(vEncoder);
+#else
 	if(vStream != NULL && vStream->codec != NULL)
 		avcodec_close(vStream->codec);
+#endif
 	if(fctx != NULL && fctx->streams[0] != NULL) {
+#ifndef USE_CODECPAR
 		av_free(fctx->streams[0]->codec);
+#endif
 		av_free(fctx->streams[0]);
 	}
 	if(fctx != NULL) {
