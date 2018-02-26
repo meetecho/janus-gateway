@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.3.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.3.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -17,7 +17,7 @@ LT_INIT
 
 JANUS_VERSION=30
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.3.0"
+JANUS_VERSION_STRING="0.3.1"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
