@@ -52,7 +52,6 @@ var janus = null;
 var streaming = null;
 var opaqueId = "streamingtest-"+Janus.randomString(12);
 
-var started = false;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -65,10 +64,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
