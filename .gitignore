@@ -4,6 +4,7 @@ version.c
 docs/html/
 
 /janus
+/janus-cfgconv
 /janus-pp-rec
 /plugins/*.so
 /transports/*.so

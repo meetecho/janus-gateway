@@ -160,6 +160,28 @@ janus_LDADD = \
 
 man1_MANS = janus.1
 
+bin_PROGRAMS += janus-cfgconv
+
+janus_cfgconv_SOURCES = \
+	janus-cfgconv.c \
+	config.c \
+	log.c \
+	utils.c \
+	version.c \
+	$(NULL)
+
+janus_cfgconv_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(JANUS_CFLAGS) \
+	$(NULL)
+
+janus_cfgconv_LDADD = \
+	$(JANUS_LIBS) \
+	$(JANUS_MANUAL_LIBS) \
+	$(NULL)
+
+man1_MANS += janus-cfgconv.1
+
 BUILT_SOURCES = cmdline.c cmdline.h version.c
 
 cmdline.c: janus.c
