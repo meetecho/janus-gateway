@@ -31,6 +31,10 @@
 	 (LIBAVCODEC_VERSION_MAJOR == major && \
 	  LIBAVCODEC_VERSION_MINOR >= minor))
 
+#if LIBAVCODEC_VER_AT_LEAST(57, 14)
+#define USE_CODECPAR
+#endif
+
 
 /* G.722 decoder */
 static AVCodec *dec_codec;			/* FFmpeg decoding codec */
@@ -178,16 +182,27 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		AVPacket avpacket;
 		avpacket.data = (uint8_t *)buffer;
 		avpacket.size = bytes;
-		int err = 0, got_frame = 0;
+		int err = 0;
 #if LIBAVCODEC_VER_AT_LEAST(55,28)
 		AVFrame *frame = av_frame_alloc();
 #else
 		AVFrame *frame = avcodec_alloc_frame();
 #endif
+#ifdef USE_CODECPAR
+		err = avcodec_send_packet(dec_ctx, &avpacket);
+		if(err < 0) {
+			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
+		} else {
+			err = avcodec_receive_frame(dec_ctx, frame);
+		}
+		if(err > -1) {
+#else
+		int got_frame = 0;
 		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, &avpacket);
 		if(err < 0 || !got_frame) {
 			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
 		} else {
+#endif
 			if(wav_file != NULL) {
 				int data_size = av_get_bytes_per_sample(dec_ctx->sample_fmt);
 				int i=0, ch=0;

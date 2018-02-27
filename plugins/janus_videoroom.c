@@ -13,20 +13,10 @@
  * listeners) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
  * 
- * For what concerns the subscriber side, there are two different ways to
- * attach to a publisher's feed: a generic 'listener', which can attach to
- * a single feed, and a more complex 'Multiplexed listener', which instead can
- * attach to more feeds using the same PeerConnection. The generic 'listener'
- * is the default, which means that if you want to watch more feeds at the
+ * For what concerns the subscriber side, there's a generic 'listener', which can attach to
+ * a single feed, which means that if you want to watch more feeds at the
  * same time, you'll need to create multiple 'listeners' to attach at any
- * of them. The 'Multiplexed listener', instead, is a more complex alternative
- * that exploits the so called RTCWEB 'Plan B', which multiplexes more
- * streams on a single PeerConnection and in the SDP: while more efficient in terms of
- * resources, though, this approach is experimental, and currently only
- * available on Google Chrome, so use it wisely.
- * \note As of now, work on Plan B is still going on, and as such its support in Janus
- * is flaky to say the least. Don't try to attach as a Multiplexed listener or bad
- * things will probably happen!
+ * of them.
  * 
  * Considering that this plugin allows for several different WebRTC PeerConnections
  * to be on at the same time for the same peer (specifically, each peer

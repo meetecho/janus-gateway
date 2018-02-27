@@ -312,7 +312,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.3.0
+	janus 0.3.1
 
 	Usage: janus [OPTIONS]...
 
@@ -320,6 +320,8 @@ or on the command line:
 	-V, --version                 Print version and exit
 	-b, --daemon                  Launch Janus in background as a daemon
                                   (default=off)
+	-p, --pid-file=path           Open the specified PID file when starting Janus
+                                  (default=none)
 	-N, --disable-stdout          Disable stdout based logging  (default=off)
 	-L, --log-file=path           Log to the specified file (default=stdout only)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
@@ -362,6 +364,9 @@ or on the command line:
                                   notifies you about this
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
+	-n, --server-name=name        Public name of this Janus instance
+                                  (default=MyJanusInstance)
+	-s, --session-timeout=number  Session timeout value, in seconds (default=60)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging,
                                   7=maximum debug level; default=4)
 	-D, --debug-timestamps        Enable debug/logging timestamps  (default=off)

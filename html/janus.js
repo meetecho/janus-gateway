@@ -1352,15 +1352,35 @@ function Janus(gatewayCallbacks) {
 			// We only need to update the existing stream
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
-				Janus.log("Adding audio track:", stream.getAudioTracks()[0]);
 				config.myStream.addTrack(stream.getAudioTracks()[0]);
-				config.pc.addTrack(stream.getAudioTracks()[0], stream);
+				if(media.replaceAudio && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+					Janus.log("Adding audio track:", stream.getAudioTracks()[0]);
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "audio") {
+							s.replaceTrack(stream.getAudioTracks()[0]);
+						}
+					}
+				} else {
+					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
+					config.pc.addTrack(stream.getAudioTracks()[0], stream);
+				}
 			}
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
-				Janus.log("Adding video track:", stream.getVideoTracks()[0]);
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
-				config.pc.addTrack(stream.getVideoTracks()[0], stream);
+				if(media.replaceVideo && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+					Janus.log("Replacing video track:", stream.getVideoTracks()[0]);
+					for(var index in config.pc.getSenders()) {
+						var s = config.pc.getSenders()[index];
+						if(s && s.track && s.track.kind === "video") {
+							s.replaceTrack(stream.getVideoTracks()[0]);
+						}
+					}
+				} else {
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					config.pc.addTrack(stream.getVideoTracks()[0], stream);
+				}
 			}
 		}
 		// If we still need to create a PeerConnection, let's do that
@@ -1638,11 +1658,18 @@ function Janus(gatewayCallbacks) {
 					} catch(e) {};
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "audio") {
-							Janus.log("Removing audio sender:", s);
-							config.pc.removeTrack(s);
+					var ra = true;
+					if(media.replaceAudio && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+						// On Firefox we can use replaceTrack
+						ra = false;
+					}
+					if(ra) {
+						for(var index in config.pc.getSenders()) {
+							var s = config.pc.getSenders()[index];
+							if(s && s.track && s.track.kind === "audio") {
+								Janus.log("Removing audio sender:", s);
+								config.pc.removeTrack(s);
+							}
 						}
 					}
 				}
@@ -1657,11 +1684,18 @@ function Janus(gatewayCallbacks) {
 					} catch(e) {};
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "video") {
-							Janus.log("Removing video sender:", s);
-							config.pc.removeTrack(s);
+					var rv = true;
+					if(media.replaceVideo && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+						// On Firefox we can use replaceTrack
+						rv = false;
+					}
+					if(rv) {
+						for(var index in config.pc.getSenders()) {
+							var s = config.pc.getSenders()[index];
+							if(s && s.track && s.track.kind === "video") {
+								Janus.log("Removing video sender:", s);
+								config.pc.removeTrack(s);
+							}
 						}
 					}
 				}
