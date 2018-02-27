@@ -1,0 +1,26 @@
+# You can also control a Janus instance using Unix Sockets. The only
+# aspect you need to configure here is the path of the Unix Sockets
+# server. Notice that by default the interface is disabled, as you need
+# to specify the path(s) to bind to for the API(s).
+
+general:
+# Whether to enable the Unix Sockets interface for Janus API clients
+    enabled: no
+# Whether the JSON messages should be indented (default),
+# plain (no indentation) or compact (no indentation and no spaces)
+    json: indented
+# Path to bind to (Janus API)
+    #path: /path/to/ux-janusapi
+# SOCK_SEQPACKET (default) or SOCK_DGRAM?
+    #type: SOCK_SEQPACKET
+
+# As with other transport plugins, you can use Unix Sockets to interact
+# with the Admin API as well: in case you're interested in it, a different
+# path needs to be provided.
+admin:
+# Whether to enable the Unix Sockets interface for Admin API clients
+    admin_enabled: no
+# Path to bind to (Admin API)
+    #admin_path: /path/to/ux-janusadmin
+# SOCK_SEQPACKET (default) or SOCK_DGRAM?
+    #admin_type: SOCK_SEQPACKET
