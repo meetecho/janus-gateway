@@ -126,7 +126,7 @@ secret = adminpwd
 ;videoport = 8004
 ;videopt = 126
 ;videortpmap = H264/90000
-;videofmtp = profile-level-id=42e01f\;packetization-mode=1
+;videofmtp = profile-level-id=42e01f;packetization-mode=1
 
 ;
 ; This is a sample configuration for Opus/VP8 multicast streams
