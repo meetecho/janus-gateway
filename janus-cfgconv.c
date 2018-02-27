@@ -74,10 +74,10 @@ int main(int argc, char *argv[])
 	config->is_yaml = strstr(destination, ".yaml") != NULL;
 	/* Remove extension: janus_config_save adds it for us */
 	char *target = g_strdup(destination);
-	char *extension = config->is_yaml ? strstr(destination, ".yaml") : strstr(destination, ".cfg");
+	char *extension = config->is_yaml ? strstr(target, ".yaml") : strstr(target, ".cfg");
 	*extension = '\0';
 	/* Save to destination */
-	if(janus_config_save(config, NULL, destination) < 0) {
+	if(janus_config_save(config, NULL, target) < 0) {
 		g_free(target);
 		janus_config_destroy(config);
 		JANUS_LOG(LOG_ERR, "Error saving converted file\n");
@@ -85,16 +85,16 @@ int main(int argc, char *argv[])
 	}
 	janus_config_destroy(config);
 	/* Done */
-	FILE *file = fopen(target, "rb");
+	FILE *file = fopen(destination, "rb");
 	if(file == NULL) {
 		g_free(target);
-		JANUS_LOG(LOG_WARN, "No destination file %s??\n", target);
+		JANUS_LOG(LOG_WARN, "No destination file %s??\n", destination);
 		exit(1);
 	}
 	fseek(file, 0L, SEEK_END);
 	size_t fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	JANUS_LOG(LOG_INFO, "%s is %zu bytes\n", target, fsize);
+	JANUS_LOG(LOG_INFO, "%s is %zu bytes\n", destination, fsize);
 	fclose(file);
 	g_free(target);
 

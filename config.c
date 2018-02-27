@@ -13,6 +13,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <libgen.h>
 
 #include <yaml.h>
 
@@ -22,11 +23,8 @@
 
 
 /* Filename helper */
-static char *get_filename(const char *path) {
-	char *filename = NULL;
-	if(path)
-		filename = strrchr(path, '/')+1;
-	return filename;
+static char *get_filename(char *path) {
+	return basename(path);
 }
 
 static gboolean is_yaml_config(const char *path) {
@@ -85,14 +83,17 @@ static void janus_config_free_category(gpointer data) {
 janus_config *janus_config_parse(const char *config_file) {
 	if(config_file == NULL)
 		return NULL;
-	char *filename = get_filename(config_file);
+	char *tmp_filename = g_strdup(config_file);
+	char *filename = get_filename(tmp_filename);
 	if(filename == NULL) {
+		g_free(tmp_filename);
 		JANUS_LOG(LOG_ERR, "Invalid filename %s\n", config_file);
 		return NULL;
 	}
 	/* Open file */
 	FILE *file = fopen(config_file, "rt");
 	if(!file) {
+		g_free(tmp_filename);
 		JANUS_LOG(LOG_ERR, "  -- Error reading configuration file '%s'... error %d (%s)\n", filename, errno, strerror(errno));
 		return NULL;
 	}
@@ -324,10 +325,12 @@ janus_config *janus_config_parse(const char *config_file) {
 		}
 	}
 done:
+	g_free(tmp_filename);
 	fclose(file);
 	return jc;
 
 error:
+	g_free(tmp_filename);
 	fclose(file);
 	janus_config_destroy(jc);
 	return NULL;
@@ -605,10 +608,12 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 				}
 				if(c->items == NULL) {
 					/* Empty category */
-					yaml_scalar_event_initialize(&output_event,
-						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)"",
-						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
-					yaml_emitter_emit(&emitter, &output_event);
+					if(config->is_yaml) {
+						yaml_scalar_event_initialize(&output_event,
+							NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)"",
+							-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+						yaml_emitter_emit(&emitter, &output_event);
+					}
 				} else {
 					/* None-empty category */
 					if(config->is_yaml) {
