@@ -349,6 +349,14 @@ AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
               [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or remove --enable-docs])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
+if test "x$enable_docs" = "xyes"; then
+	doxygen_version=$($DOXYGEN --version)
+	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
+					   [],
+					   [],
+					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
+					  )
+fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
               [gengetopt],
