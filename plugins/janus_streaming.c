@@ -1331,6 +1331,9 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 	if(mp) {
 		json_object_set_new(info, "mountpoint_id", json_integer(mp->id));
 		json_object_set_new(info, "mountpoint_name", mp->name ? json_string(mp->name) : NULL);
+		janus_mutex_lock(&mp->mutex);
+		json_object_set_new(info, "mountpoint_listeners", json_integer(mp->listeners ? g_list_length(mp->listeners) : 0);
+		janus_mutex_unlock(&mp->mutex);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	janus_mutex_unlock(&sessions_mutex);
