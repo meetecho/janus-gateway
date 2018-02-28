@@ -265,6 +265,7 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 		salt_length = SRTP_MASTER_SALT_LENGTH;
 		master_length = SRTP_MASTER_LENGTH;
 		*profile = g_strdup("AES_CM_128_HMAC_SHA1_80");
+#ifdef HAVE_SRTP_AESGCM
 	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_128_GCM) {
 		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
 		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
@@ -275,8 +276,9 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
 		master_length = SRTP_AESGCM256_MASTER_LENGTH;
 		*profile = g_strdup("AEAD_AES_256_GCM");
+#endif
 	} else {
-		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unknown SRTP profile\n", session);
+		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unsupported SRTP profile\n", session);
 		return -2;
 	}
 	JANUS_LOG(LOG_WARN, "[NoSIP-%p] %s\n", session, *profile);
@@ -296,6 +298,7 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
 			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
 			break;
+#ifdef HAVE_SRTP_AESGCM
 		case JANUS_SRTP_AEAD_AES_128_GCM:
 			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
 			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
@@ -304,9 +307,10 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
 			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
 			break;
+#endif
 		default:
 			/* Will never happen? */
-			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unknown SRTP profile\n", session);
+			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unsupported SRTP profile\n", session);
 			break;
 	}
 	policy->ssrc.type = ssrc_any_inbound;
@@ -346,6 +350,7 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 		key_length = SRTP_MASTER_KEY_LENGTH;
 		salt_length = SRTP_MASTER_SALT_LENGTH;
 		master_length = SRTP_MASTER_LENGTH;
+#ifdef HAVE_SRTP_AESGCM
 	} else if(!strcasecmp(profile, "AEAD_AES_128_GCM")) {
 		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
 		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
@@ -356,8 +361,9 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
 		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
 		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+#endif
 	} else {
-		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unknown SRTP profile %s\n", session, profile);
+		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unsupported SRTP profile %s\n", session, profile);
 		return -2;
 	}
 	JANUS_LOG(LOG_WARN, "[NoSIP-%p] Key/Salt/Master: %zu/%zu/%zu\n",
@@ -381,6 +387,7 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
 			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
 			break;
+#ifdef HAVE_SRTP_AESGCM
 		case JANUS_SRTP_AEAD_AES_128_GCM:
 			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
 			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
@@ -389,9 +396,10 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
 			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
 			break;
+#endif
 		default:
 			/* Will never happen? */
-			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unknown SRTP profile\n", session);
+			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unsupported SRTP profile\n", session);
 			break;
 	}
 	policy->ssrc.type = ssrc_any_inbound;
@@ -1137,10 +1145,12 @@ static void *janus_nosip_handler(void *data) {
 								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
 							} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
 								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+#ifdef HAVE_SRTP_AESGCM
 							} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
 								srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
 							} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
 								srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+#endif
 							} else {
 								JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
 								error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;

@@ -328,6 +328,9 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	crypto_lib = "BoringSSL";
 #endif
 	JANUS_LOG(LOG_INFO, "Crypto: %s\n", crypto_lib);
+#ifndef HAVE_SRTP_AESGCM
+	JANUS_LOG(LOG_WARN, "The libsrtp installation does not support AES-GCM profiles\n");
+#endif
 
 	/* Go on and create the DTLS context */
 #if JANUS_USE_OPENSSL_PRE_1_1_API
@@ -341,7 +344,11 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	}
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
 	SSL_CTX_set_tlsext_use_srtp(ssl_ctx,
+#ifdef HAVE_SRTP_AESGCM
 		"SRTP_AEAD_AES_256_GCM:SRTP_AEAD_AES_128_GCM:SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
+#else
+		"SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
+#endif
 
 	if(!server_pem && !server_key) {
 		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
@@ -697,6 +704,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						salt_length = SRTP_MASTER_SALT_LENGTH;
 						master_length = SRTP_MASTER_LENGTH;
 						break;
+#ifdef HAVE_SRTP_AESGCM
 					case SRTP_AEAD_AES_256_GCM:
 						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
 						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
@@ -707,9 +715,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
 						master_length = SRTP_AESGCM128_MASTER_LENGTH;
 						break;
+#endif
 					default:
 						/* Will never happen? */
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
 						break;
 				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Key/Salt/Master: %d/%d/%d\n",
@@ -747,6 +756,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->remote_policy.rtp));
 						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtcp));
 						break;
+#ifdef HAVE_SRTP_AESGCM
 					case SRTP_AEAD_AES_256_GCM:
 						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtp));
 						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtcp));
@@ -755,9 +765,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtp));
 						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtcp));
 						break;
+#endif
 					default:
 						/* Will never happen? */
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %s\n", handle->handle_id, srtp_profile->name);
 						break;
 				}
 				dtls->remote_policy.ssrc.type = ssrc_any_inbound;
@@ -780,6 +791,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->local_policy.rtp));
 						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtcp));
 						break;
+#ifdef HAVE_SRTP_AESGCM
 					case SRTP_AEAD_AES_256_GCM:
 						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtp));
 						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtcp));
@@ -788,9 +800,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtp));
 						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtcp));
 						break;
+#endif
 					default:
 						/* Will never happen? */
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %s\n", handle->handle_id, srtp_profile->name);
 						break;
 				}
 				dtls->local_policy.ssrc.type = ssrc_any_outbound;
