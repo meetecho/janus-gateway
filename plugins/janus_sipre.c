@@ -162,6 +162,7 @@ static struct janus_json_parameter call_parameters[] = {
 	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"srtp", JANUS_JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
 	/* The following are only needed in case "guest" registrations
 	 * still need an authenticated INVITE for some reason */
 	{"secret", JSON_STRING, 0},
@@ -478,6 +479,7 @@ typedef struct janus_sipre_media {
 	gboolean ready;
 	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
+	janus_srtp_profile srtp_profile;
 	gboolean on_hold;
 	gboolean has_audio;
 	int audio_rtp_fd, audio_rtcp_fd;
@@ -488,7 +490,6 @@ typedef struct janus_sipre_media {
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
-	int audio_srtp_suite_in, audio_srtp_suite_out;
 	gboolean audio_send;
 	janus_sdp_mdirection pre_hold_audio_dir;
 	gboolean has_video;
@@ -500,7 +501,6 @@ typedef struct janus_sipre_media {
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
-	int video_srtp_suite_in, video_srtp_suite_out;
 	gboolean video_send;
 	janus_sdp_mdirection pre_hold_video_dir;
 	janus_rtp_switching_context context;
@@ -536,16 +536,65 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* SRTP stuff (in case we need SDES) */
-static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean video, char **crypto) {
+static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean video, char **profile, char **crypto) {
 	if(session == NULL)
 		return -1;
+	/* Which SRTP profile are we going to negotiate? */
+	int key_length = 0, salt_length = 0, master_length = 0;
+	if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_32) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_32");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_80) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_80");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_128_GCM) {
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_128_GCM");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_256_GCM) {
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_256_GCM");
+	} else {
+		JANUS_LOG(LOG_ERR, "[SIPre-%s] Unknown SRTP profile\n", session->account.username);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] %s\n", session->account.username, *profile);
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] Key/Salt/Master: %d/%d/%d\n",
+		session->account.username, master_length, key_length, salt_length);
 	/* Generate key/salt */
-	uint8_t *key = g_malloc0(SRTP_MASTER_LENGTH);
-	srtp_crypto_get_random(key, SRTP_MASTER_LENGTH);
+	uint8_t *key = g_malloc0(master_length);
+	srtp_crypto_get_random(key, master_length);
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_local_policy : &session->media.audio_local_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Unknown SRTP profile\n", session->account.username);
+			break;
+	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = key;
 	policy->next = NULL;
@@ -554,38 +603,82 @@ static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean vid
 	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+		g_free(*profile);
+		*profile = NULL;
 		g_free(key);
 		policy->key = NULL;
 		return -2;
 	}
 	/* Base64 encode the salt */
-	*crypto = g_base64_encode(key, SRTP_MASTER_LENGTH);
+	*crypto = g_base64_encode(key, master_length);
 	if((video && session->media.video_srtp_out) || (!video && session->media.audio_srtp_out)) {
 		JANUS_LOG(LOG_VERB, "%s outbound SRTP session created\n", video ? "Video" : "Audio");
 	}
 	return 0;
 }
-static int janus_sipre_srtp_set_remote(janus_sipre_session *session, gboolean video, const char *crypto, int suite) {
-	if(session == NULL || crypto == NULL)
+static int janus_sipre_srtp_set_remote(janus_sipre_session *session, gboolean video, const char *profile, const char *crypto) {
+	if(session == NULL || profile == NULL || crypto == NULL)
 		return -1;
+	/* Which SRTP profile is being negotiated? */
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] %s\n", session->account.username, profile);
+	gsize key_length = 0, salt_length = 0, master_length = 0;
+	if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AEAD_AES_128_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AEAD_AES_256_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+	} else {
+		JANUS_LOG(LOG_ERR, "[SIPre-%s] Unknown SRTP profile %s\n", session->account.username, profile);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] Key/Salt/Master: %zu/%zu/%zu\n",
+		session->account.username, master_length, key_length, salt_length);
 	/* Base64 decode the crypto string and set it as the remote SRTP context */
 	gsize len = 0;
 	guchar *decoded = g_base64_decode(crypto, &len);
-	if(len < SRTP_MASTER_LENGTH) {
+	if(len < master_length) {
 		/* FIXME Can this happen? */
 		g_free(decoded);
-		return -2;
+		return -3;
 	}
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_remote_policy : &session->media.audio_remote_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
-	if(suite == 32) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtcp));
-	} else if(suite == 80) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Unknown SRTP profile\n", session->account.username);
+			break;
 	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = decoded;
@@ -611,32 +704,29 @@ static void janus_sipre_srtp_cleanup(janus_sipre_session *session) {
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	/* Audio */
 	if(session->media.audio_srtp_out)
 		srtp_dealloc(session->media.audio_srtp_out);
 	session->media.audio_srtp_out = NULL;
 	g_free(session->media.audio_local_policy.key);
 	session->media.audio_local_policy.key = NULL;
-	session->media.audio_srtp_suite_out = 0;
 	if(session->media.audio_srtp_in)
 		srtp_dealloc(session->media.audio_srtp_in);
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
-	session->media.audio_srtp_suite_in = 0;
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
 	session->media.video_srtp_out = NULL;
 	g_free(session->media.video_local_policy.key);
 	session->media.video_local_policy.key = NULL;
-	session->media.video_srtp_suite_out = 0;
 	if(session->media.video_srtp_in)
 		srtp_dealloc(session->media.video_srtp_in);
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
-	session->media.video_srtp_suite_in = 0;
 }
 
 
@@ -1073,6 +1163,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	session->media.on_hold = FALSE;
 	session->media.has_audio = FALSE;
 	session->media.audio_rtp_fd = -1;
@@ -1085,8 +1176,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc_peer = 0;
 	session->media.audio_pt = -1;
 	session->media.audio_pt_name = NULL;
-	session->media.audio_srtp_suite_in = 0;
-	session->media.audio_srtp_suite_out = 0;
 	session->media.audio_send = TRUE;
 	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
 	session->media.has_video = FALSE;
@@ -1100,8 +1189,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc_peer = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
-	session->media.video_srtp_suite_in = 0;
-	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	/* Initialize the RTP context */
@@ -1794,6 +1881,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
+			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 			json_t *srtp = json_object_get(root, "srtp");
 			if(srtp) {
 				const char *srtp_text = json_string_value(srtp);
@@ -1809,6 +1897,27 @@ static void *janus_sipre_handler(void *data) {
 					error_code = JANUS_SIPRE_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
 					goto error;
+				}
+				if(offer_srtp) {
+					/* Any SRTP profile different from the default? */
+					srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+					const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
+					if(profile) {
+						if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+						} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+						} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+						} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+						} else {
+							JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
+							error_code = JANUS_SIPRE_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
+							goto error;
+						}
+					}
 				}
 			}
 			/* Parse address */
@@ -1840,6 +1949,7 @@ static void *janus_sipre_handler(void *data) {
 			janus_sipre_srtp_cleanup(session);
 			session->media.require_srtp = require_srtp;
 			session->media.has_srtp_local = offer_srtp;
+			session->media.srtp_profile = srtp_profile;
 			if(offer_srtp) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
 			}
@@ -2699,27 +2809,16 @@ void janus_sipre_sdp_process(janus_sipre_session *session, janus_sdp *sdp, gbool
 				if(!strcasecmp(a->name, "crypto")) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						gint32 tag = 0;
-						int suite;
-						char crypto[81];
+						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" AES_CM_128_HMAC_SHA1_%2d inline:%80s",
-							&tag, &suite, crypto);
+						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto);
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
 							gboolean video = (m->type == JANUS_SDP_VIDEO);
-							int current_suite = video ? session->media.video_srtp_suite_in : session->media.audio_srtp_suite_in;
-							if(current_suite == 0) {
-								if(video)
-									session->media.video_srtp_suite_in = suite;
-								else
-									session->media.audio_srtp_suite_in = suite;
-								janus_sipre_srtp_set_remote(session, video, crypto, suite);
-								session->media.has_srtp_remote = TRUE;
-							} else {
-								JANUS_LOG(LOG_WARN, "We already configured a %s crypto context (AES_CM_128_HMAC_SHA1_%d), skipping additional crypto line\n",
-									video ? "video" : "audio", current_suite);
-							}
+							janus_sipre_srtp_set_remote(session, video, profile, crypto);
+							session->media.has_srtp_remote = TRUE;
 						}
 					}
 				}
@@ -2767,22 +2866,22 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_sipre_srtp_set_local(session, FALSE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_sipre_srtp_set_local(session, FALSE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_sipre_srtp_set_local(session, TRUE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_sipre_srtp_set_local(session, TRUE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}

@@ -46,6 +46,14 @@ int srtp_crypto_get_random(uint8_t *key, int len);
 #define SRTP_AESGCM256_MASTER_SALT_LENGTH	12
 #define SRTP_AESGCM256_MASTER_LENGTH (SRTP_AESGCM256_MASTER_KEY_LENGTH + SRTP_AESGCM256_MASTER_SALT_LENGTH)
 
+/* SRTP profiles */
+typedef enum janus_srtp_profile {
+	JANUS_SRTP_AES128_CM_SHA1_32 = 1,
+	JANUS_SRTP_AES128_CM_SHA1_80,
+	JANUS_SRTP_AEAD_AES_128_GCM,
+	JANUS_SRTP_AEAD_AES_256_GCM
+} janus_srtp_profile;
+
 
 /*! \brief Helper method to get a string representation of a libsrtp error code
  * @param[in] error The libsrtp error code
