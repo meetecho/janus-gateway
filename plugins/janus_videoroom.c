@@ -1594,7 +1594,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		if(token && !janus_auth_is_stored_mode()) {
 			char room_descriptor[26];
 			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%"SCNu64, room_id);
-			if(janus_auth_check_signature_contains(json_string_value(token), room_descriptor))
+			if(janus_auth_check_signature_contains(json_string_value(token), JANUS_VIDEOROOM_PACKAGE, room_descriptor))
 				return 0;
 		}
 		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,

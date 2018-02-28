@@ -35,13 +35,15 @@ void janus_auth_deinit(void);
 
 /*! \brief Method to check whether a signed token is valid
  * @param[in] token The token to validate
+ * @param[in] realm The token realm
  * @returns true if the signature is valid and not expired */
-gboolean janus_auth_check_signature(const char *token);
+gboolean janus_auth_check_signature(const char *token, const char *realm);
 /*! \brief Method to verify a signed token contains a descriptor
  * @param[in] token The token to validate
+ * @param[in] realm The token realm
  * @param[in] desc The descriptor to search for
  * @returns true if the token is valid, not expired and contains the descripor */
-gboolean janus_auth_check_signature_contains(const char *token, const char *desc);
+gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc);
 
 /*! \brief Method to add a new valid token for authenticating
  * @param[in] token The new valid token

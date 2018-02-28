@@ -74,19 +74,21 @@ void janus_auth_deinit(void) {
 	janus_mutex_unlock(&mutex);
 }
 
-gboolean janus_auth_check_signature(const char *token) {
+gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	gchar *token_signature = strchr(token, ':') + 1;
 	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
-	gchar **list = g_strsplit(token_metadata, ",", 2);
-	/* need at least an expiry timestamp */
-	if(!list[0]) {
-		JANUS_LOG(LOG_ERR, "Malformed signed token\n");
-		return FALSE;
-	}
+	gchar **list = g_strsplit(token_metadata, ",", 3);
+	/* need at least an expiry timestamp and realm */
+	if(!list[0] || !list[1])
+		goto fail;
+	/* verify timestamp */
 	int expiry_time = atoi(list[0]);
 	int real_time = janus_get_real_time() / 1000000;
 	if(real_time > expiry_time)
-		return FALSE;
+		goto fail;
+	/* verify realm */
+	if(strcmp(list[1], realm))
+		goto fail;
 	/* verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
@@ -97,32 +99,39 @@ gboolean janus_auth_check_signature(const char *token) {
 	g_free(base64);
 	g_free(token_metadata);
 	return result;
+
+fail:
+	g_strfreev(list);
+	g_free(token_metadata);
+	return FALSE;
 }
 
-gboolean janus_auth_check_signature_contains(const char *token, const char *desc) {
+gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
 	gchar *token_signature = strchr(token, ':') + 1;
 	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
 	gchar **list = g_strsplit(token_metadata, ",", 0);
-	/* need at least an expiry timestamp */
-	if(!list[0]) {
-		JANUS_LOG(LOG_ERR, "Malformed signed token\n");
-		return FALSE;
-	}
+	/* need at least an expiry timestamp and realm */
+	if(!list[0] || !list[1])
+		goto fail;
+	/* verify timestamp */
 	int expiry_time = atoi(list[0]);
 	int real_time = janus_get_real_time() / 1000000;
 	if(real_time > expiry_time)
-		return FALSE;
-
+		goto fail;
+	/* verify realm */
+	if(strcmp(list[1], realm))
+		goto fail;
+	/* find descriptor */
 	gboolean result = FALSE;
-	int i = 1;
-	for(i = 1; list[i]; i++) {
+	int i = 2;
+	for(i = 2; list[i]; i++) {
 		if (!strcmp(desc, list[i])) {
 			result = TRUE;
 			break;
 		}
 	}
 	if (!result)
-		return result;
+		goto fail;
 	/* verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
@@ -133,6 +142,11 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *desc
 	g_free(base64);
 	g_free(token_metadata);
 	return result;
+
+fail:
+	g_strfreev(list);
+	g_free(token_metadata);
+	return FALSE;
 }
 
 /* Tokens manipulation */
@@ -172,9 +186,8 @@ gboolean janus_auth_check_token(const char *token) {
 	/* Always TRUE if the mechanism is disabled, of course */
 	if(!auth_enabled)
 		return TRUE;
-	if (tokens == NULL) {
-		return janus_auth_check_signature(token);
-	}
+	if (tokens == NULL)
+		return janus_auth_check_signature(token, "janus");
 	return janus_auth_check_token_exists(token);
 }
 
@@ -254,7 +267,7 @@ gboolean janus_auth_check_plugin(const char *token, janus_plugin *plugin) {
 	if(!auth_enabled)
 		return TRUE;
 	if (allowed_plugins == NULL)
-		return janus_auth_check_signature_contains(token, plugin->get_package());
+		return janus_auth_check_signature_contains(token, "janus", plugin->get_package());
 	janus_mutex_lock(&mutex);
 	if(!g_hash_table_lookup(tokens, token)) {
 		janus_mutex_unlock(&mutex);

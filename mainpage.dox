@@ -1977,12 +1977,12 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * is not supported. Instead, Janus will look for tokens with a format like:
  *
 \verbatim
-timestamp,plugin1,plugin2:signature
+<timestamp>,janus,<plugin1>[,plugin2...]:<signature>
 \endverbatim
  *
  * Where \c timestamp is a UNIX timestamp (seconds since 0:00 UTC, 1.1.1970)
  * that marks the point in time at which the token expires;
- * \c pluginN etc. are the \c bundle names of plugins (such as \c janus-videoroom);
+ * \c plugin1 etc. are the \c bundle names of plugins (such as \c janus-videoroom);
  * and \c signature is the base64-encoded HMAC-SHA1 signature of the expiry
  * timestamp in ASCII format, hashed using the \c --token-auth-secret as a key.
  *
