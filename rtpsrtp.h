@@ -29,6 +29,8 @@ int srtp_crypto_get_random(uint8_t *key, int len);
 #define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
 #define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
 #define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
+#define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
+#define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
 #define srtp_crypto_get_random crypto_get_random
 #endif
 
@@ -36,6 +38,13 @@ int srtp_crypto_get_random(uint8_t *key, int len);
 #define SRTP_MASTER_KEY_LENGTH	16
 #define SRTP_MASTER_SALT_LENGTH	14
 #define SRTP_MASTER_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
+/* AES-GCM stuff (http://tools.ietf.org/html/rfc7714) */
+#define SRTP_AESGCM128_MASTER_KEY_LENGTH	16
+#define SRTP_AESGCM128_MASTER_SALT_LENGTH	12
+#define SRTP_AESGCM128_MASTER_LENGTH (SRTP_AESGCM128_MASTER_KEY_LENGTH + SRTP_AESGCM128_MASTER_SALT_LENGTH)
+#define SRTP_AESGCM256_MASTER_KEY_LENGTH	32
+#define SRTP_AESGCM256_MASTER_SALT_LENGTH	12
+#define SRTP_AESGCM256_MASTER_LENGTH (SRTP_AESGCM256_MASTER_KEY_LENGTH + SRTP_AESGCM256_MASTER_SALT_LENGTH)
 
 
 /*! \brief Helper method to get a string representation of a libsrtp error code

@@ -55,6 +55,20 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
+static const char *janus_get_srtp_profile(SRTP_PROTECTION_PROFILE *srtp_profile) {
+	switch(srtp_profile->id) {
+		case SRTP_AES128_CM_SHA1_80:
+			return "SRTP_AES128_CM_SHA1_80";
+		case SRTP_AES128_CM_SHA1_32:
+			return "SRTP_AES128_CM_SHA1_32";
+		case SRTP_AEAD_AES_256_GCM:
+			return "SRTP_AEAD_AES_256_GCM";
+		case SRTP_AEAD_AES_128_GCM:
+			return "SRTP_AEAD_AES_128_GCM";
+		default:
+			return "(unknown)";
+	}
+}
 
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
@@ -341,7 +355,8 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 		return -1;
 	}
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
-	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
+	SSL_CTX_set_tlsext_use_srtp(ssl_ctx,
+		"SRTP_AEAD_AES_256_GCM:SRTP_AEAD_AES_128_GCM:SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
 
 	if(!server_pem && !server_key) {
 		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
@@ -686,11 +701,39 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				goto done;
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
+				/* Which SRTP profile is being negotiated? */
+				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, janus_get_srtp_profile(srtp_profile));
+				int key_length = 0, salt_length = 0, master_length = 0;
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+					case SRTP_AES128_CM_SHA1_32:
+						key_length = SRTP_MASTER_KEY_LENGTH;
+						salt_length = SRTP_MASTER_SALT_LENGTH;
+						master_length = SRTP_MASTER_LENGTH;
+						break;
+					case SRTP_AEAD_AES_256_GCM:
+						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM256_MASTER_LENGTH;
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM128_MASTER_LENGTH;
+						break;
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						break;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Key/Salt/Master: %d/%d/%d\n",
+					handle->handle_id, master_length, key_length, salt_length);
 				/* Complete with SRTP setup */
-				unsigned char material[SRTP_MASTER_LENGTH*2];
+				unsigned char material[master_length*2];
 				unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
 				/* Export keying material for SRTP */
-				if(!SSL_export_keying_material(dtls->ssl, material, SRTP_MASTER_LENGTH*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
+				if(!SSL_export_keying_material(dtls->ssl, material, master_length*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
 					/* Oops... */
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
 						handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
@@ -699,37 +742,77 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
 				if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
 					local_key = material;
-					remote_key = local_key + SRTP_MASTER_KEY_LENGTH;
-					local_salt = remote_key + SRTP_MASTER_KEY_LENGTH;
-					remote_salt = local_salt + SRTP_MASTER_SALT_LENGTH;
+					remote_key = local_key + key_length;
+					local_salt = remote_key + key_length;
+					remote_salt = local_salt + salt_length;
 				} else {
 					remote_key = material;
-					local_key = remote_key + SRTP_MASTER_KEY_LENGTH;
-					remote_salt = local_key + SRTP_MASTER_KEY_LENGTH;
-					local_salt = remote_salt + SRTP_MASTER_SALT_LENGTH;
+					local_key = remote_key + key_length;
+					remote_salt = local_key + key_length;
+					local_salt = remote_salt + salt_length;
 				}
 				/* Build master keys and set SRTP policies */
 					/* Remote (inbound) */
-				srtp_crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
-				srtp_crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtcp));
+						break;
+					case SRTP_AES128_CM_SHA1_32:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtcp));
+						break;
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						break;
+				}
 				dtls->remote_policy.ssrc.type = ssrc_any_inbound;
-				unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
+				unsigned char remote_policy_key[master_length];
 				dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
-				memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
-				memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
+				memcpy(dtls->remote_policy.key, remote_key, key_length);
+				memcpy(dtls->remote_policy.key + key_length, remote_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
 				dtls->remote_policy.window_size = 128;
 				dtls->remote_policy.allow_repeat_tx = 0;
 #endif
 				dtls->remote_policy.next = NULL;
 					/* Local (outbound) */
-				srtp_crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
-				srtp_crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtcp));
+						break;
+					case SRTP_AES128_CM_SHA1_32:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtcp));
+						break;
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						break;
+				}
 				dtls->local_policy.ssrc.type = ssrc_any_outbound;
-				unsigned char local_policy_key[SRTP_MASTER_LENGTH];
+				unsigned char local_policy_key[master_length];
 				dtls->local_policy.key = (unsigned char *)&local_policy_key;
-				memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
-				memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
+				memcpy(dtls->local_policy.key, local_key, key_length);
+				memcpy(dtls->local_policy.key + key_length, local_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
 				dtls->local_policy.window_size = 128;
 				dtls->local_policy.allow_repeat_tx = 0;
