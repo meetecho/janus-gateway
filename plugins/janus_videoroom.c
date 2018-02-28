@@ -145,7 +145,6 @@ notify_joining = true|false (optional, whether to notify all participants when a
 #include "../rtcp.h"
 #include "../record.h"
 #include "../sdp-utils.h"
-#include "../auth.h"
 #include "../utils.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1591,10 +1590,10 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 		char error_cause2[100];
 		/* signed tokens bypass pin validation */
 		json_t *token = json_object_get(root, "token");
-		if(token && !janus_auth_is_stored_mode()) {
+		if(token) {
 			char room_descriptor[26];
 			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%"SCNu64, room_id);
-			if(janus_auth_check_signature_contains(json_string_value(token), JANUS_VIDEOROOM_PACKAGE, room_descriptor))
+			if(gateway->auth_signature_contains(&janus_videoroom_plugin, json_string_value(token), room_descriptor))
 				return 0;
 		}
 		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,

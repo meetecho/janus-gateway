@@ -75,6 +75,8 @@ void janus_auth_deinit(void) {
 }
 
 gboolean janus_auth_check_signature(const char *token, const char *realm) {
+	if (!auth_enabled || auth_secret == NULL)
+		return FALSE;
 	gchar *token_signature = strchr(token, ':') + 1;
 	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
 	gchar **list = g_strsplit(token_metadata, ",", 3);
@@ -107,6 +109,8 @@ fail:
 }
 
 gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
+	if (!auth_enabled || auth_secret == NULL)
+		return FALSE;
 	gchar *token_signature = strchr(token, ':') + 1;
 	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
 	gchar **list = g_strsplit(token_metadata, ",", 0);

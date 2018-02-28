@@ -390,6 +390,8 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, in
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
+gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token);
+gboolean janus_plugin_auth_signature_contains(janus_plugin *plugin, const char *token, const char *desc);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_plugin_push_event,
@@ -400,6 +402,8 @@ static janus_callbacks janus_handler_plugin =
 		.end_session = janus_plugin_end_session,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
+		.auth_is_signature_valid = janus_plugin_auth_is_signature_valid,
+		.auth_signature_contains = janus_plugin_auth_signature_contains,
 	};
 ///@}
 
@@ -3178,6 +3182,14 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	} else {
 		json_decref(event);
 	}
+}
+
+gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token) {
+	return janus_auth_check_signature(token, plugin->get_package());
+}
+
+gboolean janus_plugin_auth_signature_contains(janus_plugin *plugin, const char *token, const char *descriptor) {
+	return janus_auth_check_signature_contains(token, plugin->get_package(), descriptor);
 }
 
 
