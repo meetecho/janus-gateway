@@ -145,6 +145,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 #include "../rtcp.h"
 #include "../record.h"
 #include "../sdp-utils.h"
+#include "../auth.h"
 #include "../utils.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -284,7 +285,8 @@ static struct janus_json_parameter join_parameters[] = {
 	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"token", JSON_STRING, 0}
 };
 static struct janus_json_parameter publish_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
@@ -558,7 +560,7 @@ typedef struct janus_videoroom {
 	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 	GHashTable *private_ids;	/* Map of existing private IDs */
-	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
+	gboolean check_allowed;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 	gboolean notify_joining;	/* Whether an event is sent to notify all participants if a new participant joins the room */
@@ -1147,7 +1149,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_init(&videoroom->participants_mutex);
 			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 			videoroom->private_ids = g_hash_table_new(NULL, NULL);
-			videoroom->check_tokens = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
+			videoroom->check_allowed = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
 			videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
@@ -1556,7 +1558,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
-static int janus_videoroom_access_room(json_t *root, gboolean check_secret, gboolean check_pin, janus_videoroom **videoroom, char *error_cause, int error_cause_size) {
+static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboolean check_join, janus_videoroom **videoroom, char *error_cause, int error_cause_size) {
 	/* rooms_mutex has to be locked */
 	int error_code = 0;
 	json_t *room = json_object_get(root, "room");
@@ -1576,7 +1578,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_secret, gboo
 			g_snprintf(error_cause, error_cause_size, "No such room (%"SCNu64")", room_id);
 		return error_code;
 	}
-	if(check_secret) {
+	if(check_modify) {
 		char error_cause2[100];
 		JANUS_CHECK_SECRET((*videoroom)->room_secret, root, "secret", error_code, error_cause2,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
@@ -1585,8 +1587,16 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_secret, gboo
 			return error_code;
 		}
 	}
-	if(check_pin) {
+	if(check_join) {
 		char error_cause2[100];
+		/* signed tokens bypass pin validation */
+		json_t *token = json_object_get(root, "token");
+		if(token && !janus_auth_is_stored_mode()) {
+			char room_descriptor[26];
+			g_snprintf(room_descriptor, sizeof(room_descriptor), "room=%"SCNu64, room_id);
+			if(janus_auth_check_signature_contains(json_string_value(token), room_descriptor))
+				return 0;
+		}
 		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause2,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
@@ -1924,7 +1934,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 						g_hash_table_insert(videoroom->allowed, g_strdup(token), GINT_TO_POINTER(TRUE));
 				}
 			}
-			videoroom->check_tokens = TRUE;
+			videoroom->check_allowed = TRUE;
 		}
 		/* Compute a list of the supported codecs for the summary */
 		char audio_codecs[100], video_codecs[100];
@@ -2615,10 +2625,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		if(!strcasecmp(action_text, "enable")) {
 			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens for room %"SCNu64"\n", room_id);
-			videoroom->check_tokens = TRUE;
+			videoroom->check_allowed = TRUE;
 		} else if(!strcasecmp(action_text, "disable")) {
 			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens for room %"SCNu64" (free entry)\n", room_id);
-			videoroom->check_tokens = FALSE;
+			videoroom->check_allowed = FALSE;
 		} else {
 			gboolean add = !strcasecmp(action_text, "add");
 			if(allowed) {
@@ -3683,7 +3693,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(error_code != 0)
 					goto error;
 				/* A token might be required to join */
-				if(videoroom->check_tokens) {
+				if(videoroom->check_allowed) {
 					json_t *token = json_object_get(root, "token");
 					const char *token_text = token ? json_string_value(token) : NULL;
 					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
