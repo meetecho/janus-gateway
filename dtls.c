@@ -55,21 +55,6 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
-static const char *janus_get_srtp_profile(SRTP_PROTECTION_PROFILE *srtp_profile) {
-	switch(srtp_profile->id) {
-		case SRTP_AES128_CM_SHA1_80:
-			return "SRTP_AES128_CM_SHA1_80";
-		case SRTP_AES128_CM_SHA1_32:
-			return "SRTP_AES128_CM_SHA1_32";
-		case SRTP_AEAD_AES_256_GCM:
-			return "SRTP_AEAD_AES_256_GCM";
-		case SRTP_AEAD_AES_128_GCM:
-			return "SRTP_AEAD_AES_128_GCM";
-		default:
-			return "(unknown)";
-	}
-}
-
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	if(!janus_events_is_enabled())
@@ -703,7 +688,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
 				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, janus_get_srtp_profile(srtp_profile));
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, srtp_profile->name);
 				int key_length = 0, salt_length = 0, master_length = 0;
 				switch(srtp_profile->id) {
 					case SRTP_AES128_CM_SHA1_80:
