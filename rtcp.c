@@ -186,6 +186,7 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%"SCNu32"\n", jitter, fraction, total);
 		ctx->lost_remote = total;
 		ctx->jitter_remote = jitter;
+		janus_rtcp_rr_update_stats(ctx, rr->rb[0]);
 		/* FIXME Compute round trip time */
 		uint32_t lsr = ntohl(rr->rb[0].lsr);
 		uint32_t dlsr = ntohl(rr->rb[0].delay);
@@ -501,7 +502,6 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 	return filtered;
 }
 
-
 int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
@@ -547,12 +547,24 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 	return 0;
 }
 
-uint32_t janus_rtcp_context_get_in_link_quality(rtcp_context *ctx) {
+uint32_t janus_rtcp_context_get_in_link_quality(janus_rtcp_context *ctx) {
 	return ctx ? (uint32_t)(ctx->in_link_quality + 0.5) : 0;
 }
 
 uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx) {
 	return ctx ? ctx->rtt : 0;
+}
+
+uint32_t janus_rtcp_context_get_in_media_link_quality(janus_rtcp_context *ctx) {
+	return ctx ? (uint32_t)(ctx->in_media_link_quality + 0.5) : 0;
+}
+
+uint32_t janus_rtcp_context_get_out_link_quality(janus_rtcp_context *ctx) {
+	return ctx ? (uint32_t)(ctx->out_link_quality + 0.5) : 0;
+}
+
+uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx) {
+	return ctx ? (uint32_t)(ctx->out_media_link_quality + 0.5) : 0;
 }
 
 uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote) {
@@ -593,6 +605,32 @@ uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote)
 	return (uint32_t) floor((remote ? ctx->jitter_remote : ctx->jitter) * 1000.0 / ctx->tb);
 }
 
+static void janus_rtcp_estimate_in_link_quality(janus_rtcp_context *ctx) {
+	uint32_t ts = janus_get_monotonic_time();
+	uint32_t delta_t = ts - ctx->out_rr_last_ts;
+	if(delta_t < 3*G_USEC_PER_SEC) {
+		return;
+	}
+	ctx->out_rr_last_ts = ts;
+
+	uint32_t expected_interval = ctx->expected - ctx->expected_prior;
+	uint32_t received_interval = ctx->received - ctx->received_prior;
+	uint32_t retransmited_interval = ctx->retransmited - ctx->retransmited_prior;
+
+	int32_t link_lost = expected_interval - (received_interval - retransmited_interval);
+	double link_q = 100.0 - (100.0 * (double)link_lost / (double)expected_interval);
+	ctx->in_link_quality = janus_rtcp_link_quality_filter(ctx->in_link_quality, link_q);
+
+	int32_t lost = expected_interval - received_interval;
+	if (lost < 0) {
+		lost = 0;
+	}
+	double media_link_q = 100.0 - (100.0 * (double)lost / (double)expected_interval);
+	ctx->in_media_link_quality = janus_rtcp_link_quality_filter(ctx->in_media_link_quality, media_link_q);
+
+	JANUS_LOG(LOG_HUGE, "In link quality=%"SCNu32", media link quality=%"SCNu32", ctx=%"SCNu32"\n", janus_rtcp_context_get_in_link_quality(ctx), janus_rtcp_context_get_in_media_link_quality(ctx), ctx);
+}
+
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 	if(ctx == NULL || rb == NULL)
 		return -1;
@@ -616,7 +654,6 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 	ctx->last_sent = now;
 	return 0;
 }
-
 
 int janus_rtcp_has_bye(char *packet, int len) {
 	gboolean got_bye = FALSE;
@@ -1315,7 +1352,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				last_status = janus_rtp_packet_status_reserved;
 				max_status = janus_rtp_packet_status_notreceived;
 				all_same = TRUE;
-			} 
+			}
 		}
 		/* Free mem */
 		free(stat);
