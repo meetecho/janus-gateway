@@ -8,11 +8,11 @@
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
  * have been changed by the gateway). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTCP_H
 #define _JANUS_RTCP_H
 
@@ -39,7 +39,7 @@ typedef enum {
 } rtcp_type;
 typedef rtcp_type janus_rtcp_type;
 
- 
+
 /*! \brief RTCP Header (http://tools.ietf.org/html/rfc3550#section-6.1) */
 typedef struct rtcp_header
 {
@@ -257,6 +257,26 @@ typedef struct rtcp_context
 	uint32_t expected;
 	uint32_t expected_prior;
 	uint32_t lost, lost_remote;
+
+	uint32_t retransmited;
+	uint32_t retransmited_prior;
+
+	/* Inbound RR process */
+	uint32_t rr_last_ts;
+	uint32_t rr_last_ehsnr;
+	uint32_t rr_last_lost;
+	uint32_t rr_last_nack_count;
+	gint sent_packets_since_last_rr;
+	gint nack_count;
+
+	/* Outbound RR process */
+	uint32_t out_rr_last_ts;
+
+	/* Link quality estimations */
+	double in_link_quality;
+	double in_media_link_quality;
+	double out_link_quality;
+	double out_media_link_quality;
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
 
@@ -284,8 +304,22 @@ uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remot
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
 uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote);
-
-
+/*! \brief Method to retrieve inbound link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Inbound link quality estimation */
+uint32_t janus_rtcp_context_get_in_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve inbound media link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Inbound media link quality estimation */
+uint32_t janus_rtcp_context_get_in_media_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve outbound link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Outbound link quality estimation */
+uint32_t janus_rtcp_context_get_out_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve outbound media link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Outbound media link quality estimation */
+uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx);
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
