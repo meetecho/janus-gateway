@@ -3942,7 +3942,7 @@ void *janus_ice_send_thread(void *data) {
 									stream->video_first_rtp_ts[0] = timestamp;
 								}
 							}
-							// update sent packets counter
+							/* Update sent packets counter */
 							rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[0] : stream->audio_rtcp_ctx;
 							g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
 						}

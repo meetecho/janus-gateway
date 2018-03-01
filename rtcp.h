@@ -258,11 +258,11 @@ typedef struct rtcp_context
 	uint32_t expected_prior;
 	uint32_t lost, lost_remote;
 
-	uint32_t retransmited;
-	uint32_t retransmited_prior;
+	uint32_t retransmitted;
+	uint32_t retransmitted_prior;
 
 	/* Inbound RR process */
-	uint32_t rr_last_ts;
+	int64_t rr_last_ts;
 	uint32_t rr_last_ehsnr;
 	uint32_t rr_last_lost;
 	uint32_t rr_last_nack_count;
@@ -270,7 +270,7 @@ typedef struct rtcp_context
 	gint nack_count;
 
 	/* Outbound RR process */
-	uint32_t out_rr_last_ts;
+	int64_t out_rr_last_ts;
 
 	/* Link quality estimations */
 	double in_link_quality;

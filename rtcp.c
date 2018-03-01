@@ -139,16 +139,15 @@ static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 static double janus_rtcp_link_quality_filter(double last, double in) {
 	if (last == 0) {
 		return in;
-	}
-	else {
+	} else {
 		return (1.0 - 1.0/LINK_QUALITY_FILTER_K) * last + (1.0/LINK_QUALITY_FILTER_K) * in;
 	}
 }
 
 /* Update link quality stats based on RR */
-static void janus_rtcp_rr_update_stats(rtcp_context *ctx, report_block rb) {
-	uint32_t ts = janus_get_monotonic_time();
-	uint32_t delta_t = ts - ctx->rr_last_ts;
+static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb) {
+	int64_t ts = janus_get_monotonic_time();
+	int64_t delta_t = ts - ctx->rr_last_ts;
 	if(delta_t < 2*G_USEC_PER_SEC) {
 		return;
 	}
@@ -519,7 +518,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 
 	ctx->received++;
 	if(seq_number < ctx->last_seq_nr) {
-		ctx->retransmited++;
+		ctx->retransmitted++;
 		if(ctx->last_seq_nr - seq_number < 1000) {
 			/* FIXME Just a retransmission, not a reset, ignore */
 			return 0;
@@ -608,8 +607,8 @@ uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote)
 }
 
 static void janus_rtcp_estimate_in_link_quality(janus_rtcp_context *ctx) {
-	uint32_t ts = janus_get_monotonic_time();
-	uint32_t delta_t = ts - ctx->out_rr_last_ts;
+	int64_t ts = janus_get_monotonic_time();
+	int64_t delta_t = ts - ctx->out_rr_last_ts;
 	if(delta_t < 3*G_USEC_PER_SEC) {
 		return;
 	}
@@ -617,9 +616,9 @@ static void janus_rtcp_estimate_in_link_quality(janus_rtcp_context *ctx) {
 
 	uint32_t expected_interval = ctx->expected - ctx->expected_prior;
 	uint32_t received_interval = ctx->received - ctx->received_prior;
-	uint32_t retransmited_interval = ctx->retransmited - ctx->retransmited_prior;
+	uint32_t retransmitted_interval = ctx->retransmitted - ctx->retransmitted_prior;
 
-	int32_t link_lost = expected_interval - (received_interval - retransmited_interval);
+	int32_t link_lost = expected_interval - (received_interval - retransmitted_interval);
 	double link_q = 100.0 - (100.0 * (double)link_lost / (double)expected_interval);
 	ctx->in_link_quality = janus_rtcp_link_quality_filter(ctx->in_link_quality, link_q);
 
@@ -644,7 +643,7 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 	janus_rtcp_estimate_in_link_quality(ctx);
 	ctx->expected_prior = ctx->expected;
 	ctx->received_prior = ctx->received;
-	ctx->retransmited_prior = ctx->retransmited;
+	ctx->retransmitted_prior = ctx->retransmitted;
 	rb->flcnpl = htonl(lost | fraction);
 	if(ctx->lsr > 0) {
 		rb->lsr = htonl(ctx->lsr);
