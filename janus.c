@@ -1730,8 +1730,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "add_token")) {
 			/* Add a token valid for authentication */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, add_token_parameters,
@@ -1814,8 +1814,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "list_tokens")) {
 			/* List all the valid tokens */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			json_t *tokens_list = json_array();
@@ -1861,8 +1861,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "allow_token")) {
 			/* Allow a valid token valid to access a plugin */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
@@ -1875,7 +1875,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token_exists(token_value)) {
+			if(!janus_auth_check_token(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -1942,8 +1942,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "disallow_token")) {
 			/* Disallow a valid token valid from accessing a plugin */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
@@ -1956,7 +1956,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *token = json_object_get(root, "token");
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
-			if(!janus_auth_check_token_exists(token_value)) {
+			if(!janus_auth_check_token(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
 				goto jsondone;
 			}
@@ -2023,8 +2023,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "remove_token")) {
 			/* Invalidate a token for authentication purposes */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, token_parameters,
@@ -3617,7 +3617,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
 	gboolean auth_enabled = item && item->value && janus_is_true(item->value);
 	item = janus_config_get_item_drilldown(config, "general", "token_auth_secret");
-	const char* auth_secret = NULL;
+	const char *auth_secret = NULL;
 	if (item && item->value)
 		auth_secret = item->value;
 	janus_auth_init(auth_enabled, auth_secret);

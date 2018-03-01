@@ -2,26 +2,36 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Requests authentication
- * \details  Implementation of a simple mechanism for authenticating
- * requests. If enabled (it's disabled by default), the Janus admin API
- * can be used to specify valid tokens; each request must then contain
- * a valid token string, or otherwise the request is rejected with an
- * error. Whether tokens should be shared across users or not is
+ * \details  Implementation of simple mechanisms for authenticating
+ * requests.
+ *
+ * If enabled (it's disabled by default), each request must contain a
+ * valid token string, * or otherwise the request is rejected with an
+ * error.
+ *
+ * When no \c token_auth_secret is set, Stored-token mode is active.
+ * In this mode the Janus admin API can be used to specify valid string
+ * tokens. Whether tokens should be shared across users or not is
  * completely up to the controlling application: these tokens are
  * completely opaque to Janus, and treated as strings, which means
  * Janus will only check if the token exists or not when asked.
- * 
+ *
+ * However, if a secret is set, the Signed-token mode is used.
+ * In this mode, no direct communication between the controlling
+ * application and Janus is necessary. Instead, the application signs
+ * tokens that Janus can verify using the secret key.
+ *
  * \ingroup core
  * \ref core
  */
+
+#include <string.h>
+#include <openssl/hmac.h>
 
 #include "auth.h"
 #include "debug.h"
 #include "mutex.h"
 #include "utils.h"
-
-#include <string.h>
-#include <openssl/hmac.h>
 
 /* Hash table to contain the tokens to match */
 static GHashTable *tokens = NULL, *allowed_plugins = NULL;
@@ -57,7 +67,7 @@ gboolean janus_auth_is_enabled(void) {
 }
 
 gboolean janus_auth_is_stored_mode(void) {
-  return auth_enabled && tokens != NULL;
+	return auth_enabled && tokens != NULL;
 }
 
 void janus_auth_deinit(void) {
@@ -68,8 +78,7 @@ void janus_auth_deinit(void) {
 	if(allowed_plugins != NULL)
 		g_hash_table_destroy(allowed_plugins);
 	allowed_plugins = NULL;
-	if(auth_secret != NULL)
-		g_free(auth_secret);
+	g_free(auth_secret);
 	auth_secret = NULL;
 	janus_mutex_unlock(&mutex);
 }
@@ -77,79 +86,85 @@ void janus_auth_deinit(void) {
 gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	if (!auth_enabled || auth_secret == NULL)
 		return FALSE;
-	gchar *token_signature = strchr(token, ':') + 1;
-	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
-	gchar **list = g_strsplit(token_metadata, ",", 3);
-	/* need at least an expiry timestamp and realm */
-	if(!list[0] || !list[1])
+	gchar **parts = g_strsplit(token, ":", 2);
+	gchar **data = NULL;
+	/* Token should have exactly one data and one hash part */
+	if(!parts[0] || !parts[1] || parts[2])
 		goto fail;
-	/* verify timestamp */
-	int expiry_time = atoi(list[0]);
-	int real_time = janus_get_real_time() / 1000000;
+	data = g_strsplit(parts[0], ",", 3);
+	/* Need at least an expiry timestamp and realm */
+	if(!data[0] || !data[1])
+		goto fail;
+	/* Verify timestamp */
+	gint64 expiry_time = atoi(data[0]);
+	gint64 real_time = janus_get_real_time() / 1000000;
 	if(real_time > expiry_time)
 		goto fail;
-	/* verify realm */
-	if(strcmp(list[1], realm))
+	/* Verify realm */
+	if(strcmp(data[1], realm))
 		goto fail;
-	/* verify HMAC-SHA1 */
+	/* Verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), token_metadata, strlen(token_metadata), signature, &len);
+	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
-	gboolean result = janus_strcmp_const_time(token_signature, base64);
-	g_strfreev(list);
+	gboolean result = janus_strcmp_const_time(parts[1], base64);
+	g_strfreev(data);
+	g_strfreev(parts);
 	g_free(base64);
-	g_free(token_metadata);
 	return result;
 
 fail:
-	g_strfreev(list);
-	g_free(token_metadata);
+	g_strfreev(data);
+	g_strfreev(parts);
 	return FALSE;
 }
 
 gboolean janus_auth_check_signature_contains(const char *token, const char *realm, const char *desc) {
 	if (!auth_enabled || auth_secret == NULL)
 		return FALSE;
-	gchar *token_signature = strchr(token, ':') + 1;
-	gchar *token_metadata = g_strndup(token, token_signature - token - 1);
-	gchar **list = g_strsplit(token_metadata, ",", 0);
-	/* need at least an expiry timestamp and realm */
-	if(!list[0] || !list[1])
+	gchar **parts = g_strsplit(token, ":", 2);
+	gchar **data = NULL;
+	/* Token should have exactly one data and one hash part */
+	if(!parts[0] || !parts[1] || parts[2])
 		goto fail;
-	/* verify timestamp */
-	int expiry_time = atoi(list[0]);
-	int real_time = janus_get_real_time() / 1000000;
+	data = g_strsplit(parts[0], ",", 0);
+	/* Need at least an expiry timestamp and realm */
+	if(!data[0] || !data[1])
+		goto fail;
+	/* Verify timestamp */
+	gint64 expiry_time = atoi(data[0]);
+	gint64 real_time = janus_get_real_time() / 1000000;
 	if(real_time > expiry_time)
 		goto fail;
-	/* verify realm */
-	if(strcmp(list[1], realm))
+	/* Verify realm */
+	if(strcmp(data[1], realm))
 		goto fail;
-	/* find descriptor */
+	/* Find descriptor */
 	gboolean result = FALSE;
 	int i = 2;
-	for(i = 2; list[i]; i++) {
-		if (!strcmp(desc, list[i])) {
+	for(i = 2; data[i]; i++) {
+		if (!strcmp(desc, data[i])) {
 			result = TRUE;
 			break;
 		}
 	}
 	if (!result)
 		goto fail;
-	/* verify HMAC-SHA1 */
+	/* Verify HMAC-SHA1 */
 	unsigned char signature[EVP_MAX_MD_SIZE];
 	unsigned int len;
-	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), token_metadata, strlen(token_metadata), signature, &len);
+	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
-	result = janus_strcmp_const_time(token_signature, base64);
-	g_strfreev(list);
+	result = janus_strcmp_const_time(parts[1], base64);
+	g_strfreev(data);
+	g_strfreev(parts);
 	g_free(base64);
-	g_free(token_metadata);
 	return result;
 
 fail:
-	g_strfreev(list);
-	g_free(token_metadata);
+	g_strfreev(data);
+	g_strfreev(parts);
 	return FALSE;
 }
 
@@ -173,10 +188,12 @@ gboolean janus_auth_add_token(const char *token) {
 	return TRUE;
 }
 
-gboolean janus_auth_check_token_exists(const char *token) {
+gboolean janus_auth_check_token(const char *token) {
 	/* Always TRUE if the mechanism is disabled, of course */
-	if(!auth_enabled || tokens == NULL)
+	if(!auth_enabled)
 		return TRUE;
+	if (tokens == NULL)
+		return janus_auth_check_signature(token, "janus");
 	janus_mutex_lock(&mutex);
 	if(token && g_hash_table_lookup(tokens, token)) {
 		janus_mutex_unlock(&mutex);
@@ -184,15 +201,6 @@ gboolean janus_auth_check_token_exists(const char *token) {
 	}
 	janus_mutex_unlock(&mutex);
 	return FALSE;
-}
-
-gboolean janus_auth_check_token(const char *token) {
-	/* Always TRUE if the mechanism is disabled, of course */
-	if(!auth_enabled)
-		return TRUE;
-	if (tokens == NULL)
-		return janus_auth_check_signature(token, "janus");
-	return janus_auth_check_token_exists(token);
 }
 
 GList *janus_auth_list_tokens(void) {

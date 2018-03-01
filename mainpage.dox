@@ -1982,9 +1982,31 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  *
  * Where \c timestamp is a UNIX timestamp (seconds since 0:00 UTC, 1.1.1970)
  * that marks the point in time at which the token expires;
- * \c plugin1 etc. are the \c bundle names of plugins (such as \c janus-videoroom);
+ * \c plugin1 etc. are the \c bundle names of plugins (such as \c janus.plugin.videoroom);
  * and \c signature is the base64-encoded HMAC-SHA1 signature of the expiry
  * timestamp in ASCII format, hashed using the \c --token-auth-secret as a key.
+ *
+ * The following function can be used to sign tokens using the node.js crypto library:
+ *
+\verbatim
+const crypto = require('crypto');
+function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
+  const expiry = Math.floor(Date.now() / 1000) + timeout;
+
+  const strdata = [expiry.toString(), realm, ...data].join(',');
+  const hmac = crypto.createHmac('sha1', secret);
+  hmac.setEncoding('base64');
+  hmac.write(strdata);
+  hmac.end();
+
+  return [strdata, hmac.read()].join(':');
+};
+
+const token = getJanusToken('janus', ['janus.plugin.videoroom']),
+\endverbatim
+ *
+ * The \c janus parameter here is the \c realm of the token. For authenticating the
+ * Janus API it should always be set to \c janus.
  *
  * When Janus encounters a token, it will:
  *

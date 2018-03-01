@@ -383,13 +383,13 @@ struct janus_callbacks {
 	/*! \brief Method to check whether a signed token is valid
 	 * \note accepts only tokens with the plugin identifier as realm
 	 * @param[in] token The token to validate
-	 * @returns TRUE if the signature is valid and not expired */
+	 * @returns TRUE if the signature is valid and not expired, FALSE otherwise */
 	gboolean (* const auth_is_signature_valid)(janus_plugin *plugin, const char *token);
 	/*! \brief Method to verify a signed token grants access to a descriptor
 	 * \note accepts only tokens with the plugin identifier as realm
 	 * @param[in] token The token to validate
 	 * @param[in] desc The descriptor to search for
-	 * @returns TRUE if the token is valid, not expired and contains the descripor */
+	 * @returns TRUE if the token is valid, not expired and contains the descriptor, FALSE otherwise */
 	gboolean (* const auth_signature_contains)(janus_plugin *plugin, const char *token, const char *descriptor);
 };
 
