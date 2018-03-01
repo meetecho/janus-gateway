@@ -166,7 +166,7 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, report_block rb) {
 		}
 		double media_link_q = 100.0 - (100.0 * lost / (double)expect);
 		ctx->out_media_link_quality = janus_rtcp_link_quality_filter(ctx->out_media_link_quality, media_link_q);
-		JANUS_LOG(LOG_DBG, "Out link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_out_link_quality(ctx), janus_rtcp_context_get_out_media_link_quality(ctx));
+		JANUS_LOG(LOG_HUGE, "Out link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_out_link_quality(ctx), janus_rtcp_context_get_out_media_link_quality(ctx));
 	}
 	ctx->rr_last_ehsnr = ntohl(rb.ehsnr);
 	ctx->rr_last_lost = total_lost;
@@ -630,7 +630,7 @@ static void janus_rtcp_estimate_in_link_quality(janus_rtcp_context *ctx) {
 	double media_link_q = 100.0 - (100.0 * (double)lost / (double)expected_interval);
 	ctx->in_media_link_quality = janus_rtcp_link_quality_filter(ctx->in_media_link_quality, media_link_q);
 
-	JANUS_LOG(LOG_HUGE, "In link quality=%"SCNu32", media link quality=%"SCNu32", ctx=%"SCNu32"\n", janus_rtcp_context_get_in_link_quality(ctx), janus_rtcp_context_get_in_media_link_quality(ctx), ctx);
+	JANUS_LOG(LOG_HUGE, "In link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_in_link_quality(ctx), janus_rtcp_context_get_in_media_link_quality(ctx));
 }
 
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
