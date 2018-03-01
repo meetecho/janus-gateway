@@ -137,7 +137,7 @@ static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 #define LINK_QUALITY_FILTER_K 3.0
 
 static double janus_rtcp_link_quality_filter(double last, double in) {
-	if (last == 0) {
+	if (last == 0 || last != last) {
 		return in;
 	} else {
 		return (1.0 - 1.0/LINK_QUALITY_FILTER_K) * last + (1.0/LINK_QUALITY_FILTER_K) * in;
