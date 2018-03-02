@@ -471,7 +471,8 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(config != NULL) {
 		janus_config_print(config);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_item *events = janus_config_get_item(config_general, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {

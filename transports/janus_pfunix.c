@@ -201,8 +201,10 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	if(config != NULL) {
 		/* Handle configuration */
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_category *config_admin = janus_config_add_category(config, NULL, "admin");
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		janus_config_item *item = janus_config_get_item(config_general, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -221,7 +223,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		}
 
 		/* Check if we need to send events to handlers */
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get_item(config_general, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -235,13 +237,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		}
 
 		/* Setup the Janus API Unix Sockets server(s) */
-		item = janus_config_get_item_drilldown(config, "general", "enabled");
+		item = janus_config_get_item(config_general, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
 		} else {
-			item = janus_config_get_item_drilldown(config, "general", "path");
+			item = janus_config_get_item(config_general, "path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
-			item = janus_config_get_item_drilldown(config, "general", "type");
+			item = janus_config_get_item(config_general, "type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			dgram = FALSE;
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
@@ -260,13 +262,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			}
 		}
 		/* Do the same for the Admin API, if enabled */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_enabled");
+		item = janus_config_get_item(config_admin, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
 		} else {
-			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
+			item = janus_config_get_item(config_admin, "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
-			item = janus_config_get_item_drilldown(config, "admin", "admin_type");
+			item = janus_config_get_item(config_admin, "admin_type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
 				admin_dgram = FALSE;

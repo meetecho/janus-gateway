@@ -980,18 +980,19 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
 		/* Any admin key to limit who can "create"? */
-		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
+		janus_config_item *key = janus_config_get_item(config_general, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get_item(config_general, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_VIDEOROOM_NAME);
 		}
 		/* Iterate on all rooms */
-		GList *cl = janus_config_get_categories(config);
+		GList *cl = janus_config_get_categories(config, NULL);
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
@@ -1972,20 +1973,20 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			char cat[BUFSIZ], value[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, videoroom->room_id);
-			janus_config_add_category(config, cat);
+			janus_config_category *c = janus_config_add_category(config, NULL, cat);
 			/* Now for the values */
-			janus_config_add_item(config, cat, "description", videoroom->room_name);
+			janus_config_add_item(config, c, "description", videoroom->room_name);
 			if(videoroom->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add_item(config, c, "is_private", "yes");
 			if(videoroom->require_pvtid)
-				janus_config_add_item(config, cat, "require_pvtid", "yes");
+				janus_config_add_item(config, c, "require_pvtid", "yes");
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
-			janus_config_add_item(config, cat, "bitrate", value);
+			janus_config_add_item(config, c, "bitrate", value);
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
-			janus_config_add_item(config, cat, "publishers", value);
+			janus_config_add_item(config, c, "publishers", value);
 			if(videoroom->fir_freq) {
 				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
-				janus_config_add_item(config, cat, "fir_freq", value);
+				janus_config_add_item(config, c, "fir_freq", value);
 			}
 			char audio_codecs[100];
 			memset(audio_codecs, 0, sizeof(audio_codecs));
@@ -1998,7 +1999,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_strlcat(audio_codecs, ",", sizeof(audio_codecs));
 				g_strlcat(audio_codecs, janus_videoroom_audiocodec_name(videoroom->acodec[2]), sizeof(audio_codecs));
 			}
-			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
+			janus_config_add_item(config, c, "audiocodec", audio_codecs);
 			char video_codecs[100];
 			memset(video_codecs, 0, sizeof(video_codecs));
 			g_snprintf(video_codecs, sizeof(video_codecs), "%s", janus_videoroom_videocodec_name(videoroom->vcodec[0]));
@@ -2010,38 +2011,38 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_strlcat(video_codecs, ",", sizeof(video_codecs));
 				g_strlcat(video_codecs, janus_videoroom_videocodec_name(videoroom->vcodec[2]), sizeof(video_codecs));
 			}
-			janus_config_add_item(config, cat, "videocodec", video_codecs);
+			janus_config_add_item(config, c, "videocodec", video_codecs);
 			if(videoroom->do_svc)
-				janus_config_add_item(config, cat, "video_svc", "yes");
+				janus_config_add_item(config, c, "video_svc", "yes");
 			if(videoroom->room_secret)
-				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
+				janus_config_add_item(config, c, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
-				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+				janus_config_add_item(config, c, "pin", videoroom->room_pin);
 			if(videoroom->audiolevel_ext) {
-				janus_config_add_item(config, cat, "audiolevel_ext", "yes");
+				janus_config_add_item(config, c, "audiolevel_ext", "yes");
 				if(videoroom->audiolevel_event)
-					janus_config_add_item(config, cat, "audiolevel_event", "yes");
+					janus_config_add_item(config, c, "audiolevel_event", "yes");
 				if(videoroom->audio_active_packets > 0) {
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
-					janus_config_add_item(config, cat, "audio_active_packets", value);
+					janus_config_add_item(config, c, "audio_active_packets", value);
 				}
 				if(videoroom->audio_level_average > 0) {
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
-					janus_config_add_item(config, cat, "audio_level_average", value);
+					janus_config_add_item(config, c, "audio_level_average", value);
 				}
 			}
 			if(videoroom->videoorient_ext)
-				janus_config_add_item(config, cat, "videoorient_ext", "yes");
+				janus_config_add_item(config, c, "videoorient_ext", "yes");
 			if(videoroom->playoutdelay_ext)
-				janus_config_add_item(config, cat, "playoutdelay_ext", "yes");
+				janus_config_add_item(config, c, "playoutdelay_ext", "yes");
 			if(videoroom->transport_wide_cc_ext)
-				janus_config_add_item(config, cat, "transport_wide_cc_ext", "yes");
+				janus_config_add_item(config, c, "transport_wide_cc_ext", "yes");
 			if(videoroom->notify_joining)
-				janus_config_add_item(config, cat, "notify_joining", "yes");
+				janus_config_add_item(config, c, "notify_joining", "yes");
 			if(videoroom->record)
-				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add_item(config, c, "record", "yes");
 			if(videoroom->rec_dir)
-				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
+				janus_config_add_item(config, c, "rec_dir", videoroom->rec_dir);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room is not permanent */
@@ -2143,21 +2144,21 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, videoroom->room_id);
 			/* Remove the old category first */
-			janus_config_remove_category(config, cat);
+			janus_config_remove_category(config, NULL, cat);
 			/* Now write the room details again */
-			janus_config_add_category(config, cat);
-			janus_config_add_item(config, cat, "description", videoroom->room_name);
+			janus_config_category *c = janus_config_add_category(config, NULL, cat);
+			janus_config_add_item(config, c, "description", videoroom->room_name);
 			if(videoroom->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add_item(config, c, "is_private", "yes");
 			if(videoroom->require_pvtid)
-				janus_config_add_item(config, cat, "require_pvtid", "yes");
+				janus_config_add_item(config, c, "require_pvtid", "yes");
 			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
-			janus_config_add_item(config, cat, "bitrate", value);
+			janus_config_add_item(config, c, "bitrate", value);
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
-			janus_config_add_item(config, cat, "publishers", value);
+			janus_config_add_item(config, c, "publishers", value);
 			if(videoroom->fir_freq) {
 				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
-				janus_config_add_item(config, cat, "fir_freq", value);
+				janus_config_add_item(config, c, "fir_freq", value);
 			}
 			char audio_codecs[100];
 			memset(audio_codecs, 0, sizeof(audio_codecs));
@@ -2170,7 +2171,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_strlcat(audio_codecs, ",", sizeof(audio_codecs));
 				g_strlcat(audio_codecs, janus_videoroom_audiocodec_name(videoroom->acodec[2]), sizeof(audio_codecs));
 			}
-			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
+			janus_config_add_item(config, c, "audiocodec", audio_codecs);
 			char video_codecs[100];
 			memset(video_codecs, 0, sizeof(video_codecs));
 			g_snprintf(video_codecs, sizeof(video_codecs), "%s", janus_videoroom_videocodec_name(videoroom->vcodec[0]));
@@ -2182,17 +2183,38 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_strlcat(video_codecs, ",", sizeof(video_codecs));
 				g_strlcat(video_codecs, janus_videoroom_videocodec_name(videoroom->vcodec[2]), sizeof(video_codecs));
 			}
-			janus_config_add_item(config, cat, "videocodec", video_codecs);
+			janus_config_add_item(config, c, "videocodec", video_codecs);
 			if(videoroom->do_svc)
-				janus_config_add_item(config, cat, "video_svc", "yes");
+				janus_config_add_item(config, c, "video_svc", "yes");
 			if(videoroom->room_secret)
-				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
+				janus_config_add_item(config, c, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
-				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+				janus_config_add_item(config, c, "pin", videoroom->room_pin);
+			if(videoroom->audiolevel_ext) {
+				janus_config_add_item(config, c, "audiolevel_ext", "yes");
+				if(videoroom->audiolevel_event)
+					janus_config_add_item(config, c, "audiolevel_event", "yes");
+				if(videoroom->audio_active_packets > 0) {
+					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_active_packets);
+					janus_config_add_item(config, c, "audio_active_packets", value);
+				}
+				if(videoroom->audio_level_average > 0) {
+					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
+					janus_config_add_item(config, c, "audio_level_average", value);
+				}
+			}
+			if(videoroom->videoorient_ext)
+				janus_config_add_item(config, c, "videoorient_ext", "yes");
+			if(videoroom->playoutdelay_ext)
+				janus_config_add_item(config, c, "playoutdelay_ext", "yes");
+			if(videoroom->transport_wide_cc_ext)
+				janus_config_add_item(config, c, "transport_wide_cc_ext", "yes");
+			if(videoroom->notify_joining)
+				janus_config_add_item(config, c, "notify_joining", "yes");
 			if(videoroom->record)
-				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add_item(config, c, "record", "yes");
 			if(videoroom->rec_dir)
-				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
+				janus_config_add_item(config, c, "rec_dir", videoroom->rec_dir);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room changes are not permanent */
@@ -2277,7 +2299,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			char cat[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
-			janus_config_remove_category(config, cat);
+			janus_config_remove_category(config, NULL, cat);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room destruction is not permanent */

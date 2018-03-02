@@ -340,13 +340,14 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration */
 	if(config != NULL) {
-		janus_config_item *path = janus_config_get_item_drilldown(config, "general", "path");
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_item *path = janus_config_get_item(config_general, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
-		janus_config_item *base = janus_config_get_item_drilldown(config, "general", "base");
+		janus_config_item *base = janus_config_get_item(config_general, "base");
 		if(base && base->value)
 			recordings_base = g_strdup(base->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get_item(config_general, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {

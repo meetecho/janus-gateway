@@ -69,7 +69,8 @@ int main(int argc, char *argv[])
 	janus_config *config = janus_config_parse(source);
 	if(config == NULL)
 		exit(1);
-	janus_config_print(config);
+	janus_config_print_as(config, LOG_INFO);
+	JANUS_LOG(LOG_INFO, "\n");
 	/* Is the target an INI or a YAML file? */
 	config->is_yaml = strstr(destination, ".yaml") != NULL;
 	/* Remove extension: janus_config_save adds it for us */
@@ -83,6 +84,16 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_ERR, "Error saving converted file\n");
 		exit(1);
 	}
+	janus_config_destroy(config);
+	/* Make sure everything's fine */
+	config = janus_config_parse(destination);
+	if(config == NULL) {
+		g_free(target);
+		JANUS_LOG(LOG_ERR, "Error parsing converted file\n");
+		exit(1);
+	}
+	janus_config_print_as(config, LOG_INFO);
+	JANUS_LOG(LOG_INFO, "\n");
 	janus_config_destroy(config);
 	/* Done */
 	FILE *file = fopen(destination, "rb");

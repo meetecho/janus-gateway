@@ -444,8 +444,9 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(config != NULL) {
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		janus_config_item *item = janus_config_get_item(config_general, "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
 			struct ifaddrs *ifas = NULL;
@@ -466,7 +467,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		item = janus_config_get_item(config_general, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
 			char *maxport = strrchr(item->value, '-');
@@ -488,7 +489,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "NoSIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "events");
+		item = janus_config_get_item(config_general, "events");
 		if(item != NULL && item->value != NULL)
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
