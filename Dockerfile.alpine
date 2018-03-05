@@ -88,7 +88,5 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && apk del --purge .build-dependencies \
   && rm -rf usrsctp-$USRSCTP_VERSION boringssl janus-gateway /var/cache/apk/*
 
-VOLUME ["/usr/local/etc/janus", "/usr/local/lib/janus/plugins"]
-
 ENTRYPOINT ["/usr/local/bin/janus"]
 CMD ["-d4"]
