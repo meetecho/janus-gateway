@@ -264,6 +264,10 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                                         JANUS_MANUAL_LIBS+=" -lsrtp2"
                                         enable_libsrtp2=yes
                                         AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                        AC_CHECK_LIB([srtp2],
+                                                     [srtp_crypto_policy_set_aes_gcm_256_16_auth],
+                                                     [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                     [AC_MSG_NOTICE([libsrtp2 does not have support for AES-GCM profiles])])
                                       ],
                                       [
                                         AS_IF([test "x$enable_libsrtp2" = "xyes"],
@@ -288,7 +292,10 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                                                                [
                                                                  libsrtp >= 1.5.0
                                                                ])
-
+                                             AC_CHECK_LIB([srtp],
+                                                          [crypto_policy_set_aes_gcm_256_16_auth],
+                                                          [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                          [AC_MSG_NOTICE([libsrtp does not have support for AES-GCM profiles])])
                                            ],
                                            [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
                          ],
