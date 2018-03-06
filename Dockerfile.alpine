@@ -34,7 +34,7 @@ COPY . janus-gateway
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates rabbitmq-c-dev libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
-    curl libogg libtool ffmpeg-dev glib-dev jansson-dev \
+    curl libogg libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev \
   && apk add --no-cache \
     libnice jansson glib libogg ffmpeg rabbitmq-c libc6-compat \
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
