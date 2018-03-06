@@ -4021,7 +4021,12 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, session->stack.sipstack,
 				session->account.proxy,
-				session->account.identity, session->account.identity, session->stack.expires,
+#ifdef HAVE_LIBRE_SIPREGNEWAPI
+				session->account.identity, NULL,
+#else
+				session->account.identity,
+#endif
+				session->account.identity, session->stack.expires,
 				session->account.username,
 				outbound_proxy, (outbound_proxy[0] ? 1 : 0), 0,
 				janus_sipre_cb_auth, session, FALSE,

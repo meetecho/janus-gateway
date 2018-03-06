@@ -574,11 +574,12 @@ AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([LIBRE],
-                  [libre],
+                  [libre >= 0.5.7],
                   [
                     AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
                           [
                            enable_plugin_sipre=yes
+                           AC_DEFINE(HAVE_LIBRE_SIPREGNEWAPI)
                            AC_CHECK_LIB([re],
                                         [sip_set_trace],
                                         [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
@@ -586,9 +587,23 @@ PKG_CHECK_MODULES([LIBRE],
                                        )
                           ])
                   ],
-                  [
-                    AS_IF([test "x$enable_plugin_sipre" = "xyes"],
-                          [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                  [PKG_CHECK_MODULES([LIBRE],
+                                     [libre],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
+                                            [
+                                             enable_plugin_sipre=yes
+                                             AC_CHECK_LIB([re],
+                                                          [sip_set_trace],
+                                                          [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
+                                                          [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
+                                                         )
+                                            ])
+                                     ],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xyes"],
+                                            [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                                     ])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
