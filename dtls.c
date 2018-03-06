@@ -89,8 +89,8 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 
 
 static SSL_CTX *ssl_ctx = NULL;
-static X509* ssl_cert = NULL;
-static EVP_PKEY* ssl_key = NULL;
+static X509 *ssl_cert = NULL;
+static EVP_PKEY *ssl_key = NULL;
 
 static gchar local_fingerprint[160];
 gchar *janus_dtls_get_local_fingerprint(void) {
@@ -154,7 +154,7 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 #endif
 
 
-static int janus_dtls_generate_keys(X509** certificate, EVP_PKEY** private_key) {
+static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key) {
 	static const int num_bits = 2048;
 	BIGNUM *bne = NULL;
 	RSA *rsa_key = NULL;
@@ -262,8 +262,8 @@ error:
 }
 
 
-static int janus_dtls_load_keys(const char* server_pem, const char* server_key, X509** certificate, EVP_PKEY** private_key) {
-	FILE* f = NULL;
+static int janus_dtls_load_keys(const char *server_pem, const char *server_key, X509 **certificate, EVP_PKEY **private_key) {
+	FILE *f = NULL;
 
 	f = fopen(server_pem, "r");
 	if(!f) {
@@ -305,7 +305,7 @@ error:
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -486,7 +486,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
 	 */
-	EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
