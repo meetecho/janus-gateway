@@ -17,6 +17,7 @@
 #include <srtp2/srtp.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
+#include <openssl/srtp.h>
 int srtp_crypto_get_random(uint8_t *key, int len);
 #else
 #include <srtp/srtp.h>
@@ -54,6 +55,9 @@ typedef enum janus_srtp_profile {
 	JANUS_SRTP_AEAD_AES_256_GCM
 } janus_srtp_profile;
 
+#ifndef SRTP_AEAD_AES_256_GCM
+	#undef HAVE_SRTP_AESGCM
+#endif
 
 /*! \brief Helper method to get a string representation of a libsrtp error code
  * @param[in] error The libsrtp error code
