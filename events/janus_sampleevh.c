@@ -199,26 +199,26 @@ int janus_sampleevh_init(const char *config_path) {
 	if(config != NULL) {
 		/* Handle configuration */
 		janus_config_print(config);
-		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 
 		/* Setup the sample event handler, if required */
-		janus_config_item *item = janus_config_get_item(config_general, "enabled");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Sample event handler disabled (Janus API)\n");
 		} else {
 			/* Backend to send events to */
-			item = janus_config_get_item(config_general, "backend");
+			item = janus_config_get(config, config_general, janus_config_type_item, "backend");
 			if(!item || !item->value || strstr(item->value, "http") != item->value) {
 				JANUS_LOG(LOG_WARN, "Missing or invalid backend\n");
 			} else {
 				backend = g_strdup(item->value);
 				/* Any credentials needed? */
-				item = janus_config_get_item(config_general, "backend_user");
+				item = janus_config_get(config, config_general, janus_config_type_item, "backend_user");
 				backend_user = (item && item->value) ? g_strdup(item->value) : NULL;
-				item = janus_config_get_item(config_general, "backend_pwd");
+				item = janus_config_get(config, config_general, janus_config_type_item, "backend_pwd");
 				backend_pwd = (item && item->value) ? g_strdup(item->value) : NULL;
 				/* Any specific setting for retransmissions? */
-				item = janus_config_get_item(config_general, "max_retransmissions");
+				item = janus_config_get(config, config_general, janus_config_type_item, "max_retransmissions");
 				if(item && item->value) {
 					int mr = atoi(item->value);
 					if(mr < 0) {
@@ -230,7 +230,7 @@ int janus_sampleevh_init(const char *config_path) {
 						max_retransmissions = mr;
 					}
 				}
-				item = janus_config_get_item(config_general, "retransmissions_backoff");
+				item = janus_config_get(config, config_general, janus_config_type_item, "retransmissions_backoff");
 				if(item && item->value) {
 					int rb = atoi(item->value);
 					if(rb <= 0) {
@@ -240,11 +240,11 @@ int janus_sampleevh_init(const char *config_path) {
 					}
 				}
 				/* Which events should we subscribe to? */
-				item = janus_config_get_item(config_general, "events");
+				item = janus_config_get(config, config_general, janus_config_type_item, "events");
 				if(item && item->value)
 					janus_sampleevh_edit_events_mask(item->value);
 				/* Is grouping of events ok? */
-				item = janus_config_get_item(config_general, "grouping");
+				item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
 				if(item && item->value)
 					group_events = janus_is_true(item->value);
 				/* Done */

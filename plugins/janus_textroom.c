@@ -420,8 +420,8 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
-		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
-		janus_config_item *item = janus_config_get_item(config_general, "json");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -439,17 +439,17 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 		/* Any admin key to limit who can "create"? */
-		janus_config_item *key = janus_config_get_item(config_general, "admin_key");
+		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
-		janus_config_item *events = janus_config_get_item(config_general, "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_TEXTROOM_NAME);
 		}
 		/* Iterate on all rooms */
-		GList *cl = janus_config_get_categories(config, NULL);
+		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
@@ -457,11 +457,11 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding text room '%s'\n", cat->name);
-			janus_config_item *desc = janus_config_get_item(cat, "description");
-			janus_config_item *priv = janus_config_get_item(cat, "is_private");
-			janus_config_item *secret = janus_config_get_item(cat, "secret");
-			janus_config_item *pin = janus_config_get_item(cat, "pin");
-			janus_config_item *post = janus_config_get_item(cat, "post");
+			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+			janus_config_item *post = janus_config_get(config, cat, janus_config_type_item, "post");
 			/* Create the text room */
 			janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
 			textroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
@@ -499,6 +499,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			g_hash_table_insert(rooms, janus_uint64_dup(textroom->room_id), textroom);
 			cl = cl->next;
 		}
+		g_list_free(clist);
 		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
@@ -1554,17 +1555,17 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			char cat[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, textroom->room_id);
-			janus_config_category *c = janus_config_add_category(config, NULL, cat);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			/* Now for the values */
-			janus_config_add_item(config, c, "description", textroom->room_name);
+			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add_item(config, c, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(textroom->room_secret)
-				janus_config_add_item(config, c, "secret", textroom->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
-				janus_config_add_item(config, c, "pin", textroom->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", textroom->room_pin));
 			if(textroom->http_backend)
-				janus_config_add_item(config, c, "post", textroom->http_backend);
+				janus_config_add(config, c, janus_config_item_create("post", textroom->http_backend));
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room is not permanent */
@@ -1688,18 +1689,18 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
 			/* Remove the old category first */
-			janus_config_remove_category(config, NULL, cat);
+			janus_config_remove(config, NULL, cat);
 			/* Now write the room details again */
-			janus_config_category *c = janus_config_add_category(config, NULL, cat);
-			janus_config_add_item(config, c, "description", textroom->room_name);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
+			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
 			if(textroom->is_private)
-				janus_config_add_item(config, c, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(textroom->room_secret)
-				janus_config_add_item(config, c, "secret", textroom->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", textroom->room_secret));
 			if(textroom->room_pin)
-				janus_config_add_item(config, c, "pin", textroom->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", textroom->room_pin));
 			if(textroom->http_backend)
-				janus_config_add_item(config, c, "post", textroom->http_backend);
+				janus_config_add(config, c, janus_config_item_create("post", textroom->http_backend));
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room changes are not permanent */
@@ -1766,7 +1767,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			char cat[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
-			janus_config_remove_category(config, NULL, cat);
+			janus_config_remove(config, NULL, cat);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room destruction is not permanent */

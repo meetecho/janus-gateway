@@ -58,28 +58,28 @@ static char *trim(char *s) {
 }
 
 
-/* Memory management helpers */
-static void janus_config_free_item(gpointer data) {
-	janus_config_item *i = (janus_config_item *)data;
-	if(i) {
-		if(i->name)
-			g_free((gpointer)i->name);
-		if(i->value)
-			g_free((gpointer)i->value);
-		if(i->items)
-			g_list_free_full(i->items, janus_config_free_item);
-		if(i->subcategories)
-			g_list_free_full(i->subcategories, janus_config_free_item);
-		g_free(i);
+/* Helper to debug Yaml parsing and events */
+#define EVENT_STR(name) case name: return #name
+static const char *janus_config_yaml_event(yaml_event_type_t type) {
+	switch(type) {
+		EVENT_STR(YAML_NO_EVENT);
+		EVENT_STR(YAML_STREAM_START_EVENT);
+		EVENT_STR(YAML_STREAM_END_EVENT);
+		EVENT_STR(YAML_DOCUMENT_START_EVENT);
+		EVENT_STR(YAML_DOCUMENT_END_EVENT);
+		EVENT_STR(YAML_MAPPING_START_EVENT);
+		EVENT_STR(YAML_SEQUENCE_START_EVENT);
+		EVENT_STR(YAML_MAPPING_END_EVENT);
+		EVENT_STR(YAML_SEQUENCE_END_EVENT);
+		EVENT_STR(YAML_ALIAS_EVENT);
+		EVENT_STR(YAML_SCALAR_EVENT);
+		default:
+			break;
 	}
+	return NULL;
 }
 
-static void janus_config_free_category(gpointer data) {
-	janus_config_free_item(data);
-}
-
-
-/* Public methods */
+/* Parse a configuration file */
 janus_config *janus_config_parse(const char *config_file) {
 	if(config_file == NULL)
 		return NULL;
@@ -111,17 +111,19 @@ janus_config *janus_config_parse(const char *config_file) {
 		}
 		yaml_parser_set_input_file(&parser, file);
 		/* Traverse the document */
-		yaml_event_t event;
 		gboolean error = FALSE;
+		yaml_event_t event;
 		int depth = 0;
 		GList *cats = NULL, *last = NULL;
-		janus_config_category *cg = NULL, *pc = NULL;
+		janus_config_container *cg = NULL, *pc = NULL;
 		char *name = NULL, *value = NULL;
 		while(!error) {
 			if(!yaml_parser_parse(&parser, &event)) {
+				JANUS_LOG(LOG_ERR, "Parser error: %s\n", parser.problem);
 				error = TRUE;
 				break;
 			}
+			JANUS_LOG(LOG_HUGE, "%s\n", janus_config_yaml_event(event.type));
 			switch(event.type) {
 				case YAML_NO_EVENT:
 					JANUS_LOG(LOG_WARN, "No event!\n");
@@ -136,37 +138,42 @@ janus_config *janus_config_parse(const char *config_file) {
 					break;
 				case YAML_DOCUMENT_END_EVENT:
 					break;
-				case YAML_SEQUENCE_START_EVENT:
-					/* TODO: we need to support sequences */
-					break;
-				case YAML_SEQUENCE_END_EVENT:
-					/* TODO: we need to support sequences */
-					break;
 				case YAML_MAPPING_START_EVENT:
+				case YAML_SEQUENCE_START_EVENT:
 					depth++;
-					/* Create category or subcategory */
+					/* Create category or array */
 					if(name != NULL) {
 						if(depth == 2) {
-							/* Main category */
-							cg = janus_config_add_category(jc, NULL, name);
+							/* Main category or array */
+							if(event.type == YAML_MAPPING_START_EVENT)
+								cg = janus_config_category_create(name);
+							else
+								cg = janus_config_array_create(name);
+							janus_config_add(jc, NULL, cg);
 							cats = g_list_append(cats, cg);
 						} else {
-							/* Subcategory */
+							/* Subcategory/subarray */
 							pc = cg;
-							cg = janus_config_add_category(jc, pc, name);
+							if(event.type == YAML_MAPPING_START_EVENT)
+								cg = janus_config_category_create(name);
+							else
+								cg = janus_config_array_create(name);
+							janus_config_add(jc, pc, cg);
 							cats = g_list_append(cats, cg);
 						}
 						if(cg == NULL) {
-							JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", event.data.scalar.value, filename);
+							JANUS_LOG(LOG_ERR, "Error adding %s %s (%s)\n",
+								event.type == YAML_MAPPING_START_EVENT ? "category" : "array",
+								event.data.scalar.value, filename);
 							error = TRUE;
 							break;
 						}
 						g_free(name);
 						name = NULL;
 					}
-					/* TODO: add support for more innested categories and items */
 					break;
 				case YAML_MAPPING_END_EVENT:
+				case YAML_SEQUENCE_END_EVENT:
 					depth--;
 					g_free(name);
 					name = NULL;
@@ -185,27 +192,26 @@ janus_config *janus_config_parse(const char *config_file) {
 					/* TODO: should we support these? */
 					break;
 				case YAML_SCALAR_EVENT:
-					/* TODO: support more innested stuff for the future (API-wise too) */
+					/* If this is the name of the category/array, just take note of the name */
 					value = (char *)event.data.scalar.value;
-					/* New category or category-level attribute? */
 					if(value == NULL || strlen(value) == 0 || !strcmp(value, "null")) {
-						/* Create empty category */
-						if(name != NULL) {
-							pc = cg;
-							cg = janus_config_add_category(jc, pc, name);
-							if(cg == NULL) {
-								JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", value, filename);
+						if(name && (!cg || (cg && cg->type != janus_config_type_array))) {
+							/* Can it be an empty category? */
+							pc = janus_config_category_create(name);
+							if(janus_config_add(jc, cg, pc) < 0) {
+								JANUS_LOG(LOG_ERR, "Error adding empty category %s (%s)\n", name, filename);
 								error = TRUE;
 								break;
 							}
 							g_free(name);
 							name = NULL;
-							cg = pc;
+							break;
 						}
-						break;
 					}
 					if(name != NULL) {
-						if(janus_config_add_item(jc, cg, name, value) == NULL) {
+						janus_config_item *item = janus_config_item_create(name, value);
+						if(janus_config_add(jc, cg, item) < 0) {
+							janus_config_container_destroy(item);
 							JANUS_LOG(LOG_ERR, "Error adding item %s (%s)\n", name, filename);
 							error = TRUE;
 							break;
@@ -213,7 +219,19 @@ janus_config *janus_config_parse(const char *config_file) {
 						g_free(name);
 						name = NULL;
 					} else {
-						name = g_strdup(value);
+						if(cg != NULL && cg->type == janus_config_type_array) {
+							/* Item with no value, just name */
+							janus_config_item *item = janus_config_item_create(value, NULL);
+							if(janus_config_add(jc, cg, item) < 0) {
+								janus_config_container_destroy(item);
+								JANUS_LOG(LOG_ERR, "Error adding value-less item %s (%s)\n", value, filename);
+								error = TRUE;
+								break;
+							}
+						} else {
+							/* Take note of the name, we'll need it later */
+							name = g_strdup(value);
+						}
 					}
 					break;
 				default:
@@ -225,12 +243,10 @@ janus_config *janus_config_parse(const char *config_file) {
 			yaml_event_delete(&event);
 		}
 		g_free(name);
-		yaml_parser_delete(&parser);
-		if(error) {
-			JANUS_LOG(LOG_ERR, "Error parsing YAML configuration file (%s)\n", filename);
-			goto error;
-		}
 		yaml_event_delete(&event);
+		yaml_parser_delete(&parser);
+		if(error)
+			goto error;
 		/* We're done */
 		goto done;
 	}
@@ -276,8 +292,9 @@ janus_config *janus_config_parse(const char *config_file) {
 				JANUS_LOG(LOG_ERR, "Error parsing category at line %d: no name (%s)\n", line_number, filename);
 				goto error;
 			}
-			cg = janus_config_add_category(jc, NULL, line);
-			if(cg == NULL) {
+			cg = janus_config_category_create(line);
+			if(janus_config_add(jc, NULL, cg) < 0) {
+				janus_config_container_destroy(cg);
 				JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", line, filename);
 				goto error;
 			}
@@ -296,19 +313,19 @@ janus_config *janus_config_parse(const char *config_file) {
 			}
 			value++;
 			value = trim(value);
-			if(strlen(value) == 0) {
-				JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no value (%s)\n", line_number, filename);
-				goto error;
-			}
-			if(*value == '>') {
-				value++;
-				value = trim(value);
-				if(strlen(value) == 0) {
-					JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no value (%s)\n", line_number, filename);
-					goto error;
+			if(strlen(value) > 0) {
+				if(*value == '>') {
+					value++;
+					value = trim(value);
+					if(strlen(value) == 0) {
+						JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no value (%s)\n", line_number, filename);
+						goto error;
+					}
 				}
 			}
-			if(janus_config_add_item(jc, cg, name, value) == NULL) {
+			janus_config_item *item = janus_config_item_create(name, value);
+			if(janus_config_add(jc, cg, item) < 0) {
+				janus_config_container_destroy(item);
 				if(cg == NULL)
 					JANUS_LOG(LOG_ERR, "Error adding item %s (%s)\n", name, filename);
 				else
@@ -339,190 +356,225 @@ janus_config *janus_config_create(const char *name) {
 	return jc;
 }
 
-GList *janus_config_get_categories(janus_config *config, janus_config_category *parent) {
-	if(config == NULL)
+
+/* Containers management */
+janus_config_item *janus_config_item_create(const char *name, const char *value) {
+	if(name == NULL)
 		return NULL;
-	return parent ? parent->subcategories : config->categories;
+	janus_config_item *item = g_malloc0(sizeof(janus_config_item));
+	item->type = janus_config_type_item;
+	item->name = g_strdup(name);
+	if(value)
+		item->value = g_strdup(value);
+	return item;
 }
 
-janus_config_category *janus_config_get_category(janus_config *config, ...) {
+janus_config_category *janus_config_category_create(const char *name) {
+	if(name == NULL)
+		return NULL;
+	janus_config_category *category = g_malloc0(sizeof(janus_config_category));
+	category->type = janus_config_type_category;
+	category->name = g_strdup(name);
+	return category;
+}
+
+janus_config_array *janus_config_array_create(const char *name) {
+	if(name == NULL)
+		return NULL;
+	janus_config_array *array = g_malloc0(sizeof(janus_config_array));
+	array->type = janus_config_type_array;
+	array->name = g_strdup(name);
+	return array;
+}
+
+void janus_config_container_destroy(janus_config_container *container) {
+	if(container) {
+		if(container->name)
+			g_free((gpointer)container->name);
+		if(container->value)
+			g_free((gpointer)container->value);
+		if(container->list)
+			g_list_free_full(container->list, (GDestroyNotify)janus_config_container_destroy);
+		g_free(container);
+	}
+}
+
+static janus_config_container *janus_config_get_internal(janus_config *config,
+		janus_config_container *parent, janus_config_type type, const char *name, gboolean create) {
+	if(config == NULL || name == NULL)
+		return NULL;
+	if(parent != NULL && parent->type != janus_config_type_category && parent->type != janus_config_type_array)
+		return NULL;
+	janus_config_container *c = NULL;
+	GList *l = parent ? parent->list : config->list;
+	while(l) {
+		c = (janus_config_container *)l->data;
+		if(c && c->name && !strcasecmp(name, c->name) &&
+				(type == janus_config_type_any || c->type == type))
+			return c;
+		l = l->next;
+	}
+	/* If we got here, it doesn't exist, should we create it? */
+	c = NULL;
+	if(create) {
+		if(type == janus_config_type_category) {
+			c = janus_config_category_create(name);
+		} else if(type == janus_config_type_category) {
+			c = janus_config_array_create(name);
+		} else {
+			JANUS_LOG(LOG_WARN, "Not a category and not an array, not creating anything...\n");
+		}
+		if(c != NULL)
+			janus_config_add(config, parent, c);
+	}
+	return c;
+}
+
+janus_config_container *janus_config_get(janus_config *config,
+		janus_config_container *parent, janus_config_type type, const char *name) {
+	return janus_config_get_internal(config, parent, type, name, FALSE);
+}
+
+janus_config_container *janus_config_get_create(janus_config *config,
+		janus_config_container *parent, janus_config_type type, const char *name) {
+	return janus_config_get_internal(config, parent, type, name, TRUE);
+}
+
+janus_config_container *janus_config_search(janus_config *config, ...) {
 	if(config == NULL)
 		return NULL;
 	va_list args;
 	va_start(args, config);
-	const char *name = va_arg(args, const char *);
+	char *name = va_arg(args, char *);
 	if(name == NULL) {
 		va_end(args);
 		return NULL;
 	}
-	GList *lc = config->categories;
-	janus_config_category *pc = NULL, *c = NULL;
+	/* Get the full path we're looking for */
+	GList *path = NULL;
 	while(name) {
-		GList *tlc = lc;
-		while(tlc) {
-			pc = (janus_config_category *)tlc->data;
-			if(pc && pc->category && pc->name && !strcasecmp(name, pc->name)) {
-				/* Category found, dig deeper */
-				break;
-			}
-			pc = NULL;
-			tlc = tlc->next;
-		}
-		if(pc == NULL) {
-			/* Category not found */
-			c = NULL;
-			break;
-		}
-		lc = pc->subcategories;
-		c = pc;
-		pc = NULL;
-		/* Next parent */
-		name = va_arg(args, const char *);
+		path = g_list_append(path, name);
+		name = va_arg(args, char *);
 	}
 	va_end(args);
-	return c;
-}
-
-GList *janus_config_get_items(janus_config_category *category) {
-	if(category == NULL)
-		return NULL;
-	return category->items;
-}
-
-janus_config_item *janus_config_get_item(janus_config_category *category, const char *name) {
-	if(category == NULL || category->items == NULL || name == NULL)
-		return NULL;
-	GList *l = category->items;
-	while(l) {
-		janus_config_item *i = (janus_config_item *)l->data;
-		if(i && i->name && !strcasecmp(name, i->name))
-			return i;
-		l = l->next;
-	}
-	return NULL;
-}
-
-janus_config_category *janus_config_add_category(janus_config *config, janus_config_category *parent, const char *category) {
-	if(config == NULL || category == NULL)
-		return NULL;
-	janus_config_category *c = NULL;
-	if(parent != NULL) {
-		GList *l = parent->subcategories;
-		while(l) {
-			c = (janus_config_category *)l->data;
-			if(c && c->category && c->name && !strcasecmp(category, c->name)) {
-				/* Category exists, return this */
-				return c;
-			}
-			l = l->next;
+	/* Start looking */
+	janus_config_container *parent = NULL, *c = NULL;
+	while(path) {
+		name = (char *)path->data;
+		c = janus_config_get(config, parent, janus_config_type_any, name);
+		if(c == NULL) {
+			/* Not found */
+			break;
 		}
-	} else {
-		c = janus_config_get_category(config, category, NULL);
-		if(c != NULL) {
-			/* Category exists, return this */
-			return c;
-		}
-	}
-	c = g_malloc0(sizeof(janus_config_category));
-	c->category = TRUE;
-	c->name = g_strdup(category);
-	if(parent != NULL) {
-		parent->subcategories = g_list_append(parent->subcategories, c);
-	} else {
-		config->categories = g_list_append(config->categories, c);
+		parent = c;
+		/* Next parent */
+		path = path->next;
 	}
 	return c;
 }
 
-int janus_config_remove_category(janus_config *config, janus_config_category *parent, const char *category) {
-	if(config == NULL || category == NULL)
+int janus_config_add(janus_config *config, janus_config_container *container, janus_config_container *item) {
+	if(config == NULL || item == NULL)
 		return -1;
-	janus_config_category *c = NULL;
-	if(parent != NULL) {
-		GList *l = parent->subcategories;
-		while(l) {
-			c = (janus_config_category *)l->data;
-			if(c && c->category && c->name && !strcasecmp(category, c->name)) {
-				/* Found */
-				parent->subcategories = g_list_remove(parent->subcategories, c);
-				janus_config_free_category(c);
-				return 0;
-			}
-			l = l->next;
-		}
-	} else {
-		c = janus_config_get_category(config, category, NULL);
-		if(c) {
-			/* Found */
-			config->categories = g_list_remove(config->categories, c);
-			janus_config_free_category(c);
-			return 0;
-		}
-	}
-	return -2;
-}
-
-janus_config_item *janus_config_add_item(janus_config *config, janus_config_category *c, const char *name, const char *value) {
-	if(config == NULL || name == NULL || value == NULL)
-		return NULL;
-	janus_config_item *item = c ? janus_config_get_item(c, name) : NULL;
-	if(item == NULL) {
-		/* Create it */
-		item = g_malloc0(sizeof(janus_config_item));
-		item->category = FALSE;
-		item->name = g_strdup(name);
-		item->value = g_strdup(value);
-		if(c != NULL) {
-			/* Add to category */
-			c->items = g_list_append(c->items, item);
-		} else {
-			/* Uncategorized item */
-			config->items = g_list_append(config->items, item);
-		}
-	} else {
-		/* Update it */
-		char *item_value = g_strdup(value);
-		if(item->value)
-			g_free((gpointer)item->value);
-		item->value = item_value;
-	}
-	return item;
-}
-
-int janus_config_remove_item(janus_config *config, janus_config_category *c, const char *name) {
-	if(config == NULL || c == NULL || name == NULL)
-		return -1;
-	janus_config_item *item = janus_config_get_item(c, name);
-	if(item == NULL)
+	if(container != NULL && container->type != janus_config_type_category && container->type != janus_config_type_array)
 		return -2;
-	c->items = g_list_remove(c->items, item);
-	janus_config_free_item(item);
+	if(container) {
+		/* Add to parent */
+		container->list = g_list_append(container->list, item);
+	} else {
+		/* Add to root */
+		config->list = g_list_append(config->list, item);
+	}
 	return 0;
 }
 
+int janus_config_remove(janus_config *config, janus_config_container *container, const char *name) {
+	if(config == NULL || name == NULL)
+		return -1;
+	if(container != NULL && container->type != janus_config_type_category && container->type != janus_config_type_array)
+		return -2;
+	janus_config_container *item = janus_config_get(config, container, janus_config_type_any, name);
+	if(item == NULL)
+		return -3;
+	if(container) {
+		/* Remove from parent */
+		container->list = g_list_remove(container->list, item);
+	} else {
+		/* Remove from root */
+		config->list = g_list_remove(config->list, item);
+	}
+	janus_config_container_destroy(item);
+	return 0;
+}
+
+GList *janus_config_get_items(janus_config *config, janus_config_container *parent) {
+	if(config == NULL || (parent != NULL && parent->type != janus_config_type_category
+			&& parent->type != janus_config_type_array))
+		return NULL;
+	GList *list = NULL, *clist = parent ? parent->list : config->list;
+	while(clist) {
+		janus_config_container *c = (janus_config_container *)clist->data;
+		if(c && c->type == janus_config_type_item)
+			list = g_list_append(list, c);
+		clist = clist->next;
+	}
+	return list;
+}
+
+GList *janus_config_get_categories(janus_config *config, janus_config_container *parent) {
+	if(config == NULL || (parent != NULL && parent->type != janus_config_type_category
+			&& parent->type != janus_config_type_array))
+		return NULL;
+	GList *list = NULL, *clist = parent ? parent->list : config->list;
+	while(clist) {
+		janus_config_container *c = (janus_config_container *)clist->data;
+		if(c && c->type == janus_config_type_category)
+			list = g_list_append(list, c);
+		clist = clist->next;
+	}
+	return list;
+}
+
+GList *janus_config_get_arrays(janus_config *config, janus_config_container *parent) {
+	if(config == NULL || (parent != NULL && parent->type != janus_config_type_category
+			&& parent->type != janus_config_type_array))
+		return NULL;
+	GList *list = NULL, *clist = parent ? parent->list : config->list;
+	while(clist) {
+		janus_config_container *c = (janus_config_container *)clist->data;
+		if(c && c->type == janus_config_type_array)
+			list = g_list_append(list, c);
+		clist = clist->next;
+	}
+	return list;
+}
+
+
+/* Printing utilities */
 void janus_config_print(janus_config *config) {
 	janus_config_print_as(config, LOG_VERB);
 }
 
-static void janus_config_print_items(int level, GList *l, int indent) {
-	while(l) {
-		janus_config_item *i = (janus_config_item *)l->data;
-		JANUS_LOG(level, "%*s%s: %s\n", indent, "",
-			i->name ? i->name : "??", i->value ? i->value : "??");
-		l = l->next;
-	}
-}
-
 #define JANUS_CONFIG_INDENT 4
-static void janus_config_print_categories(int level, GList *l, int indent) {
+static void janus_config_print_list(int level, GList *l, int indent) {
 	while(l) {
-		janus_config_category *c = (janus_config_category *)l->data;
-		JANUS_LOG(level, "%*s[%s]\n", indent, "",
-			c->name ? c->name : "??");
-		if(c->items)
-			janus_config_print_items(level, c->items, indent+JANUS_CONFIG_INDENT);
-		if(c->subcategories)
-			janus_config_print_categories(level, c->subcategories, indent+JANUS_CONFIG_INDENT);
+		janus_config_container *c = (janus_config_container *)l->data;
+		if(c->type == janus_config_type_item) {
+			JANUS_LOG(level, "%*s%s: %s\n", indent, "",
+				c->name ? c->name : "(none)", c->value ? c->value : "(none)");
+		} else if(c->type == janus_config_type_category) {
+			JANUS_LOG(level, "%*s%s: {\n", indent, "",
+				c->name ? c->name : "(none)");
+			if(c->list)
+				janus_config_print_list(level, c->list, indent+JANUS_CONFIG_INDENT);
+			JANUS_LOG(level, "%*s}\n", indent, "");
+		} else if(c->type == janus_config_type_array) {
+			JANUS_LOG(level, "%*s%s: [\n", indent, "",
+				c->name ? c->name : "(none)");
+			if(c->list)
+				janus_config_print_list(level, c->list, indent+JANUS_CONFIG_INDENT);
+			JANUS_LOG(level, "%*s]\n", indent, "");
+		}
 		l = l->next;
 	}
 }
@@ -531,103 +583,118 @@ void janus_config_print_as(janus_config *config, int level) {
 	if(config == NULL)
 		return;
 	JANUS_LOG(level, "[%s]\n", config->name ? config->name : "??");
-	if(config->items)
-		janus_config_print_items(level, config->items, JANUS_CONFIG_INDENT);
-	if(config->categories)
-		janus_config_print_categories(level, config->categories, JANUS_CONFIG_INDENT);
+	if(config->list)
+		janus_config_print_list(level, config->list, JANUS_CONFIG_INDENT);
 }
 
-static void janus_config_save_items(janus_config *config, FILE *file, GList *items, yaml_emitter_t *emitter) {
-	if(config == NULL || file == NULL || items == NULL )
+static void janus_config_save_list(janus_config *config, FILE *file, int level, gboolean array, GList *list, yaml_emitter_t *emitter) {
+	if(config == NULL || file == NULL || list == NULL )
 		return;
-	GList *l = items;
+	GList *l = list;
 	yaml_event_t output_event;
 	while(l) {
-		janus_config_item *i = (janus_config_item *)l->data;
-		if(i->name && i->value) {
+		janus_config_container *c = (janus_config_container *)l->data;
+		if(c->name == NULL) {
+			l = l->next;
+			continue;
+		}
+		if(c->type == janus_config_type_item) {
 			if(config->is_yaml) {
 				yaml_scalar_event_initialize(&output_event,
-					NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->name,
+					NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)c->name,
 					-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
 				yaml_emitter_emit(emitter, &output_event);
-				yaml_scalar_event_initialize(&output_event,
-					NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)i->value,
-					-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
-				yaml_emitter_emit(emitter, &output_event);
+				if(!array) {
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)(c->value ? c->value : ""),
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(emitter, &output_event);
+				}
 			} else {
-				fwrite(i->name, sizeof(char), strlen(i->name), file);
+				fwrite(c->name, sizeof(char), strlen(c->name), file);
 				fwrite(" = ", sizeof(char), 3, file);
 				/* If the value contains a semicolon, escape it */
-				if(strchr(i->value, ';')) {
-					char *value = g_strdup(i->value);
+				if(strchr(c->value, ';')) {
+					char *value = g_strdup(c->value);
 					value = janus_string_replace((char *)value, ";", "\\;");
 					fwrite(value, sizeof(char), strlen(value), file);
 					fwrite("\n", sizeof(char), 1, file);
 					g_free(value);
 				} else {
 					/* No need to escape */
-					fwrite(i->value, sizeof(char), strlen(i->value), file);
+					fwrite(c->value, sizeof(char), strlen(c->value), file);
 					fwrite("\n", sizeof(char), 1, file);
 				}
 			}
-		}
-		l = l->next;
-	}
-}
-
-static void janus_config_save_categories(janus_config *config, FILE *file, GList *categories, yaml_emitter_t *emitter) {
-	if(config == NULL || file == NULL || categories == NULL)
-		return;
-	GList *l = categories;
-	yaml_event_t output_event;
-	while(l) {
-		janus_config_category *c = (janus_config_category *)l->data;
-		if(c->name) {
+		} else if(c->type == janus_config_type_category) {
 			if(config->is_yaml) {
 				yaml_scalar_event_initialize(&output_event,
-					NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)c->name,
+					NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)c->name,
 					-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
 				yaml_emitter_emit(emitter, &output_event);
 			} else {
-				fwrite("[", sizeof(char), 1, file);
-				fwrite(c->name, sizeof(char), strlen(c->name), file);
-				fwrite("]\n", sizeof(char), 2, file);
+				if(level > 0) {
+					/* INI files don't support indented categories */
+					JANUS_LOG(LOG_WARN, "Dropping indented category %s (unsupported in INI files)\n", c->name);
+				} else {
+					fwrite("[", sizeof(char), 1, file);
+					fwrite(c->name, sizeof(char), strlen(c->name), file);
+					fwrite("]\n", sizeof(char), 2, file);
+				}
 			}
-			if(c->items == NULL && c->subcategories == NULL) {
+			if(c->list == NULL) {
 				/* Empty category */
 				if(config->is_yaml) {
 					yaml_scalar_event_initialize(&output_event,
-						NULL, (yaml_char_t *)"tag:yaml.org,2002:str", (yaml_char_t *)"",
+						NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)"",
 						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
 					yaml_emitter_emit(emitter, &output_event);
 				}
 			} else {
-				/* None-empty category */
+				/* Non-empty category */
 				if(config->is_yaml) {
 					yaml_mapping_start_event_initialize(&output_event,
-						NULL, (yaml_char_t *)"tag:yaml.org,2002:map", 1,
-						YAML_BLOCK_MAPPING_STYLE);
+						NULL, (yaml_char_t *)YAML_MAP_TAG, 1,
+						YAML_ANY_MAPPING_STYLE);
 					yaml_emitter_emit(emitter, &output_event);
 				}
-				if(c->items)
-					janus_config_save_items(config, file, c->items, emitter);
-				if(c->subcategories) {
-					if(!config->is_yaml) {
-						/* INI files don't support indented categories */
-						JANUS_LOG(LOG_WARN, "Dropping subcategories of %s (unsupported in INI files)\n", c->name);
-					} else {
-						janus_config_save_categories(config, file, c->subcategories, emitter);
-					}
-				}
+				janus_config_save_list(config, file, level+1, FALSE, c->list, emitter);
 				/* Done */
 				if(config->is_yaml) {
 					yaml_mapping_end_event_initialize(&output_event);
 					yaml_emitter_emit(emitter, &output_event);
 				}
 			}
+			if(!config->is_yaml)
+				fwrite("\r\n", sizeof(char), 2, file);
+		} else if(c->type == janus_config_type_array) {
+			if(!config->is_yaml) {
+				/* INI files don't support arrays */
+				JANUS_LOG(LOG_WARN, "Dropping array %s (unsupported in INI files)\n", c->name);
+			} else {
+				yaml_scalar_event_initialize(&output_event,
+					NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)c->name,
+					-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+				yaml_emitter_emit(emitter, &output_event);
+				if(c->list == NULL) {
+					/* Empty array (will turn into a category though) */
+					yaml_scalar_event_initialize(&output_event,
+						NULL, (yaml_char_t *)YAML_STR_TAG, (yaml_char_t *)"",
+						-1, 1, 1, YAML_PLAIN_SCALAR_STYLE);
+					yaml_emitter_emit(emitter, &output_event);
+				} else {
+					/* Non-empty array */
+					yaml_sequence_start_event_initialize(&output_event,
+						NULL, (yaml_char_t *)YAML_SEQ_TAG, 1,
+						YAML_ANY_SEQUENCE_STYLE);
+					yaml_emitter_emit(emitter, &output_event);
+					janus_config_save_list(config, file, level+1, TRUE, c->list, emitter);
+					/* Done */
+					yaml_sequence_end_event_initialize(&output_event);
+					yaml_emitter_emit(emitter, &output_event);
+				}
+			}
 		}
-		if(!config->is_yaml)
-			fwrite("\r\n", sizeof(char), 2, file);
 		l = l->next;
 	}
 }
@@ -682,15 +749,13 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 		yaml_document_start_event_initialize(&output_event, NULL, NULL, NULL, 0);
 		yaml_emitter_emit(&emitter, &output_event);
 		yaml_mapping_start_event_initialize(&output_event,
-			NULL, (yaml_char_t *)"tag:yaml.org,2002:map", 1,
-			YAML_BLOCK_MAPPING_STYLE);
+			NULL, (yaml_char_t *)YAML_MAP_TAG, 1,
+			YAML_ANY_MAPPING_STYLE);
 		yaml_emitter_emit(&emitter, &output_event);
 	}
 	/* Go on with the configuration */
-	if(config->items)
-		janus_config_save_items(config, file, config->items, &emitter);
-	if(config->categories)
-		janus_config_save_categories(config, file, config->categories, &emitter);
+	if(config->list)
+		janus_config_save_list(config, file, 0, FALSE, config->list, &emitter);
 	/* If this is a YAML output file, close up */
 	if(config->is_yaml) {
 		yaml_mapping_end_event_initialize(&output_event);
@@ -710,13 +775,9 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 void janus_config_destroy(janus_config *config) {
 	if(config == NULL)
 		return;
-	if(config->items) {
-		g_list_free_full(config->items, janus_config_free_item);
-		config->items = NULL;
-	}
-	if(config->categories) {
-		g_list_free_full(config->categories, janus_config_free_category);
-		config->categories = NULL;
+	if(config->list) {
+		g_list_free_full(config->list, (GDestroyNotify)janus_config_container_destroy);
+		config->list = NULL;
 	}
 	if(config->name)
 		g_free((gpointer)config->name);

@@ -691,11 +691,11 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	/* Parse configuration */
 	if(config != NULL) {
-		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
-		janus_config_item *path = janus_config_get_item(config_general, "path");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *path = janus_config_get(config, config_general, janus_config_type_item, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
-		janus_config_item *events = janus_config_get_item(config_general, "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -1748,28 +1748,32 @@ void janus_recordplay_update_recordings_list(void) {
 		guint64 id = g_ascii_strtoull(cat->name, NULL, 0);
 		if(id == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid ID, skipping...\n");
+			g_list_free(cl);
 			janus_config_destroy(nfo);
 			continue;
 		}
 		janus_recordplay_recording *rec = g_hash_table_lookup(recordings, &id);
 		if(rec != NULL) {
 			JANUS_LOG(LOG_VERB, "Skipping recording with ID %"SCNu64", it's already in the list...\n", id);
+			g_list_free(cl);
 			janus_config_destroy(nfo);
 			/* Mark that we updated this recording */
 			old_recordings = g_list_remove(old_recordings, &rec->id);
 			continue;
 		}
-		janus_config_item *name = janus_config_get_item(cat, "name");
-		janus_config_item *date = janus_config_get_item(cat, "date");
-		janus_config_item *audio = janus_config_get_item(cat, "audio");
-		janus_config_item *video = janus_config_get_item(cat, "video");
+		janus_config_item *name = janus_config_get(nfo, cat, janus_config_type_item, "name");
+		janus_config_item *date = janus_config_get(nfo, cat, janus_config_type_item, "date");
+		janus_config_item *audio = janus_config_get(nfo, cat, janus_config_type_item, "audio");
+		janus_config_item *video = janus_config_get(nfo, cat, janus_config_type_item, "video");
 		if(!name || !name->value || strlen(name->value) == 0 || !date || !date->value || strlen(date->value) == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid info for recording %"SCNu64", skipping...\n", id);
+			g_list_free(cl);
 			janus_config_destroy(nfo);
 			continue;
 		}
 		if((!audio || !audio->value) && (!video || !video->value)) {
 			JANUS_LOG(LOG_WARN, "No audio and no video in recording %"SCNu64", skipping...\n", id);
+			g_list_free(cl);
 			janus_config_destroy(nfo);
 			continue;
 		}
@@ -1812,6 +1816,7 @@ void janus_recordplay_update_recordings_list(void) {
 		}
 		janus_mutex_init(&rec->mutex);
 		
+		g_list_free(cl);
 		janus_config_destroy(nfo);
 
 		/* Add to the list of recordings */

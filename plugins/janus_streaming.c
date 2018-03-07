@@ -711,19 +711,19 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
-		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 		/* Any admin key to limit who can "create"? */
-		janus_config_item *key = janus_config_get_item(config_general, "admin_key");
+		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
-		janus_config_item *events = janus_config_get_item(config_general, "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_STREAMING_NAME);
 		}
 		/* Iterate on all rooms */
-		GList *cl = janus_config_get_categories(config, NULL);
+		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
@@ -731,7 +731,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding stream '%s'\n", cat->name);
-			janus_config_item *type = janus_config_get_item(cat, "type");
+			janus_config_item *type = janus_config_get(config, cat, janus_config_type_item, "type");
 			if(type == NULL || type->value == NULL) {
 				JANUS_LOG(LOG_WARN, "  -- Invalid type, skipping stream '%s'...\n", cat->name);
 				cl = cl->next;
@@ -740,38 +740,38 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			if(!strcasecmp(type->value, "rtp")) {
 				janus_network_address video_iface, audio_iface, data_iface;
 				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
-				janus_config_item *id = janus_config_get_item(cat, "id");
-				janus_config_item *desc = janus_config_get_item(cat, "description");
-				janus_config_item *priv = janus_config_get_item(cat, "is_private");
-				janus_config_item *secret = janus_config_get_item(cat, "secret");
-				janus_config_item *pin = janus_config_get_item(cat, "pin");
-				janus_config_item *audio = janus_config_get_item(cat, "audio");
-				janus_config_item *askew = janus_config_get_item(cat, "audioskew");
-				janus_config_item *video = janus_config_get_item(cat, "video");
-				janus_config_item *vskew = janus_config_get_item(cat, "videoskew");
-				janus_config_item *data = janus_config_get_item(cat, "data");
-				janus_config_item *diface = janus_config_get_item(cat, "dataiface");
-				janus_config_item *amcast = janus_config_get_item(cat, "audiomcast");
-				janus_config_item *aiface = janus_config_get_item(cat, "audioiface");
-				janus_config_item *aport = janus_config_get_item(cat, "audioport");
-				janus_config_item *acodec = janus_config_get_item(cat, "audiopt");
-				janus_config_item *artpmap = janus_config_get_item(cat, "audiortpmap");
-				janus_config_item *afmtp = janus_config_get_item(cat, "audiofmtp");
-				janus_config_item *vmcast = janus_config_get_item(cat, "videomcast");
-				janus_config_item *viface = janus_config_get_item(cat, "videoiface");
-				janus_config_item *vport = janus_config_get_item(cat, "videoport");
-				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
-				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
-				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
-				janus_config_item *vkf = janus_config_get_item(cat, "videobufferkf");
-				janus_config_item *vsc = janus_config_get_item(cat, "videosimulcast");
-				janus_config_item *vport2 = janus_config_get_item(cat, "videoport2");
-				janus_config_item *vport3 = janus_config_get_item(cat, "videoport3");
-				janus_config_item *dport = janus_config_get_item(cat, "dataport");
-				janus_config_item *dbm = janus_config_get_item(cat, "databuffermsg");
-				janus_config_item *rtpcollision = janus_config_get_item(cat, "collision");
-				janus_config_item *ssuite = janus_config_get_item(cat, "srtpsuite");
-				janus_config_item *scrypto = janus_config_get_item(cat, "srtpcrypto");
+				janus_config_item *id = janus_config_get(config, cat, janus_config_type_item, "id");
+				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
+				janus_config_item *askew = janus_config_get(config, cat, janus_config_type_item, "audioskew");
+				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
+				janus_config_item *vskew = janus_config_get(config, cat, janus_config_type_item, "videoskew");
+				janus_config_item *data = janus_config_get(config, cat, janus_config_type_item, "data");
+				janus_config_item *diface = janus_config_get(config, cat, janus_config_type_item, "dataiface");
+				janus_config_item *amcast = janus_config_get(config, cat, janus_config_type_item, "audiomcast");
+				janus_config_item *aiface = janus_config_get(config, cat, janus_config_type_item, "audioiface");
+				janus_config_item *aport = janus_config_get(config, cat, janus_config_type_item, "audioport");
+				janus_config_item *acodec = janus_config_get(config, cat, janus_config_type_item, "audiopt");
+				janus_config_item *artpmap = janus_config_get(config, cat, janus_config_type_item, "audiortpmap");
+				janus_config_item *afmtp = janus_config_get(config, cat, janus_config_type_item, "audiofmtp");
+				janus_config_item *vmcast = janus_config_get(config, cat, janus_config_type_item, "videomcast");
+				janus_config_item *viface = janus_config_get(config, cat, janus_config_type_item, "videoiface");
+				janus_config_item *vport = janus_config_get(config, cat, janus_config_type_item, "videoport");
+				janus_config_item *vcodec = janus_config_get(config, cat, janus_config_type_item, "videopt");
+				janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
+				janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
+				janus_config_item *vkf = janus_config_get(config, cat, janus_config_type_item, "videobufferkf");
+				janus_config_item *vsc = janus_config_get(config, cat, janus_config_type_item, "videosimulcast");
+				janus_config_item *vport2 = janus_config_get(config, cat, janus_config_type_item, "videoport2");
+				janus_config_item *vport3 = janus_config_get(config, cat, janus_config_type_item, "videoport3");
+				janus_config_item *dport = janus_config_get(config, cat, janus_config_type_item, "dataport");
+				janus_config_item *dbm = janus_config_get(config, cat, janus_config_type_item, "databuffermsg");
+				janus_config_item *rtpcollision = janus_config_get(config, cat, janus_config_type_item, "collision");
+				janus_config_item *ssuite = janus_config_get(config, cat, janus_config_type_item, "srtpsuite");
+				janus_config_item *scrypto = janus_config_get(config, cat, janus_config_type_item, "srtpcrypto");
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean doaskew = audio && askew && askew->value && janus_is_true(askew->value);
@@ -920,14 +920,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					mp->pin = g_strdup(pin->value);
 			} else if(!strcasecmp(type->value, "live")) {
 				/* File live source */
-				janus_config_item *id = janus_config_get_item(cat, "id");
-				janus_config_item *desc = janus_config_get_item(cat, "description");
-				janus_config_item *priv = janus_config_get_item(cat, "is_private");
-				janus_config_item *secret = janus_config_get_item(cat, "secret");
-				janus_config_item *pin = janus_config_get_item(cat, "pin");
-				janus_config_item *file = janus_config_get_item(cat, "filename");
-				janus_config_item *audio = janus_config_get_item(cat, "audio");
-				janus_config_item *video = janus_config_get_item(cat, "video");
+				janus_config_item *id = janus_config_get(config, cat, janus_config_type_item, "id");
+				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+				janus_config_item *file = janus_config_get(config, cat, janus_config_type_item, "filename");
+				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
+				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream '%s', missing mandatory information...\n", cat->name);
 					cl = cl->next;
@@ -985,14 +985,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					mp->pin = g_strdup(pin->value);
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* mu-Law file on demand source */
-				janus_config_item *id = janus_config_get_item(cat, "id");
-				janus_config_item *desc = janus_config_get_item(cat, "description");
-				janus_config_item *priv = janus_config_get_item(cat, "is_private");
-				janus_config_item *secret = janus_config_get_item(cat, "secret");
-				janus_config_item *pin = janus_config_get_item(cat, "pin");
-				janus_config_item *file = janus_config_get_item(cat, "filename");
-				janus_config_item *audio = janus_config_get_item(cat, "audio");
-				janus_config_item *video = janus_config_get_item(cat, "video");
+				janus_config_item *id = janus_config_get(config, cat, janus_config_type_item, "id");
+				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+				janus_config_item *file = janus_config_get(config, cat, janus_config_type_item, "filename");
+				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
+				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream '%s', missing mandatory information...\n", cat->name);
 					cl = cl->next;
@@ -1054,21 +1054,21 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 #else
-				janus_config_item *id = janus_config_get_item(cat, "id");
-				janus_config_item *desc = janus_config_get_item(cat, "description");
-				janus_config_item *priv = janus_config_get_item(cat, "is_private");
-				janus_config_item *secret = janus_config_get_item(cat, "secret");
-				janus_config_item *pin = janus_config_get_item(cat, "pin");
-				janus_config_item *file = janus_config_get_item(cat, "url");
-				janus_config_item *username = janus_config_get_item(cat, "rtsp_user");
-				janus_config_item *password = janus_config_get_item(cat, "rtsp_pwd");
-				janus_config_item *audio = janus_config_get_item(cat, "audio");
-				janus_config_item *artpmap = janus_config_get_item(cat, "audiortpmap");
-				janus_config_item *afmtp = janus_config_get_item(cat, "audiofmtp");
-				janus_config_item *video = janus_config_get_item(cat, "video");
-				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
-				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
-				janus_config_item *iface = janus_config_get_item(cat, "rtspiface");
+				janus_config_item *id = janus_config_get(config, cat, janus_config_type_item, "id");
+				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+				janus_config_item *file = janus_config_get(config, cat, janus_config_type_item, "url");
+				janus_config_item *username = janus_config_get(config, cat, janus_config_type_item, "rtsp_user");
+				janus_config_item *password = janus_config_get(config, cat, janus_config_type_item, "rtsp_pwd");
+				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
+				janus_config_item *artpmap = janus_config_get(config, cat, janus_config_type_item, "audiortpmap");
+				janus_config_item *afmtp = janus_config_get(config, cat, janus_config_type_item, "audiofmtp");
+				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
+				janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
+				janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
+				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
@@ -1135,6 +1135,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			}
 			cl = cl->next;
 		}
+		g_list_free(clist);
 		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 	if(ifas) {
@@ -1993,118 +1994,118 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			janus_mutex_lock(&config_mutex);
 			char value[BUFSIZ];
 			/* The category to add is the mountpoint name */
-			janus_config_category *c = janus_config_add_category(config, NULL, mp->name);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, mp->name);
 			/* Now for the common values */
-			janus_config_add_item(config, c, "type", type_text);
+			janus_config_add(config, c, janus_config_item_create("type", type_text));
 			g_snprintf(value, BUFSIZ, "%"SCNu64, mp->id);
-			janus_config_add_item(config, c, "id", value);
-			janus_config_add_item(config, c, "description", mp->description);
+			janus_config_add(config, c, janus_config_item_create("id", value));
+			janus_config_add(config, c, janus_config_item_create("description", mp->description));
 			if(mp->is_private)
-				janus_config_add_item(config, c, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			/* Per type values */
 			if(!strcasecmp(type_text, "rtp")) {
-				janus_config_add_item(config, c, "audio", mp->codecs.audio_pt >= 0 ? "yes" : "no");
+				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
 				janus_streaming_rtp_source *source = mp->source;
 				if(mp->codecs.audio_pt >= 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->audio_port);
-					janus_config_add_item(config, c, "audioport", value);
+					janus_config_add(config, c, janus_config_item_create("audioport", value));
 					json_t *audiomcast = json_object_get(root, "audiomcast");
 					if(audiomcast)
-						janus_config_add_item(config, c, "audiomcast", json_string_value(audiomcast));
+						janus_config_add(config, c, janus_config_item_create("audiomcast", json_string_value(audiomcast)));
 					g_snprintf(value, BUFSIZ, "%d", mp->codecs.audio_pt);
-					janus_config_add_item(config, c, "audiopt", value);
-					janus_config_add_item(config, c, "audiortpmap", mp->codecs.audio_rtpmap);
+					janus_config_add(config, c, janus_config_item_create("audiopt", value));
+					janus_config_add(config, c, janus_config_item_create("audiortpmap", mp->codecs.audio_rtpmap));
 					if(mp->codecs.audio_fmtp)
-						janus_config_add_item(config, c, "audiofmtp", mp->codecs.audio_fmtp);
+						janus_config_add(config, c, janus_config_item_create("audiofmtp", mp->codecs.audio_fmtp));
 					json_t *aiface = json_object_get(root, "audioiface");
 					if(aiface)
-						janus_config_add_item(config, c, "audioiface", json_string_value(aiface));
+						janus_config_add(config, c, janus_config_item_create("audioiface", json_string_value(aiface)));
 					if(source->askew)
-						janus_config_add_item(config, c, "askew", "yes");
+						janus_config_add(config, c, janus_config_item_create("askew", "yes"));
 				}
-				janus_config_add_item(config, c, "video", mp->codecs.video_pt >= 0? "yes" : "no");
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt >= 0? "yes" : "no"));
 				if(mp->codecs.video_pt >= 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
-					janus_config_add_item(config, c, "videoport", value);
+					janus_config_add(config, c, janus_config_item_create("videoport", value));
 					json_t *videomcast = json_object_get(root, "videomcast");
 					if(videomcast)
-						janus_config_add_item(config, c, "videomcast", json_string_value(videomcast));
+						janus_config_add(config, c, janus_config_item_create("videomcast", json_string_value(videomcast)));
 					g_snprintf(value, BUFSIZ, "%d", mp->codecs.video_pt);
-					janus_config_add_item(config, c, "videopt", value);
-					janus_config_add_item(config, c, "videortpmap", mp->codecs.video_rtpmap);
+					janus_config_add(config, c, janus_config_item_create("videopt", value));
+					janus_config_add(config, c, janus_config_item_create("videortpmap", mp->codecs.video_rtpmap));
 					if(mp->codecs.video_fmtp)
-						janus_config_add_item(config, c, "videofmtp", mp->codecs.video_fmtp);
+						janus_config_add(config, c, janus_config_item_create("videofmtp", mp->codecs.video_fmtp));
 					if(source->keyframe.enabled)
-						janus_config_add_item(config, c, "videobufferkf", "yes");
+						janus_config_add(config, c, janus_config_item_create("videobufferkf", "yes"));
 					if(source->simulcast) {
-						janus_config_add_item(config, c, "videosimulcast", "yes");
+						janus_config_add(config, c, janus_config_item_create("videosimulcast", "yes"));
 						if(source->video_port[1]) {
 							g_snprintf(value, BUFSIZ, "%d", source->video_port[1]);
-							janus_config_add_item(config, c, "videoport2", value);
+							janus_config_add(config, c, janus_config_item_create("videoport2", value));
 						}
 						if(source->video_port[2]) {
 							g_snprintf(value, BUFSIZ, "%d", source->video_port[2]);
-							janus_config_add_item(config, c, "videoport3", value);
+							janus_config_add(config, c, janus_config_item_create("videoport3", value));
 						}
 					}
 					json_t *viface = json_object_get(root, "videoiface");
 					if(viface)
-						janus_config_add_item(config, c, "videoiface", json_string_value(viface));
+						janus_config_add(config, c, janus_config_item_create("videoiface", json_string_value(viface)));
 					if(source->vskew)
-						janus_config_add_item(config, c, "vskew", "yes");
+						janus_config_add(config, c, janus_config_item_create("vskew", "yes"));
 				}
 				if(source->rtp_collision > 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->rtp_collision);
-					janus_config_add_item(config, c, "collision", value);
+					janus_config_add(config, c, janus_config_item_create("collision", value));
 				}
-				janus_config_add_item(config, c, "data", mp->data ? "yes" : "no");
+				janus_config_add(config, c, janus_config_item_create("data", mp->data ? "yes" : "no"));
 				if(source->data_port > -1) {
 					g_snprintf(value, BUFSIZ, "%d", source->data_port);
-					janus_config_add_item(config, c, "dataport", value);
+					janus_config_add(config, c, janus_config_item_create("dataport", value));
 					if(source->buffermsg)
-						janus_config_add_item(config, c, "databuffermsg", "yes");
+						janus_config_add(config, c, janus_config_item_create("databuffermsg", "yes"));
 					json_t *diface = json_object_get(root, "dataiface");
 					if(diface)
-						janus_config_add_item(config, c, "dataiface", json_string_value(diface));
+						janus_config_add(config, c, janus_config_item_create("dataiface", json_string_value(diface)));
 				}
 			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
 				janus_streaming_file_source *source = mp->source;
-				janus_config_add_item(config, c, "filename", source->filename);
-				janus_config_add_item(config, c, "audio", mp->codecs.audio_pt ? "yes" : "no");
-				janus_config_add_item(config, c, "video", mp->codecs.video_pt ? "yes" : "no");
+				janus_config_add(config, c, janus_config_item_create("filename", source->filename));
+				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
 			} else if(!strcasecmp(type_text, "rtsp")) {
 #ifdef HAVE_LIBCURL
 				janus_streaming_rtp_source *source = mp->source;
 				if(source->rtsp_url)
-					janus_config_add_item(config, c, "url", source->rtsp_url);
+					janus_config_add(config, c, janus_config_item_create("url", source->rtsp_url));
 				if(source->rtsp_username)
-					janus_config_add_item(config, c, "rtsp_user", source->rtsp_username);
+					janus_config_add(config, c, janus_config_item_create("rtsp_user", source->rtsp_username));
 				if(source->rtsp_password)
-					janus_config_add_item(config, c, "rtsp_pwd", source->rtsp_password);
+					janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
 #endif
 				if(mp->codecs.audio_pt >= 0) {
-					janus_config_add_item(config, c, "audio", mp->codecs.audio_pt ? "yes" : "no");
+					janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
 					if(mp->codecs.audio_rtpmap)
-						janus_config_add_item(config, c, "audiortpmap", mp->codecs.audio_rtpmap);
+						janus_config_add(config, c, janus_config_item_create("audiortpmap", mp->codecs.audio_rtpmap));
 					if(mp->codecs.audio_fmtp)
-						janus_config_add_item(config, c, "audiofmtp", mp->codecs.audio_fmtp);
+						janus_config_add(config, c, janus_config_item_create("audiofmtp", mp->codecs.audio_fmtp));
 				}
 				if(mp->codecs.video_pt >= 0) {
-					janus_config_add_item(config, c, "video", mp->codecs.video_pt ? "yes" : "no");
+					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
 					if(mp->codecs.video_rtpmap)
-						janus_config_add_item(config, c, "videortpmap", mp->codecs.video_rtpmap);
+						janus_config_add(config, c, janus_config_item_create("videortpmap", mp->codecs.video_rtpmap));
 					if(mp->codecs.video_fmtp)
-						janus_config_add_item(config, c, "videofmtp", mp->codecs.video_fmtp);
+						janus_config_add(config, c, janus_config_item_create("videofmtp", mp->codecs.video_fmtp));
 				}
 				json_t *iface = json_object_get(root, "rtspiface");
 				if(iface)
-					janus_config_add_item(config, c, "rtspiface", json_string_value(iface));
+					janus_config_add(config, c, janus_config_item_create("rtspiface", json_string_value(iface)));
 			}
 			/* Some more common values */
 			if(mp->secret)
-				janus_config_add_item(config, c, "secret", mp->secret);
+				janus_config_add(config, c, janus_config_item_create("secret", mp->secret));
 			if(mp->pin)
-				janus_config_add_item(config, c, "pin", mp->pin);
+				janus_config_add(config, c, janus_config_item_create("pin", mp->pin));
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the mountpoint is not permanent */
@@ -2213,7 +2214,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "Destroying mountpoint %"SCNu64" (%s) permanently in config file\n", mp->id, mp->name);
 			janus_mutex_lock(&config_mutex);
 			/* The category to remove is the mountpoint name */
-			janus_config_remove_category(config, NULL, mp->name);
+			janus_config_remove(config, NULL, mp->name);
 			/* Save modified configuration */
 			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
 			janus_mutex_unlock(&config_mutex);
