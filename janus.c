@@ -390,6 +390,8 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, in
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
+gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token);
+gboolean janus_plugin_auth_signature_contains(janus_plugin *plugin, const char *token, const char *desc);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_plugin_push_event,
@@ -400,6 +402,8 @@ static janus_callbacks janus_handler_plugin =
 		.end_session = janus_plugin_end_session,
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
+		.auth_is_signature_valid = janus_plugin_auth_is_signature_valid,
+		.auth_signature_contains = janus_plugin_auth_signature_contains,
 	};
 ///@}
 
@@ -1726,8 +1730,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "add_token")) {
 			/* Add a token valid for authentication */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, add_token_parameters,
@@ -1810,8 +1814,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "list_tokens")) {
 			/* List all the valid tokens */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			json_t *tokens_list = json_array();
@@ -1857,8 +1861,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "allow_token")) {
 			/* Allow a valid token valid to access a plugin */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
@@ -1938,8 +1942,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "disallow_token")) {
 			/* Disallow a valid token valid from accessing a plugin */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
@@ -2019,8 +2023,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "remove_token")) {
 			/* Invalidate a token for authentication purposes */
-			if(!janus_auth_is_enabled()) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+			if(!janus_auth_is_stored_mode()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Stored-Token based authentication disabled");
 				goto jsondone;
 			}
 			JANUS_VALIDATE_JSON_OBJECT(root, token_parameters,
@@ -3180,6 +3184,14 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	}
 }
 
+gboolean janus_plugin_auth_is_signature_valid(janus_plugin *plugin, const char *token) {
+	return janus_auth_check_signature(token, plugin->get_package());
+}
+
+gboolean janus_plugin_auth_signature_contains(janus_plugin *plugin, const char *token, const char *descriptor) {
+	return janus_auth_check_signature_contains(token, plugin->get_package(), descriptor);
+}
+
 
 /* Main */
 gint main(int argc, char *argv[])
@@ -3424,6 +3436,9 @@ gint main(int argc, char *argv[])
 	if(args_info.token_auth_given) {
 		janus_config_add_item(config, "general", "token_auth", "yes");
 	}
+	if(args_info.token_auth_secret_given) {
+		janus_config_add_item(config, "general", "token_auth_secret", args_info.token_auth_secret_arg);
+	}
 	if(args_info.cert_pem_given) {
 		janus_config_add_item(config, "certificates", "cert_pem", args_info.cert_pem_arg);
 	}
@@ -3600,7 +3615,12 @@ gint main(int argc, char *argv[])
 	}
 	/* Also check if the token based authentication mechanism needs to be enabled */
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
-	janus_auth_init(item && item->value && janus_is_true(item->value));
+	gboolean auth_enabled = item && item->value && janus_is_true(item->value);
+	item = janus_config_get_item_drilldown(config, "general", "token_auth_secret");
+	const char *auth_secret = NULL;
+	if (item && item->value)
+		auth_secret = item->value;
+	janus_auth_init(auth_enabled, auth_secret);
 
 	/* Initialize the recorder code */
 	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");
@@ -4240,8 +4260,8 @@ gint main(int argc, char *argv[])
 		exit(1);	/* FIXME Should we really give up? */
 	}
 	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
-	if(!admin_api_enabled && janus_auth_is_enabled()) {
-		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
+	if(!admin_api_enabled && janus_auth_is_stored_mode()) {
+		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the stored token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API or set the token auth secret.\n");
 		exit(1);	/* FIXME Should we really give up? */
 	}
 

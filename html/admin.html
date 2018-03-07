@@ -42,7 +42,7 @@
 					<li role="presentation" class="disabled"><a href="#serverinfo" aria-controls="serverinfo" role="tab" data-toggle="tab">Server Info</a></li>
 					<li role="presentation" class="disabled"><a href="#settings" aria-controls="settings" role="tab" data-toggle="tab">Settings</a></li>
 					<li role="presentation" class="disabled"><a href="#handlesinfo" aria-controls="handlesinfo" role="tab" data-toggle="tab">Handles</a></li>
-					<li role="presentation" class="disabled"><a href="#tokens" aria-controls="tokens" role="tab" data-toggle="tab">Auth Tokens</a></li>
+					<li role="presentation" class="disabled"><a href="#tokens" aria-controls="tokens" role="tab" data-toggle="tab">Stored Tokens</a></li>
 				</ul>
 
 				<div class="tab-content" style="padding: 20px;">
@@ -69,10 +69,10 @@
 						section is especially helpful when you want to debug issues with
 						a PeerConnection: you can find more details in
 						<a href="http://www.meetecho.com/blog/understanding-the-janus-admin-api/" target="_blank">this blog post</a>.</p>
-						<p>Finally, the <code>Auth Tokens</code> tab allows you to list
+						<p>Finally, the <code>Stored Tokens</code> tab allows you to list
 						existing authentication tokens, create new ones, associate plugin
 						permissions and the like. This feature will only be possible if
-						you enabled the authentication token mechanism in Janus, of course.</p>
+						you enabled the stored-token authentication mechanism in Janus, of course.</p>
 					</div>
 					<div role="tabpanel" class="tab-pane fade" id="serverinfo">
 						<h4>Server Info</h4>
@@ -136,7 +136,7 @@
 						</div>
 					</div>
 					<div role="tabpanel" class="tab-pane fade" id="tokens">
-						<h4>Auth Tokens <i id="update-tokens" class="fa fa-refresh" title="Refresh tokens" style="cursor: pointer;"></i></h4>
+						<h4>Stored Tokens <i id="update-tokens" class="fa fa-refresh" title="Refresh tokens" style="cursor: pointer;"></i></h4>
 						<div>
 							<table class="table table-striped" id="auth-tokens">
 							</table>
