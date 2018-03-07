@@ -81,7 +81,6 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
     .. \
   && make \
   && make install \
-  && ls -l /usr/lib \
   && cd \
   # INSTALL JANUS GATEWAY
   && cd janus-gateway \
@@ -110,6 +109,7 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && make \
   && make configs \
   && make install \
+  # CLEAN CONTAINER
   && cd \
   && apk del --purge .build-dependencies \
   && rm -rf usrsctp-$USRSCTP_VERSION \
