@@ -2464,7 +2464,7 @@ function Janus(gatewayCallbacks) {
 					Janus.httpAPICall(server + "/" + sessionId + "/" + handleId, {
 						verb: 'POST',
 						withCredentials: withCredentials,
-						data: request
+						body: request
 					});
 				}
 			}
