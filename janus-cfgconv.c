@@ -48,29 +48,48 @@ int main(int argc, char *argv[])
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.[cfg|yaml] destination.[cfg|yaml]\n", argv[0]);
+		JANUS_LOG(LOG_INFO, "       %s --parse source.[cfg|yaml]\n", argv[0]);
 		exit(1);
 	}
 	char *source = NULL, *destination = NULL;
-	/* Convert the configuration files */
+	/* Parse or convert the configuration files */
+	gboolean only_parse = FALSE;
 	source = argv[1];
-	if(!strstr(source, ".cfg") && !strstr(source, ".yaml")) {
-		JANUS_LOG(LOG_ERR, "Unsupported file: %s\n", source);
-		exit(1);
+	if(!strcmp(source, "--parse")) {
+		only_parse = TRUE;
+	} else {
+		if(!strstr(source, ".cfg") && !strstr(source, ".yaml")) {
+			JANUS_LOG(LOG_ERR, "Unsupported file: %s\n", source);
+			exit(1);
+		}
 	}
 	destination = argv[2];
 	if(!strstr(destination, ".cfg") && !strstr(destination, ".yaml")) {
 		JANUS_LOG(LOG_ERR, "Unsupported file: %s\n", destination);
 		exit(1);
 	}
-	JANUS_LOG(LOG_INFO, "Converting:\n");
-	JANUS_LOG(LOG_INFO, "   -- IN:  %s\n", source);
-	JANUS_LOG(LOG_INFO, "   -- OUT: %s\n\n", destination);
+	if(only_parse) {
+		source = destination;
+		destination = NULL;
+		JANUS_LOG(LOG_INFO, "Parsing:\n");
+		JANUS_LOG(LOG_INFO, "   -- IN:  %s\n", source);
+	} else {
+		JANUS_LOG(LOG_INFO, "Converting:\n");
+		JANUS_LOG(LOG_INFO, "   -- IN:  %s\n", source);
+		JANUS_LOG(LOG_INFO, "   -- OUT: %s\n\n", destination);
+	}
 	/* Open the source */
 	janus_config *config = janus_config_parse(source);
 	if(config == NULL)
 		exit(1);
 	janus_config_print_as(config, LOG_INFO);
 	JANUS_LOG(LOG_INFO, "\n");
+	if(only_parse) {
+		/* We're done */
+		janus_config_destroy(config);
+		JANUS_LOG(LOG_INFO, "Bye!\n");
+		return 0;
+	}
 	/* Is the target an INI or a YAML file? */
 	config->is_yaml = strstr(destination, ".yaml") != NULL;
 	/* Remove extension: janus_config_save adds it for us */
