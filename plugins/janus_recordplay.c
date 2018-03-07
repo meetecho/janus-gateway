@@ -678,17 +678,24 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RECORDPLAY_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.yaml", config_path, JANUS_RECORDPLAY_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .yaml configuration file (%s), trying .cfg\n", JANUS_RECORDPLAY_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RECORDPLAY_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL)
 		janus_config_print(config);
 	/* Parse configuration */
 	if(config != NULL) {
-		janus_config_item *path = janus_config_get_item_drilldown(config, "general", "path");
+		janus_config_category *config_general = janus_config_add_category(config, NULL, "general");
+		janus_config_item *path = janus_config_get_item(config_general, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get_item(config_general, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -1731,7 +1738,7 @@ void janus_recordplay_update_recordings_list(void) {
 			JANUS_LOG(LOG_ERR, "Invalid recording '%s'...\n", recent->d_name);
 			continue;
 		}
-		GList *cl = janus_config_get_categories(nfo);
+		GList *cl = janus_config_get_categories(nfo, NULL);
 		if(cl == NULL || cl->data == NULL) {
 			JANUS_LOG(LOG_WARN, "No recording info in '%s', skipping...\n", recent->d_name);
 			janus_config_destroy(nfo);

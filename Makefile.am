@@ -41,7 +41,7 @@ eventsheaderdir = $(includedir)/janus/events
 eventsheader_HEADERS = events/eventhandler.h
 
 confdir = $(sysconfdir)/janus
-conf_DATA = conf/janus.cfg.sample
+conf_DATA = conf/janus.yaml.sample
 
 certdir = $(datadir)/janus/certs
 cert_DATA = certs/mycert.key certs/mycert.pem
@@ -83,8 +83,8 @@ jsmodules_DATA = html/janus.js
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
-EXTRA_DIST += conf/janus.cfg.sample.in
-CLEANFILES += conf/janus.cfg.sample
+EXTRA_DIST += conf/janus.yaml.sample.in
+CLEANFILES += conf/janus.yaml.sample
 
 ##
 # Janus
@@ -160,6 +160,28 @@ janus_LDADD = \
 
 man1_MANS = janus.1
 
+bin_PROGRAMS += janus-cfgconv
+
+janus_cfgconv_SOURCES = \
+	janus-cfgconv.c \
+	config.c \
+	log.c \
+	utils.c \
+	version.c \
+	$(NULL)
+
+janus_cfgconv_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(JANUS_CFLAGS) \
+	$(NULL)
+
+janus_cfgconv_LDADD = \
+	$(JANUS_LIBS) \
+	$(JANUS_MANUAL_LIBS) \
+	$(NULL)
+
+man1_MANS += janus-cfgconv.1
+
 BUILT_SOURCES = cmdline.c cmdline.h version.c
 
 cmdline.c: janus.c
@@ -212,9 +234,9 @@ transports_libjanus_http_la_SOURCES = transports/janus_http.c
 transports_libjanus_http_la_CFLAGS = $(transports_cflags) $(MHD_CFLAGS)
 transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) $(MHD_LDFLAGS) $(MHD_LIBS)
 transports_libjanus_http_la_LIBADD = $(transports_libadd) $(MHD_LDFLAGS)
-conf_DATA += conf/janus.transport.http.cfg.sample
-EXTRA_DIST += conf/janus.transport.http.cfg.sample.in
-CLEANFILES += conf/janus.transport.http.cfg.sample
+conf_DATA += conf/janus.transport.http.yaml.sample
+EXTRA_DIST += conf/janus.transport.http.yaml.sample.in
+CLEANFILES += conf/janus.transport.http.yaml.sample
 endif
 
 if ENABLE_WEBSOCKETS
@@ -223,9 +245,9 @@ transports_libjanus_websockets_la_SOURCES = transports/janus_websockets.c
 transports_libjanus_websockets_la_CFLAGS = $(transports_cflags)
 transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
 transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.websockets.cfg.sample
-EXTRA_DIST += conf/janus.transport.websockets.cfg.sample.in
-CLEANFILES += conf/janus.transport.websockets.cfg.sample
+conf_DATA += conf/janus.transport.websockets.yaml.sample
+EXTRA_DIST += conf/janus.transport.websockets.yaml.sample.in
+CLEANFILES += conf/janus.transport.websockets.yaml.sample
 endif
 
 if ENABLE_RABBITMQ
@@ -234,8 +256,8 @@ transports_libjanus_rabbitmq_la_SOURCES = transports/janus_rabbitmq.c
 transports_libjanus_rabbitmq_la_CFLAGS = $(transports_cflags)
 transports_libjanus_rabbitmq_la_LDFLAGS = $(transports_ldflags) -lrabbitmq
 transports_libjanus_rabbitmq_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.rabbitmq.cfg.sample
-EXTRA_DIST += conf/janus.transport.rabbitmq.cfg.sample
+conf_DATA += conf/janus.transport.rabbitmq.yaml.sample
+EXTRA_DIST += conf/janus.transport.rabbitmq.yaml.sample
 endif
 
 if ENABLE_MQTT
@@ -244,8 +266,8 @@ transports_libjanus_mqtt_la_SOURCES = transports/janus_mqtt.c
 transports_libjanus_mqtt_la_CFLAGS = $(transports_cflags)
 transports_libjanus_mqtt_la_LDFLAGS = $(transports_ldflags) -lpaho-mqtt3a
 transports_libjanus_mqtt_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.mqtt.cfg.sample
-EXTRA_DIST += conf/janus.transport.mqtt.cfg.sample
+conf_DATA += conf/janus.transport.mqtt.yaml.sample
+EXTRA_DIST += conf/janus.transport.mqtt.yaml.sample
 endif
 
 if ENABLE_PFUNIX
@@ -254,8 +276,8 @@ transports_libjanus_pfunix_la_SOURCES = transports/janus_pfunix.c
 transports_libjanus_pfunix_la_CFLAGS = $(transports_cflags)
 transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags)
 transports_libjanus_pfunix_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.pfunix.cfg.sample
-EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
+conf_DATA += conf/janus.transport.pfunix.yaml.sample
+EXTRA_DIST += conf/janus.transport.pfunix.yaml.sample
 endif
 
 ##
@@ -277,8 +299,8 @@ events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
 events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
 events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
-conf_DATA += conf/janus.eventhandler.sampleevh.cfg.sample
-EXTRA_DIST += conf/janus.eventhandler.sampleevh.cfg.sample
+conf_DATA += conf/janus.eventhandler.sampleevh.yaml.sample
+EXTRA_DIST += conf/janus.eventhandler.sampleevh.yaml.sample
 endif
 
 if ENABLE_RABBITMQEVH
@@ -287,8 +309,8 @@ events_libjanus_rabbitmqevh_la_SOURCES = events/janus_rabbitmqevh.c
 events_libjanus_rabbitmqevh_la_CFLAGS = $(events_cflags)
 events_libjanus_rabbitmqevh_la_LDFLAGS = $(events_ldflags) -lrabbitmq
 events_libjanus_rabbitmqevh_la_LIBADD = $(events_libadd)
-conf_DATA += conf/janus.eventhandler.rabbitmqevh.cfg.sample
-EXTRA_DIST += conf/janus.eventhandler.rabbitmqevh.cfg.sample
+conf_DATA += conf/janus.eventhandler.rabbitmqevh.yaml.sample
+EXTRA_DIST += conf/janus.eventhandler.rabbitmqevh.yaml.sample
 endif
 
 ##
@@ -310,8 +332,8 @@ plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
 plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS)
 plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS)
 plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD)
-conf_DATA += conf/janus.plugin.audiobridge.cfg.sample
-EXTRA_DIST += conf/janus.plugin.audiobridge.cfg.sample
+conf_DATA += conf/janus.plugin.audiobridge.yaml.sample
+EXTRA_DIST += conf/janus.plugin.audiobridge.yaml.sample
 endif
 
 if ENABLE_PLUGIN_ECHOTEST
@@ -320,8 +342,8 @@ plugins_libjanus_echotest_la_SOURCES = plugins/janus_echotest.c
 plugins_libjanus_echotest_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_echotest_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_echotest_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.echotest.cfg.sample
-EXTRA_DIST += conf/janus.plugin.echotest.cfg.sample
+conf_DATA += conf/janus.plugin.echotest.yaml.sample
+EXTRA_DIST += conf/janus.plugin.echotest.yaml.sample
 endif
 
 if ENABLE_PLUGIN_RECORDPLAY
@@ -330,15 +352,15 @@ plugins_libjanus_recordplay_la_SOURCES = plugins/janus_recordplay.c
 plugins_libjanus_recordplay_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_recordplay_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_recordplay_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.recordplay.cfg.sample
+conf_DATA += conf/janus.plugin.recordplay.yaml.sample
 recordings_DATA += \
 	plugins/recordings/1234.nfo \
 	plugins/recordings/rec-sample-audio.mjr \
 	plugins/recordings/rec-sample-video.mjr
 EXTRA_DIST += \
-	conf/janus.plugin.recordplay.cfg.sample.in \
+	conf/janus.plugin.recordplay.yaml.sample.in \
 	$(recordings_DATA)
-CLEANFILES += conf/janus.plugin.recordplay.cfg.sample
+CLEANFILES += conf/janus.plugin.recordplay.yaml.sample
 endif
 
 if ENABLE_PLUGIN_SIP
@@ -347,8 +369,8 @@ plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
 plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS)
 plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LIBS)
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
-conf_DATA += conf/janus.plugin.sip.cfg.sample
-EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
+conf_DATA += conf/janus.plugin.sip.yaml.sample
+EXTRA_DIST += conf/janus.plugin.sip.yaml.sample
 endif
 
 if ENABLE_PLUGIN_SIPRE
@@ -357,8 +379,8 @@ plugins_libjanus_sipre_la_SOURCES = plugins/janus_sipre.c
 plugins_libjanus_sipre_la_CFLAGS = $(plugins_cflags) $(LIBRE_CFLAGS)
 plugins_libjanus_sipre_la_LDFLAGS = $(plugins_ldflags) $(LIBRE_LDFLAGS) $(LIBRE_LIBS)
 plugins_libjanus_sipre_la_LIBADD = $(plugins_libadd) $(LIBRE_LIBADD)
-conf_DATA += conf/janus.plugin.sipre.cfg.sample
-EXTRA_DIST += conf/janus.plugin.sipre.cfg.sample
+conf_DATA += conf/janus.plugin.sipre.yaml.sample
+EXTRA_DIST += conf/janus.plugin.sipre.yaml.sample
 endif
 
 if ENABLE_PLUGIN_NOSIP
@@ -367,8 +389,8 @@ plugins_libjanus_nosip_la_SOURCES = plugins/janus_nosip.c
 plugins_libjanus_nosip_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_nosip_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_nosip_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.nosip.cfg.sample
-EXTRA_DIST += conf/janus.plugin.nosip.cfg.sample
+conf_DATA += conf/janus.plugin.nosip.yaml.sample
+EXTRA_DIST += conf/janus.plugin.nosip.yaml.sample
 endif
 
 if ENABLE_PLUGIN_STREAMING
@@ -377,16 +399,16 @@ plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
 plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.streaming.cfg.sample
+conf_DATA += conf/janus.plugin.streaming.yaml.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \
 	plugins/streams/radio.alaw \
 	plugins/streams/test_gstreamer.sh \
 	plugins/streams/test_gstreamer_1.sh
 EXTRA_DIST += \
-	conf/janus.plugin.streaming.cfg.sample.in \
+	conf/janus.plugin.streaming.yaml.sample.in \
 	$(stream_DATA)
-CLEANFILES += conf/janus.plugin.streaming.cfg.sample
+CLEANFILES += conf/janus.plugin.streaming.yaml.sample
 endif
 
 if ENABLE_PLUGIN_VIDEOCALL
@@ -395,8 +417,8 @@ plugins_libjanus_videocall_la_SOURCES = plugins/janus_videocall.c
 plugins_libjanus_videocall_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_videocall_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videocall_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.videocall.cfg.sample
-EXTRA_DIST += conf/janus.plugin.videocall.cfg.sample
+conf_DATA += conf/janus.plugin.videocall.yaml.sample
+EXTRA_DIST += conf/janus.plugin.videocall.yaml.sample
 endif
 
 if ENABLE_PLUGIN_VIDEOROOM
@@ -405,8 +427,8 @@ plugins_libjanus_videoroom_la_SOURCES = plugins/janus_videoroom.c
 plugins_libjanus_videoroom_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_videoroom_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videoroom_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.videoroom.cfg.sample
-EXTRA_DIST += conf/janus.plugin.videoroom.cfg.sample
+conf_DATA += conf/janus.plugin.videoroom.yaml.sample
+EXTRA_DIST += conf/janus.plugin.videoroom.yaml.sample
 endif
 
 if ENABLE_PLUGIN_VOICEMAIL
@@ -415,8 +437,8 @@ plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
 plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.voicemail.cfg.sample
-EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample.in
+conf_DATA += conf/janus.plugin.voicemail.yaml.sample
+EXTRA_DIST += conf/janus.plugin.voicemail.yaml.sample.in
 endif
 
 if ENABLE_PLUGIN_TEXTROOM
@@ -425,8 +447,8 @@ plugins_libjanus_textroom_la_SOURCES = plugins/janus_textroom.c
 plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.textroom.cfg.sample
-EXTRA_DIST += conf/janus.plugin.textroom.cfg.sample
+conf_DATA += conf/janus.plugin.textroom.yaml.sample
+EXTRA_DIST += conf/janus.plugin.textroom.yaml.sample
 endif
 
 ##
