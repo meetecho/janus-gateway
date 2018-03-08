@@ -52,7 +52,6 @@ var janus = null;
 var sipcall = null;
 var opaqueId = "sipretest-"+Janus.randomString(12);
 
-var started = false;
 var spinner = null;
 
 var selectedApproach = null;
@@ -65,10 +64,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -142,6 +138,13 @@ $(document).ready(function() {
 										// Restore screen
 										$.unblockUI();
 									}
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#videoleft").parent().unblock();
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
@@ -258,7 +261,10 @@ $(document).ready(function() {
 																		//		var body = { request: "accept", srtp: "sdes_mandatory" };
 																		// This way you'll tell the plugin to accept the call, but ONLY
 																		// if SDES is available, and you don't want plain RTP. If it
-																		// is not available, you'll get an error (452) back.
+																		// is not available, you'll get an error (452) back. You can
+																		// also specify the SRTP profile to negotiate by setting the
+																		// "srtp_profile" property accordingly (the default if not
+																		// set in the request is "AES_CM_128_HMAC_SHA1_80")
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -400,7 +406,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#remotevideo').hide();
 										if($('#videoright .no-video-container').length === 0) {

@@ -309,7 +309,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.3.0
+	janus 0.3.1
 
 	Usage: janus [OPTIONS]...
 
@@ -317,6 +317,8 @@ or on the command line:
 	-V, --version                 Print version and exit
 	-b, --daemon                  Launch Janus in background as a daemon
                                   (default=off)
+	-p, --pid-file=path           Open the specified PID file when starting Janus
+                                  (default=none)
 	-N, --disable-stdout          Disable stdout based logging  (default=off)
 	-L, --log-file=path           Log to the specified file (default=stdout only)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
@@ -343,11 +345,15 @@ or on the command line:
                                   (experimental)  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not
                                   (default=off)
+	-f, --full-trickle            Do full-trickle instead of half-trickle
+                                  (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not
                                   (default=off)
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
+	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
+                                  support or not  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
@@ -355,6 +361,9 @@ or on the command line:
                                   notifies you about this
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
+	-n, --server-name=name        Public name of this Janus instance
+                                  (default=MyJanusInstance)
+	-s, --session-timeout=number  Session timeout value, in seconds (default=60)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging,
                                   7=maximum debug level; default=4)
 	-D, --debug-timestamps        Enable debug/logging timestamps  (default=off)

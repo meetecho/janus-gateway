@@ -148,6 +148,11 @@ void *janus_rmq_out_thread(void *data);
 /* We only handle a single client per time, as the queues are fixed */
 static janus_rabbitmq_client *rmq_client = NULL;
 
+/* Global properties */
+static char *rmqhost = NULL, *vhost = NULL, *username = NULL, *password = NULL,
+	*ssl_cacert_file = NULL, *ssl_cert_file = NULL, *ssl_key_file = NULL,
+	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL;
+
 
 /* Transport implementation */
 int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -198,7 +203,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	}
 
 	/* Handle configuration, starting from the server details */
-	char *rmqhost = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "host");
 	if(item && item->value)
 		rmqhost = g_strdup(item->value);
@@ -210,12 +214,11 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmqport = atoi(item->value);
 
 	/* Credentials and Virtual Host */
-	const char *vhost = NULL, *username = NULL, *password = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "vhost");
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
-	vhost = g_strdup("/");
+		vhost = g_strdup("/");
 	item = janus_config_get_item_drilldown(config, "general", "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
@@ -228,9 +231,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		password = g_strdup("guest");
 
 	/* SSL config*/
-	const char *ssl_cacert_file = NULL;
-	const char *ssl_cert_file = NULL;
-	const char *ssl_key_file = NULL;
 	gboolean ssl_enable = FALSE;
 	gboolean ssl_verify_peer = FALSE;
 	gboolean ssl_verify_hostname = FALSE;
@@ -257,9 +257,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	}
 
 	/* Now check if the Janus API must be supported */
-	const char *to_janus = NULL, *from_janus = NULL;
-	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
-	const char *janus_exchange = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Janus API)\n");
@@ -317,10 +314,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	} else {
 		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
 		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
-		if(rmq_client == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			goto error;
-		}
 		/* Connect */
 		rmq_client->rmq_conn = amqp_new_connection();
 		amqp_socket_t *socket = NULL;
@@ -475,7 +468,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			gateway->notify_event(&janus_rabbitmq_transport, rmq_client, info);
 		}
 	}
-	g_free(rmqhost);
 	janus_config_destroy(config);
 	config = NULL;
 
@@ -486,32 +478,19 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 
 error:
 	/* If we got here, something went wrong */
-	if(rmq_client)
-		g_free(rmq_client);
-	if(rmqhost)
-		g_free(rmqhost);
-	if(vhost)
-		g_free((char *)vhost);
-	if(username)
-		g_free((char *)username);
-	if(password)
-		g_free((char *)password);
-	if(janus_exchange)
-		g_free((char *)janus_exchange);
-	if(to_janus)
-		g_free((char *)to_janus);
-	if(from_janus)
-		g_free((char *)from_janus);
-	if(to_janus_admin)
-		g_free((char *)to_janus_admin);
-	if(from_janus_admin)
-		g_free((char *)from_janus_admin);
-	if(ssl_cacert_file)
-		g_free((char *)ssl_cacert_file);
-	if(ssl_cert_file)
-		g_free((char *)ssl_cert_file);
-	if(ssl_key_file)
-		g_free((char *)ssl_key_file);
+	g_free(rmq_client);
+	g_free(rmqhost);
+	g_free(vhost);
+	g_free(username);
+	g_free(password);
+	g_free(janus_exchange);
+	g_free(to_janus);
+	g_free(from_janus);
+	g_free(to_janus_admin);
+	g_free(from_janus_admin);
+	g_free(ssl_cacert_file);
+	g_free(ssl_cert_file);
+	g_free(ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
 	return -1;
@@ -534,18 +513,21 @@ void janus_rabbitmq_destroy(void) {
 			amqp_connection_close(rmq_client->rmq_conn, AMQP_REPLY_SUCCESS);
 			amqp_destroy_connection(rmq_client->rmq_conn);
 		}
-		if(rmq_client->to_janus_queue.bytes)
-			g_free((char *)rmq_client->to_janus_queue.bytes);
-		if(rmq_client->from_janus_queue.bytes)
-			g_free((char *)rmq_client->from_janus_queue.bytes);
-		if(rmq_client->to_janus_admin_queue.bytes)
-			g_free((char *)rmq_client->to_janus_admin_queue.bytes);
-		if(rmq_client->from_janus_admin_queue.bytes)
-			g_free((char *)rmq_client->from_janus_admin_queue.bytes);
-		if(rmq_client->janus_exchange.bytes)
-			g_free((char *)rmq_client->janus_exchange.bytes);
 	}
 	g_free(rmq_client);
+
+	g_free(rmqhost);
+	g_free(vhost);
+	g_free(username);
+	g_free(password);
+	g_free(janus_exchange);
+	g_free(to_janus);
+	g_free(from_janus);
+	g_free(to_janus_admin);
+	g_free(from_janus_admin);
+	g_free(ssl_cacert_file);
+	g_free(ssl_cert_file);
+	g_free(ssl_key_file);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -600,7 +582,7 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
-	janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
+	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
 	response->payload = message;
 	response->correlation_id = (char *)request_id;
@@ -677,7 +659,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		char *correlation = NULL;
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-			correlation = (char *)g_malloc0(p->correlation_id.len+1);
+			correlation = g_malloc0(p->correlation_id.len+1);
 			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
 		}
@@ -686,7 +668,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		/* And the body */
 		uint64_t total = frame.payload.properties.body_size, received = 0;
-		char *payload = (char *)g_malloc0(total+1), *index = payload;
+		char *payload = g_malloc0(total+1), *index = payload;
 		while(received < total) {
 			amqp_simple_wait_frame(rmq_client->rmq_conn, &frame);
 			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
