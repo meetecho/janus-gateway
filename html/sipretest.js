@@ -261,7 +261,10 @@ $(document).ready(function() {
 																		//		var body = { request: "accept", srtp: "sdes_mandatory" };
 																		// This way you'll tell the plugin to accept the call, but ONLY
 																		// if SDES is available, and you don't want plain RTP. If it
-																		// is not available, you'll get an error (452) back.
+																		// is not available, you'll get an error (452) back. You can
+																		// also specify the SRTP profile to negotiate by setting the
+																		// "srtp_profile" property accordingly (the default if not
+																		// set in the request is "AES_CM_128_HMAC_SHA1_80")
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
