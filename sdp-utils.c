@@ -954,6 +954,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	const char *audio_rtpmap = janus_sdp_get_codec_rtpmap(audio_codec);
 	if(do_audio && audio_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported audio codec '%s', can't prepare an offer\n", audio_codec);
+		va_end(args);
 		return NULL;
 	}
 	if(video_codec == NULL)
@@ -961,6 +962,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	const char *video_rtpmap = janus_sdp_get_codec_rtpmap(video_codec);
 	if(do_video && video_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported video codec '%s', can't prepare an offer\n", video_codec);
+		va_end(args);
 		return NULL;
 	}
 #ifndef HAVE_SCTP

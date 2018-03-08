@@ -101,7 +101,7 @@ janus_eventhandler *create(void) {
 
 
 /*! \brief Version of the API, to match the one event handler plugins were compiled against */
-#define JANUS_EVENTHANDLER_API_VERSION	1
+#define JANUS_EVENTHANDLER_API_VERSION	2
 
 /*! \brief Initialization of all event handler plugin properties to NULL
  * 
@@ -163,8 +163,6 @@ static janus_eventhandler janus_fake_eventhandler handler plugin =
 		## __VA_ARGS__ }
 
 
-/*! \brief Callbacks to contact the gateway */
-typedef struct janus_eventhandler_callbacks janus_eventhandler_callbacks;
 /*! \brief The event handler plugin session and callbacks interface */
 typedef struct janus_eventhandler janus_eventhandler;
 
@@ -215,6 +213,19 @@ struct janus_eventhandler {
 	 * object once you're done with it: a failure to do so will result in memory leaks.
 	 * @param[in] event Jansson object containing the event details */
 	void (* const incoming_event)(json_t *event);
+
+	/*! \brief Method to send a request to this specific event handler plugin
+	 * \details The method takes a Jansson json_t, that contains all the info related
+	 * to the request. This object will come from an Admin API request, and is
+	 * meant to represent a synchronous request. Since each handler can have
+	 * its own bells and whistles, there's no constraint on what this object should
+	 * contain, which is entirely handler specific. A json_t object needs to be
+	 * returned as a response, which will be sent in response to the Admin API call.
+	 * This can be useful to tweak settings in real-time, or to probe the internals
+	 * of the handler plugin for monitoring purposes.
+	 * @param[in] event Jansson object containing the request
+	 * @returns A Jansson object containing the response for the client */
+	json_t *(* const handle_request)(json_t *request);
 
 	/*! \brief Mask of events this handler is interested in, as a janus_flags object */
 	janus_flags events_mask;
