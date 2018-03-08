@@ -141,15 +141,15 @@ extern janus_mutex counters_mutex;
  * refers to needs to be destroyed */
 #ifdef REFCOUNT_DEBUG
 #define janus_refcount_init_debug(refp, free_fn) { \
-	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count+1); \
 	(refp)->count = 1; \
+	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count); \
 	(refp)->free = free_fn; \
 	janus_refcount_track((refp)); \
 }
 #else
 #define janus_refcount_init_debug(refp, free_fn) { \
-	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count+1); \
 	(refp)->count = 1; \
+	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count); \
 	(refp)->free = free_fn; \
 }
 #endif
