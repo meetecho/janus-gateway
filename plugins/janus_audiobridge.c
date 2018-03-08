@@ -314,6 +314,7 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 		{	// Participant #1
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
+			"setup" : <true|false, whether user successfully negotiate a WebRTC PeerConnection or not>,
 			"muted" : <true|false, whether user is muted or not>,
 			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
 		},
@@ -2353,6 +2354,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(pl, "id", json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
+			json_object_set_new(pl, "setup", p->session->started ? json_true() : json_false());
 			json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 			if(p->extmap_id > 0)
 				json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
@@ -2640,6 +2642,38 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	/* FIXME Only send this peer the audio mix when we get this event */
 	session->started = TRUE;
 	janus_mutex_unlock(&sessions_mutex);
+	/* Notify all other participants that there's a new boy in town */
+	janus_mutex_lock(&rooms_mutex);
+	janus_audiobridge_room *audiobridge = participant->room;
+	janus_mutex_lock(&audiobridge->mutex);
+	json_t *list = json_array();
+	json_t *pl = json_object();
+	json_object_set_new(pl, "id", json_integer(participant->user_id));
+	if(participant->display)
+		json_object_set_new(pl, "display", json_string(participant->display));
+	json_object_set_new(pl, "setup", json_true());
+	json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+	json_array_append_new(list, pl);
+	json_t *pub = json_object();
+	json_object_set_new(pub, "audiobridge", json_string("event"));
+	json_object_set_new(pub, "room", json_integer(participant->room->room_id));
+	json_object_set_new(pub, "participants", list);
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, audiobridge->participants);
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_audiobridge_participant *p = value;
+		if(p == participant) {
+			continue;	/* Skip the new participant itself */
+		}
+		JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+		int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub, NULL);
+		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	}
+	json_decref(pub);
+	participant->active = TRUE;
+	janus_mutex_unlock(&audiobridge->mutex);
+	janus_mutex_unlock(&rooms_mutex);
 }
 
 void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -3160,6 +3194,8 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
 			if(participant->display)
 				json_object_set_new(pl, "display", json_string(participant->display));
+			/* Clarify we're still waiting for the user to negotiate a PeerConnection */
+			json_object_set_new(pl, "setup", json_false());
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
@@ -3188,6 +3224,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(p->user_id));
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
+				json_object_set_new(pl, "setup", p->session->started ? json_true() : json_false());
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				if(p->extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
@@ -3207,6 +3244,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "room", json_integer(room_id));
 				json_object_set_new(info, "id", json_integer(user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
+				json_object_set_new(info, "setup", participant->session->started ? json_true() : json_false());
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
@@ -3286,6 +3324,7 @@ static void *janus_audiobridge_handler(void *data) {
 					json_object_set_new(pl, "id", json_integer(participant->user_id));
 					if(participant->display)
 						json_object_set_new(pl, "display", json_string(participant->display));
+					json_object_set_new(pl, "setup", participant->session->started ? json_true() : json_false());
 					json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 					json_array_append_new(list, pl);
 					json_t *pub = json_object();
@@ -3604,6 +3643,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
 			if(participant->display)
 				json_object_set_new(pl, "display", json_string(participant->display));
+			json_object_set_new(pl, "setup", participant->session->started ? json_true() : json_false());
 			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
@@ -3630,6 +3670,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(p->user_id));
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
+				json_object_set_new(pl, "setup", p->session->started ? json_true() : json_false());
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				if(p->extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
@@ -3857,37 +3898,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			} else {
-				/* Notify all other participants that there's a new boy in town */
-				janus_mutex_lock(&rooms_mutex);
-				janus_audiobridge_room *audiobridge = participant->room;
-				janus_mutex_lock(&audiobridge->mutex);
-				json_t *list = json_array();
-				json_t *pl = json_object();
-				json_object_set_new(pl, "id", json_integer(participant->user_id));
-				if(participant->display)
-					json_object_set_new(pl, "display", json_string(participant->display));
-				json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
-				json_array_append_new(list, pl);
-				json_t *pub = json_object();
-				json_object_set_new(pub, "audiobridge", json_string("event"));
-				json_object_set_new(pub, "room", json_integer(participant->room->room_id));
-				json_object_set_new(pub, "participants", list);
-				GHashTableIter iter;
-				gpointer value;
-				g_hash_table_iter_init(&iter, audiobridge->participants);
-				while (g_hash_table_iter_next(&iter, NULL, &value)) {
-					janus_audiobridge_participant *p = value;
-					if(p == participant) {
-						continue;	/* Skip the new participant itself */
-					}
-					JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-					int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub, NULL);
-					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				}
-				json_decref(pub);
-				participant->active = TRUE;
-				janus_mutex_unlock(&audiobridge->mutex);
-				janus_mutex_unlock(&rooms_mutex);
+				/* We'll notify all other participants when the PeerConnection has been established */
 			}
 		}
 		if(msg)
@@ -4037,7 +4048,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
 			janus_mutex_lock(&p->qmutex);
-			if(!p->active || p->muted || p->prebuffering || !p->inbuf) {
+			if(!p->session || !p->session->started || !p->active || p->muted || p->prebuffering || !p->inbuf) {
 				janus_mutex_unlock(&p->qmutex);
 				ps = ps->next;
 				continue;
@@ -4087,6 +4098,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		ps = participants_list;
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
+			if(!p->session || !p->session->started) {
+				ps = ps->next;
+				continue;
+			}
 			janus_audiobridge_rtp_relay_packet *pkt = NULL;
 			janus_mutex_lock(&p->qmutex);
 			if(p->active && !p->muted && !p->prebuffering && p->inbuf) {
@@ -4229,18 +4244,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 	/* Start working: check the outgoing queue for packets, then encode and send them */
 	while(!g_atomic_int_get(&stopping) && session->destroyed == 0) {
-		if(!participant->active || !participant->encoder) {
-			/* Wait until the participant is in a room */
-			g_usleep(10000);
-			continue;
-		}
-		if(g_async_queue_length(participant->outbuf) == 0) {
-			/* Nothing to do */
-			g_usleep(5000);
-			continue;
-		}
-		mixedpkt = g_async_queue_pop(participant->outbuf);
-		if(session->destroyed == 0) {
+		mixedpkt = g_async_queue_timeout_pop(participant->outbuf, 100000);
+		if(mixedpkt != NULL && session->destroyed == 0 && session->started) {
 			/* Encode raw frame to Opus */
 			if(participant->active && participant->encoder) {
 				participant->working = TRUE;
@@ -4264,13 +4269,11 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					janus_audiobridge_relay_rtp_packet(participant->session, outpkt);
 				}
 			}
-			if(mixedpkt) {
-				if(mixedpkt->data)
-					g_free(mixedpkt->data);
-				mixedpkt->data = NULL;
-				g_free(mixedpkt);
-				mixedpkt = NULL;
-			}
+			if(mixedpkt->data)
+				g_free(mixedpkt->data);
+			mixedpkt->data = NULL;
+			g_free(mixedpkt);
+			mixedpkt = NULL;
 		}
 	}
 	/* We're done, get rid of the resources */
