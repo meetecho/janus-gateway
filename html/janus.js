@@ -890,10 +890,11 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var opaqueId = callbacks.opaqueId;
+		var handleToken = callbacks.token ? callbacks.token : token;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(handleToken !== null && handleToken !== undefined)
+			request["token"] = handleToken;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(websockets) {
@@ -911,6 +912,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						token : handleToken,
 						detached : false,
 						webrtcStuff : {
 							started : false,
@@ -993,6 +995,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						token : handleToken,
 						detached : false,
 						webrtcStuff : {
 							started : false,
@@ -1069,12 +1072,19 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Is the gateway down? (connected=false)");
 			return;
 		}
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			callbacks.error("Invalid handle");
+			return;
+		}
 		var message = callbacks.message;
 		var jsep = callbacks.jsep;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "message", "body": message, "transaction": transaction };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(jsep !== null && jsep !== undefined)
@@ -1164,9 +1174,16 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Is the gateway down? (connected=false)");
 			return;
 		}
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			callbacks.error("Invalid handle");
+			return;
+		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		Janus.vdebug("Sending trickle candidate (handle=" + handleId + "):");
@@ -1293,8 +1310,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "detach", "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(websockets) {
@@ -2450,8 +2467,8 @@ function Janus(gatewayCallbacks) {
 			if(hangupRequest === true) {
 				// Send a hangup request (we don't really care about the response)
 				var request = { "janus": "hangup", "transaction": Janus.randomString(12) };
-				if(token !== null && token !== undefined)
-					request["token"] = token;
+				if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+					request["token"] = pluginHandle.token;
 				if(apisecret !== null && apisecret !== undefined)
 					request["apisecret"] = apisecret;
 				Janus.debug("Sending hangup request (handle=" + handleId + "):");
