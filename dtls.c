@@ -83,7 +83,7 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"ALL:NULL:eNULL:aNULL"
+#define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
@@ -493,7 +493,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
-	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	SSL_set_options(dtls->ssl, flags);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
 #ifdef HAVE_DTLS_SETTIMEOUT
