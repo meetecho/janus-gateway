@@ -487,7 +487,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			/* Create the WebSocket context */
 			wss = lws_create_vhost(wsc, &info);
 			if(wss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
+				JANUS_LOG(LOG_FATAL, "Error creating vhost for WebSockets server...\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 			}
@@ -544,7 +544,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Create the secure WebSocket context */
 				swss = lws_create_vhost(wsc, &info);
 				if(swss == NULL) {
-					JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
+					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure WebSockets server...\n");
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
@@ -589,7 +589,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			/* Create the WebSocket context */
 			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
+				JANUS_LOG(LOG_FATAL, "Error creating vhost for Admin WebSockets server...\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
 			}
@@ -646,7 +646,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Create the secure WebSocket context */
 				admin_swss = lws_create_vhost(wsc, &info);
 				if(admin_swss == NULL) {
-					JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
+					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure Admin WebSockets server...\n");
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}

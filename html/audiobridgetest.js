@@ -156,17 +156,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "roomchanged") {
@@ -182,17 +189,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "destroyed") {
@@ -209,17 +223,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												if(msg["error_code"] === 485) {
