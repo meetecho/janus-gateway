@@ -315,10 +315,6 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
 #endif
 	/* First of all make OpenSSL thread safe (see note above on issue #316) */
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
-	if(janus_dtls_locks == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return -1;
-	}
 	int l=0;
 	for(l = 0; l < CRYPTO_num_locks(); l++) {
 		janus_mutex_init(&janus_dtls_locks[l]);

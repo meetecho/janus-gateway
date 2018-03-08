@@ -3055,7 +3055,7 @@ gint main(int argc, char *argv[])
 	if(args_info.configs_folder_given) {
 		configs_folder = g_strdup(args_info.configs_folder_arg);
 	} else {
-		configs_folder = g_strdup (CONFDIR);
+		configs_folder = g_strdup(CONFDIR);
 	}
 	if(config_file == NULL) {
 		char file[255];

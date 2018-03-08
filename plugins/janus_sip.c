@@ -1069,11 +1069,6 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		return;
-	}
 	session->handle = handle;
 	session->account.identity = NULL;
 	session->account.force_udp = FALSE;
@@ -4320,11 +4315,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack = g_malloc0(sizeof(ssip_t));
-	if(session->stack == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_refcount_decrease(&session->ref);
-		return NULL;
-	}
 	session->stack->session = session;
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;

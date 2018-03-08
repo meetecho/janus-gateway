@@ -1019,11 +1019,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
 			janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
-			if(videoroom == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				cl = cl->next;
-				continue;
-			}
 			videoroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -1813,12 +1808,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		/* Create the room */
 		janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
-		if(videoroom == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
-			g_snprintf(error_cause, 512, "Memory error");
-			goto plugin_response;
-		}
 		/* Generate a random ID */
 		if(room_id == 0) {
 			while(room_id == 0) {
@@ -3829,13 +3818,6 @@ static void *janus_videoroom_handler(void *data) {
 					recfile = json_object_get(root, "filename");
 				}
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
-				if(publisher == NULL) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
-					g_snprintf(error_cause, 512, "Memory error");
-					goto error;
-				}
 				publisher->session = session;
 				publisher->room_id = videoroom->room_id;
 				publisher->room = videoroom;
