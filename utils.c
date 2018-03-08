@@ -52,10 +52,8 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	if(strlen((char *)string2) > maxlen)
 		maxlen = strlen((char *)string2);
 	unsigned char *buf1 = g_malloc0(maxlen+1);
-	memset(buf1, 0, maxlen);
 	memcpy(buf1, string1, strlen(str1));
 	unsigned char *buf2 = g_malloc0(maxlen+1);
-	memset(buf2, 0, maxlen);
 	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
@@ -90,8 +88,8 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *numdup = g_malloc0(sizeof(guint64));
-	memcpy(numdup, &num, sizeof(num));
+	guint64 *numdup = g_malloc(sizeof(guint64));
+	*numdup = num;
 	return numdup;
 }
 
@@ -163,10 +161,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		/* Replace string */
@@ -189,10 +183,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		outgoing[strlen(outgoing)] = '\0';
@@ -346,9 +336,9 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "h264";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
-					if(strstr(name, "pcmu") || strstr(name, "PMCU"))
+					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
 						return "pcmu";
-					if(strstr(name, "pcma") || strstr(name, "PMCA"))
+					if(strstr(name, "pcma") || strstr(name, "PCMA"))
 						return "pcma";
 					if(strstr(name, "g722") || strstr(name, "G722"))
 						return "g722";
@@ -563,7 +553,7 @@ gboolean janus_vp8_is_keyframe(char* buffer, int len) {
 				unsigned char *c = (unsigned char *)buffer+3;
 				/* vet via sync code */
 				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-					JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
 				} else {
 					int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
 					int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
@@ -640,7 +630,7 @@ gboolean janus_vp9_is_keyframe(char* buffer, int len) {
 				int vp9h = ntohs(*h);
 				buffer += 2;
 				if(vp9w || vp9h) {
-					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
 					return TRUE;
 				}
 			}
@@ -936,4 +926,30 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		}
 	}
 	return 0;
+}
+
+inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
+}
+
+inline void janus_set1(guint8 *data,size_t i,guint8 val) {
+	data[i] = val;
+}
+
+inline void janus_set2(guint8 *data,size_t i,guint32 val) {
+	data[i+1] = (guint8)(val);
+	data[i]   = (guint8)(val>>8);
+}
+
+inline void janus_set3(guint8 *data,size_t i,guint32 val) {
+	data[i+2] = (guint8)(val);
+	data[i+1] = (guint8)(val>>8);
+	data[i]   = (guint8)(val>>16);
+}
+
+inline void janus_set4(guint8 *data,size_t i,guint32 val) {
+	data[i+3] = (guint8)(val);
+	data[i+2] = (guint8)(val>>8);
+	data[i+1] = (guint8)(val>>16);
+	data[i]   = (guint8)(val>>24);
 }

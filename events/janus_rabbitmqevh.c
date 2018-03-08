@@ -43,6 +43,7 @@ const char *janus_rabbitmqevh_get_name(void);
 const char *janus_rabbitmqevh_get_author(void);
 const char *janus_rabbitmqevh_get_package(void);
 void janus_rabbitmqevh_incoming_event(json_t *event);
+json_t *janus_rabbitmqevh_handle_request(json_t *request);
 
 /* Event handler setup */
 static janus_eventhandler janus_rabbitmqevh =
@@ -59,6 +60,7 @@ static janus_eventhandler janus_rabbitmqevh =
 		.get_package = janus_rabbitmqevh_get_package,
 
 		.incoming_event = janus_rabbitmqevh_incoming_event,
+		.handle_request = janus_rabbitmqevh_handle_request,
 
 		.events_mask = JANUS_EVENT_TYPE_NONE
 	);
@@ -96,6 +98,75 @@ static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
 static amqp_bytes_t rmq_route_key;
+
+
+/* Parameter validation (for tweaking via Admin API) */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter tweak_parameters[] = {
+	{"events", JSON_STRING, 0},
+	{"grouping", JANUS_JSON_BOOL, 0}
+};
+/* Error codes (for the tweaking via Admin API */
+#define JANUS_RABBITMQEVH_ERROR_INVALID_REQUEST		411
+#define JANUS_RABBITMQEVH_ERROR_MISSING_ELEMENT		412
+#define JANUS_RABBITMQEVH_ERROR_INVALID_ELEMENT		413
+#define JANUS_RABBITMQEVH_ERROR_UNKNOWN_ERROR			499
+
+
+/* Helper method to change the events mask */
+static void janus_rabbitmqevh_edit_events_mask(const char *list) {
+	if(!list)
+		return;
+	janus_flags mask;
+	if(!strcasecmp(list, "none")) {
+		/* Don't subscribe to anything at all */
+		janus_flags_reset(&mask);
+	} else if(!strcasecmp(list, "all")) {
+		/* Subscribe to everything */
+		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
+	} else {
+		/* Check what we need to subscribe to */
+		janus_flags_reset(&mask);
+		gchar **subscribe = g_strsplit(list, ",", -1);
+		if(subscribe != NULL) {
+			gchar *index = subscribe[0];
+			if(index != NULL) {
+				int i=0;
+				while(index != NULL) {
+					while(isspace(*index))
+						index++;
+					if(strlen(index)) {
+						if(!strcasecmp(index, "sessions")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_SESSION);
+						} else if(!strcasecmp(index, "handles")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_HANDLE);
+						} else if(!strcasecmp(index, "jsep")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_JSEP);
+						} else if(!strcasecmp(index, "webrtc")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_WEBRTC);
+						} else if(!strcasecmp(index, "media")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_MEDIA);
+						} else if(!strcasecmp(index, "plugins")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_PLUGIN);
+						} else if(!strcasecmp(index, "transports")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_TRANSPORT);
+						} else if(!strcasecmp(index, "core")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_CORE);
+						} else {
+							JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
+						}
+					}
+					i++;
+					index = subscribe[i];
+				}
+			}
+			g_strfreev(subscribe);
+		}
+	}
+	memcpy(&janus_rabbitmqevh.events_mask, &mask, sizeof(janus_flags));
+}
 
 
 /* Plugin implementation */
@@ -153,52 +224,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	/* Which events should we subscribe to? */
 	item = janus_config_get_item_drilldown(config, "general", "events");
-	if(item && item->value) {
-		if(!strcasecmp(item->value, "none")) {
-			/* Don't subscribe to anything at all */
-			janus_flags_reset(&janus_rabbitmqevh.events_mask);
-		} else if(!strcasecmp(item->value, "all")) {
-			/* Subscribe to everything */
-			janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_ALL);
-		} else {
-			/* Check what we need to subscribe to */
-			gchar **subscribe = g_strsplit(item->value, ",", -1);
-			if(subscribe != NULL) {
-				gchar *index = subscribe[0];
-				if(index != NULL) {
-					int i=0;
-					while(index != NULL) {
-						while(isspace(*index))
-							index++;
-						if(strlen(index)) {
-							if(!strcasecmp(index, "sessions")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_SESSION);
-							} else if(!strcasecmp(index, "handles")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_HANDLE);
-							} else if(!strcasecmp(index, "jsep")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_JSEP);
-							} else if(!strcasecmp(index, "webrtc")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_WEBRTC);
-							} else if(!strcasecmp(index, "media")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_MEDIA);
-							} else if(!strcasecmp(index, "plugins")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_PLUGIN);
-							} else if(!strcasecmp(index, "transports")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_TRANSPORT);
-							} else if(!strcasecmp(index, "core")) {
-								janus_flags_set(&janus_rabbitmqevh.events_mask, JANUS_EVENT_TYPE_CORE);
-							} else {
-								JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
-							}
-						}
-						i++;
-						index = subscribe[i];
-					}
-				}
-				g_strfreev(subscribe);
-			}
-		}
-	}
+	if(item && item->value)
+		janus_rabbitmqevh_edit_events_mask(item->value);
 
 	/* Is grouping of events ok? */
 	item = janus_config_get_item_drilldown(config, "general", "grouping");
@@ -480,6 +507,54 @@ void janus_rabbitmqevh_incoming_event(json_t *event) {
 	 * any delay in the actual event processing ourselves. */
 	json_incref(event);
 	g_async_queue_push(events, event);
+}
+
+json_t *janus_rabbitmqevh_handle_request(json_t *request) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}
+	/* We can use this requests to apply tweaks to the logic */
+	int error_code = 0;
+	char error_cause[512];
+	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RABBITMQEVH_ERROR_MISSING_ELEMENT, JANUS_RABBITMQEVH_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	/* Get the request */
+	const char *request_text = json_string_value(json_object_get(request, "request"));
+	if(!strcasecmp(request_text, "tweak")) {
+		/* We only support a request to tweak the current settings */
+		JANUS_VALIDATE_JSON_OBJECT(request, tweak_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_RABBITMQEVH_ERROR_MISSING_ELEMENT, JANUS_RABBITMQEVH_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		/* Events */
+		if(json_object_get(request, "events"))
+			janus_rabbitmqevh_edit_events_mask(json_string_value(json_object_get(request, "events")));
+		/* Grouping */
+		if(json_object_get(request, "grouping"))
+			group_events = json_is_true(json_object_get(request, "grouping"));
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_RABBITMQEVH_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+plugin_response:
+		{
+			json_t *response = json_object();
+			if(error_code == 0) {
+				/* Return a success */
+				json_object_set_new(response, "result", json_integer(200));
+			} else {
+				/* Prepare JSON error event */
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
 }
 
 /* Thread to handle incoming events */

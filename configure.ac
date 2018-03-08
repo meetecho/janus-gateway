@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.3.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -14,6 +14,11 @@ AC_PROG_CC
 
 LT_PREREQ([2.2])
 LT_INIT
+
+JANUS_VERSION=30
+AC_SUBST(JANUS_VERSION)
+JANUS_VERSION_STRING="0.3.1"
+AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
 darwin*)
@@ -259,6 +264,10 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                                         JANUS_MANUAL_LIBS+=" -lsrtp2"
                                         enable_libsrtp2=yes
                                         AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                        AC_CHECK_LIB([srtp2],
+                                                     [srtp_crypto_policy_set_aes_gcm_256_16_auth],
+                                                     [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                     [AC_MSG_NOTICE([libsrtp2 does not have support for AES-GCM profiles])])
                                       ],
                                       [
                                         AS_IF([test "x$enable_libsrtp2" = "xyes"],
@@ -283,7 +292,10 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                                                                [
                                                                  libsrtp >= 1.5.0
                                                                ])
-
+                                             AC_CHECK_LIB([srtp],
+                                                          [crypto_policy_set_aes_gcm_256_16_auth],
+                                                          [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                          [AC_MSG_NOTICE([libsrtp does not have support for AES-GCM profiles])])
                                            ],
                                            [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
                          ],
@@ -344,6 +356,14 @@ AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
               [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or remove --enable-docs])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
+if test "x$enable_docs" = "xyes"; then
+	doxygen_version=$($DOXYGEN --version)
+	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
+					   [],
+					   [],
+					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
+					  )
+fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
               [gengetopt],
@@ -561,11 +581,12 @@ AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([LIBRE],
-                  [libre],
+                  [libre >= 0.5.7],
                   [
                     AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
                           [
                            enable_plugin_sipre=yes
+                           AC_DEFINE(HAVE_LIBRE_SIPREGNEWAPI)
                            AC_CHECK_LIB([re],
                                         [sip_set_trace],
                                         [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
@@ -573,9 +594,23 @@ PKG_CHECK_MODULES([LIBRE],
                                        )
                           ])
                   ],
-                  [
-                    AS_IF([test "x$enable_plugin_sipre" = "xyes"],
-                          [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                  [PKG_CHECK_MODULES([LIBRE],
+                                     [libre],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
+                                            [
+                                             enable_plugin_sipre=yes
+                                             AC_CHECK_LIB([re],
+                                                          [sip_set_trace],
+                                                          [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
+                                                          [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
+                                                         )
+                                            ])
+                                     ],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xyes"],
+                                            [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                                     ])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -724,7 +759,7 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_LIBSRTP_2],
-	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "SSL/crypto library:        BoringSSL"

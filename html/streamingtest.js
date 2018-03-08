@@ -52,7 +52,6 @@ var janus = null;
 var streaming = null;
 var opaqueId = "streamingtest-"+Janus.randomString(12);
 
-var started = false;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -65,10 +64,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -140,7 +136,7 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
-										// Answer
+										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,
@@ -162,41 +158,52 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
 									Janus.debug(stream);
-									if($('#remotevideo').length > 0) {
-										// Been here already: let's see if anything changed
-										var videoTracks = stream.getVideoTracks();
-										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
-											$('#novideo').remove();
-											if($("#remotevideo").get(0).videoWidth)
-												$('#remotevideo').show();
-										}
-										return;
+									var addButtons = false;
+									if($('#remotevideo').length === 0) {
+										addButtons = true;
+										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+										// Show the stream and hide the spinner when we get a playing event
+										$("#remotevideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											if(this.videoWidth)
+												$('#remotevideo').removeClass('hide').show();
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
+											var videoTracks = stream.getVideoTracks();
+											if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0)
+												return;
+											var width = this.videoWidth;
+											var height = this.videoHeight;
+											$('#curres').removeClass('hide').text(width+'x'+height).show();
+											if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+												// Firefox Stable has a bug: width and height are not immediately available after a playing
+												setTimeout(function() {
+													var width = $("#remotevideo").get(0).videoWidth;
+													var height = $("#remotevideo").get(0).videoHeight;
+													$('#curres').removeClass('hide').text(width+'x'+height).show();
+												}, 2000);
+											}
+										});
 									}
-									$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
-									// Show the stream and hide the spinner when we get a playing event
-									$("#remotevideo").bind("playing", function () {
-										$('#waitingvideo').remove();
-										if(this.videoWidth)
-											$('#remotevideo').removeClass('hide').show();
-										if(spinner !== null && spinner !== undefined)
-											spinner.stop();
-										spinner = null;
-										var videoTracks = stream.getVideoTracks();
-										if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0)
-											return;
-										var width = this.videoWidth;
-										var height = this.videoHeight;
-										$('#curres').removeClass('hide').text(width+'x'+height).show();
-										if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
-											// Firefox Stable has a bug: width and height are not immediately available after a playing
-											setTimeout(function() {
-												var width = $("#remotevideo").get(0).videoWidth;
-												var height = $("#remotevideo").get(0).videoHeight;
-												$('#curres').removeClass('hide').text(width+'x'+height).show();
-											}, 2000);
-										}
-									});
+									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No remote video
+										$('#remotevideo').hide();
+										if($('#stream .no-video-container').length === 0) {
+											$('#stream').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#stream .no-video-container').remove();
+										$('#remotevideo').removeClass('hide').show();
+									}
+									if(!addButtons)
+										return;
 									if(videoTracks && videoTracks.length &&
 											(Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
 												Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
@@ -213,17 +220,6 @@ $(document).ready(function() {
 											if(width > 0 && height > 0)
 												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
-									}
-									Janus.attachMediaStream($('#remotevideo').get(0), stream);
-									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
-										// No remote video
-										$('#remotevideo').hide();
-										$('#stream').append(
-											'<div id="novideo" class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-												'<span class="no-video-text">No remote video available</span>' +
-											'</div>');
 									}
 								},
 								oncleanup: function() {

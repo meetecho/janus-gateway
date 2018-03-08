@@ -57,6 +57,8 @@ typedef struct janus_dtls_srtp {
 	janus_dtls_role dtls_role;
 	/*! \brief DTLS state of this component: -1=failed, 0=nothing, 1=trying, 2=connected */
 	janus_dtls_state dtls_state;
+	/*! \brief Monotonic time of when the DTLS handhake has started */
+	gint64 dtls_started;
 	/*! \brief Monotonic time of when the DTLS state has switched to connected */
 	gint64 dtls_connected;
 	/*! \brief SSL context used for DTLS for this component */
@@ -98,6 +100,13 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *component, janus_dtls_role role);
 /*! \brief Start a DTLS handshake
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on */
 void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls);
+/*! \brief Create an SCTP association, for data channels
+ * \note This is a separate method as, with renegotiations, it might happen
+ * that data channels are not created right away, right after the DTLS
+ * handshake has been completed, but only later, when DTLS is already up
+ * @param[in] dtls The janus_dtls_srtp instance to setup SCTP on
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls);
 /*! \brief Handle an incoming DTLS message
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on
  * @param[in] buf The DTLS message data
