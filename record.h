@@ -42,16 +42,16 @@ typedef struct janus_recorder {
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
-	/*! \brief Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9") */
+	/*! \brief Codec the packets to record are encoded in ("vp8", "vp9", "h264", "opus", "pcma", "pcmu", "g722") */
 	char *codec;
 	/*! \brief When the recording file has been created */
 	gint64 created;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
-	int header:1;
+	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
-	int writable:1;
+	volatile int writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
 	janus_mutex mutex;
 } janus_recorder;

@@ -25,6 +25,8 @@
 ; audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; audiopt = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
+; audioskew = yes|no (whether the plugin should perform skew
+;		analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
 ; videoport = local port for receiving video frames
 ; videomcast = multicast group port for receiving video frames, if any
 ; videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
@@ -35,10 +37,24 @@
 ; videosimulcast = yes|no (do|don't enable video simulcasting)
 ; videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
 ; videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
+; videoskew = yes|no (whether the plugin should perform skew
+;		analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
+; collision = in case of collision (more than one SSRC hitting the same port), the plugin
+;		will discard incoming RTP packets with a new SSRC unless this many milliseconds
+;		passed, which would then change the current SSRC (0=disabled)
 ; dataport = local port for receiving data messages to relay
 ; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; databuffermsg = yes|no (whether the plugin should store the latest
 ;		message and send it immediately for new viewers)
+;
+; In case you want to use SRTP for your RTP-based mountpoint, you'll need
+; to configure the SRTP-related properties as well, namely the suite to
+; use for hashing (32 or 80) and the crypto information for decrypting
+; the stream (as a base64 encoded string the way SDES does it). Notice
+; that with SRTP involved you'll have to pay extra attention to what you
+; feed the mountpoint, as you may risk getting SRTP decrypt errors:
+; srtpsuite = 32
+; srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
 ;
 ; The following options are only valid for the 'rstp' type:
 ; url = RTSP stream URL (only for restreaming RTSP)
