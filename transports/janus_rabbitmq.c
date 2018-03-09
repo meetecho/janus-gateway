@@ -628,7 +628,7 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 		json_decref(message);
 		return -1;
 	}
-	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
+	JANUS_LOG(LOG_VERB, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
@@ -790,7 +790,8 @@ void *janus_rmq_out_thread(void *data) {
 					: (response->admin ? rmq_client->from_janus_admin_queue
 						: rmq_client->from_janus_queue),
 					0, 0, &props, message);
-			if(status != AMQP_STATUS_OK) {
+			
+      if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
 			g_free(response->correlation_id);
