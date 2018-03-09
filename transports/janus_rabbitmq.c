@@ -590,7 +590,7 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 		json_decref(message);
 		return -1;
 	}
-	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
+	JANUS_LOG(LOG_VERB, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
@@ -752,9 +752,13 @@ void *janus_rmq_out_thread(void *data) {
 			props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(payload_text);
-			int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange,
-				response->admin ? rmq_client->from_janus_admin_queue : rmq_client->from_janus_queue,
-				0, 0, &props, message);
+
+      int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_empty_bytes,
+                                      response->reply_to ? amqp_cstring_bytes(response->reply_to)
+                                      : (response->admin ? rmq_client->from_janus_admin_queue
+                                         : rmq_client->from_janus_queue),
+                                      0, 0, &props, message);
+
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
