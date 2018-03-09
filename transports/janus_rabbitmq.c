@@ -715,13 +715,13 @@ void *janus_rmq_in_thread(void *data) {
 		janus_rabbitmq_opaque_id *request_id = NULL;
 		if(p->_flags & AMQP_BASIC_REPLY_TO_FLAG) {
 			request_id = g_malloc0(sizeof(janus_rabbitmq_opaque_id));
-			request_id->reply_to = (char *)g_malloc0(p->reply_to.len+1);
+			request_id->reply_to = g_malloc0(p->reply_to.len+1);
 			sprintf(request_id->reply_to, "%.*s", (int) p->reply_to.len, (char *) p->reply_to.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Reply-to: %s\n", request_id->reply_to);
 		}
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
 			if (!request_id) request_id = g_malloc0(sizeof(janus_rabbitmq_opaque_id));
-			request_id->correlation_id = (char *)g_malloc0(p->correlation_id.len+1);
+			request_id->correlation_id = g_malloc0(p->correlation_id.len+1);
 			sprintf(request_id->correlation_id, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", request_id->correlation_id);
 		}
