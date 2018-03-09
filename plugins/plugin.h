@@ -115,9 +115,14 @@ janus_plugin *create(void) {
  * do so. At the same time, a plugin may want to originate the call instead:
  * in that case, the plugin would attach a JSEP/SDP offer in a \c push_event()
  * call, to which the browser would then need to reply with a JSEP/SDP answer,
- * as described in \ref JS.
+ * as described in \ref JS. Renegotiating a session can be done using the
+ * same mechanism above: in case plugins want to force an ICE restart,
+ * though, they must add a boolean property called \c restart to the JSEP
+ * object before passing it to the core. Notice that the core adds a property
+ * called \c update whenever the remote user is requesting a renegotiation,
+ * whether it's for ICE restarts or just for some media related change.
  * \note It's important to notice that, while the gateway core would indeed
- *  take care of the WebRTC PeerConnection setup itself in terms of
+ * take care of the WebRTC PeerConnection setup itself in terms of
  * ICE/DTLS/RT(C)P on your behalf, plugins are what will actually manipulate
  * the media flowing around, and as such it's them who are responsible for
  * what concerns the codec negotiation in a JSEP/SDP offer/answer. This
@@ -128,16 +133,12 @@ janus_plugin *create(void) {
  * want to use the same SDP offer for several different sessions (e.g., a webinar),
  * you need to make sure that your offer/answer does not contain anything
  * you don't support. Besides, you also need to make sure that you use
- * SDP-provided information (e.g., payload types) coherently.
+ * SDP-provided information (e.g., payload types, increasing versions in
+ * case of renegotiations) coherently.
  *
  * \todo Right now plugins can only interact with peers, through the gateway.
  * Besides, a single PeerConnection can at the moment be used by only one
  * plugin, as that plugin is actually the "owner" of the PeerConnection itself.
- * In next versions of Janus we'll work on stuff like plugins "chaining": that
- * is, plugins that can act as "filters" for other plugins (e.g., transcoders)
- * or as additional sources/sinks for the same PeerConnection of the same peer
- * (e.g., to add recording functionality to a video conference using a
- * different plugin).
  *
  * \ingroup pluginapi
  * \ref pluginapi
@@ -165,7 +166,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	8
+#define JANUS_PLUGIN_API_VERSION	9
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -337,7 +338,7 @@ struct janus_callbacks {
 	 * @param[in] plugin The plugin instance that is sending the message/event
 	 * @param[in] transaction The transaction identifier this message refers to
 	 * @param[in] message The json_t object containing the JSON message
-	 * @param[in] jsep The json_t object containing the JSEP type and the SDP attached to the message/event, if any (offer/answer) */
+	 * @param[in] jsep The json_t object containing the JSEP type, the SDP attached to the message/event, if any (offer/answer), and whether this is an update */
 	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
 
 	/*! \brief Callback to relay RTP packets to a peer
@@ -379,6 +380,17 @@ struct janus_callbacks {
 	 * @param[in] event The event to notify as a Jansson json_t object */
 	void (* const notify_event)(janus_plugin *plugin, janus_plugin_session *handle, json_t *event);
 
+	/*! \brief Method to check whether a signed token is valid
+	 * \note accepts only tokens with the plugin identifier as realm
+	 * @param[in] token The token to validate
+	 * @returns TRUE if the signature is valid and not expired, FALSE otherwise */
+	gboolean (* const auth_is_signature_valid)(janus_plugin *plugin, const char *token);
+	/*! \brief Method to verify a signed token grants access to a descriptor
+	 * \note accepts only tokens with the plugin identifier as realm
+	 * @param[in] token The token to validate
+	 * @param[in] desc The descriptor to search for
+	 * @returns TRUE if the token is valid, not expired and contains the descriptor, FALSE otherwise */
+	gboolean (* const auth_signature_contains)(janus_plugin *plugin, const char *token, const char *descriptor);
 };
 
 /*! \brief The hook that plugins need to implement to be created from the gateway */

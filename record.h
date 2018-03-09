@@ -42,7 +42,7 @@ typedef struct janus_recorder {
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
-	/*! \brief Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9") */
+	/*! \brief Codec the packets to record are encoded in ("vp8", "vp9", "h264", "opus", "pcma", "pcmu", "g722") */
 	char *codec;
 	/*! \brief When the recording file has been created */
 	gint64 created;

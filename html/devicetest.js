@@ -52,9 +52,12 @@ var janus = null;
 var echotest = null;
 var opaqueId = "devicetest-"+Janus.randomString(12);
 
-var started = false, firstTime = true;
+var firstTime = true;
 var bitrateTimer = null;
 var spinner = null;
+
+var audioDeviceId = null;
+var videoDeviceId = null;
 
 var audioenabled = false;
 var videoenabled = false;
@@ -120,9 +123,7 @@ function initDevices(devices) {
 			restartCapture();
 			return;
 		}
-		echotest.hangup(true);
-		// Let's wait a couple of seconds before restarting
-		setTimeout(restartCapture, 2000);
+		restartCapture();
 	});
 }
 
@@ -132,20 +133,26 @@ function restartCapture() {
 	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 	echotest.send({"message": body});
 	Janus.debug("Trying a createOffer too (audio/video sendrecv)");
+	var replaceAudio = $('#audio-device').val() !== audioDeviceId;
+	audioDeviceId = $('#audio-device').val();
+	var replaceVideo = $('#video-device').val() !== videoDeviceId;
+	videoDeviceId = $('#video-device').val();
 	echotest.createOffer(
 		{
 			// We provide a specific device ID for both audio and video
 			media: {
 				audio: {
 					deviceId: {
-						exact: $('#audio-device').val()
+						exact: audioDeviceId
 					}
 				},
+				replaceAudio: replaceAudio,	// This is only needed in case of a renegotiation
 				video: {
 					deviceId: {
-						exact: $('#video-device').val()
+						exact: videoDeviceId
 					}
 				},
+				replaceVideo: replaceVideo,	// This is only needed in case of a renegotiation
 				data: true	// Let's negotiate data channels as well
 			},
 			// If you want to test simulcasting (Chrome and Firefox only), then
@@ -168,10 +175,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -296,23 +300,41 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									// No remote video yet
-									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-									if(spinner == null) {
-										var target = document.getElementById('videoright');
-										spinner = new Spinner({top:100}).spin(target);
-									} else {
-										spinner.spin();
+									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
+										// No remote video yet
+										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										if(spinner == null) {
+											var target = document.getElementById('videoright');
+											spinner = new Spinner({top:100}).spin(target);
+										} else {
+											spinner.spin();
+										}
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+											// No webcam
+											$('#myvideo').hide();
+											$('#videoleft').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No webcam available</span>' +
+												'</div>');
+										}
 									}
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No webcam
 										$('#myvideo').hide();
-										$('#videoleft').append(
-											'<div class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-												'<span class="no-video-text">No webcam available</span>' +
-											'</div>');
+										if($('#videoleft .no-video-container').length === 0) {
+											$('#videoleft').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No webcam available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videoleft .no-video-container').remove();
+										$('#myvideo').removeClass('hide').show();
 									}
 									// Reset devices controls
 									$('#audio-device, #video-device').removeAttr('disabled');
@@ -321,41 +343,42 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
 									Janus.debug(stream);
-									if($('#peervideo').length > 0) {
-										// Been here already: let's see if anything changed
-										var videoTracks = stream.getVideoTracks();
-										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
-											$('#novideo').remove();
-											if($("#peervideo").get(0).videoWidth)
-												$('#peervideo').show();
-										}
-										return;
+									var addButtons = false;
+									if($('#peervideo').length === 0) {
+										addButtons = true;
+										$('#videos').removeClass('hide').show();
+										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
+										// Show the video, hide the spinner and show the resolution when we get a playing event
+										$("#peervideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											if(this.videoWidth)
+												$('#peervideo').removeClass('hide').show();
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
+											var width = this.videoWidth;
+											var height = this.videoHeight;
+											$('#curres').removeClass('hide').text(width+'x'+height).show();
+										});
 									}
-									$('#videos').removeClass('hide').show();
-									$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
-									// Show the video, hide the spinner and show the resolution when we get a playing event
-									$("#peervideo").bind("playing", function () {
-										$('#waitingvideo').remove();
-										if(this.videoWidth)
-											$('#peervideo').removeClass('hide').show();
-										if(spinner !== null && spinner !== undefined)
-											spinner.stop();
-										spinner = null;
-										var width = this.videoWidth;
-										var height = this.videoHeight;
-										$('#curres').removeClass('hide').text(width+'x'+height).show();
-									});
 									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#peervideo').hide();
-										$('#videoright').append(
-											'<div id="novideo" class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-												'<span class="no-video-text">No remote video available</span>' +
-											'</div>');
+										if($('#videoright .no-video-container').length === 0) {
+											$('#videoright').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videoright .no-video-container').remove();
+										$('#peervideo').removeClass('hide').show();
 									}
+									if(!addButtons)
+										return;
 									// Enable audio/video buttons and bitrate limiter
 									audioenabled = true;
 									videoenabled = true;

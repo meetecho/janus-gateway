@@ -52,8 +52,6 @@ var janus = null;
 var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
 
-var started = false;
-
 var myroom = 5678;
 var myusername = null;
 var myid = null;
@@ -69,10 +67,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -257,7 +252,6 @@ $(document).ready(function() {
 									Janus.debug(" ::: Got a local stream :::");
 									mystream = stream;
 									Janus.debug(stream);
-									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
@@ -272,23 +266,31 @@ $(document).ready(function() {
 									$('#publisher').removeClass('hide').html(myusername).show();
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									$("#videolocal").parent().parent().block({
-										message: '<b>Publishing...</b>',
-										css: {
-											border: 'none',
-											backgroundColor: 'transparent',
-											color: 'white'
-										}
-									});
+									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											sfutest.webrtcStuff.pc.iceConnectionState !== "connected") {
+										$("#videolocal").parent().parent().block({
+											message: '<b>Publishing...</b>',
+											css: {
+												border: 'none',
+												backgroundColor: 'transparent',
+												color: 'white'
+											}
+										});
+									}
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No webcam
 										$('#myvideo').hide();
-										$('#videolocal').append(
-											'<div class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
-												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
-											'</div>');
+										if($('#videolocal .no-video-container').length === 0) {
+											$('#videolocal').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No webcam available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videolocal .no-video-container').remove();
+										$('#myvideo').removeClass('hide').show();
 									}
 								},
 								onremotestream: function(stream) {
@@ -498,51 +500,62 @@ function newRemoteFeed(id, display) {
 			},
 			onremotestream: function(stream) {
 				Janus.debug("Remote feed #" + remoteFeed.rfindex);
-				if($('#remotevideo'+remoteFeed.rfindex).length > 0) {
-					// Been here already: let's see if anything changed
-					var videoTracks = stream.getVideoTracks();
-					if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
-						$('#novideo'+remoteFeed.rfindex).remove();
-						if($("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth)
-							$('#remotevideo'+remoteFeed.rfindex).show();
-					}
-					return;
+				var addButtons = false;
+				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
+					addButtons = true;
+					// No remote video yet
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+					$('#videoremote'+remoteFeed.rfindex).append(
+						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+					// Show the video, hide the spinner and show the resolution when we get a playing event
+					$("#remotevideo"+remoteFeed.rfindex).bind("playing", function () {
+						if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
+							remoteFeed.spinner.stop();
+						remoteFeed.spinner = null;
+						$('#waitingvideo'+remoteFeed.rfindex).remove();
+						if(this.videoWidth)
+							$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
+						var width = this.videoWidth;
+						var height = this.videoHeight;
+						$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+						if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+							// Firefox Stable has a bug: width and height are not immediately available after a playing
+							setTimeout(function() {
+								var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
+								var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+							}, 2000);
+						}
+					});
 				}
-				// No remote video yet
-				$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
-				$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
-				$('#videoremote'+remoteFeed.rfindex).append(
-					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
-					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
-				// Show the video, hide the spinner and show the resolution when we get a playing event
-				$("#remotevideo"+remoteFeed.rfindex).bind("playing", function () {
-					if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
-						remoteFeed.spinner.stop();
-					remoteFeed.spinner = null;
-					$('#waitingvideo'+remoteFeed.rfindex).remove();
-					if(this.videoWidth)
-						$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
-					var width = this.videoWidth;
-					var height = this.videoHeight;
-					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-				});
 				Janus.attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
 				var videoTracks = stream.getVideoTracks();
-				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
-					$('#videoremote'+remoteFeed.rfindex).append(
-						'<div id="novideo'+remoteFeed.rfindex+'" class="no-video-container">' +
-							'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
-							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
-						'</div>');
+					if($('#remotevideo'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+						$('#remotevideo'+remoteFeed.rfindex).append(
+							'<div class="no-video-container">' +
+								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+								'<span class="no-video-text">No remote video available</span>' +
+							'</div>');
+					}
+				} else {
+					$('#remotevideo'+remoteFeed.rfindex+ ' .no-video-container').remove();
+					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
 				}
-				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+				if(!addButtons)
+					return;
+				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+						Janus.webRTCAdapter.browserDetails.browser === "safari") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported
 						var bitrate = remoteFeed.getBitrate();
 						$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+						// Check if the resolution changed too
 						var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
 						var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
 						if(width > 0 && height > 0)

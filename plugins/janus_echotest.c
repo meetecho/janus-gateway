@@ -399,7 +399,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_echotest_session *session = (janus_echotest_session *)g_malloc0(sizeof(janus_echotest_session));
+	janus_echotest_session *session = g_malloc0(sizeof(janus_echotest_session));
 	session->handle = handle;
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -502,7 +502,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
 
-	janus_echotest_message *msg = g_malloc0(sizeof(janus_echotest_message));
+	janus_echotest_message *msg = g_malloc(sizeof(janus_echotest_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -659,7 +659,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(header, &session->context, TRUE, 4500);
+			janus_rtp_header_update(header, &session->context, TRUE, 0);
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->vrc, buf, len);
@@ -727,7 +727,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 			return;
 		if(buf == NULL || len <= 0)
 			return;
-		char *text = g_malloc0(len+1);
+		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
@@ -735,7 +735,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
-		char *reply = g_malloc0(strlen(prefix)+len+1);
+		char *reply = g_malloc(strlen(prefix)+len+1);
 		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
 		gateway->relay_data(handle, reply, strlen(reply));
@@ -873,12 +873,10 @@ static void *janus_echotest_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining EchoTest handler thread\n");
 	janus_echotest_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
+	char *error_cause = g_malloc(512);
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
@@ -1214,6 +1212,13 @@ static void *janus_echotest_handler(void *data) {
 				temp = temp->next;
 			}
 			janus_sdp *answer = janus_sdp_generate_answer(offer, JANUS_SDP_OA_DONE);
+			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
+			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
+			if(m && m->direction == JANUS_SDP_SENDONLY)
+				m->direction = JANUS_SDP_INACTIVE;
+			m = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO);
+			if(m && m->direction == JANUS_SDP_SENDONLY)
+				m->direction = JANUS_SDP_INACTIVE;
 			/* Add the extmap attribute, if needed */
 			if(session->rtpmapid_extmap_id > -1) {
 				/* First of all, let's check if the extmap attribute had a direction */

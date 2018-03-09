@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <libgen.h>
 
 #include <glib.h>
 #include <jansson.h>
@@ -73,8 +74,6 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		type = JANUS_RECORDER_AUDIO;
-		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))
-			codec = "g711";
 	} else if(!strcasecmp(codec, "text")) {
 		/* FIXME We only handle text on data channels, so that's the only thing we can save too */
 		type = JANUS_RECORDER_DATA;
@@ -85,23 +84,45 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	}
 	/* Create the recorder */
 	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
-	if(rc == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->created = janus_get_real_time();
-	if(dir != NULL) {
+	const char *rec_dir = NULL;
+	const char *rec_file = NULL;
+	char *copy_for_parent = NULL;
+	char *copy_for_base = NULL;
+	/* Check dir and filename values */
+	if (filename != NULL) {
+		/* Helper copies to avoid overwriting */
+		copy_for_parent = g_strdup(filename);
+		copy_for_base = g_strdup(filename);
+		/* Get filename parent folder */
+		const char *filename_parent = dirname(copy_for_parent);
+		/* Get filename base file */
+		const char *filename_base = basename(copy_for_base);
+		if (!dir) {
+			/* If dir is NULL we have to create filename_parent and filename_base */
+			rec_dir = filename_parent;
+			rec_file = filename_base;
+		} else {
+			/* If dir is valid we have to create dir and filename*/
+			rec_dir = dir;
+			rec_file = filename;
+			if (strcasecmp(filename_parent, ".") || strcasecmp(filename_base, filename)) {
+				JANUS_LOG(LOG_WARN, "Unsupported combination of dir and filename %s %s\n", dir, filename);
+			}
+		}
+	}
+	if(rec_dir != NULL) {
 		/* Check if this directory exists, and create it if needed */
 		struct stat s;
-		int err = stat(dir, &s);
+		int err = stat(rec_dir, &s);
 		if(err == -1) {
 			if(ENOENT == errno) {
 				/* Directory does not exist, try creating it */
-				if(janus_mkdir(dir, 0755) < 0) {
+				if(janus_mkdir(rec_dir, 0755) < 0) {
 					JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
 					return NULL;
 				}
@@ -112,17 +133,17 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 		} else {
 			if(S_ISDIR(s.st_mode)) {
 				/* Directory exists */
-				JANUS_LOG(LOG_VERB, "Directory exists: %s\n", dir);
+				JANUS_LOG(LOG_VERB, "Directory exists: %s\n", rec_dir);
 			} else {
 				/* File exists but it's not a directory? */
-				JANUS_LOG(LOG_ERR, "Not a directory? %s\n", dir);
+				JANUS_LOG(LOG_ERR, "Not a directory? %s\n", rec_dir);
 				return NULL;
 			}
 		}
 	}
 	char newname[1024];
 	memset(newname, 0, 1024);
-	if(filename == NULL) {
+	if(rec_file == NULL) {
 		/* Choose a random username */
 		if(!rec_tempname) {
 			/* Use .mjr as an extension right away */
@@ -135,27 +156,27 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 		/* Just append the extension */
 		if(!rec_tempname) {
 			/* Use .mjr as an extension right away */
-			g_snprintf(newname, 1024, "%s.mjr", filename);
+			g_snprintf(newname, 1024, "%s.mjr", rec_file);
 		} else {
 			/* Append the temporary extension to .mjr, we'll rename when closing */
-			g_snprintf(newname, 1024, "%s.mjr.%s", filename, rec_tempext);
+			g_snprintf(newname, 1024, "%s.mjr.%s", rec_file, rec_tempext);
 		}
 	}
 	/* Try opening the file now */
-	if(dir == NULL) {
+	if(rec_dir == NULL) {
 		rc->file = fopen(newname, "wb");
 	} else {
 		char path[1024];
 		memset(path, 0, 1024);
-		g_snprintf(path, 1024, "%s/%s", dir, newname);
+		g_snprintf(path, 1024, "%s/%s", rec_dir, newname);
 		rc->file = fopen(path, "wb");
 	}
 	if(rc->file == NULL) {
 		JANUS_LOG(LOG_ERR, "fopen error: %d\n", errno);
 		return NULL;
 	}
-	if(dir)
-		rc->dir = g_strdup(dir);
+	if(rec_dir)
+		rc->dir = g_strdup(rec_dir);
 	rc->filename = g_strdup(newname);
 	rc->type = type;
 	/* Write the first part of the header */
@@ -164,6 +185,8 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
 	janus_mutex_init(&rc->mutex);
+	g_free(copy_for_parent);
+	g_free(copy_for_base);
 	return rc;
 }
 

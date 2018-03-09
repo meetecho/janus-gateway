@@ -52,7 +52,6 @@ var janus = null;
 var recordplay = null;
 var opaqueId = "recordplaytest-"+Janus.randomString(12);
 
-var started = false;
 var spinner = null;
 var bandwidth = 1024 * 1024;
 
@@ -68,10 +67,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -135,7 +131,7 @@ $(document).ready(function() {
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
 											var event = result["status"];
-											if(event === 'preparing') {
+											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
 												recordplay.createAnswer(
 													{
@@ -239,45 +235,76 @@ $(document).ready(function() {
 										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
-									$("#videobox").parent().block({
-										message: '<b>Publishing...</b>',
-										css: {
-											border: 'none',
-											backgroundColor: 'transparent',
-											color: 'white'
+									if(recordplay.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											recordplay.webrtcStuff.pc.iceConnectionState !== "connected") {
+										$("#videobox").parent().block({
+											message: '<b>Publishing...</b>',
+											css: {
+												border: 'none',
+												backgroundColor: 'transparent',
+												color: 'white'
+											}
+										});
+									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No remote video
+										$('#thevideo').hide();
+										if($('#videobox .no-video-container').length === 0) {
+											$('#videobox').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
 										}
-									});
+									} else {
+										$('#videobox .no-video-container').remove();
+										$('#thevideo').removeClass('hide').show();
+									}
 								},
 								onremotestream: function(stream) {
 									if(playing === false)
 										return;
 									Janus.debug(" ::: Got a remote stream :::");
 									Janus.debug(stream);
-									if($('#thevideo').length > 0) {
-										// Been here already
-										return;
+									if($('#thevideo').length === 0) {
+										$('#videotitle').html(selectedRecordingInfo);
+										$('#stop').unbind('click').click(stop);
+										$('#video').removeClass('hide').show();
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										// No remote video yet
+										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										if(spinner == null) {
+											var target = document.getElementById('videobox');
+											spinner = new Spinner({top:100}).spin(target);
+										} else {
+											spinner.spin();
+										}
+										// Show the video, hide the spinner and show the resolution when we get a playing event
+										$("#thevideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											$('#thevideo').removeClass('hide');
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
+										});
 									}
-									$('#videotitle').html(selectedRecordingInfo);
-									$('#stop').unbind('click').click(stop);
-									$('#video').removeClass('hide').show();
-									$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
-									// No remote video yet
-									$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-									if(spinner == null) {
-										var target = document.getElementById('videobox');
-										spinner = new Spinner({top:100}).spin(target);
-									} else {
-										spinner.spin();
-									}
-									// Show the video, hide the spinner and show the resolution when we get a playing event
-									$("#thevideo").bind("playing", function () {
-										$('#waitingvideo').remove();
-										$('#thevideo').removeClass('hide');
-										if(spinner !== null && spinner !== undefined)
-											spinner.stop();
-										spinner = null;
-									});
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No remote video
+										$('#thevideo').hide();
+										if($('#videobox .no-video-container').length === 0) {
+											$('#videobox').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videobox .no-video-container').remove();
+										$('#thevideo').removeClass('hide').show();
+									}
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
