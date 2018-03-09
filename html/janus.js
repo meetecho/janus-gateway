@@ -54,7 +54,16 @@ Janus.useDefaultDependencies = function (deps) {
 		checkJanusExtension: function() { return document.querySelector('#janus-extension-installed') !== null; },
 		webRTCAdapter: (deps && deps.adapter) || adapter,
 		httpAPICall: function(url, options) {
-			var fetchOptions = {method: options.verb, cache: 'no-cache'};
+			var fetchOptions = {
+				method: options.verb,
+				headers: {
+					'Accept': 'application/json, text/plain, */*'
+				},
+				cache: 'no-cache'
+			};
+			if(options.verb === "POST") {
+				fetchOptions.headers['Content-Type'] = 'application/json';
+			}
 			if(options.withCredentials !== undefined) {
 				fetchOptions.credentials = options.withCredentials === true ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
 			}
