@@ -418,7 +418,7 @@ function Janus(gatewayCallbacks) {
 			success: handleEvent,
 			timeout: 60000,	// FIXME
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);
+				Janus.error(textStatus + ":", errorThrown);
 				retries++;
 				if(retries > 3) {
 					// Did we just lose the gateway? :-(
@@ -752,7 +752,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				if(Janus.isArray(servers)) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
@@ -859,7 +859,7 @@ function Janus(gatewayCallbacks) {
 					gatewayCallbacks.destroyed();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				// Reset everything anyway
 				sessionId = null;
 				connected = false;
@@ -1066,7 +1066,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(pluginHandle);
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 			}
 		});
 	}
@@ -1171,7 +1171,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
@@ -1216,7 +1216,7 @@ function Janus(gatewayCallbacks) {
 				}
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 			}
 		});
 	}
@@ -1307,7 +1307,8 @@ function Janus(gatewayCallbacks) {
 			asyncRequest = (callbacks.asyncRequest === true);
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
-		if (pluginHandles[handleId].detached) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined || pluginHandle.detached) {
 			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
 			delete pluginHandles[handleId];
 			callbacks.success();
@@ -1346,7 +1347,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				// We cleanup anyway
 				delete pluginHandles[handleId];
 				callbacks.success();
