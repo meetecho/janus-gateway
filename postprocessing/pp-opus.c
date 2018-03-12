@@ -42,10 +42,6 @@ int ogg_flush(void);
 
 int janus_pp_opus_create(char *destination) {
 	stream = g_malloc0(sizeof(ogg_stream_state));
-	if(stream == NULL) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
-		return -1;
-	}
 	if(ogg_stream_init(stream, rand()) < 0) {
 		JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
 		return -1;
@@ -92,6 +88,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				ogg_stream_packetin(stream, op);
 				ogg_write();
 			}
+			ogg_flush();
 			g_free(op);
 		}
 		if(tmp->drop) {
@@ -123,6 +120,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		ogg_stream_packetin(stream, op);
 		g_free(op);
 		ogg_write();
+		ogg_flush();
 		tmp = tmp->next;
 	}
 	g_free(buffer);
@@ -130,6 +128,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 }
 
 void janus_pp_opus_close(void) {
+	ogg_flush();
 	if(ogg_file)
 		fclose(ogg_file);
 	ogg_file = NULL;
@@ -158,17 +157,8 @@ void le16(unsigned char *p, int v) {
 /* Manufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
-
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	memcpy(data, "OpusHead", 8);  /* identifier */
 	data[8] = 1;                  /* version */
@@ -193,17 +183,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus post-processing";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
-
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	memcpy(data, identifier, 8);
 	le32(data + 8, strlen(vendor));
@@ -222,16 +203,14 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc0(sizeof(*op));
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
-		return NULL;
-	}
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	op->packet = (unsigned char *)pkt;
 	op->bytes = len;
 	op->b_o_s = 0;
 	op->e_o_s = 0;
+	op->granulepos = 0;
+	op->packetno = 0;
 
 	return op;
 }

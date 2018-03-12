@@ -16,6 +16,7 @@
 #include "utils.h"
 
 static gboolean eventsenabled = FALSE;
+static char *server = NULL;
 static GHashTable *eventhandlers = NULL;
 
 static GAsyncQueue *events = NULL;
@@ -24,7 +25,7 @@ static json_t exit_event;
 static GThread *events_thread;
 void *janus_events_thread(void *data);
 
-int janus_events_init(gboolean enabled, GHashTable *handlers) {
+int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers) {
 	/* We setup a thread for passing events to the handlers */
 	GError *error = NULL;
 	events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
@@ -32,6 +33,8 @@ int janus_events_init(gboolean enabled, GHashTable *handlers) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
+	if(server_name != NULL)
+		server = g_strdup(server_name);
 	events = g_async_queue_new();
 	eventhandlers = handlers;
 	eventsenabled = enabled;
@@ -49,6 +52,7 @@ void janus_events_deinit(void) {
 	}
 	if(events != NULL)
 		g_async_queue_unref(events);
+	g_free(server);
 }
 
 gboolean janus_events_is_enabled(void) {
@@ -65,6 +69,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 		if(type == JANUS_EVENT_TYPE_MEDIA || type == JANUS_EVENT_TYPE_WEBRTC) {
 			/* These events allocate a json_t object for their data, skip some arguments and unref it */
 			va_arg(args, guint64);
+			va_arg(args, char *);
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
 		} else if(type == JANUS_EVENT_TYPE_CORE) {
@@ -81,6 +86,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			/* Plugin originated events also allocate a json_t object for the plugin data, skip some arguments and unref it */
 			va_arg(args, guint64);
 			va_arg(args, char *);
+			va_arg(args, char *);
 			json_t *data = va_arg(args, json_t *);
 			json_decref(data);
 		} else if(type == JANUS_EVENT_TYPE_TRANSPORT) {
@@ -96,6 +102,8 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 
 	/* Prepare the event to notify as a Jansson json_t object */
 	json_t *event = json_object();
+	if(server != NULL)
+		json_object_set_new(event, "emitter", json_string(server));
 	json_object_set_new(event, "type", json_integer(type));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
 	if(type != JANUS_EVENT_TYPE_CORE) {			/* Core events don't have a session ID */
@@ -132,14 +140,21 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			/* Handle-related events may include an opaque ID provided by who's using the plugin:
 			 * in event handlers, it may be useful for inter-handle mappings or other things */
 			char *opaque_id = va_arg(args, char *);
-			if(opaque_id != NULL)
+			if(opaque_id != NULL) {
+				json_object_set_new(event, "opaque_id", json_string(opaque_id));
+				/* We add it to the body as well for backwards compatbility, as
+				 * that's the only place we had the opaque_id present before */
 				json_object_set_new(body, "opaque_id", json_string(opaque_id));
+			}
 			break;
 		}
 		case JANUS_EVENT_TYPE_JSEP: {
 			/* For JSEP-related events, there's the handle ID, whether the SDP is local or remote, the JSEP type and the SDP itself */
 			guint64 handle_id = va_arg(args, guint64);
 			json_object_set_new(event, "handle_id", json_integer(handle_id));
+			char *opaque_id = va_arg(args, char *);
+			if(opaque_id != NULL)
+				json_object_set_new(event, "opaque_id", json_string(opaque_id));
 			char *owner = va_arg(args, char *);
 			json_object_set_new(body, "owner", json_string(owner));
 			json_t *jsep = json_object();
@@ -155,6 +170,9 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			/* For WebRTC and media-related events, there's the handle ID and a json_t object with info on what happened */
 			guint64 handle_id = va_arg(args, guint64);
 			json_object_set_new(event, "handle_id", json_integer(handle_id));
+			char *opaque_id = va_arg(args, char *);
+			if(opaque_id != NULL)
+				json_object_set_new(event, "opaque_id", json_string(opaque_id));
 			/* The body is what we get from the event */
 			body = va_arg(args, json_t *);
 			break;
@@ -164,6 +182,9 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			guint64 handle_id = va_arg(args, guint64);
 			if(handle_id > 0)	/* Plugins and transports may not specify a session and handle ID for out of context events */
 				json_object_set_new(event, "handle_id", json_integer(handle_id));
+			char *opaque_id = va_arg(args, char *);
+			if(opaque_id != NULL)
+				json_object_set_new(event, "opaque_id", json_string(opaque_id));
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "plugin", json_string(name));
 			json_t *data = va_arg(args, json_t *);
