@@ -113,16 +113,18 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 /* Incoming HTTP message */
 typedef struct janus_http_msg {
 	struct MHD_Connection *connection;	/* The MHD connection this message came from */
-	gchar *acrh;						/* Value of the Access-Control-Request-Headers HTTP header, if any (needed for CORS) */
-	gchar *acrm;						/* Value of the Access-Control-Request-Method HTTP header, if any (needed for CORS) */
-	gchar *contenttype;					/* Content-Type of the payload */
-	gchar *payload;						/* Payload of the message */
+	volatile int suspended;				/* Whether this connection is currently suspended */
+	volatile void *longpoll;			/* Whether this is a long poll connection for a session */
+	int max_events;						/* In case this is a long poll, how many events we should send back */
+	char *acrh;							/* Value of the Access-Control-Request-Headers HTTP header, if any (needed for CORS) */
+	char *acrm;							/* Value of the Access-Control-Request-Method HTTP header, if any (needed for CORS) */
+	char *contenttype;					/* Content-Type of the payload */
+	char *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
 	gint64 session_id;					/* Gateway-Client session identifier this message belongs to */
-	janus_mutex wait_mutex;				/* Mutex to wait on the response condition */
-	janus_condition wait_cond;			/* Response condition */
-	gboolean got_response;				/* Whether this message got a response from the core */
-	json_t *response;					/* The response from the core */
+	char *response;						/* The response from the core as a string */
+	size_t resplen;						/* Length of the response in octets */
+	GSource *timeout;					/* Timeout monitor, if any */
 } janus_http_msg;
 static GHashTable *messages = NULL;
 static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
@@ -131,34 +133,44 @@ static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
 /* Helper for long poll: HTTP events to push per session */
 typedef struct janus_http_session {
 	GAsyncQueue *events;	/* Events to notify for this session */
+	GList *longpolls;		/* Long poll connection */
+	janus_mutex mutex;		/* Mutex to lock this instance */
 	gint64 destroyed;		/* Whether this session has been destroyed */
 } janus_http_session;
 /* We keep track of created sessions as we handle long polls */
-const char *keepalive_id = "keepalive";
-GHashTable *sessions = NULL;
-GList *old_sessions = NULL;
-GThread *sessions_watchdog = NULL;
-janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+static const char *keepalive_id = "keepalive";
+static GHashTable *sessions = NULL;
+static GList *old_sessions = NULL;
+static GThread *sessions_watchdog = NULL;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
-int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the admin/monitor webserver */
-int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when an HTTP message (GET, POST, OPTIONS, etc.) is available */
-int janus_http_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
+static int janus_http_handler(void *cls, struct MHD_Connection *connection,
+	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when an admin/monitor HTTP message (GET, POST, OPTIONS, etc.) is available */
-int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
+static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
-int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
+static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /* Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
-void janus_http_request_completed (void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
+static void janus_http_request_completed(void *cls, struct MHD_Connection *connection,
+	void **con_cls, enum MHD_RequestTerminationCode toe);
+/* Callback to send data back after resuming a connection */
+static ssize_t janus_http_response_callback(void *cls, uint64_t pos, char *buf, size_t max);
 /* Worker to handle requests that are actually long polls */
-int janus_http_notifier(janus_http_msg *msg, int max_events);
+static int janus_http_notifier(janus_http_msg *msg);
 /* Helper to quickly send a success response */
-int janus_http_return_success(janus_http_msg *msg, char *payload);
+static int janus_http_return_success(janus_http_msg *msg, char *payload);
 /* Helper to quickly send an error response */
-int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+static int janus_http_return_error(janus_http_msg *msg, uint64_t session_id,
+	const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+/* Helper to handle timeouts */
+static gboolean janus_http_timeout(gpointer user_data);
 
 
 /* MHD Web Server */
@@ -243,11 +255,21 @@ static void janus_http_random_string(int length, char *buffer) {
 	}
 }
 
+/* Event loop for timeout monitoring purposes */
+static GThread *httptimer = NULL;
+static GMainLoop *httploop = NULL;
+static GMainContext *httpctx = NULL;
+static gpointer janus_http_timer(gpointer user_data) {
+	JANUS_LOG(LOG_INFO, "HTTP transport timer started\n");
+	g_main_loop_run(httploop);
+	return NULL;
+}
+
 
 /* Helper to create a MHD daemon */
 static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		const char *interface, const char *ip, int port,
-		gint64 threads, const char *server_pem, const char *server_key) {
+		const char *server_pem, const char *server_key) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
 	/* Any interface or IP address we need to limit ourselves to?
@@ -334,7 +356,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		JANUS_LOG(LOG_VERB, "Going to bind the %s API %s webserver to %s (asked for %s)\n",
 			admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", host, ip ? ip : interface);
 		if(!ipv6) {
-			memset(&addr, 0, sizeof (struct sockaddr_in));
+			memset(&addr, 0, sizeof(struct sockaddr_in));
 			addr.sin_family = AF_INET;
 			addr.sin_port = htons(port);
 			int res = inet_pton(AF_INET, host, &addr.sin_addr);
@@ -343,7 +365,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				return NULL;
 			}
 		} else {
-			memset(&addr6, 0, sizeof (struct sockaddr_in6));
+			memset(&addr6, 0, sizeof(struct sockaddr_in6));
 			addr6.sin6_family = AF_INET6;
 			addr6.sin6_port = htons(port);
 			int res = inet_pton(AF_INET6, host, &addr6.sin6_addr);
@@ -356,80 +378,42 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 
 	if(!secure) {
 		/* HTTP web server */
-		if(threads == 0) {
-			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
+		if(!interface && !ip) {
+			/* Bind to all interfaces */
+			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface && !ip) {
-				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				/* Bind to all interfaces */
-				daemon = MHD_start_daemon(
+			daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_DUAL_STACK,
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
 #else
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_DUAL_STACK,
+				MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
 #endif
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			} else {
-				/* Bind to the interface that was specified */
-				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
-					ip ? "IP" : "interface", ip ? ip : interface,
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | (ipv6 ? MHD_USE_IPv6 : 0),
-#else
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
-#endif
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
-					MHD_OPTION_END);
-			}
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_END);
 		} else {
-			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
+			/* Bind to the interface that was specified */
+			JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface && !ip) {
-				/* Bind to all interfaces */
-				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY | MHD_USE_DUAL_STACK,
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			} else {
-				/* Bind to the interface that was specified */
-				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
-					ip ? "IP" : "interface", ip ? ip : interface,
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
-					MHD_OPTION_END);
-			}
+			daemon = MHD_start_daemon(
+#if MHD_VERSION >= 0x00095208
+				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+#else
+				MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+#endif
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
+				MHD_OPTION_END);
 		}
 	} else {
 		/* HTTPS web server, read certificate and key */
@@ -437,88 +421,46 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		g_file_get_contents(server_key, &cert_key_bytes, NULL, NULL);
 
 		/* Start webserver */
-		if(threads == 0) {
-			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
+		if(!interface && !ip) {
+			/* Bind to all interfaces */
+			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface && !ip) {
-				/* Bind to all interfaces */
-				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
+			daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_DUAL_STACK,
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
 #else
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_DUAL_STACK,
+				MHD_USE_SSL | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
 #endif
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_END);
-			} else {
-				/* Bind to the interface that was specified */
-				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
-					ip ? "IP" : "interface", ip ? ip : interface,
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | (ipv6 ? MHD_USE_IPv6 : 0),
-#else
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
-#endif
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
-					MHD_OPTION_END);
-			}
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_END);
 		} else {
-			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
+			/* Bind to the interface that was specified */
+			JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface && !ip) {
-				/* Bind to all interfaces */
-				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | MHD_USE_DUAL_STACK,
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_END);
-			} else {
-				/* Bind to the interface that was specified */
-				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
-					ip ? "IP" : "interface", ip ? ip : interface,
-					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
-					port,
-					admin ? janus_http_admin_client_connect : janus_http_client_connect,
-					NULL,
-					admin ? &janus_http_admin_handler : &janus_http_handler,
-					path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
-					MHD_OPTION_END);
-			}
+			daemon = MHD_start_daemon(
+#if MHD_VERSION >= 0x00095208
+				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+#else
+				MHD_USE_SSL | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
+#endif
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
+				MHD_OPTION_END);
 		}
 	}
 	return daemon;
@@ -611,6 +553,17 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	/* Register a function to detect problems for which MHD would typically abort */
 	MHD_set_panic_func(&janus_http_mhd_panic, NULL);
 
+	/* Start the timer */
+	httpctx = g_main_context_new();
+	httploop = g_main_loop_new(httpctx, FALSE);
+	GError *error = NULL;
+	httptimer = g_thread_try_new("http timer", &janus_http_timer, NULL, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start HTTP timer...\n",
+			error->code, error->message ? error->message : "??");
+		return -1;
+	}
+
 	/* Read configuration */
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
@@ -680,8 +633,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get_item_drilldown(config, "general", "acl");
 		if(item && item->value) {
-			gchar **list = g_strsplit(item->value, ",", -1);
-			gchar *index = list[0];
+			char **list = g_strsplit(item->value, ",", -1);
+			char *index = list[0];
 			if(index != NULL) {
 				int i=0;
 				while(index != NULL) {
@@ -698,8 +651,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 		item = janus_config_get_item_drilldown(config, "admin", "admin_acl");
 		if(item && item->value) {
-			gchar **list = g_strsplit(item->value, ",", -1);
-			gchar *index = list[0];
+			char **list = g_strsplit(item->value, ",", -1);
+			char *index = list[0];
 			if(index != NULL) {
 				int i=0;
 				while(index != NULL) {
@@ -723,23 +676,6 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Start with the Janus API web server now */
-		gint64 threads = 0;
-		item = janus_config_get_item_drilldown(config, "general", "threads");
-		if(item && item->value) {
-			if(!strcasecmp(item->value, "unlimited")) {
-				/* No limit on threads, use a thread per connection */
-				threads = 0;
-			} else {
-				/* Use a thread pool */
-				threads = atoll(item->value);
-				if(threads == 0) {
-					JANUS_LOG(LOG_WARN, "Chose '0' as size for the thread pool, which is equivalent to 'unlimited'\n");
-				} else if(threads < 0) {
-					JANUS_LOG(LOG_WARN, "Invalid value '%"SCNi64"' as size for the thread pool, falling back to to 'unlimited'\n", threads);
-					threads = 0;
-				}
-			}
-		}
 		item = janus_config_get_item_drilldown(config, "general", "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
@@ -756,7 +692,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "general", "ip");
 			if(item && item->value)
 				ip = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads, NULL, NULL);
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -793,7 +729,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads, server_pem, server_key);
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, server_pem, server_key);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -802,23 +738,6 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 		}
 		/* Admin/monitor time: start web server, if enabled */
-		threads = 0;
-		item = janus_config_get_item_drilldown(config, "admin", "admin_threads");
-		if(item && item->value) {
-			if(!strcasecmp(item->value, "unlimited")) {
-				/* No limit on threads, use a thread per connection */
-				threads = 0;
-			} else {
-				/* Use a thread pool */
-				threads = atoll(item->value);
-				if(threads == 0) {
-					JANUS_LOG(LOG_WARN, "Chose '0' as size for the admin/monitor thread pool, which is equivalent to 'unlimited'\n");
-				} else if(threads < 0) {
-					JANUS_LOG(LOG_WARN, "Invalid value '%"SCNi64"' as size for the admin/monitor thread pool, falling back to to 'unlimited'\n", threads);
-					threads = 0;
-				}
-			}
-		}
 		item = janus_config_get_item_drilldown(config, "admin", "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
@@ -835,7 +754,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
 			if(item && item->value)
 				ip = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads, NULL, NULL);
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -862,11 +781,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads, server_pem, server_key);
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, server_pem, server_key);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {
-					JANUS_LOG(LOG_INFO, "Admin/monitor HTTPS webserver started (port %d, %s path listener)...\n", swsport, admin_ws_path);
+					JANUS_LOG(LOG_INFO, "Admin/monitor HTTPS webserver started (port %d, %s path listener)...\n",
+						swsport, admin_ws_path);
 				}
 			}
 		}
@@ -883,12 +803,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	messages = g_hash_table_new(NULL, NULL);
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	old_sessions = NULL;
-	GError *error = NULL;
 	/* Start the HTTP/Janus sessions watchdog */
 	sessions_watchdog = g_thread_try_new("http watchdog", &janus_http_sessions_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the HTTP/Janus sessions watchdog thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the HTTP/Janus sessions watchdog thread...\n",
+			error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	
@@ -902,6 +822,10 @@ void janus_http_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+
+	g_main_loop_quit(httploop);
+	g_thread_join(httptimer);
+	g_main_context_unref(httpctx);
 
 	JANUS_LOG(LOG_INFO, "Stopping webserver(s)...\n");
 	if(ws)
@@ -998,6 +922,21 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 		}
 		g_async_queue_push(session->events, message);
 		janus_mutex_unlock(&sessions_mutex);
+		/* Are there long polls waiting? */
+		janus_mutex_lock(&session->mutex);
+		while(session->longpolls) {
+			janus_http_msg *msg = (janus_http_msg *)session->longpolls->data;
+			/* Is this connection ready to send a response back? */
+			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+				/* Send the events back */
+				if(msg->timeout != NULL)
+					g_source_destroy(msg->timeout);
+				msg->timeout = NULL;
+				janus_http_notifier(msg);
+			}
+			session->longpolls = g_list_remove(session->longpolls, msg);
+		}
+		janus_mutex_unlock(&session->mutex);
 	} else {
 		if(request_id == keepalive_id) {
 			/* It's a response from our fake long-poll related keepalive, ignore */
@@ -1025,11 +964,14 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 			json_decref(message);
 			return -1;
 		}
-		janus_mutex_lock(&msg->wait_mutex);
-		msg->response = message;
-		msg->got_response = TRUE;
-		janus_condition_signal(&msg->wait_cond);
-		janus_mutex_unlock(&msg->wait_mutex);
+		if(msg->timeout != NULL)
+			g_source_destroy(msg->timeout);
+		msg->timeout = NULL;
+		char *response_text = json_dumps(message, json_format);
+		json_decref(message);
+		msg->response = response_text;
+		msg->resplen = strlen(response_text);
+		MHD_resume_connection(msg->connection);
 	}
 	return 0;
 }
@@ -1047,6 +989,8 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 	}
 	janus_http_session *session = g_malloc(sizeof(janus_http_session));
 	session->events = g_async_queue_new();
+	session->longpolls = NULL;
+	janus_mutex_init(&session->mutex);
 	session->destroyed = 0;
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
@@ -1070,10 +1014,28 @@ void janus_http_session_over(void *transport, guint64 session_id, gboolean timeo
 	session->destroyed = janus_get_monotonic_time();
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
+	/* Were there a long polls waiting? */
+	janus_mutex_lock(&session->mutex);
+	while(session->longpolls) {
+		janus_http_msg *msg = (janus_http_msg *)session->longpolls->data;
+		if(msg != NULL) {
+			if(msg->timeout != NULL)
+				g_source_destroy(msg->timeout);
+			msg->timeout = NULL;
+			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+				/* Add a new timeout that fires right away to return an error */
+				msg->timeout = g_timeout_source_new_seconds(0);
+				g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
+				g_source_attach(msg->timeout, httpctx);
+			}
+		}
+		session->longpolls = g_list_remove(session->longpolls, msg);
+	}
+	janus_mutex_unlock(&session->mutex);
 }
 
 /* Connection notifiers */
-int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1092,7 +1054,7 @@ int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t 
 	return MHD_YES;
 }
 
-int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1113,27 +1075,26 @@ int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, sock
 
 
 /* WebServer requests handler */
-int janus_http_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr)
-{
+static int janus_http_handler(void *cls, struct MHD_Connection *connection,
+		const char *url, const char *method, const char *version,
+		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	char *payload = NULL;
 	json_t *root = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
-	gchar *session_path = NULL, *handle_path = NULL;
-	gchar **basepath = NULL, **path = NULL;
+	char *session_path = NULL, *handle_path = NULL;
+	char **basepath = NULL, **path = NULL;
 	guint64 session_id = 0, handle_id = 0;
 
 	/* Is this the first round? */
 	int firstround = 0;
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
-	if (msg == NULL) {
+	if(msg == NULL) {
 		firstround = 1;
 		JANUS_LOG(LOG_DBG, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
 		msg->connection = connection;
-		janus_mutex_init(&msg->wait_mutex);
-		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
 		g_hash_table_insert(messages, msg, msg);
 		janus_mutex_unlock(&messages_mutex);
@@ -1163,11 +1124,11 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		JANUS_LOG(LOG_DBG, "Processing HTTP %s request on %s...\n", method, url);
 	}
 	/* Parse request */
-	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
+	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
 		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
-	if (!strcasecmp(method, "OPTIONS")) {
+	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
@@ -1363,11 +1324,12 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning up to %d messages\n", session_id, max_events);
 		/* Handle GET, taking the first message from the list */
+		janus_mutex_lock(&session->mutex);
 		json_t *event = g_async_queue_try_pop(session->events);
 		if(event != NULL) {
 			if(max_events == 1) {
 				/* Return just this message and leave */
-				gchar *event_text = json_dumps(event, json_format);
+				char *event_text = json_dumps(event, json_format);
 				json_decref(event);
 				ret = janus_http_return_success(msg, event_text);
 			} else {
@@ -1383,14 +1345,34 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 					events++;
 				}
 				/* Return the array of messages and leave */
-				gchar *list_text = json_dumps(list, json_format);
+				char *list_text = json_dumps(list, json_format);
 				json_decref(list);
 				ret = janus_http_return_success(msg, list_text);
 			}
 		} else {
 			/* Still no message, wait */
-			ret = janus_http_notifier(msg, max_events);
+			response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
+				500, &janus_http_response_callback, msg, NULL);
+			if(response == NULL) {
+				ret = MHD_NO;
+			} else {
+				g_atomic_int_set(&msg->suspended, 1);
+				MHD_suspend_connection(msg->connection);
+				MHD_add_response_header(response, "Content-Type", "application/json");
+				janus_http_add_cors_headers(msg, response);
+				ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
+				MHD_destroy_response(response);
+				/* We won't wait forever for an answer (about 30 seconds) */
+				msg->timeout = g_timeout_source_new_seconds(30);
+				g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
+				g_source_attach(msg->timeout, httpctx);
+				/* Mark this connection as the long poll for this session */
+				msg->max_events = max_events;
+				session->longpolls = g_list_append(session->longpolls, msg);
+				g_atomic_pointer_set(&msg->longpoll, session);
+			}
 		}
+		janus_mutex_unlock(&session->mutex);
 		goto done;
 	}
 	
@@ -1398,7 +1380,8 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
 	if(!root) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s",
+			error.line, error.text);
 		goto done;
 	}
 	if(!json_is_object(root)) {
@@ -1419,26 +1402,21 @@ parsingdone:
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
-	/* Wait for a response (but not forever) */
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	struct timespec wakeup;
-	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
-	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
-	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
-			break;
-	}
-	pthread_mutex_unlock(&msg->wait_mutex);
-	if(!msg->response) {
+	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
+		500, &janus_http_response_callback, msg, NULL);
+	if(response == NULL) {
 		ret = MHD_NO;
 	} else {
-		char *response_text = json_dumps(msg->response, json_format);
-		json_decref(msg->response);
-		msg->response = NULL;
-		ret = janus_http_return_success(msg, response_text);
+		g_atomic_int_set(&msg->suspended, 1);
+		MHD_suspend_connection(msg->connection);
+		MHD_add_response_header(response, "Content-Type", "application/json");
+		janus_http_add_cors_headers(msg, response);
+		ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
+		MHD_destroy_response(response);
+		/* We won't wait forever for an answer (about 10 seconds) */
+		msg->timeout = g_timeout_source_new_seconds(10);
+		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
+		g_source_attach(msg->timeout, httpctx);
 	}
 
 done:
@@ -1450,27 +1428,26 @@ done:
 }
 
 /* Admin/monitor WebServer requests handler */
-int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr)
-{
+static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+		const char *url, const char *method, const char *version,
+		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	char *payload = NULL;
 	json_t *root = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
-	gchar *session_path = NULL, *handle_path = NULL;
-	gchar **basepath = NULL, **path = NULL;
+	char *session_path = NULL, *handle_path = NULL;
+	char **basepath = NULL, **path = NULL;
 	guint64 session_id = 0, handle_id = 0;
 
 	/* Is this the first round? */
 	int firstround = 0;
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
-	if (msg == NULL) {
+	if(msg == NULL) {
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
 		msg->connection = connection;
-		janus_mutex_init(&msg->wait_mutex);
-		janus_condition_init(&msg->wait_cond);
 		janus_mutex_lock(&messages_mutex);
 		g_hash_table_insert(messages, msg, msg);
 		janus_mutex_unlock(&messages_mutex);
@@ -1498,7 +1475,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		}
 	}
 	/* Parse request */
-	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
+	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
 		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		janus_http_add_cors_headers(msg, response);
@@ -1506,7 +1483,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		MHD_destroy_response(response);
 		return ret;
 	}
-	if (!strcasecmp(method, "OPTIONS")) {
+	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
@@ -1617,7 +1594,8 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
 	if(!root) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s",
+			error.line, error.text);
 		goto done;
 	}
 	if(!json_is_object(root)) {
@@ -1638,26 +1616,21 @@ parsingdone:
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
-	/* Wait for a response (but not forever) */
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	struct timespec wakeup;
-	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
-	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
-	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
-			break;
-	}
-	pthread_mutex_unlock(&msg->wait_mutex);
-	if(!msg->response) {
+	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
+		500, &janus_http_response_callback, msg, NULL);
+	if(response == NULL) {
 		ret = MHD_NO;
 	} else {
-		char *response_text = json_dumps(msg->response, json_format);
-		json_decref(msg->response);
-		msg->response = NULL;
-		ret = janus_http_return_success(msg, response_text);
+		g_atomic_int_set(&msg->suspended, 1);
+		MHD_suspend_connection(msg->connection);
+		MHD_add_response_header(response, "Content-Type", "application/json");
+		janus_http_add_cors_headers(msg, response);
+		ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
+		MHD_destroy_response(response);
+		/* We won't wait forever for an answer (about 10 seconds) */
+		msg->timeout = g_timeout_source_new_seconds(10);
+		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
+		g_source_attach(msg->timeout, httpctx);
 	}
 
 done:
@@ -1668,23 +1641,24 @@ done:
 	return ret;
 }
 
-int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
+static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = cls;
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
-			request->contenttype = strdup(value);
+			request->contenttype = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Method")) {
 		if(request)
-			request->acrm = strdup(value);
+			request->acrm = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Headers")) {
 		if(request)
-			request->acrh = strdup(value);
+			request->acrh = g_strdup(value);
 	}
 	return MHD_YES;
 }
 
-void janus_http_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
+static void janus_http_request_completed(void *cls, struct MHD_Connection *connection,
+		void **con_cls, enum MHD_RequestTerminationCode toe) {
 	JANUS_LOG(LOG_DBG, "Request completed, freeing data\n");
 	janus_http_msg *request = *con_cls;
 	if(!request)
@@ -1692,79 +1666,76 @@ void janus_http_request_completed(void *cls, struct MHD_Connection *connection, 
 	janus_mutex_lock(&messages_mutex);
 	g_hash_table_remove(messages, request);
 	janus_mutex_unlock(&messages_mutex);
-	if(request->payload != NULL)
-		g_free(request->payload);
-	if(request->contenttype != NULL)
-		free(request->contenttype);
-	if(request->acrh != NULL)
-		g_free(request->acrh);
-	if(request->acrm != NULL)
-		g_free(request->acrm);
+	if(request->timeout != NULL)
+		g_source_destroy(request->timeout);
+	request->timeout = NULL;
+	janus_http_session *session = (janus_http_session *)g_atomic_pointer_get(&request->longpoll);
+	if(session) {
+		janus_mutex_lock(&session->mutex);
+		session->longpolls = g_list_remove(session->longpolls, request);
+		janus_mutex_unlock(&session->mutex);
+	}
+	g_free(request->payload);
+	g_free(request->contenttype);
+	g_free(request->acrh);
+	g_free(request->acrm);
+	g_free(request->response);
 	g_free(request);
 	*con_cls = NULL;   
 }
 
+static ssize_t janus_http_response_callback(void *cls, uint64_t pos, char *buf, size_t max) {
+	janus_http_msg *request = (janus_http_msg *)cls;
+	if(request == NULL || request->response == NULL)
+		return MHD_CONTENT_READER_END_WITH_ERROR;
+	if(pos >= request->resplen)
+		return MHD_CONTENT_READER_END_OF_STREAM;
+	size_t bytes = request->resplen - pos;
+	if(bytes > max)
+		bytes = max;
+	memcpy(buf, request->response + pos, bytes);
+	return bytes;
+}
+
 /* Worker to handle notifications */
-int janus_http_notifier(janus_http_msg *msg, int max_events) {
+static int janus_http_notifier(janus_http_msg *msg) {
 	if(!msg || !msg->connection)
 		return MHD_NO;
-	struct MHD_Connection *connection = msg->connection;
+	int max_events = msg->max_events;
 	if(max_events < 1)
 		max_events = 1;
 	JANUS_LOG(LOG_DBG, "... handling long poll...\n");
-	struct MHD_Response *response = NULL;
-	int ret = MHD_NO;
 	guint64 session_id = msg->session_id;
 	janus_mutex_lock(&sessions_mutex);
 	janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
 	janus_mutex_unlock(&sessions_mutex);
 	if(!session || session->destroyed) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
-		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		janus_http_add_cors_headers(msg, response);
-		ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
-		MHD_destroy_response(response);
-		return ret;
+		/* TODO return error */
+		MHD_resume_connection(msg->connection);
+		return -1;
 	}
-	gint64 start = janus_get_monotonic_time();
-	gint64 end = 0;
 	json_t *event = NULL, *list = NULL;
-	gboolean found = FALSE;
-	/* We have a timeout for the long poll: 30 seconds */
-	while(end-start < 30*G_USEC_PER_SEC) {
-		if(session->destroyed)
-			break;
-		event = g_async_queue_try_pop(session->events);
-		if(session->destroyed || g_atomic_int_get(&stopping) || event != NULL) {
-			if(event == NULL)
-				break;
-			/* Gotcha! */
-			found = TRUE;
-			if(max_events == 1) {
-				break;
-			} else {
-				/* The application is willing to receive more events at the same time, anything to report? */
-				list = json_array();
-				json_array_append_new(list, event);
-				int events = 1;
-				while(events < max_events) {
-					event = g_async_queue_try_pop(session->events);
-					if(event == NULL)
-						break;
-					json_array_append_new(list, event);
-					events++;
-				}
-				break;
-			}
+	while((event = g_async_queue_try_pop(session->events)) != NULL) {
+		if(session->destroyed || g_atomic_int_get(&stopping)) {
+			/* TODO return error */
+			JANUS_LOG(LOG_ERR, "Session %"SCNu64" destroyed...\n", session_id);
+			MHD_resume_connection(msg->connection);
+			return -1;
 		}
-		/* Sleep 100ms */
-		g_usleep(100000);
-		end = janus_get_monotonic_time();
+		if(max_events == 1) {
+			break;
+		} else {
+			/* The application is willing to receive more events at the same time, anything to report? */
+			list = json_array();
+			json_array_append_new(list, event);
+			int events = 1;
+			if(events == max_events)
+				break;
+		}
 	}
-	if((max_events == 1 && event == NULL) || (max_events > 1 && list == NULL))
-		found = FALSE;
-	if(!found) {
-		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
+	if(event == NULL && list == NULL) {
+		JANUS_LOG(LOG_VERB, "No events available for session %"SCNu64"...\n", session_id);
 		/* Turn this into a "keepalive" response */
 		char tr[12];
 		janus_http_random_string(12, (char *)&tr);
@@ -1783,9 +1754,11 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 	json_decref(max_events == 1 ? event : list);
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_HUGE, "We have a message to serve...\n\t%s\n", payload_text);
-	/* Send event */
-	ret = janus_http_return_success(msg, payload_text);
-	return ret;
+	/* Send event back */
+	msg->response = payload_text;
+	msg->resplen = strlen(payload_text);
+	MHD_resume_connection(msg->connection);
+	return 0;
 }
 
 /* Helper to quickly send a success response */
@@ -1807,12 +1780,15 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 }
 
 /* Helper to quickly send an error response */
-int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) {
-	gchar *error_string = NULL;
-	gchar error_buf[512];
+int janus_http_return_error(janus_http_msg *msg, uint64_t session_id,
+		const char *transaction, gint error, const char *format, ...) {
+	if(!msg || !msg->connection)
+		return MHD_NO;
+	char *error_string = NULL;
+	char error_buf[512];
 	if(format == NULL) {
 		/* No error string provided, use the default one */
-		error_string = (gchar *)janus_get_api_error(error);
+		error_string = (char *)janus_get_api_error(error);
 	} else {
 		/* This callback has variable arguments (error string) */
 		va_list ap;
@@ -1834,8 +1810,49 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 	json_object_set_new(error_data, "code", json_integer(error));
 	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
-	gchar *reply_text = json_dumps(reply, json_format);
+	char *reply_text = json_dumps(reply, json_format);
 	json_decref(reply);
 	/* Use janus_http_return_error to send the error response */
 	return janus_http_return_success(msg, reply_text);
+}
+
+/* Helper to handle timeouts */
+static gboolean janus_http_timeout(gpointer user_data) {
+	janus_http_msg *request = (janus_http_msg *)user_data;
+	request->timeout = NULL;
+	/* Is this a long poll timeout, simply meaning we had nothing to send so far? */
+	janus_http_session *session = (janus_http_session *)g_atomic_pointer_get(&request->longpoll);
+	if(session != NULL) {
+		g_atomic_pointer_set(&request->longpoll, NULL);
+		/* Long poll, turn this into a "keepalive" response */
+		json_t *event = NULL;
+		if(request->max_events == 1) {
+			event = json_object();
+			json_object_set_new(event, "janus", json_string("keepalive"));
+		} else {
+			json_t *list = json_array();
+			event = json_object();
+			json_object_set_new(event, "janus", json_string("keepalive"));
+			json_array_append_new(list, event);
+			event = list;
+		}
+		char *payload_text = json_dumps(event, json_format);
+		json_decref(event);
+		/* Finish the request by sending the response */
+		JANUS_LOG(LOG_HUGE, "We have a message to serve...\n\t%s\n", payload_text);
+		/* Send event back */
+		request->response = payload_text;
+		request->resplen = strlen(payload_text);
+		MHD_resume_connection(request->connection);
+		janus_mutex_lock(&session->mutex);
+		session->longpolls = g_list_remove(session->longpolls, request);
+		janus_mutex_unlock(&session->mutex);
+	} else {
+		/* Not a long poll, a request is taking way too much time */
+		g_free(request->response);
+		request->response = NULL;
+		request->resplen = 0;
+		MHD_resume_connection(request->connection);
+	}
+	return G_SOURCE_REMOVE;
 }
