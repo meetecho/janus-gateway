@@ -485,6 +485,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
+			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
@@ -525,9 +526,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
+				char *password = NULL;
 				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
+				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				if(item && item->value)
+					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
@@ -538,6 +543,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
+				info.ssl_private_key_password = password;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
@@ -587,6 +593,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
+			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
@@ -627,9 +634,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
+				char *password = NULL;
 				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
+				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				if(item && item->value)
+					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
@@ -640,6 +651,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
+				info.ssl_private_key_filepath = password;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2

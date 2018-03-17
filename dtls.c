@@ -262,7 +262,8 @@ error:
 }
 
 
-static int janus_dtls_load_keys(const char *server_pem, const char *server_key, X509 **certificate, EVP_PKEY **private_key) {
+static int janus_dtls_load_keys(const char *server_pem, const char *server_key, const char *password,
+		X509 **certificate, EVP_PKEY **private_key) {
 	FILE *f = NULL;
 
 	f = fopen(server_pem, "r");
@@ -282,7 +283,7 @@ static int janus_dtls_load_keys(const char *server_pem, const char *server_key, 
 		JANUS_LOG(LOG_FATAL, "Error opening key file\n");
 		goto error;
 	}
-	*private_key = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+	*private_key = PEM_read_PrivateKey(f, NULL, NULL, (void *)password);
 	if(!*private_key) {
 		JANUS_LOG(LOG_FATAL, "PEM_read_PrivateKey failed\n");
 		goto error;
@@ -305,7 +306,7 @@ error:
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -359,7 +360,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
 	} else if(!server_pem || !server_key) {
 		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified\n");
 		return -2;
-	} else if(janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
+	} else if(janus_dtls_load_keys(server_pem, server_key, password, &ssl_cert, &ssl_key) != 0) {
 		return -3;
 	}
 
