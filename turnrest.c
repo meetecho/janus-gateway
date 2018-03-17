@@ -243,22 +243,20 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		gchar **uri_parts = g_strsplit(turn_uri, ":", -1);
 		/* Resolve the TURN URI address */
+		struct addrinfo *res = NULL;
 		janus_network_address addr;
 		janus_network_address_string_buffer addr_buf;
-		if(janus_network_string_to_address(janus_network_query_options_any_ip, uri_parts[1], &addr) != 0 ||
+		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
 			g_strfreev(uri_parts);
 			continue;
 		}
+		freeaddrinfo(res);
 		instance->server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
-		if(instance->server == NULL) {
-			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
-			g_strfreev(uri_parts);
-			continue;
-		}
 		if(uri_parts[2] == NULL) {
-			/* No port? USe 3478 by default */
+			/* No port? Use 3478 by default */
 			instance->port = 3478;
 		} else {
 			instance->port = atoi(uri_parts[2]);
