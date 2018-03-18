@@ -82,6 +82,7 @@
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
+ * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
@@ -3135,6 +3136,7 @@ ldd janus | grep asan
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
+ * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)

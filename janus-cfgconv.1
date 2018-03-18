@@ -1,0 +1,32 @@
+.TH JANUS-PP-REC 1
+.SH NAME
+janus-cfgconv \- Janus config file conversion utility.
+.SH SYNOPSIS
+.B janus-cfgconv
+.IR source.[cfg|jcfg]
+.IR destination.[cfg|jcfg]
+.SH DESCRIPTION
+.B janus-cfgconv
+is a simple utility that allows you to convert Janus INI configuration files to libconfig format and viceversa. 
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help and exit
+.SH EXAMPLES
+\fBjanus-cfgconv janus.cfg janus.jcfg\fR \- Convert provided INI file to libconfig format
+.SH BUGS
+.TP
+If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
+.TP
+Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+.SH SEE ALSO
+.TP
+https://github.com/meetecho/janus-gateway \- Official repository
+.TP
+http://janus.conf.meetecho.com \- Demos and documentation
+.TP
+https://groups.google.com/forum/#!forum/meetecho-janus \- Community
+.TP
+http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+.SH AUTHORS
+Lorenzo Miniero (lorenzo@meetecho.com)

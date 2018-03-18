@@ -13,36 +13,37 @@
  * accordingly.
  * 
  * Rooms to make available are listed in the plugin configuration file.
- * A pre-filled configuration file is provided in \c conf/janus.plugin.audiobridge.cfg
+ * A pre-filled configuration file is provided in \c conf/janus.plugin.audiobridge.jcfg
  * and includes a demo room for testing.
  * 
  * To add more rooms or modify the existing one, you can use the following
  * syntax:
  * 
  * \verbatim
-[<unique room ID>]
-description = This is my awesome room
-is_private = yes|no (private rooms don't appear when you do a 'list' request)
-secret = <optional password needed for manipulating (e.g. destroying) the room>
-pin = <optional password needed for joining the room>
-sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
-audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
-	negotiated/used or not for new joins, default=yes)
-record = true|false (whether this room should be recorded, default=false)
-record_file =	/path/to/recording.wav (where to save the recording)
+room-<unique room ID>: {
+	description = This is my awesome room
+	is_private = yes|no (private rooms don't appear when you do a 'list' request)
+	secret = <optional password needed for manipulating (e.g. destroying) the room>
+	pin = <optional password needed for joining the room>
+	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+	audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
+		negotiated/used or not for new joins, default=yes)
+	record = true|false (whether this room should be recorded, default=false)
+	record_file =	/path/to/recording.wav (where to save the recording)
 
-	[The following lines are only needed if you want the mixed audio
-	to be automatically forwarded via plain RTP to an external component
-	(e.g., an ffmpeg script, or a gstreamer pipeline) for processing]
-	By default plain RTP is used, SRTP must be configured if needed
-rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
-rtp_forward_host = host address to forward RTP packets of mixed audio to
-rtp_forward_port = port to forward RTP packets of mixed audio to
-rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
-rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
-rtp_forward_srtp_suite = length of authentication tag (32 or 80)
-rtp_forward_srtp_crypto = key to use as crypto (base64 encoded key as in SDES)
-rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
+		[The following lines are only needed if you want the mixed audio
+		to be automatically forwarded via plain RTP to an external component
+		(e.g., an ffmpeg script, or a gstreamer pipeline) for processing.
+		By default plain RTP is used, SRTP must be configured if needed]
+	rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
+	rtp_forward_host = host address to forward RTP packets of mixed audio to
+	rtp_forward_port = port to forward RTP packets of mixed audio to
+	rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
+	rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
+	rtp_forward_srtp_suite = length of authentication tag, if SRTP is needed (32 or 80)
+	rtp_forward_srtp_crypto = key to use as crypto, if SRTP is needed (base64 encoded key as in SDES)
+	rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
+}
 \endverbatim
  *
  * \section bridgeapi Audio Bridge API
@@ -1076,21 +1077,21 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 
 static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *cat, janus_audiobridge_room *audiobridge) {
 	guint32 forwarder_id = 0;
-	janus_config_item *forwarder_id_item = janus_config_get_item(cat, "rtp_forward_id");
+	janus_config_item *forwarder_id_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_id");
 	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL)
 		forwarder_id = atoi(forwarder_id_item->value);
 
 	guint32 ssrc_value = 0;
-	janus_config_item *ssrc = janus_config_get_item(cat, "rtp_forward_ssrc");
+	janus_config_item *ssrc = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ssrc");
 	if(ssrc != NULL && ssrc->value != NULL)
 		ssrc_value = atoi(ssrc->value);
 
 	int ptype = 100;
-	janus_config_item *pt = janus_config_get_item(cat, "rtp_forward_ptype");
+	janus_config_item *pt = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ptype");
 	if(pt != NULL && pt->value != NULL)
 		ptype = atoi(pt->value);
 
-	janus_config_item *port_item = janus_config_get_item(cat, "rtp_forward_port");
+	janus_config_item *port_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_port");
 	uint16_t port = 0;
 	if(port_item != NULL && port_item->value != NULL && strlen(port_item->value) > 0)
 		port = atoi(port_item->value);
@@ -1098,7 +1099,7 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		return 0;
 	}
 
-	janus_config_item *host_item = janus_config_get_item(cat, "rtp_forward_host");
+	janus_config_item *host_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_host");
 	if(host_item == NULL || host_item->value == NULL || strlen(host_item->value) == 0) {
 		return 0;
 	}
@@ -1107,8 +1108,8 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	/* We may need to SRTP-encrypt this stream */
 	int srtp_suite = 0;
 	const char *srtp_crypto = NULL;
-	janus_config_item *s_suite = janus_config_get_item(cat, "srtp_suite");
-	janus_config_item *s_crypto = janus_config_get_item(cat, "srtp_crypto");
+	janus_config_item *s_suite = janus_config_get(config, cat, janus_config_type_item, "srtp_suite");
+	janus_config_item *s_crypto = janus_config_get(config, cat, janus_config_type_item, "srtp_crypto");
 	if(s_suite && s_suite->value) {
 		srtp_suite = atoi(s_suite->value);
 		if(srtp_suite != 32 && srtp_suite != 80) {
@@ -1120,7 +1121,7 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 			srtp_crypto = s_crypto->value;
 	}
 
-	janus_config_item *always_on_item = janus_config_get_item(cat, "rtp_forward_always_on");
+	janus_config_item *always_on_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_always_on");
 	gboolean always_on = FALSE;
 	if(always_on_item != NULL && always_on_item->value != NULL && strlen(always_on_item->value) > 0) {
 		always_on = janus_is_true(always_on_item->value);
@@ -1244,9 +1245,15 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_AUDIOBRIDGE_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_AUDIOBRIDGE_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_AUDIOBRIDGE_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_AUDIOBRIDGE_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
@@ -1259,18 +1266,19 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 		/* Any admin key to limit who can "create"? */
-		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
+		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_AUDIOBRIDGE_NAME);
 		}
 		/* Iterate on all rooms */
-		GList *cl = janus_config_get_categories(config);
+		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
@@ -1278,17 +1286,17 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding audio room '%s'\n", cat->name);
-			janus_config_item *desc = janus_config_get_item(cat, "description");
-			janus_config_item *priv = janus_config_get_item(cat, "is_private");
-			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
-			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
-			janus_config_item *audiolevel_event = janus_config_get_item(cat, "audiolevel_event");
-			janus_config_item *audio_active_packets = janus_config_get_item(cat, "audio_active_packets");
-			janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
-			janus_config_item *secret = janus_config_get_item(cat, "secret");
-			janus_config_item *pin = janus_config_get_item(cat, "pin");
-			janus_config_item *record = janus_config_get_item(cat, "record");
-			janus_config_item *recfile = janus_config_get_item(cat, "record_file");
+			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+			janus_config_item *sampling = janus_config_get(config, cat, janus_config_type_item, "sampling_rate");
+			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
+			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
+			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
+			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
+			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
+			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the audio room, missing mandatory information...\n");
 				cl = cl->next;
@@ -1296,7 +1304,10 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* Create the audio bridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
-			audiobridge->room_id = g_ascii_strtoull(cat->name, NULL, 0);
+			const char *room_num = cat->name;
+			if(strstr(room_num, "room-") == room_num)
+				room_num += 5;
+			audiobridge->room_id = g_ascii_strtoull(room_num, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -1390,6 +1401,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			cl = cl->next;
 		}
+		g_list_free(clist);
 		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
@@ -1853,35 +1865,35 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_VERB, "Saving room %"SCNu64" permanently in config file\n", audiobridge->room_id);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ], value[BUFSIZ];
-			/* The room ID is the category */
-			g_snprintf(cat, BUFSIZ, "%"SCNu64, audiobridge->room_id);
-			janus_config_add_category(config, cat);
+			/* The room ID is the category (prefixed by "room-") */
+			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, audiobridge->room_id);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			/* Now for the values */
-			janus_config_add_item(config, cat, "description", audiobridge->room_name);
+			janus_config_add(config, c, janus_config_item_create("description", audiobridge->room_name));
 			if(audiobridge->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, audiobridge->sampling_rate);
-			janus_config_add_item(config, cat, "sampling_rate", value);
+			janus_config_add(config, c, janus_config_item_create("sampling_rate", value));
 			if(audiobridge->room_secret)
-				janus_config_add_item(config, cat, "secret", audiobridge->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", audiobridge->room_secret));
 			if(audiobridge->room_pin)
-				janus_config_add_item(config, cat, "pin", audiobridge->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", audiobridge->room_pin));
 			if(audiobridge->audiolevel_ext) {
-				janus_config_add_item(config, cat, "audiolevel_ext", "yes");
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
 				if(audiobridge->audiolevel_event)
-					janus_config_add_item(config, cat, "audiolevel_event", "yes");
+					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
 				if(audiobridge->audio_active_packets > 0) {
 					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_active_packets);
-					janus_config_add_item(config, cat, "audio_active_packets", value);
+					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
 				}
 				if(audiobridge->audio_level_average > 0) {
 					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_level_average);
-					janus_config_add_item(config, cat, "audio_level_average", value);
+					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
 			}
 			if(audiobridge->record_file) {
-				janus_config_add_item(config, cat, "record", "yes");
-				janus_config_add_item(config, cat, "record_file", audiobridge->record_file);
+				janus_config_add(config, c, janus_config_item_create("record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
 			}
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE) < 0)
@@ -1969,24 +1981,37 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_VERB, "Modifying room %"SCNu64" permanently in config file\n", room_id);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ], value[BUFSIZ];
-			/* The room ID is the category */
-			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
+			/* The room ID is the category (prefixed by "room-") */
+			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, room_id);
 			/* Remove the old category first */
-			janus_config_remove_category(config, cat);
+			janus_config_remove(config, NULL, cat);
 			/* Now write the room details again */
-			janus_config_add_category(config, cat);
-			janus_config_add_item(config, cat, "description", audiobridge->room_name);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
+			janus_config_add(config, c, janus_config_item_create("description", audiobridge->room_name));
 			if(audiobridge->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, audiobridge->sampling_rate);
-			janus_config_add_item(config, cat, "sampling_rate", value);
+			janus_config_add(config, c, janus_config_item_create("sampling_rate", value));
 			if(audiobridge->room_secret)
-				janus_config_add_item(config, cat, "secret", audiobridge->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", audiobridge->room_secret));
 			if(audiobridge->room_pin)
-				janus_config_add_item(config, cat, "pin", audiobridge->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", audiobridge->room_pin));
+			if(audiobridge->audiolevel_ext) {
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "yes"));
+				if(audiobridge->audiolevel_event)
+					janus_config_add(config, c, janus_config_item_create("audiolevel_event", "yes"));
+				if(audiobridge->audio_active_packets > 0) {
+					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_active_packets);
+					janus_config_add(config, c, janus_config_item_create("audio_active_packets", value));
+				}
+				if(audiobridge->audio_level_average > 0) {
+					g_snprintf(value, BUFSIZ, "%d", audiobridge->audio_level_average);
+					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
+				}
+			}
 			if(audiobridge->record_file) {
-				janus_config_add_item(config, cat, "record", "yes");
-				janus_config_add_item(config, cat, "record_file", audiobridge->record_file);
+				janus_config_add(config, c, janus_config_item_create("record", "yes"));
+				janus_config_add(config, c, janus_config_item_create("record_file", audiobridge->record_file));
 			}
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE) < 0)
@@ -2053,9 +2078,9 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_VERB, "Destroying room %"SCNu64" permanently in config file\n", room_id);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ];
-			/* The room ID is the category */
-			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
-			janus_config_remove_category(config, cat);
+			/* The room ID is the category (prefixed by "room-") */
+			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, room_id);
+			janus_config_remove(config, NULL, cat);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room destruction is not permanent */
