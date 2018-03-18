@@ -1,0 +1,21 @@
+#
+# File automatically generated on Sun Mar 18 18:44:16 2018
+#
+
+category : 
+{
+  name1 = "value1";
+  name2 = "value2";
+  subcategory : 
+  {
+    cool = "true";
+  };
+  array1 = ( "apples", "oranges", 
+    {
+      stuff = "otherfruit";
+    } );
+};
+category2 : 
+{
+  name = "value";
+};

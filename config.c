@@ -328,31 +328,30 @@ janus_config *janus_config_create(const char *name) {
 
 /* Containers management */
 janus_config_item *janus_config_item_create(const char *name, const char *value) {
-	if(name == NULL)
+	if(name == NULL && value == NULL)
 		return NULL;
 	janus_config_item *item = g_malloc0(sizeof(janus_config_item));
 	item->type = janus_config_type_item;
-	item->name = g_strdup(name);
+	if(name)
+		item->name = g_strdup(name);
 	if(value)
 		item->value = g_strdup(value);
 	return item;
 }
 
 janus_config_category *janus_config_category_create(const char *name) {
-	if(name == NULL)
-		return NULL;
 	janus_config_category *category = g_malloc0(sizeof(janus_config_category));
 	category->type = janus_config_type_category;
-	category->name = g_strdup(name);
+	if(name != NULL)
+		category->name = g_strdup(name);
 	return category;
 }
 
 janus_config_array *janus_config_array_create(const char *name) {
-	if(name == NULL)
-		return NULL;
 	janus_config_array *array = g_malloc0(sizeof(janus_config_array));
 	array->type = janus_config_type_array;
-	array->name = g_strdup(name);
+	if(name != NULL)
+		array->name = g_strdup(name);
 	return array;
 }
 
@@ -529,17 +528,21 @@ static void janus_config_print_list(int level, GList *l, int indent) {
 	while(l) {
 		janus_config_container *c = (janus_config_container *)l->data;
 		if(c->type == janus_config_type_item) {
-			JANUS_LOG(level, "%*s%s: %s\n", indent, "",
-				c->name ? c->name : "(none)", c->value ? c->value : "(none)");
+			JANUS_LOG(level, "%*s%s%s%s\n", indent, "",
+				c->name ? c->name : "",
+				c->name && c->value ? ": " : "",
+				c->value ? c->value : "");
 		} else if(c->type == janus_config_type_category) {
-			JANUS_LOG(level, "%*s%s: {\n", indent, "",
-				c->name ? c->name : "(none)");
+			JANUS_LOG(level, "%*s%s%s{\n", indent, "",
+				c->name ? c->name : "",
+				c->name ? ": " : "");
 			if(c->list)
 				janus_config_print_list(level, c->list, indent+JANUS_CONFIG_INDENT);
 			JANUS_LOG(level, "%*s}\n", indent, "");
 		} else if(c->type == janus_config_type_array) {
-			JANUS_LOG(level, "%*s%s: [\n", indent, "",
-				c->name ? c->name : "(none)");
+			JANUS_LOG(level, "%*s%s%s[\n", indent, "",
+				c->name ? c->name : "",
+				c->name ? ": " : "");
 			if(c->list)
 				janus_config_print_list(level, c->list, indent+JANUS_CONFIG_INDENT);
 			JANUS_LOG(level, "%*s]\n", indent, "");
@@ -563,10 +566,6 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 	config_setting_t *elem = NULL;
 	while(l) {
 		janus_config_container *c = (janus_config_container *)l->data;
-		if(c->name == NULL) {
-			l = l->next;
-			continue;
-		}
 		if(c->type == janus_config_type_item) {
 			if(config->is_jcfg) {
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_STRING);
