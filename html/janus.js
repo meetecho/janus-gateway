@@ -1806,21 +1806,31 @@ function Janus(gatewayCallbacks) {
 						width = 640;
 					}
 					Janus.log("Adding media constraint:", media.video);
-					if(navigator.mozGetUserMedia) {
+
+					if(Janus.webRTCAdapter.browserDetails.browser == 'firefox') {
 						videoSupport = {
 							'height': {'ideal': height},
 							'width':  {'ideal': width}
 						};
 					} else {
-						videoSupport = {
-						    'mandatory': {
-						        'maxHeight': maxHeight,
-						        'minHeight': height,
-						        'maxWidth':  width,
-						        'minWidth':  width
-						    },
-						    'optional': []
-						};
+						var chromeVer = Janus.webRTCAdapter.browserDetails.version;
+				    if(chromeVer >= 59) {
+							videoSupport = {
+								'height': height,
+								'width':  width
+							};
+						}else{
+							// The old spec is supported by Chrome until Chrome 59 (June 2017)
+							videoSupport = {
+									'mandatory': {
+											'maxHeight': maxHeight,
+											'minHeight': height,
+											'maxWidth':  width,
+											'minWidth':  width
+									},
+									'optional': []
+							};
+						}
 					}
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
