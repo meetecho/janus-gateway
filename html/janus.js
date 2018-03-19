@@ -1817,21 +1817,10 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.log("Adding media constraint:", media.video);
 					if(navigator.mozGetUserMedia) {
-						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-						if(firefoxVer < 38) {
-							videoSupport = {
-								'require': ['height', 'width'],
-								'height': {'max': maxHeight, 'min': height},
-								'width':  {'max': width,  'min': width}
-							};
-						} else {
-							// http://stackoverflow.com/questions/28282385/webrtc-firefox-constraints/28911694#28911694
-							// https://github.com/meetecho/janus-gateway/pull/246
-							videoSupport = {
-								'height': {'ideal': height},
-								'width':  {'ideal': width}
-							};
-						}
+						videoSupport = {
+							'height': {'ideal': height},
+							'width':  {'ideal': width}
+						};
 					} else {
 						videoSupport = {
 						    'mandatory': {
@@ -1874,7 +1863,7 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
-							.then(function(stream) { 
+							.then(function(stream) {
 								if(useAudio){
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
@@ -1883,7 +1872,7 @@ function Janus(gatewayCallbacks) {
 									})
 								} else {
 									gsmCallback(null, stream);
-								} 
+								}
 							})
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
