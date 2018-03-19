@@ -1789,16 +1789,6 @@ function Janus(gatewayCallbacks) {
 						height = 720;
 						maxHeight = 720;
 						width = 1280;
-						if(navigator.mozGetUserMedia) {
-							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-							if(firefoxVer < 38) {
-								// Unless this is and old Firefox, which doesn't support it
-								Janus.warn(media.video + " unsupported, falling back to stdres (old Firefox)");
-								height = 480;
-								maxHeight = 480;
-								width  = 640;
-							}
-						}
 					} else if(media.video === 'stdres') {
 						// Normal resolution, 4:3
 						height = 480;
