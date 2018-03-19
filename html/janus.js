@@ -1816,8 +1816,8 @@ function Janus(gatewayCallbacks) {
 						var chromeVer = Janus.webRTCAdapter.browserDetails.version;
 				    if(chromeVer >= 59) {
 							videoSupport = {
-								'height': height,
-								'width':  width
+								'height': {'ideal': height},
+								'width':  {'ideal': width}
 							};
 						}else{
 							// The old spec is supported by Chrome until Chrome 59 (June 2017)
