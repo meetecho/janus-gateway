@@ -348,7 +348,7 @@ function shareScreen() {
 	// Create a new room
 	var desc = $('#desc').val();
 	role = "publisher";
-	var create = { "request": "create", "description": desc, "bitrate": 0, "publishers": 1 };
+	var create = { "request": "create", "description": desc, "bitrate": 500000, "publishers": 1 };
 	screentest.send({"message": create, success: function(result) {
 		var event = result["videoroom"];
 		Janus.debug("Event: " + event);
