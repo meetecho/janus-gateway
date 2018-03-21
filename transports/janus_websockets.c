@@ -651,7 +651,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
-				info.ssl_private_key_filepath = password;
+				info.ssl_private_key_password = password;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
