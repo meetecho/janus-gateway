@@ -4236,7 +4236,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */
@@ -4356,7 +4356,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */
