@@ -3796,7 +3796,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_WARN, "This is an update to an existing call (possibly in response to hold/unhold)\n");
 		return 0;
 	}
-	if(!session->media.earlymedia && !session->media.earlymedia) {
+	if(!session->media.earlymedia && !session->media.update) {
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);

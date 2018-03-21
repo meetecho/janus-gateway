@@ -4697,7 +4697,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && v_last_ssrc[index] && ssrc != v_last_ssrc[index] &&
-							(now-source->last_received_video) < 1000*source->rtp_collision) {
+							(now-source->last_received_video) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (ssrc=%u)\n", name, ssrc);
 						continue;
 					}

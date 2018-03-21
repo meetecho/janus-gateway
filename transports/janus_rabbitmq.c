@@ -343,7 +343,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 				}
 			}
 			if(ssl_cert_file && ssl_key_file) {
-				amqp_ssl_socket_set_key(socket, ssl_cert_file, ssl_key_file);
+				status = amqp_ssl_socket_set_key(socket, ssl_cert_file, ssl_key_file);
 				if(status != AMQP_STATUS_OK) {
 					JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error setting key... (%s)\n", amqp_error_string2(status));
 					goto error;
