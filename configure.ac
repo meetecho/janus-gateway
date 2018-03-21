@@ -384,7 +384,7 @@ PKG_CHECK_MODULES([TRANSPORTS],
                   ])
 
 PKG_CHECK_MODULES([MHD],
-                  [libmicrohttpd],
+                  [libmicrohttpd >= 0.9.40],
                   [
                     AS_IF([test "x$enable_rest" = "xmaybe"],
                           [enable_rest=yes])
