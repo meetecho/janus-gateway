@@ -269,7 +269,7 @@ static gpointer janus_http_timer(gpointer user_data) {
 /* Helper to create a MHD daemon */
 static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		const char *interface, const char *ip, int port,
-		const char *server_pem, const char *server_key) {
+		const char *server_pem, const char *server_key, const char *password) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
 	/* Any interface or IP address we need to limit ourselves to?
@@ -439,6 +439,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -459,6 +460,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 				MHD_OPTION_END);
 		}
@@ -692,7 +694,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "general", "ip");
 			if(item && item->value)
 				ip = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, NULL, NULL);
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, NULL, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -708,6 +710,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 		if(item && item->value)
 			server_key = (char *)item->value;
+		char *password = NULL;
+		item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+		if(item && item->value)
+			password = (char *)item->value;
 		if(server_key)
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get_item_drilldown(config, "general", "https");
@@ -729,7 +735,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, server_pem, server_key);
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, server_pem, server_key, password);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -754,7 +760,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
 			if(item && item->value)
 				ip = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, NULL, NULL);
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, NULL, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -781,7 +787,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, server_pem, server_key);
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, server_pem, server_key, password);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {

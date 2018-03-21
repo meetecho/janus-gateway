@@ -62,10 +62,11 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							to add to the base (e.g., tmp --> .mjr.tmp).
 
 
-; Certificate and key to use for DTLS.
+; Certificate and key to use for DTLS (and passphrase if needed).
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
+;cert_pwd = secretpassphrase
 
 
 ; Media-related stuff: you can configure whether if you want
