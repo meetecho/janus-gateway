@@ -481,6 +481,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
+			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
@@ -521,9 +522,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
+				char *password = NULL;
 				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
+				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				if(item && item->value)
+					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
@@ -534,6 +539,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
+				info.ssl_private_key_password = password;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
@@ -583,6 +589,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
+			info.ssl_private_key_password = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
@@ -623,9 +630,13 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
+				char *password = NULL;
 				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
+				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				if(item && item->value)
+					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
@@ -636,6 +647,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.extensions = NULL;
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
+				info.ssl_private_key_filepath = password;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
@@ -956,10 +968,6 @@ static int janus_websockets_common_callback(
 				size_t offset = strlen(ws_client->incoming);
 				JANUS_LOG(LOG_HUGE, "[%s-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", log_prefix, wsi, offset, len, remaining);
 				ws_client->incoming = g_realloc(ws_client->incoming, offset+len+1);
-				if(ws_client->incoming == NULL) {
-					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					return 0;
-				}
 				memcpy(ws_client->incoming+offset, in, len);
 				ws_client->incoming[offset+len] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming+offset);
@@ -1017,11 +1025,6 @@ static int janus_websockets_common_callback(
 						JANUS_LOG(LOG_HUGE, "[%s-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
-						if(ws_client->buffer == NULL) {
-							JANUS_LOG(LOG_FATAL, "Memory error!\n");
-							janus_mutex_unlock(&ws_client->ts->mutex);
-							return 0;
-						}
 					}
 					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
 					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));

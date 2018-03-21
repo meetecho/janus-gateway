@@ -3500,10 +3500,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_network_address_nullify(&nil);
 
 	janus_streaming_mountpoint *live_rtp = g_malloc0(sizeof(janus_streaming_mountpoint));
-	if(live_rtp == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	live_rtp->id = id;
 	live_rtp->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -3697,10 +3693,6 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		return NULL;
 	}
 	janus_streaming_mountpoint *file_source = g_malloc0(sizeof(janus_streaming_mountpoint));
-	if(file_source == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	file_source->id = id;
 	char tempname[255];
 	if(!name) {
@@ -3722,10 +3714,6 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->streaming_type = live ? janus_streaming_type_live : janus_streaming_type_on_demand;
 	file_source->streaming_source = janus_streaming_source_file;
 	janus_streaming_file_source *file_source_source = g_malloc0(sizeof(janus_streaming_file_source));
-	if(file_source_source == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	file_source_source->filename = g_strdup(filename);
 	file_source->source = file_source_source;
 	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
@@ -4082,11 +4070,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 
 	/* Create the mountpoint and prepare the source */
 	janus_streaming_mountpoint *live_rtsp = g_malloc0(sizeof(janus_streaming_mountpoint));
-	if(live_rtsp == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_mutex_unlock(&mountpoints_mutex);
-		return NULL;
-	}
 	live_rtsp->id = id;
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
@@ -4222,13 +4205,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
 	/* Buffer */
 	char *buf = g_malloc0(1024);
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_refcount_decrease(&session->ref);
-		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
-		return NULL;
-	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Set up RTP */
 	gint16 seq = 1;
@@ -4260,7 +4236,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */
@@ -4349,11 +4325,6 @@ static void *janus_streaming_filesource_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
 	/* Buffer */
 	char *buf = g_malloc0(1024);
-	if(buf == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_refcount_decrease(&mountpoint->ref);
-		return NULL;
-	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Set up RTP */
 	gint16 seq = 1;
@@ -4385,7 +4356,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */

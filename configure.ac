@@ -15,7 +15,7 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
-JANUS_VERSION=30
+JANUS_VERSION=31
 AC_SUBST(JANUS_VERSION)
 JANUS_VERSION_STRING="0.3.1"
 AC_SUBST(JANUS_VERSION_STRING)
@@ -386,7 +386,7 @@ PKG_CHECK_MODULES([TRANSPORTS],
                   ])
 
 PKG_CHECK_MODULES([MHD],
-                  [libmicrohttpd],
+                  [libmicrohttpd >= 0.9.40],
                   [
                     AS_IF([test "x$enable_rest" = "xmaybe"],
                           [enable_rest=yes])

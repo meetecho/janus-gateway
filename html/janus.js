@@ -54,7 +54,16 @@ Janus.useDefaultDependencies = function (deps) {
 		checkJanusExtension: function() { return document.querySelector('#janus-extension-installed') !== null; },
 		webRTCAdapter: (deps && deps.adapter) || adapter,
 		httpAPICall: function(url, options) {
-			var fetchOptions = {method: options.verb, cache: 'no-cache'};
+			var fetchOptions = {
+				method: options.verb,
+				headers: {
+					'Accept': 'application/json, text/plain, */*'
+				},
+				cache: 'no-cache'
+			};
+			if(options.verb === "POST") {
+				fetchOptions.headers['Content-Type'] = 'application/json';
+			}
 			if(options.withCredentials !== undefined) {
 				fetchOptions.credentials = options.withCredentials === true ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
 			}
@@ -409,7 +418,7 @@ function Janus(gatewayCallbacks) {
 			success: handleEvent,
 			timeout: 60000,	// FIXME
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);
+				Janus.error(textStatus + ":", errorThrown);
 				retries++;
 				if(retries > 3) {
 					// Did we just lose the gateway? :-(
@@ -743,7 +752,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				if(Janus.isArray(servers)) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
@@ -850,7 +859,7 @@ function Janus(gatewayCallbacks) {
 					gatewayCallbacks.destroyed();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				// Reset everything anyway
 				sessionId = null;
 				connected = false;
@@ -890,10 +899,11 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var opaqueId = callbacks.opaqueId;
+		var handleToken = callbacks.token ? callbacks.token : token;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(handleToken !== null && handleToken !== undefined)
+			request["token"] = handleToken;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(websockets) {
@@ -911,6 +921,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						token : handleToken,
 						detached : false,
 						webrtcStuff : {
 							started : false,
@@ -993,6 +1004,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						token : handleToken,
 						detached : false,
 						webrtcStuff : {
 							started : false,
@@ -1054,7 +1066,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(pluginHandle);
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 			}
 		});
 	}
@@ -1069,12 +1081,19 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Is the gateway down? (connected=false)");
 			return;
 		}
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			callbacks.error("Invalid handle");
+			return;
+		}
 		var message = callbacks.message;
 		var jsep = callbacks.jsep;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "message", "body": message, "transaction": transaction };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(jsep !== null && jsep !== undefined)
@@ -1152,7 +1171,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
@@ -1164,9 +1183,16 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Is the gateway down? (connected=false)");
 			return;
 		}
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			callbacks.error("Invalid handle");
+			return;
+		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		Janus.vdebug("Sending trickle candidate (handle=" + handleId + "):");
@@ -1190,7 +1216,7 @@ function Janus(gatewayCallbacks) {
 				}
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 			}
 		});
 	}
@@ -1281,7 +1307,8 @@ function Janus(gatewayCallbacks) {
 			asyncRequest = (callbacks.asyncRequest === true);
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
-		if (pluginHandles[handleId].detached) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined || pluginHandle.detached) {
 			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
 			delete pluginHandles[handleId];
 			callbacks.success();
@@ -1293,8 +1320,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "detach", "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
-			request["token"] = token;
+		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+			request["token"] = pluginHandle.token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		if(websockets) {
@@ -1320,7 +1347,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				// We cleanup anyway
 				delete pluginHandles[handleId];
 				callbacks.success();
@@ -2450,8 +2477,8 @@ function Janus(gatewayCallbacks) {
 			if(hangupRequest === true) {
 				// Send a hangup request (we don't really care about the response)
 				var request = { "janus": "hangup", "transaction": Janus.randomString(12) };
-				if(token !== null && token !== undefined)
-					request["token"] = token;
+				if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+					request["token"] = pluginHandle.token;
 				if(apisecret !== null && apisecret !== undefined)
 					request["apisecret"] = apisecret;
 				Janus.debug("Sending hangup request (handle=" + handleId + "):");

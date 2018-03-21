@@ -83,7 +83,7 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"ALL:NULL:eNULL:aNULL"
+#define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
@@ -262,7 +262,8 @@ error:
 }
 
 
-static int janus_dtls_load_keys(const char *server_pem, const char *server_key, X509 **certificate, EVP_PKEY **private_key) {
+static int janus_dtls_load_keys(const char *server_pem, const char *server_key, const char *password,
+		X509 **certificate, EVP_PKEY **private_key) {
 	FILE *f = NULL;
 
 	f = fopen(server_pem, "r");
@@ -282,7 +283,7 @@ static int janus_dtls_load_keys(const char *server_pem, const char *server_key, 
 		JANUS_LOG(LOG_FATAL, "Error opening key file\n");
 		goto error;
 	}
-	*private_key = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+	*private_key = PEM_read_PrivateKey(f, NULL, NULL, (void *)password);
 	if(!*private_key) {
 		JANUS_LOG(LOG_FATAL, "PEM_read_PrivateKey failed\n");
 		goto error;
@@ -305,7 +306,7 @@ error:
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -315,10 +316,6 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
 #endif
 	/* First of all make OpenSSL thread safe (see note above on issue #316) */
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
-	if(janus_dtls_locks == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return -1;
-	}
 	int l=0;
 	for(l = 0; l < CRYPTO_num_locks(); l++) {
 		janus_mutex_init(&janus_dtls_locks[l]);
@@ -363,7 +360,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key) {
 	} else if(!server_pem || !server_key) {
 		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified\n");
 		return -2;
-	} else if(janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
+	} else if(janus_dtls_load_keys(server_pem, server_key, password, &ssl_cert, &ssl_key) != 0) {
 		return -3;
 	}
 
@@ -528,7 +525,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
-	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	SSL_set_options(dtls->ssl, flags);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
 #ifdef HAVE_DTLS_SETTIMEOUT

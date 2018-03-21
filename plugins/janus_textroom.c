@@ -247,7 +247,6 @@ static void janus_textroom_room_destroy(janus_textroom_room *textroom) {
 }
 static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	janus_textroom_room *textroom = janus_refcount_containerof(textroom_ref, janus_textroom_room, ref);
-	JANUS_LOG(LOG_WARN, "janus_textroom_room_free: %p\n", textroom);
 	/* This room can be destroyed, free all the resources */
 	g_free(textroom->room_name);
 	g_free(textroom->room_secret);
@@ -264,7 +263,6 @@ static void janus_textroom_session_destroy(janus_textroom_session *session) {
 }
 static void janus_textroom_session_free(const janus_refcount *session_ref) {
 	janus_textroom_session *session = janus_refcount_containerof(session_ref, janus_textroom_session, ref);
-	JANUS_LOG(LOG_WARN, "janus_textroom_session_free: %p\n", session);
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
@@ -283,7 +281,6 @@ static void janus_textroom_participant_destroy(janus_textroom_participant *parti
 }
 static void janus_textroom_participant_free(const janus_refcount *participant_ref) {
 	janus_textroom_participant *participant = janus_refcount_containerof(participant_ref, janus_textroom_participant, ref);
-	JANUS_LOG(LOG_WARN, "janus_textroom_participant_free: %p\n", participant);
 	/* This participant can be destroyed, free all the resources */
 	g_free(participant->username);
 	g_free(participant->display);
@@ -303,7 +300,6 @@ static janus_textroom_message exit_message;
 static void janus_textroom_message_free(janus_textroom_message *msg) {
 	if(!msg || msg == &exit_message)
 		return;
-	JANUS_LOG(LOG_WARN, "janus_textroom_message_free: %p\n", msg);
 
 	if(msg->handle && msg->handle->plugin_handle) {
 		janus_textroom_session *session = (janus_textroom_session *)msg->handle->plugin_handle;
@@ -439,11 +435,6 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *post = janus_config_get_item(cat, "post");
 			/* Create the text room */
 			janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
-			if(textroom == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				cl = cl->next;
-				continue;
-			}
 			textroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)

@@ -2247,7 +2247,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			&& !g_atomic_int_get(&rec->destroyed) && (audio || video)) {
 		if(!asent && !vsent) {
 			/* We skipped the last round, so sleep a bit (5ms) */
-			usleep(5000);
+			g_usleep(5000);
 		}
 		asent = FALSE;
 		vsent = FALSE;
