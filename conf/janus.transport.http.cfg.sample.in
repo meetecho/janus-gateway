@@ -59,7 +59,8 @@ admin_https = no				; Whether to enable HTTPS (default=no)
 [cors]
 ;allow_origin = http://foo.example
 
-; Certificate and key to use for HTTPS.
+; Certificate and key to use for HTTPS, if enabled (and passphrase if needed).
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
+;cert_pwd = secretpassphrase

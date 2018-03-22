@@ -1206,7 +1206,7 @@ void janus_streaming_destroy(void) {
 	}
 
 	/* FIXME We should destroy the sessions cleanly */
-	usleep(500000);
+	g_usleep(500000);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_destroy(mountpoints);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -4213,7 +4213,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */
@@ -4332,7 +4332,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 18000) {	/* Let's wait about 18ms */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */
@@ -4611,7 +4611,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && a_last_ssrc && ssrc != a_last_ssrc &&
-							(now-source->last_received_audio) < 1000*source->rtp_collision) {
+							(now-source->last_received_audio) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on audio mountpoint, dropping packet (ssrc=%u)\n", name, ssrc);
 						continue;
 					}
@@ -4697,7 +4697,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && v_last_ssrc[index] && ssrc != v_last_ssrc[index] &&
-							(now-source->last_received_video) < 1000*source->rtp_collision) {
+							(now-source->last_received_video) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (ssrc=%u)\n", name, ssrc);
 						continue;
 					}

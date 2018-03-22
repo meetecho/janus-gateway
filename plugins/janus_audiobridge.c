@@ -4009,7 +4009,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		passed = d_s*1000000 + d_us;
 		if(passed < 15000) {	/* Let's wait about 15ms at max */
-			usleep(1000);
+			g_usleep(5000);
 			continue;
 		}
 		/* Update the reference time */

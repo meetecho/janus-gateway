@@ -3445,6 +3445,9 @@ gint main(int argc, char *argv[])
 	if(args_info.cert_key_given) {
 		janus_config_add_item(config, "certificates", "cert_key", args_info.cert_key_arg);
 	}
+	if(args_info.cert_pwd_given) {
+		janus_config_add_item(config, "certificates", "cert_pwd", args_info.cert_pwd_arg);
+	}
 	if(args_info.stun_server_given) {
 		/* Split in server and port (if port missing, use 3478 as default) */
 		char *stunport = strrchr(args_info.stun_server_arg, ':');
@@ -3804,20 +3807,26 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Setup OpenSSL stuff */
-	const char* server_pem;
+	const char *server_pem;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
 		server_pem = NULL;
 	} else {
 		server_pem = item->value;
 	}
-
-	const char* server_key;
+	const char *server_key;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
 		server_key = NULL;
 	} else {
 		server_key = item->value;
+	}
+	const char *password;
+	item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+	if(!item || !item->value) {
+		password = NULL;
+	} else {
+		password = item->value;
 	}
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 
@@ -3825,7 +3834,7 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	if(janus_dtls_srtp_init(server_pem, server_key) < 0) {
+	if(janus_dtls_srtp_init(server_pem, server_key, password) < 0) {
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */

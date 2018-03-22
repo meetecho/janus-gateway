@@ -146,6 +146,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"type", JSON_STRING, 0},
 	{"send_register", JANUS_JSON_BOOL, 0},
 	{"force_udp", JANUS_JSON_BOOL, 0},
+	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
@@ -309,6 +310,7 @@ typedef struct janus_sip_account {
 	char *identity;
 	char *user_agent;		/* Used to override the general UA string */
 	gboolean force_udp;
+	gboolean force_tcp;
 	gboolean sips;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
@@ -685,6 +687,7 @@ static void *janus_sip_watchdog(void *data) {
 					    session->account.identity = NULL;
 					}
 					session->account.force_udp = FALSE;
+					session->account.force_tcp = FALSE;
 					session->account.sips = TRUE;
 					if (session->account.proxy) {
 					    g_free(session->account.proxy);
@@ -1100,6 +1103,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->account.identity = NULL;
 	session->account.force_udp = FALSE;
+	session->account.force_tcp = FALSE;
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
@@ -1637,6 +1641,17 @@ static void *janus_sip_handler(void *data) {
 			if(do_udp != NULL) {
 				force_udp = json_is_true(do_udp);
 			}
+			gboolean force_tcp = FALSE;
+			json_t *do_tcp = json_object_get(root, "force_tcp");
+			if(do_tcp != NULL) {
+				force_tcp = json_is_true(do_tcp);
+			}
+			if(force_udp && force_tcp) {
+				JANUS_LOG(LOG_ERR, "Conflicting elements: force_udp and force_tcp cannot both be true\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
+				goto error;
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -1768,6 +1783,7 @@ static void *janus_sip_handler(void *data) {
 				}
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
+				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -1798,6 +1814,7 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(identities, session->account.identity, session);
 			janus_mutex_unlock(&sessions_mutex);
 			session->account.force_udp = force_udp;
+			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
@@ -3559,6 +3576,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 				session->account.identity = NULL;
 				session->account.force_udp = FALSE;
+				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
@@ -4327,6 +4345,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	ipv6 = strstr(local_ip, ":");
 	if(session->account.force_udp)
 		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	else if(session->account.force_tcp)
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=tcp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	else
 		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
