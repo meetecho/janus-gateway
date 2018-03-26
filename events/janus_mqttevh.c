@@ -305,6 +305,7 @@ static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_succes
 	json_t *info = json_object();
 
 	json_object_set_new(info, "event", json_string("connected"));
+	json_object_set_new(info, "eventhandler", json_string(JANUS_MQTTEVH_PACKAGE));
 	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, "status");
 	json_incref(info);
 
@@ -844,7 +845,7 @@ static void janus_mqttevh_incoming_event(json_t *event) {
 */
 static void *janus_mqttevh_handler(void *data) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *) data;
-	json_t *event = NULL, *output = NULL;
+	json_t *event = NULL;
 	char topicbuf[512];
 
 	JANUS_LOG(LOG_VERB, "Joining MqttEventHandler handler thread\n");
@@ -858,8 +859,6 @@ static void *janus_mqttevh_handler(void *data) {
 		if(event == &exit_event) {
 			break;
 		}
-		output = NULL;
-
 		/* Handle event: just for fun, let's see how long it took for us to take care of this */
 		json_t *created = json_object_get(event, "timestamp");
 		if(created && json_is_integer(created)) {
@@ -875,28 +874,22 @@ static void *janus_mqttevh_handler(void *data) {
 		/* Hack to test new functions */
 		if (elabel && ename) {
 			JANUS_LOG(LOG_DBG, "Event label %s, name %s\n", elabel, ename);
+			json_object_set_new(event, "eventtype", json_string(ename));
 		} else {
 			JANUS_LOG(LOG_DBG, "Can't get event label or name\n");
 		}
-
-		output = json_array();
-
-		json_array_append_new(output, event);
 
 		if(!g_atomic_int_get(&stopping)) {
 			/* Convert event to string */
 			if (ctx->addevent) {
 				snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, event_type_to_label(type));
 				JANUS_LOG(LOG_DBG, "Debug: MQTT Publish event on %s\n", topicbuf);
-				janus_mqttevh_send_message(ctx, topicbuf, output);
+				janus_mqttevh_send_message(ctx, topicbuf, event);
 			} else {
-				janus_mqttevh_send_message(ctx, ctx->publish.topic, output);
+				janus_mqttevh_send_message(ctx, ctx->publish.topic, event);
 			}
 		}
 
-		/* Done, let's unref the event */
-		//json_decref(output);
-		//output = NULL;
 		JANUS_LOG(LOG_VERB, "Debug: Thread done publishing MQTT Publish event on %s\n", topicbuf);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving MQTTEventHandler handler thread\n");
