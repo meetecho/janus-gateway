@@ -614,7 +614,7 @@ static int janus_mqttevh_init(const char *config_path) {
 							index++;
 						}
 						if(strlen(index)) {
-							int flag = event_label_to_flog(index);
+							int flag = event_label_to_flag(index);
 							if (flag) {
 								janus_flags_set(&janus_mqttevh.events_mask, flag);
 							}
