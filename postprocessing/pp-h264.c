@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .mp4 files
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -18,6 +18,8 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include <jansson.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -58,7 +60,7 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 
-int janus_pp_h264_create(char *destination) {
+int janus_pp_h264_create(char *destination, json_t *info) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -76,6 +78,9 @@ int janus_pp_h264_create(char *destination) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
 	}
+
+    av_dict_set(&fctx->metadata, "comment", json_dumps(info, JSON_PRESERVE_ORDER), 0 );
+
 	fctx->oformat = av_guess_format("mp4", NULL, NULL);
 	if(fctx->oformat == NULL) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
@@ -130,10 +135,13 @@ int janus_pp_h264_create(char *destination) {
 	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 #endif
+
+
 	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
 		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
 		return -1;
 	}
+
 	if(avformat_write_header(fctx, NULL) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
@@ -242,7 +250,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			}
 			if(tmp->seq - tmp->prev->seq > 1) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
 		/* Parse H264 header now */

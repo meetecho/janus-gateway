@@ -17,15 +17,15 @@
  * G.711 (mu-law or a-law) frames. In case the recording contains text
  * frames as received via data channels, instead, a .srt file will be
  * generated with the text content and the related timing information.
- * 
+ *
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the path to the .mjr source file you want to post-process, and the
  * path to the destination file, e.g.:
- * 
+ *
 \verbatim
 ./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|wav|webm|h264|srt]
-\endverbatim 
- * 
+\endverbatim
+ *
  * An attempt to specify an output format that is not compliant with the
  * recording content (e.g., a .webm for H.264 frames) will result in an
  * error since, again, no transcoding is involved.
@@ -44,7 +44,7 @@
  * the frames in a valid container. Any further post-processing (e.g.,
  * muxing audio and video belonging to the same media session in a single
  * .webm file) is up to third-party applications.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 			post_reset_trigger = val;
 		JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
 	}
-	
+
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|wav|webm|mp4|srt]\n", argv[0]);
@@ -177,6 +177,7 @@ int main(int argc, char *argv[])
 	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	json_t *info = NULL;
 	/* Let's look for timestamp resets first */
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
@@ -254,7 +255,7 @@ int main(int argc, char *argv[])
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
 				json_error_t error;
-				json_t *info = json_loads(prebuffer, 0, &error);
+				info = json_loads(prebuffer, 0, &error);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
@@ -611,7 +612,7 @@ int main(int argc, char *argv[])
 	}
 	if(!working)
 		exit(0);
-	
+
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
@@ -675,13 +676,13 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination) < 0) {
+			if(janus_pp_h264_create(destination, info) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				exit(1);
 			}
 		}
 	}
-	
+
 	/* Loop */
 	if(!video && !data) {
 		if(opus) {
@@ -732,7 +733,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(file);
-	
+
 	file = fopen(destination, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_INFO, "No destination file %s??\n", destination);
