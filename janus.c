@@ -2886,11 +2886,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
 		}
-	} else {
-		/* Check if transport wide CC is supported */
-		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-		ice_handle->stream->do_transport_wide_cc = TRUE;
-		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
@@ -2917,13 +2912,26 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
+
 	/* Check if this is a renegotiation and we need an ICE restart */
 	if(offer && restart)
 		janus_ice_restart(ice_handle);
 	/* Add our details */
+	janus_mutex_lock(&ice_handle->mutex);
 	janus_ice_stream *stream = ice_handle->stream;
+	if (stream == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
+		janus_mutex_unlock(&ice_handle->mutex);
+		return NULL;
+	}
+	if (!offer) {
+		/* Check if transport wide CC is supported */
+		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+		stream->do_transport_wide_cc = TRUE;
+		stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+	}
 	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
-			stream && stream->rtx_payload_types == NULL) {
+			stream->rtx_payload_types == NULL) {
 		/* Make sure we have a list of rtx payload types to generate, if needed */
 		janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
 		if(m && m->ptypes) {
@@ -2960,6 +2968,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
 		janus_sdp_free(parsed_sdp);
+		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
 	}
 	janus_sdp_free(parsed_sdp);
@@ -2970,7 +2979,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		} else {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
-			janus_mutex_lock(&ice_handle->mutex);
 			/* We got our answer */
 			janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			/* Any pending trickles? */
@@ -3030,7 +3038,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					janus_ice_setup_remote_candidates(ice_handle, ice_handle->stream_id, 1);
 				}
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 		}
 	}
 #ifdef HAVE_SCTP
@@ -3054,6 +3061,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
 	char *tmp = ice_handle->local_sdp;
 	ice_handle->local_sdp = sdp_merged;
+	janus_mutex_unlock(&ice_handle->mutex);
 	g_free(tmp);
 	return jsep;
 }
