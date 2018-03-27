@@ -1857,15 +1857,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
-			g_free(audiobridge->room_name);
-			g_free(audiobridge->room_secret);
-			g_free(audiobridge->record_file);
-			g_hash_table_destroy(audiobridge->participants);
-			g_hash_table_destroy(audiobridge->allowed);
-			g_free(audiobridge);
+			janus_refcount_decrease(&audiobridge->ref);
+			g_hash_table_remove(rooms, &audiobridge->room_id);
+			janus_mutex_unlock(&rooms_mutex);
 			goto plugin_response;
-		} else {
-			g_hash_table_insert(rooms, janus_uint64_dup(audiobridge->room_id), audiobridge);
 		}
 		if(save) {
 			/* This room is permanent: save to the configuration file too
