@@ -1259,12 +1259,19 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		if(config.dtmfSender === null || config.dtmfSender === undefined) {
-			// Create the DTMF sender, if possible
-			if(config.myStream !== undefined && config.myStream !== null) {
-				var tracks = config.myStream.getAudioTracks();
-				if(tracks !== null && tracks !== undefined && tracks.length > 0) {
-					var local_audio_track = tracks[0];
-					config.dtmfSender = config.pc.createDTMFSender(local_audio_track);
+			// Create the DTMF sender the proper way, if possible
+			if(config.pc !== undefined && config.pc !== null) {
+				var senders = config.pc.getSenders();
+				var audioSender = senders.find(function(sender) {
+					return sender.track && sender.track.kind === 'audio';
+				});
+				if(!audioSender) {
+					Janus.warn("Invalid DTMF configuration (no audio track)");
+					callbacks.error("Invalid DTMF configuration (no audio track)");
+					return;
+				}
+				config.dtmfSender = audioSender.dtmf;
+				if(config.dtmfSender) {
 					Janus.log("Created DTMF Sender");
 					config.dtmfSender.ontonechange = function(tone) { Janus.debug("Sent DTMF tone: " + tone.tone); };
 				}
