@@ -2892,7 +2892,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		ice_handle->stream->do_transport_wide_cc = TRUE;
 		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
-	if(!updating) {
+	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
 		while(ice_handle->cdone < 1) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)

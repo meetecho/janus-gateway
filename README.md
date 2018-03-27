@@ -42,7 +42,7 @@ A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
-* [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
+* [libogg](http://xiph.org/ogg/) (needed for the voicemail plugin and/or post-processor)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
 interested in RTSP support in the Streaming plugin or in the sample
 Event Handler plugin)

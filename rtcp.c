@@ -1256,7 +1256,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				len += 2;
 				/* Remove all statuses */
 				g_queue_clear(statuses);
-				/* Rsset status */
+				/* Reset status */
 				last_status = janus_rtp_packet_status_reserved;
 				max_status = janus_rtp_packet_status_notreceived;
 				all_same = TRUE;

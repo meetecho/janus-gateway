@@ -250,6 +250,8 @@ janus_turnrest_response *janus_turnrest_request(void) {
 				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
+			if(res != NULL)
+				freeaddrinfo(res);
 			g_strfreev(uri_parts);
 			continue;
 		}
