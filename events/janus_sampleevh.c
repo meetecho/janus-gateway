@@ -124,6 +124,7 @@ static void janus_sampleevh_edit_events_mask(const char *list) {
 	if(!list)
 		return;
 	janus_flags mask;
+	janus_flags_reset(&mask);
 	if(!strcasecmp(list, "none")) {
 		/* Don't subscribe to anything at all */
 		janus_flags_reset(&mask);

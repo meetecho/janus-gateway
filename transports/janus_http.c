@@ -383,11 +383,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
 				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
-#else
-				MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
-#endif
 				port,
 				admin ? janus_http_admin_client_connect : janus_http_client_connect,
 				NULL,
@@ -401,11 +397,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
 				MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
-#else
-				MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
-#endif
 				port,
 				admin ? janus_http_admin_client_connect : janus_http_client_connect,
 				NULL,
@@ -426,11 +418,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
 				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
-#else
-				MHD_USE_SSL | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | MHD_USE_DUAL_STACK,
-#endif
 				port,
 				admin ? janus_http_admin_client_connect : janus_http_client_connect,
 				NULL,
@@ -447,11 +435,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				ip ? "IP" : "interface", ip ? ip : interface,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			daemon = MHD_start_daemon(
-#if MHD_VERSION >= 0x00095208
 				MHD_USE_SSL | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
-#else
-				MHD_USE_SSL | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_SUSPEND_RESUME | (ipv6 ? MHD_USE_IPv6 : 0),
-#endif
 				port,
 				admin ? janus_http_admin_client_connect : janus_http_client_connect,
 				NULL,
@@ -544,10 +528,6 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		/* Invalid arguments */
 		return -1;
 	}
-
-#if MHD_VERSION >= 0x00095208
-	JANUS_LOG(LOG_VERB, "The installed libmicrohttpd version supports MHD_USE_AUTO\n");
-#endif
 
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -1722,6 +1702,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 		return -1;
 	}
 	json_t *event = NULL, *list = NULL;
+	int events = 0;
 	while((event = g_async_queue_try_pop(session->events)) != NULL) {
 		if(session->destroyed || g_atomic_int_get(&stopping)) {
 			/* TODO return error */
@@ -1735,7 +1716,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 			/* The application is willing to receive more events at the same time, anything to report? */
 			list = json_array();
 			json_array_append_new(list, event);
-			int events = 1;
+			events++;
 			if(events == max_events)
 				break;
 		}
