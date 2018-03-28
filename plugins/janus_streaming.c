@@ -104,9 +104,10 @@ srtpsuite = 32
 srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
 
 The following options are only valid for the 'rstp' type:
-url = RTSP stream URL (only if type=rtsp)
-rtsp_user = RTSP authorization username (only if type=rtsp)
-rtsp_pwd = RTSP authorization password (only if type=rtsp)
+url = RTSP stream URL
+rtsp_user = RTSP authorization username, if needed
+rtsp_pwd = RTSP authorization password, if needed
+rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 \endverbatim
  *
@@ -303,7 +304,8 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"videortpmap", JSON_STRING, 0},
 	{"videofmtp", JSON_STRING, 0},
-	{"rtspiface", JSON_STRING, 0}
+	{"rtspiface", JSON_STRING, 0},
+	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
 #endif
 static struct janus_json_parameter rtp_audio_parameters[] = {
@@ -524,7 +526,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vrtpmap, char *vfmtp,
-		const janus_network_address *iface);
+		const janus_network_address *iface,
+		gboolean error_on_failure);
 
 
 typedef struct janus_streaming_message {
@@ -1062,6 +1065,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
 				janus_config_item *iface = janus_config_get_item(cat, "rtspiface");
+				janus_config_item *failerr = janus_config_get_item(cat, "rtsp_failcheck");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
@@ -1071,6 +1075,9 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
+				gboolean error_on_failure = TRUE;
+				if(failerr && failerr->value)
+					error_on_failure = janus_is_true(failerr->value);
 
 				if((doaudio || dovideo) && iface && iface->value) {
 					if(!ifas) {
@@ -1112,7 +1119,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						dovideo,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
-						iface && iface->value ? &iface_value : NULL)) == NULL) {
+						iface && iface->value ? &iface_value : NULL,
+						error_on_failure)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -1932,8 +1940,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
 			json_t *iface = json_object_get(root, "rtspiface");
+			json_t *failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
 			if(!doaudio && !dovideo) {
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, no audio or video have to be streamed...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -1961,7 +1971,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					password ? (char *)json_string_value(password) : NULL,
 					doaudio, (char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
 					dovideo, (char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
-					&multicast_iface);
+					&multicast_iface,
+					error_on_failure);
 			if(mp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -4021,7 +4032,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vrtpmap, char *vfmtp,
-		const janus_network_address *iface) {
+		const janus_network_address *iface,
+		gboolean error_on_failure) {
 	if(url == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
 		return NULL;
@@ -4099,19 +4111,22 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
 	live_rtsp->codecs.video_rtpmap = dovideo ? (vrtpmap ? g_strdup(vrtpmap) : NULL) : NULL;
 	live_rtsp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
-	/* Now connect to the RTSP server */
-	if(janus_streaming_rtsp_connect_to_server(live_rtsp) < 0) {
-		/* Error connecting, get rid of the mountpoint */
-		janus_streaming_mountpoint_free(live_rtsp);
-		janus_mutex_unlock(&mountpoints_mutex);
-		return NULL;
-	}
-	/* Send an RTSP PLAY, now */
-	if(janus_streaming_rtsp_play(live_rtsp_source) < 0) {
-		/* Error trying to play, get rid of the mountpoint */
-		janus_streaming_mountpoint_free(live_rtsp);
-		janus_mutex_unlock(&mountpoints_mutex);
-		return NULL;
+	/* If we need to return an error on failure, try connecting right now */
+	if(error_on_failure) {
+		/* Now connect to the RTSP server */
+		if(janus_streaming_rtsp_connect_to_server(live_rtsp) < 0) {
+			/* Error connecting, get rid of the mountpoint */
+			janus_streaming_mountpoint_free(live_rtsp);
+			janus_mutex_unlock(&mountpoints_mutex);
+			return NULL;
+		}
+		/* Send an RTSP PLAY, now */
+		if(janus_streaming_rtsp_play(live_rtsp_source) < 0) {
+			/* Error trying to play, get rid of the mountpoint */
+			janus_streaming_mountpoint_free(live_rtsp);
+			janus_mutex_unlock(&mountpoints_mutex);
+			return NULL;
+		}
 	}
 	/* Start the thread that will receive the media packets */
 	GError *error = NULL;
