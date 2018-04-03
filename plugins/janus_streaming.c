@@ -4150,7 +4150,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, char *videortpmap, char *videofmtp,
-		const janus_network_address *iface) {
+		const janus_network_address *iface,
+		gboolean error_on_failure);
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
 	return NULL;
 }
