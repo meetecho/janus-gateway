@@ -346,6 +346,7 @@ static struct janus_json_parameter configure_parameters[] = {
 static struct janus_json_parameter listener_parameters[] = {
 	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"close_pc", JANUS_JSON_BOOL, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
@@ -673,6 +674,7 @@ typedef struct janus_videoroom_listener {
 	janus_videoroom *room;	/* Room */
 	guint64 room_id;		/* Unique room ID */
 	janus_videoroom_participant *feed;	/* Participant this listener is subscribed to */
+	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	janus_sdp *sdp;			/* Offer we sent this listener (may be updated within renegotiations) */
 	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this listener */
@@ -3574,9 +3576,10 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			if(l) {
 				participant->listeners = g_slist_remove(participant->listeners, l);
 				l->feed = NULL;
-				l->room = NULL;
-				if(l->session)
+				if(l->session && l->close_pc) {
+					l->room = NULL;
 					gateway->close_pc(l->session->handle);
+				}
 			}
 		}
 		janus_mutex_unlock(&participant->listeners_mutex);
@@ -3892,6 +3895,8 @@ static void *janus_videoroom_handler(void *data) {
 				guint64 feed_id = json_integer_value(feed);
 				json_t *pvt = json_object_get(root, "private_id");
 				guint64 pvt_id = json_integer_value(pvt);
+				json_t *cpc = json_object_get(root, "close_pc");
+				gboolean close_pc  = cpc ? json_is_true(cpc) : TRUE;
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
@@ -3925,6 +3930,7 @@ static void *janus_videoroom_handler(void *data) {
 					listener->room = videoroom;
 					listener->feed = publisher;
 					listener->pvt_id = pvt_id;
+					listener->close_pc = close_pc;
 					/* Initialize the listener context */
 					janus_rtp_switching_context_reset(&listener->context);
 					listener->audio_offered = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
@@ -5470,9 +5476,10 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 		if(l) {
 			p->listeners = g_slist_remove(p->listeners, l);
 			l->feed = NULL;
-			l->room = NULL;
-			if(l->session)
+			if(l->session && l->close_pc) {
+				l->room = NULL;
 				gateway->close_pc(l->session->handle);
+			}
 		}
 	}
 	g_slist_free(p->subscriptions);
