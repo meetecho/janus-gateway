@@ -1774,7 +1774,7 @@ function Janus(gatewayCallbacks) {
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
-					}else{
+					} else {
 						var width = 0;
 						var height = 0, maxHeight = 0;
 						if(media.video === 'lowres') {
@@ -1809,35 +1809,12 @@ function Janus(gatewayCallbacks) {
 							width = 640;
 						}
 						Janus.log("Adding media constraint:", media.video);
-
-						if(Janus.webRTCAdapter.browserDetails.browser == 'firefox') {
-							videoSupport = {
-								'height': {'ideal': height},
-								'width':  {'ideal': width}
-							};
-						} else {
-							var chromeVer = Janus.webRTCAdapter.browserDetails.version;
-					    if(chromeVer >= 59) {
-								videoSupport = {
-									'height': {'ideal': height},
-									'width':  {'ideal': width}
-								};
-							}else{
-								// The old spec is supported by Chrome until Chrome 59 (June 2017)
-								videoSupport = {
-										'mandatory': {
-												'maxHeight': maxHeight,
-												'minHeight': height,
-												'maxWidth':  width,
-												'minWidth':  width
-										},
-										'optional': []
-								};
-							}
-						}
+						videoSupport = {
+							'height': {'ideal': height},
+							'width':  {'ideal': width}
+						};
+						Janus.log("Adding video constraint:", videoSupport);
 					}
-
-					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
 					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
@@ -2027,10 +2004,12 @@ function Janus(gatewayCallbacks) {
 						}
 					}
 
-					navigator.mediaDevices.getUserMedia({
+					var gumConstraints = {
 						audio: audioExist ? audioSupport : false,
 						video: videoExist ? videoSupport : false
-					})
+					};
+					Janus.debug("getUserMedia constraints", gumConstraints);
+					navigator.mediaDevices.getUserMedia(gumConstraints)
 					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
 					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
 				})
