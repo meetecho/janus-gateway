@@ -467,6 +467,12 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		/* HTTPS web server, read certificate and key */
 		g_file_get_contents(server_pem, &cert_pem_bytes, NULL, NULL);
 		g_file_get_contents(server_key, &cert_key_bytes, NULL, NULL);
+#if MHD_VERSION < 0x00093903
+		if(password) {
+			JANUS_LOG(LOG_WARN, "Passed a certificate/key passphrase, but MHD is older than 0.9.40, ignoring\n");
+		}
+#endif
+
 		/* Start webserver */
 		if(threads == 0) {
 			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
@@ -489,7 +495,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+#if MHD_VERSION >= 0x00093903
 					MHD_OPTION_HTTPS_KEY_PASSWORD, password,
+#endif
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
@@ -510,7 +518,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+#if MHD_VERSION >= 0x00093903
 					MHD_OPTION_HTTPS_KEY_PASSWORD, password,
+#endif
 					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
@@ -532,7 +542,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+#if MHD_VERSION >= 0x00093903
 					MHD_OPTION_HTTPS_KEY_PASSWORD, password,
+#endif
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
@@ -550,7 +562,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+#if MHD_VERSION >= 0x00093903
 					MHD_OPTION_HTTPS_KEY_PASSWORD, password,
+#endif
 					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
