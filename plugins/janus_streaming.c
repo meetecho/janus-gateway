@@ -2218,6 +2218,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
+			janus_mutex_unlock(&mp->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			goto plugin_response;
 		}
