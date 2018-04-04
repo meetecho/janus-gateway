@@ -53,6 +53,8 @@ typedef struct janus_session {
 	janus_request *source;
 	/*! \brief Flag to notify there's been a session timeout */
 	volatile gint timeout;
+	/*! \brief Flag to notify that transport is gone */
+	volatile gint transport_gone;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
