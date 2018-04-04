@@ -118,7 +118,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c list , \c create , \c destroy , \c recording , \c enable and
+ * \c list , \c create , \c destroy , \c recording , \c edit , \c enable and
  * \c disable are synchronous requests, which means you'll
  * get a response directly within the context of the transaction. \c list
  * lists all the available streams; \c create allows you to create a new
@@ -128,6 +128,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * recorded while it's broadcasted; \c enable and \c disable respectively
  * enable and disable a mountpoint, that is decide whether or not a
  * mountpoint should be available to users without destroying it.
+ * \c edit allows you to dynamically edit some mountpoint properties (e.g., the PIN);
  *
  * The \c watch , \c start , \c pause , \c switch and \c stop requests
  * instead are all asynchronous, which means you'll get a notification
@@ -152,6 +153,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * \ingroup plugins
  * \ref plugins
  */
+
 
 #include "plugin.h"
 
@@ -252,6 +254,14 @@ static struct janus_json_parameter watch_parameters[] = {
 };
 static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter edit_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"new_description", JSON_STRING, 0},
+	{"new_secret", JSON_STRING, 0},
+	{"new_pin", JSON_STRING, 0},
+	{"new_is_private", JANUS_JSON_BOOL, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter create_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -718,7 +728,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_STREAMING_NAME);
 		}
-		/* Iterate on all rooms */
+		/* Iterate on all mountpoints */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
@@ -2155,6 +2165,226 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 		}
 		goto plugin_response;
+	} else if(!strcasecmp(request_text, "edit")) {
+		JANUS_LOG(LOG_VERB, "Attempt to edit an existing streaming mountpoint\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		/* We only allow for a limited set of properties to be edited */
+		json_t *id = json_object_get(root, "id");
+		json_t *desc = json_object_get(root, "new_description");
+		json_t *secret = json_object_get(root, "new_secret");
+		json_t *pin = json_object_get(root, "new_pin");
+		json_t *is_private = json_object_get(root, "new_is_private");
+		json_t *permanent = json_object_get(root, "permanent");
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't edit mountpoint permanently\n");
+			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't edit mountpoint permanently");
+			goto plugin_response;
+		}
+		guint64 id_value = json_integer_value(id);
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_ERR, "No such mountpoint (%"SCNu64")\n", mp->id);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint (%"SCNu64")", mp->id);
+			goto plugin_response;
+		}
+		janus_mutex_lock(&mp->mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&mp->mutex);
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto plugin_response;
+		}
+		/* Edit the mountpoint properties that were provided */
+		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
+			char *old_description = mp->description;
+			char *new_description = g_strdup(json_string_value(desc));
+			mp->description = new_description;
+			g_free(old_description);
+		}
+		if(is_private)
+			mp->is_private = json_is_true(is_private);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto plugin_response;
+		}
+		if(secret && strlen(json_string_value(secret)) > 0) {
+			char *old_secret = mp->secret;
+			char *new_secret = g_strdup(json_string_value(secret));
+			mp->secret = new_secret;
+			g_free(old_secret);
+		}
+		if(pin && strlen(json_string_value(pin)) > 0) {
+			char *old_pin = mp->pin;
+			char *new_pin = g_strdup(json_string_value(pin));
+			mp->pin = new_pin;
+			g_free(old_pin);
+		}
+		if(save) {
+			JANUS_LOG(LOG_VERB, "Saving editted mountpoint %"SCNu64" permanently in config file\n", mp->id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ], value[BUFSIZ];
+			/* The mountpoint name is the category */
+			g_snprintf(cat, BUFSIZ, "%s", mp->name);
+			/* Remove the old category first */
+			janus_config_remove_category(config, cat);
+			/* Now write the room details again */
+			janus_config_add_category(config, mp->name);
+			/* Now for the common values at top */
+			g_snprintf(value, BUFSIZ, "%"SCNu64, mp->id);
+			janus_config_add_item(config, mp->name, "id", value);
+			janus_config_add_item(config, mp->name, "description", mp->description);
+			if(mp->is_private)
+				janus_config_add_item(config, mp->name, "is_private", "yes");
+			/* Per type values */
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				janus_streaming_rtp_source *source = mp->source;
+				gboolean rtsp = FALSE;
+#ifdef HAVE_LIBCURL
+				if(source->rtsp)
+						rtsp = TRUE;
+#endif
+				if(rtsp){
+#ifdef HAVE_LIBCURL
+				janus_config_add_item(config, mp->name, "type", "rtsp");
+				if(source->rtsp_url)
+					janus_config_add_item(config, mp->name, "url", source->rtsp_url);
+				if(source->rtsp_username)
+					janus_config_add_item(config, mp->name, "rtsp_user", source->rtsp_username);
+				if(source->rtsp_password)
+					janus_config_add_item(config, mp->name, "rtsp_pwd", source->rtsp_password);
+#endif
+				if(mp->codecs.audio_pt >= 0) {
+					janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
+					if(mp->codecs.audio_rtpmap)
+						janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
+					if(mp->codecs.audio_fmtp)
+						janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
+				}
+				if(mp->codecs.video_pt >= 0) {
+					janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
+					if(mp->codecs.video_rtpmap)
+						janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
+					if(mp->codecs.video_fmtp)
+						janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
+				}
+				json_t *iface = json_object_get(root, "rtspiface");
+				if(iface)
+					janus_config_add_item(config, mp->name, "rtspiface", json_string_value(iface));
+				} else {
+					janus_config_add_item(config, mp->name, "type", "rtp");
+					janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt >= 0 ? "yes" : "no");
+					janus_streaming_rtp_source *source = mp->source;
+					if(mp->codecs.audio_pt >= 0) {
+						g_snprintf(value, BUFSIZ, "%d", source->audio_port);
+						janus_config_add_item(config, mp->name, "audioport", value);
+						json_t *audiomcast = json_object_get(root, "audiomcast");
+						if(audiomcast)
+							janus_config_add_item(config, mp->name, "audiomcast", json_string_value(audiomcast));
+						g_snprintf(value, BUFSIZ, "%d", mp->codecs.audio_pt);
+						janus_config_add_item(config, mp->name, "audiopt", value);
+						janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
+						if(mp->codecs.audio_fmtp)
+							janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
+						json_t *aiface = json_object_get(root, "audioiface");
+						if(aiface)
+							janus_config_add_item(config, mp->name, "audioiface", json_string_value(aiface));
+						if(source->askew)
+							janus_config_add_item(config, mp->name, "askew", "yes");
+					}
+					janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt >= 0? "yes" : "no");
+					if(mp->codecs.video_pt >= 0) {
+						g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
+						janus_config_add_item(config, mp->name, "videoport", value);
+						json_t *videomcast = json_object_get(root, "videomcast");
+						if(videomcast)
+							janus_config_add_item(config, mp->name, "videomcast", json_string_value(videomcast));
+						g_snprintf(value, BUFSIZ, "%d", mp->codecs.video_pt);
+						janus_config_add_item(config, mp->name, "videopt", value);
+						janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
+						if(mp->codecs.video_fmtp)
+							janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
+						if(source->keyframe.enabled)
+							janus_config_add_item(config, mp->name, "videobufferkf", "yes");
+						if(source->simulcast) {
+							janus_config_add_item(config, mp->name, "videosimulcast", "yes");
+							if(source->video_port[1]) {
+								g_snprintf(value, BUFSIZ, "%d", source->video_port[1]);
+								janus_config_add_item(config, mp->name, "videoport2", value);
+							}
+							if(source->video_port[2]) {
+								g_snprintf(value, BUFSIZ, "%d", source->video_port[2]);
+								janus_config_add_item(config, mp->name, "videoport3", value);
+							}
+						}
+						json_t *viface = json_object_get(root, "videoiface");
+						if(viface)
+							janus_config_add_item(config, mp->name, "videoiface", json_string_value(viface));
+						if(source->vskew)
+							janus_config_add_item(config, mp->name, "vskew", "yes");
+					}
+					if(source->rtp_collision > 0) {
+						g_snprintf(value, BUFSIZ, "%d", source->rtp_collision);
+						janus_config_add_item(config, mp->name, "collision", value);
+					}
+					janus_config_add_item(config, mp->name, "data", mp->data ? "yes" : "no");
+					if(source->data_port > -1) {
+						g_snprintf(value, BUFSIZ, "%d", source->data_port);
+						janus_config_add_item(config, mp->name, "dataport", value);
+						if(source->buffermsg)
+							janus_config_add_item(config, mp->name, "databuffermsg", "yes");
+						json_t *diface = json_object_get(root, "dataiface");
+						if(diface)
+							janus_config_add_item(config, mp->name, "dataiface", json_string_value(diface));
+					}
+				}
+			} else {
+				janus_config_add_item(config, mp->name, "type", (mp->streaming_type == janus_streaming_type_live) ? "live" : "ondemand");
+				janus_streaming_file_source *source = mp->source;
+				janus_config_add_item(config, mp->name, "filename", source->filename);
+				janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
+				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
+			}
+			/* Some more common values */
+			if(mp->secret)
+				janus_config_add_item(config, mp->name, "secret", mp->secret);
+			if(mp->pin)
+				janus_config_add_item(config, mp->name, "pin", mp->pin);
+			/* Save modified configuration */
+			if(janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the mountpoint is not permanent */
+			janus_mutex_unlock(&config_mutex);
+		}
+		/* Prepare response/notification */
+		response = json_object();
+		json_object_set_new(response, "mountpoint", json_string("edited"));
+		json_object_set_new(response, "id", json_integer(mp->id));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("edited"));
+			json_object_set_new(info, "id", json_integer(mp->id));
+			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+		}
+		janus_mutex_unlock(&mp->mutex);
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Done */
+		JANUS_LOG(LOG_VERB, "Streaming mountpoint edited\n");
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
@@ -2222,7 +2452,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			/* The category to remove is the mountpoint name */
 			janus_config_remove_category(config, mp->name);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the mountpoint is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Remove mountpoint from the hashtable: this will get it destroyed */
