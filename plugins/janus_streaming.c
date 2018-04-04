@@ -2257,33 +2257,33 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(source->rtsp)
 						rtsp = TRUE;
 #endif
-				if(rtsp){
+				if(rtsp) {
 #ifdef HAVE_LIBCURL
-				janus_config_add_item(config, mp->name, "type", "rtsp");
-				if(source->rtsp_url)
-					janus_config_add_item(config, mp->name, "url", source->rtsp_url);
-				if(source->rtsp_username)
-					janus_config_add_item(config, mp->name, "rtsp_user", source->rtsp_username);
-				if(source->rtsp_password)
-					janus_config_add_item(config, mp->name, "rtsp_pwd", source->rtsp_password);
+					janus_config_add_item(config, mp->name, "type", "rtsp");
+					if(source->rtsp_url)
+						janus_config_add_item(config, mp->name, "url", source->rtsp_url);
+					if(source->rtsp_username)
+						janus_config_add_item(config, mp->name, "rtsp_user", source->rtsp_username);
+					if(source->rtsp_password)
+						janus_config_add_item(config, mp->name, "rtsp_pwd", source->rtsp_password);
 #endif
-				if(mp->codecs.audio_pt >= 0) {
-					janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
-					if(mp->codecs.audio_rtpmap)
-						janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
-					if(mp->codecs.audio_fmtp)
-						janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
-				}
-				if(mp->codecs.video_pt >= 0) {
-					janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
-					if(mp->codecs.video_rtpmap)
-						janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
-					if(mp->codecs.video_fmtp)
-						janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
-				}
-				json_t *iface = json_object_get(root, "rtspiface");
-				if(iface)
-					janus_config_add_item(config, mp->name, "rtspiface", json_string_value(iface));
+					if(mp->codecs.audio_pt >= 0) {
+						janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
+						if(mp->codecs.audio_rtpmap)
+							janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
+						if(mp->codecs.audio_fmtp)
+							janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
+					}
+					if(mp->codecs.video_pt >= 0) {
+						janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
+						if(mp->codecs.video_rtpmap)
+							janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
+						if(mp->codecs.video_fmtp)
+							janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
+					}
+					json_t *iface = json_object_get(root, "rtspiface");
+					if(iface)
+						janus_config_add_item(config, mp->name, "rtspiface", json_string_value(iface));
 				} else {
 					janus_config_add_item(config, mp->name, "type", "rtp");
 					janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt >= 0 ? "yes" : "no");
