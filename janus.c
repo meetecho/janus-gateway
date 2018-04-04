@@ -2896,13 +2896,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
 		}
-	} else {
-		/* Check if transport wide CC is supported */
-		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-		ice_handle->stream->do_transport_wide_cc = TRUE;
-		ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
-	if(!updating) {
+	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
 		while(ice_handle->cdone < 1) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
@@ -2927,13 +2922,26 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
+
 	/* Check if this is a renegotiation and we need an ICE restart */
 	if(offer && restart)
 		janus_ice_restart(ice_handle);
 	/* Add our details */
+	janus_mutex_lock(&ice_handle->mutex);
 	janus_ice_stream *stream = ice_handle->stream;
+	if (stream == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
+		janus_mutex_unlock(&ice_handle->mutex);
+		return NULL;
+	}
+	if (!offer) {
+		/* Check if transport wide CC is supported */
+		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+		stream->do_transport_wide_cc = TRUE;
+		stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+	}
 	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
-			stream && stream->rtx_payload_types == NULL) {
+			stream->rtx_payload_types == NULL) {
 		/* Make sure we have a list of rtx payload types to generate, if needed */
 		janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
 		if(m && m->ptypes) {
@@ -2970,6 +2978,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
 		janus_sdp_free(parsed_sdp);
+		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
 	}
 	janus_sdp_free(parsed_sdp);
@@ -2980,7 +2989,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		} else {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
-			janus_mutex_lock(&ice_handle->mutex);
 			/* We got our answer */
 			janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			/* Any pending trickles? */
@@ -3040,7 +3048,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					janus_ice_setup_remote_candidates(ice_handle, ice_handle->stream_id, 1);
 				}
 			}
-			janus_mutex_unlock(&ice_handle->mutex);
 		}
 	}
 #ifdef HAVE_SCTP
@@ -3064,6 +3071,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
 	char *tmp = ice_handle->local_sdp;
 	ice_handle->local_sdp = sdp_merged;
+	janus_mutex_unlock(&ice_handle->mutex);
 	g_free(tmp);
 	return jsep;
 }
@@ -3455,6 +3463,9 @@ gint main(int argc, char *argv[])
 	if(args_info.cert_key_given) {
 		janus_config_add_item(config, "certificates", "cert_key", args_info.cert_key_arg);
 	}
+	if(args_info.cert_pwd_given) {
+		janus_config_add_item(config, "certificates", "cert_pwd", args_info.cert_pwd_arg);
+	}
 	if(args_info.stun_server_given) {
 		/* Split in server and port (if port missing, use 3478 as default) */
 		char *stunport = strrchr(args_info.stun_server_arg, ':');
@@ -3814,20 +3825,26 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Setup OpenSSL stuff */
-	const char* server_pem;
+	const char *server_pem;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
 		server_pem = NULL;
 	} else {
 		server_pem = item->value;
 	}
-
-	const char* server_key;
+	const char *server_key;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
 		server_key = NULL;
 	} else {
 		server_key = item->value;
+	}
+	const char *password;
+	item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+	if(!item || !item->value) {
+		password = NULL;
+	} else {
+		password = item->value;
 	}
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 
@@ -3835,7 +3852,7 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	if(janus_dtls_srtp_init(server_pem, server_key) < 0) {
+	if(janus_dtls_srtp_init(server_pem, server_key, password) < 0) {
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */

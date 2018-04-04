@@ -511,14 +511,16 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 							handle->handle_id, vindex, stream->video_ssrc_peer[vindex], stream->video_ssrc_peer_new[vindex]);
 						/* FIXME Reset the RTCP context */
 						janus_ice_component *component = stream->component;
-						janus_mutex_lock(&component->mutex);
-						if(stream->video_rtcp_ctx[vindex]) {
-							memset(stream->video_rtcp_ctx[vindex], 0, sizeof(*stream->video_rtcp_ctx[vindex]));
-							stream->video_rtcp_ctx[vindex]->tb = 90000;
+						if(component != NULL) {
+							janus_mutex_lock(&component->mutex);
+							if(stream->video_rtcp_ctx[vindex]) {
+								memset(stream->video_rtcp_ctx[vindex], 0, sizeof(*stream->video_rtcp_ctx[vindex]));
+								stream->video_rtcp_ctx[vindex]->tb = 90000;
+							}
+							if(component->last_seqs_video[vindex])
+								janus_seq_list_free(&component->last_seqs_video[vindex]);
+							janus_mutex_unlock(&component->mutex);
 						}
-						if(component->last_seqs_video[vindex])
-							janus_seq_list_free(&component->last_seqs_video[vindex]);
-						janus_mutex_unlock(&component->mutex);
 					}
 					stream->video_ssrc_peer[vindex] = stream->video_ssrc_peer_new[vindex];
 					stream->video_ssrc_peer_new[vindex] = 0;
@@ -1025,6 +1027,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		return NULL;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_ice_stream *stream = handle->stream;
+	if(stream == NULL)
+		return NULL;
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"UDP/TLS/RTP/SAVPF";
 	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
 	/* Origin o= */

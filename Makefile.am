@@ -417,6 +417,7 @@ plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.voicemail.cfg.sample
 EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample.in
+CLEANFILES += conf/janus.plugin.voicemail.cfg.sample
 endif
 
 if ENABLE_PLUGIN_TEXTROOM

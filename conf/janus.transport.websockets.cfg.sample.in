@@ -32,7 +32,8 @@ admin_wss = no					; Whether to enable the Admin API secure WebSockets
 ;admin_wss_ip = 192.168.0.1		; Whether we should bind this server to a specific IP address only
 ;admin_ws_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
-; Certificate and key to use for any secure WebSocket server, if needed.
+; Certificate and key to use for any secure WebSocket server, if enabled (and passphrase if needed).
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
+;cert_pwd = secretpassphrase

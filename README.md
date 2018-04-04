@@ -41,7 +41,7 @@ A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
-* [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
+* [libogg](http://xiph.org/ogg/) (needed for the voicemail plugin and/or post-processor)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
 interested in RTSP support in the Streaming plugin or in the sample
 Event Handler plugin)
@@ -327,6 +327,7 @@ or on the command line:
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
 	-c, --cert-pem=filename       DTLS certificate
 	-k, --cert-key=filename       DTLS certificate key
+	-K, --cert-pwd=text           DTLS certificate key passphrase (if needed)
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
 								  gateway behind NAT, default=none)
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
