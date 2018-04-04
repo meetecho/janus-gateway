@@ -66,9 +66,9 @@ const char *janus_rabbitmq_get_author(void);
 const char *janus_rabbitmq_get_package(void);
 gboolean janus_rabbitmq_is_janus_api_enabled(void);
 gboolean janus_rabbitmq_is_admin_api_enabled(void);
-int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
-void janus_rabbitmq_session_created(void *transport, guint64 session_id);
-void janus_rabbitmq_session_over(void *transport, guint64 session_id, gboolean timeout);
+int janus_rabbitmq_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
+void janus_rabbitmq_session_created(janus_transport_session *transport, guint64 session_id);
+void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
 
 
 /* Transport setup */
@@ -147,6 +147,7 @@ void *janus_rmq_out_thread(void *data);
 
 /* We only handle a single client per time, as the queues are fixed */
 static janus_rabbitmq_client *rmq_client = NULL;
+static janus_transport_session *rmq_session = NULL;
 
 /* Global properties */
 static char *rmqhost = NULL, *vhost = NULL, *username = NULL, *password = NULL,
@@ -441,11 +442,15 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 		rmq_client->messages = g_async_queue_new();
 		rmq_client->destroy = 0;
+		/* Prepare the transport session (again, just one) */
+		rmq_session = janus_transport_session_create(rmq_client, NULL);
+		/* Start the threads */
 		GError *error = NULL;
 		rmq_client->in_thread = g_thread_try_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
 			return -1;
@@ -454,6 +459,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(error != NULL) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
 			return -1;
@@ -465,7 +471,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("connected"));
-			gateway->notify_event(&janus_rabbitmq_transport, rmq_client, info);
+			gateway->notify_event(&janus_rabbitmq_transport, rmq_session, info);
 		}
 	}
 	janus_config_destroy(config);
@@ -515,6 +521,7 @@ void janus_rabbitmq_destroy(void) {
 		}
 	}
 	g_free(rmq_client);
+	janus_transport_session_destroy(rmq_session);
 
 	g_free(rmqhost);
 	g_free(vhost);
@@ -571,12 +578,12 @@ gboolean janus_rabbitmq_is_admin_api_enabled(void) {
 	return rmq_admin_api_enabled;
 }
 
-int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
+int janus_rabbitmq_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
 	if(rmq_client == NULL)
 		return -1;
 	if(message == NULL)
 		return -1;
-	if(transport == NULL) {
+	if(transport == NULL || transport->transport_p == NULL || g_atomic_int_get(&transport->destroyed)) {
 		json_decref(message);
 		return -1;
 	}
@@ -590,11 +597,11 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 	return 0;
 }
 
-void janus_rabbitmq_session_created(void *transport, guint64 session_id) {
+void janus_rabbitmq_session_created(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care */
 }
 
-void janus_rabbitmq_session_over(void *transport, guint64 session_id, gboolean timeout) {
+void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
 	/* We don't care, not even if it's a timeout (should we?), our client is always up */
 }
 
@@ -687,7 +694,7 @@ void *janus_rmq_in_thread(void *data) {
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
-		gateway->incoming_request(&janus_rabbitmq_transport, rmq_client, correlation, admin, root, &error);
+		gateway->incoming_request(&janus_rabbitmq_transport, rmq_session, correlation, admin, root, &error);
 	}
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
 	return NULL;

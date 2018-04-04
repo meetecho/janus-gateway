@@ -56,10 +56,8 @@ static char *trim(char *s) {
 static void janus_config_free_item(gpointer data) {
 	janus_config_item *i = (janus_config_item *)data;
 	if(i) {
-		if(i->name)
-			g_free((gpointer)i->name);
-		if(i->value)
-			g_free((gpointer)i->value);
+		g_free((gpointer)i->name);
+		g_free((gpointer)i->value);
 		g_free(i);
 	}
 }
@@ -67,8 +65,7 @@ static void janus_config_free_item(gpointer data) {
 static void janus_config_free_category(gpointer data) {
 	janus_config_category *c = (janus_config_category *)data;
 	if(c) {
-		if(c->name)
-			g_free((gpointer)c->name);
+		g_free((gpointer)c->name);
 		if(c->items)
 			g_list_free_full(c->items, janus_config_free_item);
 		g_free(c);
@@ -297,8 +294,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	} else {
 		/* Update it */
 		char *item_value = g_strdup(value);
-		if(item->value)
-			g_free((gpointer)item->value);
+		g_free((gpointer)item->value);
 		item->value = item_value;
 	}
 	return item;
@@ -441,8 +437,7 @@ void janus_config_destroy(janus_config *config) {
 		g_list_free_full(config->categories, janus_config_free_category);
 		config->categories = NULL;
 	}
-	if(config->name)
-		g_free((gpointer)config->name);
+	g_free((gpointer)config->name);
 	g_free((gpointer)config);
 	config = NULL;
 }

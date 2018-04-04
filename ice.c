@@ -15,6 +15,7 @@
  */
 
 #include <ifaddrs.h>
+#include <poll.h>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -27,7 +28,6 @@
 #include "debug.h"
 #include "ice.h"
 #include "turnrest.h"
-#include "dtls.h"
 #include "sdp.h"
 #include "rtpsrtp.h"
 #include "rtcp.h"
@@ -403,80 +403,6 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	return (result != NULL);
 }
 
-/* Watchdog for removing old handles */
-static GHashTable *old_handles = NULL;
-static GMainContext *handles_watchdog_context = NULL;
-GMainLoop *handles_watchdog_loop = NULL;
-GThread *handles_watchdog = NULL;
-static janus_mutex old_handles_mutex;
-
-static gboolean janus_ice_handles_cleanup(gpointer user_data) {
-	janus_ice_handle *handle = (janus_ice_handle *) user_data;
-
-	JANUS_LOG(LOG_INFO, "Cleaning up handle %"SCNu64"...\n", handle->handle_id);
-	janus_ice_free(handle);
-
-	return G_SOURCE_REMOVE;
-}
-
-static gboolean janus_ice_handles_check(gpointer user_data) {
-	GMainContext *watchdog_context = (GMainContext *) user_data;
-	janus_mutex_lock(&old_handles_mutex);
-	if(old_handles && g_hash_table_size(old_handles) > 0) {
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, old_handles);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_ice_handle *handle = (janus_ice_handle *) value;
-			if (!handle) {
-				continue;
-			}
-			/* Be sure that iceloop is not running, before freeing */
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because iceloop is still running...\n", handle->handle_id);
-				g_main_loop_quit(handle->iceloop);
-				continue;
-			}
-			/* Be sure that icethread has finished, before freeing*/
-			if(handle->icethread != NULL) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because icethread is still running...\n", handle->handle_id);
-				continue;
-			}
-			/* Be sure that ice send thread has finished, before freeing*/
-			if (g_atomic_int_get(&handle->send_thread_created) && handle->send_thread != NULL) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because icesendthread is still running...\n", handle->handle_id);
-				continue;
-			}
-			/* Schedule the ICE handle for deletion */
-			g_hash_table_iter_remove(&iter);
-			GSource *timeout_source = g_timeout_source_new_seconds(3);
-			g_source_set_callback(timeout_source, janus_ice_handles_cleanup, handle, NULL);
-			g_source_attach(timeout_source, watchdog_context);
-			g_source_unref(timeout_source);
-		}
-	}
-	janus_mutex_unlock(&old_handles_mutex);
-
-	return G_SOURCE_CONTINUE;
-}
-
-static gpointer janus_ice_handles_watchdog(gpointer user_data) {
-	GMainLoop *loop = (GMainLoop *) user_data;
-	GMainContext *watchdog_context = g_main_loop_get_context(loop);
-	GSource *timeout_source;
-
-	timeout_source = g_timeout_source_new_seconds(1);
-	g_source_set_callback(timeout_source, janus_ice_handles_check, watchdog_context, NULL);
-	g_source_attach(timeout_source, watchdog_context);
-	g_source_unref(timeout_source);
-
-	JANUS_LOG(LOG_INFO, "ICE handles watchdog started\n");
-
-	g_main_loop_run(loop);
-
-	return NULL;
-}
-
 
 static void janus_ice_notify_trickle(janus_ice_handle *handle, char *buffer) {
 	if(handle == NULL)
@@ -542,7 +468,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying WebRTC hangup\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying WebRTC hangup; %p\n", handle->handle_id, handle);
 	janus_session *session = (janus_session *)handle->session;
 	if(session == NULL)
 		return;
@@ -553,7 +479,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	if(reason != NULL)
 		json_object_set_new(event, "reason", json_string(reason));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled()) {
@@ -565,11 +491,11 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 
 
 /* Trickle helpers */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate) {
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
 	janus_ice_trickle *trickle = g_malloc(sizeof(janus_ice_trickle));
-	trickle->handle = handle;
+	trickle->handle = NULL;
 	trickle->received = janus_get_monotonic_time();
 	trickle->transaction = g_strdup(transaction);
 	trickle->candidate = json_deep_copy(candidate);
@@ -644,9 +570,7 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 	if(trickle == NULL)
 		return;
-	trickle->handle = NULL;
-	if(trickle->transaction)
-		g_free(trickle->transaction);
+	g_free(trickle->transaction);
 	trickle->transaction = NULL;
 	if(trickle->candidate)
 		json_decref(trickle->candidate);
@@ -700,18 +624,6 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 	plugin_sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&plugin_sessions_mutex);
 
-	/* Start the handles watchdog */
-	janus_mutex_init(&old_handles_mutex);
-	old_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	handles_watchdog_context = g_main_context_new();
-	handles_watchdog_loop = g_main_loop_new(handles_watchdog_context, FALSE);
-	GError *error = NULL;
-	handles_watchdog = g_thread_try_new("handles watchdog", &janus_ice_handles_watchdog, handles_watchdog_loop, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start handles watchdog...\n", error->code, error->message ? error->message : "??");
-		exit(1);
-	}
-
 #ifdef HAVE_LIBCURL
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
 	janus_turnrest_init();
@@ -720,17 +632,6 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 }
 
 void janus_ice_deinit(void) {
-	JANUS_LOG(LOG_INFO, "Ending ICE handles watchdog mainloop...\n");
-	g_main_loop_quit(handles_watchdog_loop);
-	g_thread_join(handles_watchdog);
-	handles_watchdog = NULL;
-	g_main_loop_unref(handles_watchdog_loop);
-	g_main_context_unref(handles_watchdog_context);
-	janus_mutex_lock(&old_handles_mutex);
-	if(old_handles != NULL)
-		g_hash_table_destroy(old_handles);
-	old_handles = NULL;
-	janus_mutex_unlock(&old_handles_mutex);
 #ifdef HAVE_LIBCURL
 	janus_turnrest_deinit();
 #endif
@@ -911,6 +812,7 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 		return -1;
 	}
 	freeaddrinfo(res);
+	g_free(janus_turn_server);
 	janus_turn_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	if(janus_turn_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
@@ -918,13 +820,11 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	}
 	janus_turn_port = turn_port;
 	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_turn_server, janus_turn_port);
-	if(janus_turn_user != NULL)
-		g_free(janus_turn_user);
+	g_free(janus_turn_user);
 	janus_turn_user = NULL;
 	if(turn_user)
 		janus_turn_user = g_strdup(turn_user);
-	if(janus_turn_pwd != NULL)
-		g_free(janus_turn_pwd);
+	g_free(janus_turn_pwd);
 	janus_turn_pwd = NULL;
 	if(turn_pwd)
 		janus_turn_pwd = g_strdup(turn_pwd);
@@ -966,21 +866,31 @@ const gchar *janus_get_ice_state_name(gint state) {
 
 
 /* ICE Handles */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id) {
-	if(gateway_session == NULL)
+void janus_ice_free(const janus_refcount *handle_ref);
+void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
+void janus_ice_stream_free(const janus_refcount *handle_ref);
+void janus_ice_component_free(const janus_refcount *handle_ref);
+
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id) {
+	if(core_session == NULL)
 		return NULL;
-	janus_session *session = (janus_session *)gateway_session;
+	janus_session *session = (janus_session *)core_session;
+	janus_ice_handle *handle = NULL;
 	guint64 handle_id = 0;
 	while(handle_id == 0) {
 		handle_id = janus_random_uint64();
-		if(janus_ice_handle_find(gateway_session, handle_id) != NULL) {
+		handle = janus_session_handles_find(session, handle_id);
+		if(handle != NULL) {
 			/* Handle ID already taken, try another one */
+			janus_refcount_decrease(&handle->ref);	/* janus_session_handles_find increases it */
 			handle_id = 0;
 		}
 	}
-	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
-	janus_ice_handle *handle = g_malloc0(sizeof(janus_ice_handle));
-	handle->session = gateway_session;
+	handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
+	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"; %p %p\n", session->session_id, handle_id, core_session, handle);
+	janus_refcount_init(&handle->ref, janus_ice_free);
+	janus_refcount_increase(&session->ref);
+	handle->session = core_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
 	handle->created = janus_get_monotonic_time();
@@ -989,32 +899,16 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 	handle->app_handle = NULL;
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
-
-	/* Set up other stuff. */
-	if(session->ice_handles == NULL)
-		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
-
+	janus_session_handles_insert(session, handle);
 	return handle;
 }
 
-janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id) {
-	if(gateway_session == NULL)
-		return NULL;
-	janus_session *session = (janus_session *)gateway_session;
-	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
-	return handle;
-}
-
-gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin) {
-	if(gateway_session == NULL)
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin) {
+	if(core_session == NULL)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
+	janus_session *session = (janus_session *)core_session;
 	if(plugin == NULL)
 		return JANUS_ERROR_PLUGIN_NOT_FOUND;
-	janus_session *session = (janus_session *)gateway_session;
-	if(session->destroy)
-		return JANUS_ERROR_SESSION_NOT_FOUND;
-	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	if(handle->app != NULL) {
@@ -1025,12 +919,18 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	janus_plugin_session *session_handle = g_malloc(sizeof(janus_plugin_session));
 	session_handle->gateway_handle = handle;
 	session_handle->plugin_handle = NULL;
-	session_handle->stopped = 0;
+	g_atomic_int_set(&session_handle->stopped, 0);
 	plugin->create_session(session_handle, &error);
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
+		g_free(session_handle);
+		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
+	janus_refcount_init(&session_handle->ref, janus_ice_plugin_session_free);
+	/* Handle and plugin session reference each other */
+	janus_refcount_increase(&session_handle->ref);
+	//~ janus_refcount_increase(&handle->ref);
 	handle->app = plugin;
 	handle->app_handle = session_handle;
 	/* Add this plugin session to active sessions map */
@@ -1040,17 +940,19 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
-			session->session_id, handle_id, "attached", plugin->get_package(), handle->opaque_id);
+			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id);
 	return 0;
 }
 
-gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
-	if(gateway_session == NULL)
+gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
+	/* session->mutex has to be locked when calling this function */
+	if(core_session == NULL)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
-	janus_session *session = (janus_session *)gateway_session;
-	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
+	janus_session *session = (janus_session *)core_session;
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
+		return 0;
 	/* Remove the session from active sessions map */
 	janus_mutex_lock(&plugin_sessions_mutex);
 	gboolean found = g_hash_table_remove(plugin_sessions, handle->app_handle);
@@ -1058,12 +960,11 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		janus_mutex_unlock(&plugin_sessions_mutex);
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	}
-	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
-	handle->app_handle->stopped = 1;
 	janus_mutex_unlock(&plugin_sessions_mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
+		janus_refcount_decrease(&handle->ref);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 		if(handle->iceloop != NULL) {
@@ -1076,78 +977,66 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		}
 		return 0;
 	}
-	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
+	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
 	/* Actually detach handle... */
 	int error = 0;
-	/* Notify the plugin that the session's over */
-	plugin_t->destroy_session(handle->app_handle, &error);
+	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
+		handle->app_handle->gateway_handle = NULL;
+		/* Notify the plugin that the session's over */
+		plugin_t->destroy_session(handle->app_handle, &error);
+		/* We only unref when actually freeing the ICE handle */
+	}
 	/* Get rid of the handle now */
 	if(g_atomic_int_compare_and_exchange(&handle->dump_packets, 1, 0)) {
 		janus_text2pcap_close(handle->text2pcap);
 		g_clear_pointer(&handle->text2pcap, janus_text2pcap_free);
 	}
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop != NULL) {
-		if(handle->stream_id > 0) {
-			nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-		}
-		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-			g_main_loop_quit(handle->iceloop);
-		}
-	}
+	janus_ice_webrtc_hangup(handle, "Detach");
 
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("detached"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
-	json_object_set_new(event, "sender", json_integer(handle_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 	/* We only actually destroy the handle later */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
-	janus_mutex_lock(&old_handles_mutex);
-	g_hash_table_insert(old_handles, janus_uint64_dup(handle->handle_id), handle);
-	janus_mutex_unlock(&old_handles_mutex);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle->handle_id, error);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
-			session->session_id, handle_id, "detached", plugin_t->get_package(), handle->opaque_id);
+			session->session_id, handle->handle_id, "detached", plugin_t->get_package(), handle->opaque_id);
+	/* Unref the handle: we only unref the session too when actually freeing the handle, so that it is freed before that */
+	janus_refcount_decrease(&handle->ref);
 	return error;
 }
 
-void janus_ice_free(janus_ice_handle *handle) {
-	if(handle == NULL)
-		return;
+void janus_ice_free(const janus_refcount *handle_ref) {
+	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
+	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
-	janus_ice_queued_packet *pkt = NULL;
-	while(g_async_queue_length(handle->queued_packets) > 0) {
-		pkt = g_async_queue_try_pop(handle->queued_packets);
-		if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
-			g_free(pkt->data);
-			g_free(pkt);
-		}
-	}
-	g_async_queue_unref(handle->queued_packets);
-	handle->queued_packets = NULL;
-	handle->session = NULL;
-	handle->app = NULL;
-	if(handle->app_handle != NULL) {
-		janus_mutex_lock(&plugin_sessions_mutex);
-		handle->app_handle->stopped = 1;
-		handle->app_handle->gateway_handle = NULL;
-		handle->app_handle->plugin_handle = NULL;
-		g_free(handle->app_handle);
-		handle->app_handle = NULL;
-		janus_mutex_unlock(&plugin_sessions_mutex);
-	}
+	if(handle->queued_packets != NULL)
+		g_async_queue_unref(handle->queued_packets);
+	if(handle->app_handle != NULL)
+		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed\n", handle->handle_id);
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed; %p %p\n", handle->handle_id, handle, handle->session);
+	/* Finally, unref the session and free the handle */
+	if(handle->session != NULL) {
+		janus_session *session = (janus_session *)handle->session;
+		janus_refcount_decrease(&session->ref);
+	}
 	g_free(handle->opaque_id);
 	g_free(handle);
-	handle = NULL;
+}
+
+void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
+	janus_plugin_session *app_handle = janus_refcount_containerof(app_handle_ref, janus_plugin_session, ref);
+	/* This app handle can be destroyed, free all the resources */
+	g_free(app_handle);
 }
 
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
@@ -1157,14 +1046,16 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin != NULL) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
-			handle->handle_id, reason, plugin->get_name());
-		if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
-			plugin->hangup_media(handle->app_handle);
-		/* User will be notified only after the actual hangup */
-		handle->hangup_reason = reason;
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin != NULL) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
+				handle->handle_id, reason, plugin->get_name());
+			if(plugin && plugin->hangup_media && janus_plugin_session_is_alive(handle->app_handle))
+				plugin->hangup_media(handle->app_handle);
+			/* User will be notified only after the actual hangup */
+			handle->hangup_reason = reason;
+		}
 	}
 	if(handle->queued_packets != NULL && handle->send_thread_created)
 #if GLIB_CHECK_VERSION(2, 46, 0)
@@ -1178,17 +1069,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			if(handle->stream_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			gint64 waited = 0;
-			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
-				g_usleep (100000);
-				waited += 100000;
-				if(waited >= G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
-					break;
-				}
-			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+			if(g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
@@ -1213,7 +1094,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		handle->icectx = NULL;
 	}
 	if(handle->stream != NULL) {
-		janus_ice_stream_free(handle->stream);
+		janus_ice_stream_destroy(handle->stream);
 		handle->stream = NULL;
 	}
 	if(handle->agent != NULL) {
@@ -1239,18 +1120,14 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	g_free(handle->remote_sdp);
 	handle->remote_sdp = NULL;
 	handle->stream_mid = NULL;
-	if(handle->audio_mid != NULL) {
-		g_free(handle->audio_mid);
-		handle->audio_mid = NULL;
-	}
-	if(handle->video_mid != NULL) {
-		g_free(handle->video_mid);
-		handle->video_mid = NULL;
-	}
-	if(handle->data_mid != NULL) {
-		g_free(handle->data_mid);
-		handle->data_mid = NULL;
-	}
+	g_free(handle->audio_mid);
+	handle->audio_mid = NULL;
+	g_free(handle->video_mid);
+	handle->video_mid = NULL;
+	g_free(handle->data_mid);
+	handle->data_mid = NULL;
+	handle->icethread = NULL;
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 	if (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) && handle->hangup_reason) {
@@ -1258,33 +1135,36 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	}
 	handle->hangup_reason = NULL;
 	janus_mutex_unlock(&handle->mutex);
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed; %p %p\n", handle->handle_id, handle, handle->session);
 }
 
-void janus_ice_stream_free(janus_ice_stream *stream) {
+void janus_ice_stream_destroy(janus_ice_stream *stream) {
 	if(stream == NULL)
 		return;
 	if(stream->component != NULL) {
-		janus_ice_component_free(stream->component);
+		janus_ice_component_destroy(stream->component);
 		stream->component = NULL;
 	}
+	janus_ice_handle *handle = stream->handle;
+	if(handle != NULL) {
+		janus_refcount_decrease(&handle->ref);
+		stream->handle = NULL;
+	}
+	janus_refcount_decrease(&stream->ref);
+}
+
+void janus_ice_stream_free(const janus_refcount *stream_ref) {
+	janus_ice_stream *stream = janus_refcount_containerof(stream_ref, janus_ice_stream, ref);
+	/* This stream can be destroyed, free all the resources */
 	stream->handle = NULL;
-	if(stream->remote_hashing != NULL) {
-		g_free(stream->remote_hashing);
-		stream->remote_hashing = NULL;
-	}
-	if(stream->remote_fingerprint != NULL) {
-		g_free(stream->remote_fingerprint);
-		stream->remote_fingerprint = NULL;
-	}
-	if(stream->ruser != NULL) {
-		g_free(stream->ruser);
-		stream->ruser = NULL;
-	}
-	if(stream->rpass != NULL) {
-		g_free(stream->rpass);
-		stream->rpass = NULL;
-	}
+	g_free(stream->remote_hashing);
+	stream->remote_hashing = NULL;
+	g_free(stream->remote_fingerprint);
+	stream->remote_fingerprint = NULL;
+	g_free(stream->ruser);
+	stream->ruser = NULL;
+	g_free(stream->rpass);
+	stream->rpass = NULL;
 	g_free(stream->rid[0]);
 	stream->rid[0] = NULL;
 	g_free(stream->rid[1]);
@@ -1335,17 +1215,19 @@ void janus_ice_stream_free(janus_ice_stream *stream) {
 	stream = NULL;
 }
 
-void janus_ice_component_free(janus_ice_component *component) {
+void janus_ice_component_destroy(janus_ice_component *component) {
 	if(component == NULL)
 		return;
 	janus_ice_stream *stream = component->stream;
-	if(stream == NULL)
-		return;
-	janus_ice_handle *handle = stream->handle;
-	if(handle == NULL)
-		return;
-	//~ janus_mutex_lock(&handle->mutex);
-	component->stream = NULL;
+	if(stream != NULL) {
+		janus_refcount_decrease(&stream->ref);
+		component->stream = NULL;
+	}
+	janus_refcount_decrease(&component->ref);
+}
+
+void janus_ice_component_free(const janus_refcount *component_ref) {
+	janus_ice_component *component = janus_refcount_containerof(component_ref, janus_ice_component, ref);
 	if(component->icestate_source != NULL) {
 		g_source_destroy(component->icestate_source);
 		g_source_unref(component->icestate_source);
@@ -1358,6 +1240,7 @@ void janus_ice_component_free(janus_ice_component *component) {
 	}
 	if(component->dtls != NULL) {
 		janus_dtls_srtp_destroy(component->dtls);
+		janus_refcount_decrease(&component->dtls->ref);
 		component->dtls = NULL;
 	}
 	if(component->audio_retransmit_buffer != NULL) {
@@ -1407,10 +1290,7 @@ void janus_ice_component_free(janus_ice_component *component) {
 		GSList *i = NULL, *candidates = component->local_candidates;
 		for (i = candidates; i; i = i->next) {
 			gchar *c = (gchar *) i->data;
-			if(c != NULL) {
-				g_free(c);
-				c = NULL;
-			}
+			g_free(c);
 		}
 		g_slist_free(candidates);
 		candidates = NULL;
@@ -1420,17 +1300,13 @@ void janus_ice_component_free(janus_ice_component *component) {
 		GSList *i = NULL, *candidates = component->remote_candidates;
 		for (i = candidates; i; i = i->next) {
 			gchar *c = (gchar *) i->data;
-			if(c != NULL) {
-				g_free(c);
-				c = NULL;
-			}
+			g_free(c);
 		}
 		g_slist_free(candidates);
 		candidates = NULL;
 	}
 	component->remote_candidates = NULL;
-	if(component->selected_pair != NULL)
-		g_free(component->selected_pair);
+	g_free(component->selected_pair);
 	component->selected_pair = NULL;
 	if(component->last_seqs_audio)
 		janus_seq_list_free(&component->last_seqs_audio);
@@ -1472,7 +1348,9 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 	if((sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC) && (now-last_slowlink_time > 1*G_USEC_PER_SEC)) {
 		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
-		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle))
+		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
+				!g_atomic_int_get(&handle->app_handle->stopped) &&
+				!g_atomic_int_get(&handle->destroyed))
 			plugin->slow_link(handle->app_handle, uplink, video);
 		/* Notify the user/application too */
 		janus_session *session = (janus_session *)handle->session;
@@ -1484,7 +1362,7 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
 			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
 			/* Send the event */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 			janus_session_notify_event(session, event);
 			/* Finally, notify event handlers */
 			if(janus_events_is_enabled()) {
@@ -1617,8 +1495,7 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 	}
 	/* Handle new state */
-	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
-			&& handle->send_thread == NULL) {
+	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)) {
 		/* Make sure we're not trying to start the thread more than once */
 		if(!g_atomic_int_compare_and_exchange(&handle->send_thread_created, 0, 1)) {
 			return;
@@ -1627,9 +1504,11 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "icesend %"SCNu64, handle->handle_id);
+		janus_refcount_increase(&handle->ref);
 		handle->send_thread = g_thread_try_new(tname, &janus_ice_send_thread, handle, &error);
 		if(error != NULL) {
 			/* FIXME We should clear some resources... */
+			janus_refcount_decrease(&handle->ref);
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 			return;
 		}
@@ -2270,7 +2149,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtp)
+				if(plugin && plugin->incoming_rtp &&
+						!g_atomic_int_get(&handle->app_handle->stopped) &&
+						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
 				/* Restore the header for the stats (plugins may have messed with it) */
 				*header = backup;
@@ -2624,7 +2505,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtcp)
+				if(plugin && plugin->incoming_rtcp &&
+						!g_atomic_int_get(&handle->app_handle->stopped) &&
+						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
 			}
 		}
@@ -2645,7 +2528,9 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin && plugin->incoming_data)
+	if(plugin && plugin->incoming_data &&
+			!g_atomic_int_get(&handle->app_handle->stopped) &&
+			!g_atomic_int_get(&handle->destroyed))
 		plugin->incoming_data(handle->app_handle, buffer, length);
 }
 
@@ -2653,29 +2538,35 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 /* Thread to create agent */
 void *janus_ice_thread(void *data) {
 	janus_ice_handle *handle = data;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started; %p\n", handle->handle_id, handle);
 	GMainLoop *loop = handle->iceloop;
 	if(loop == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
+		janus_refcount_decrease(&handle->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		g_main_loop_run (loop);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread quit ICE loop %p\n", handle->handle_id, handle);
 	} else {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping ICE loop because alert has been set\n", handle->handle_id);
 	}
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
-		janus_ice_webrtc_free(handle);
+	if(g_atomic_int_get(&handle->send_thread_created) && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+		while(handle->send_thread != NULL)
+			g_usleep(100000);
 	}
-	g_thread_unref(g_thread_self());
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	janus_ice_webrtc_free(handle);
 	handle->icethread = NULL;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
+	/* This ICE session is over, unref it */
+	janus_refcount_decrease(&handle->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -3137,6 +3028,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
 	janus_ice_stream *stream = g_malloc0(sizeof(janus_ice_stream));
+	janus_refcount_init(&stream->ref, janus_ice_stream_free);
+	janus_refcount_increase(&handle->ref);
 	stream->stream_id = handle->stream_id;
 	stream->handle = handle;
 	stream->audio_payload_type = -1;
@@ -3190,7 +3083,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	handle->stream = stream;
 	janus_ice_component *component = g_malloc0(sizeof(janus_ice_component));
+	janus_refcount_init(&component->ref, janus_ice_component_free);
 	component->stream = stream;
+	janus_refcount_increase(&stream->ref);
 	component->stream_id = stream->stream_id;
 	component->component_id = 1;
 	janus_mutex_init(&component->mutex);
@@ -3213,16 +3108,20 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating DTLS-SRTP stack...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_refcount_decrease(&handle->ref);
 		return -1;
 	}
+	janus_refcount_increase(&component->dtls->ref);
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	janus_refcount_increase(&handle->ref);
 	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
 	if(error != NULL) {
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_refcount_decrease(&handle->ref);
 		return -1;
 	}
 	return 0;
@@ -3276,7 +3175,7 @@ static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstp
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	janus_session *session = (janus_session *)handle->session;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...; %p\n", handle->handle_id, handle);
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 before = janus_get_monotonic_time(),
 		rtcp_last_sr_rr = before, last_event = before,
@@ -4067,9 +3966,16 @@ void *janus_ice_send_thread(void *data) {
 			continue;
 		}
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
-	g_thread_unref(g_thread_self());
+	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+		g_main_loop_quit(handle->iceloop);
+		if (handle->icectx != NULL) {
+			g_main_context_wakeup(handle->icectx);
+		}
+	}
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...; %p\n", handle->handle_id, handle);
 	handle->send_thread = NULL;
+	g_thread_unref(g_thread_self());
+	janus_refcount_decrease(&handle->ref);
 	return NULL;
 }
 
@@ -4205,7 +4111,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled()) {

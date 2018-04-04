@@ -63,10 +63,8 @@ void janus_turnrest_deinit(void) {
 	/* Cleanup the libcurl initialization */
 	curl_global_cleanup();
 	janus_mutex_lock(&api_mutex);
-	if(api_server != NULL)
-		g_free((char *)api_server);
-	if(api_key != NULL)
-		g_free((char *)api_key);
+	g_free((char *)api_server);
+	g_free((char *)api_key);
 	janus_mutex_unlock(&api_mutex);
 }
 
@@ -74,11 +72,9 @@ void janus_turnrest_set_backend(const char *server, const char *key, const char 
 	janus_mutex_lock(&api_mutex);
 	
 	/* Get rid of the old values first */
-	if(api_server != NULL)
-		g_free((char *)api_server);
+	g_free((char *)api_server);
 	api_server = NULL;
-	if(api_key != NULL)
-		g_free((char *)api_key);
+	g_free((char *)api_key);
 	api_key = NULL;
 
 	if(server != NULL) {

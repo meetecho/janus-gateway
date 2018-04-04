@@ -1,7 +1,7 @@
 /*! \file   transport.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief  Modular Janus API transports
+ * \brief  Modular Janus API transports (headers)
  * \details  This header contains the definition of the callbacks both
  * the gateway and all the transports need to implement to interact with
  * each other. The structures to make the communication possible are
@@ -92,9 +92,11 @@ janus_transport *create(void) {
 #include <glib.h>
 #include <jansson.h>
 
+#include "refcount.h"
+
 
 /*! \brief Version of the API, to match the one transport plugins were compiled against */
-#define JANUS_TRANSPORT_API_VERSION	6
+#define JANUS_TRANSPORT_API_VERSION		7
 
 /*! \brief Initialization of all transport plugin properties to NULL
  * 
@@ -132,6 +134,38 @@ static janus_transport janus_http_transport plugin =
 typedef struct janus_transport_callbacks janus_transport_callbacks;
 /*! \brief The transport plugin session and callbacks interface */
 typedef struct janus_transport janus_transport;
+/*! \brief Transport-Gateway session mapping */
+typedef struct janus_transport_session janus_transport_session;
+
+
+/*! \brief Transport-Gateway session mapping */
+struct janus_transport_session {
+	/*! \brief Opaque pointer to the transport session */
+	void *transport_p;
+	/*! \brief Pointer to the transport-provided function, if needed, that will be used to free the opaque transport session instance */
+	void (*p_free)(void *);
+	/*! \brief Whether this mapping has been destroyed definitely or not: if so,
+	 * the transport shouldn't make use of it anymore */
+	volatile gint destroyed;
+	/*! \brief Mutex to protect changes to transport_p */
+	janus_mutex mutex;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
+};
+/*! \brief Helper to create a janus_transport_session instance
+ * @note This helper automatically initializes the reference counter
+ * @param transport_p Pointer to the transport-side session instance (won't be touched by the core)
+ * @param p_free Pointer to the transport-provided function, if needed, that will be used to free the opaque transport-side session instance (won't be touched by the core)
+ * @returns Pointer to a valid janus_transport_session, if successful, NULL otherwise */
+janus_transport_session *janus_transport_session_create(void *transport_p, void (*p_free)(void *));
+/*! \brief Helper to mark a janus_transport_session instance as destroyed
+ * @note Only use this helper when that specific transport session must not be
+ * used by the core anymore: e.g., a WebSocket connection was closed, an
+ * HTTP connection associated with a pending request was lost, etc. Remember
+ * to decrease the counter in case you increased it in other methods (this
+ * method does this automatically as far as the create was concerned). 
+ * @param session Pointer to the janus_transport_session instance */
+void janus_transport_session_destroy(janus_transport_session *session);
 
 
 /*! \brief The transport plugin session and callbacks interface */
@@ -170,23 +204,23 @@ struct janus_transport {
 	 * \note It's the transport plugin's responsibility to free the message.
 	 * Besides, a successful return does not necessarily mean the message has been
 	 * actually sent, but only that it has been accepted by the transport plugim
-	 * @param[in] transport Opaque pointer to the transport session instance
+	 * @param[in] transport Pointer to the transport session instance
 	 * @param[in] request_id Will be not-NULL in case this is a response to a previous request
 	 * @param[in] admin Whether this is an admin API or a Janus API message
 	 * @param[in] message The message data as a Jansson json_t object
 	 * @returns 0 on success, a negative integer otherwise */
-	int (* const send_message)(void *transport, void *request_id, gboolean admin, json_t *message);
+	int (* const send_message)(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 	/*! \brief Method to notify the transport plugin that a new session has been created from this transport
 	 * \note A transport plugin may decide to close the connection as a result of such an event
-	 * @param[in] transport Opaque pointer to the transport session instance
+	 * @param[in] transport Pointer to the transport session instance
 	 * @param[in] session_id The session ID that was created (if the transport cares) */
-	void (* const session_created)(void *transport, guint64 session_id);
+	void (* const session_created)(janus_transport_session *transport, guint64 session_id);
 	/*! \brief Method to notify the transport plugin that a session it originated timed out
 	 * \note A transport plugin may decide to close the connection as a result of such an event
-	 * @param[in] transport Opaque pointer to the transport session instance
+	 * @param[in] transport Pointer to the transport session instance
 	 * @param[in] session_id The session ID that was closed (if the transport cares)
 	 * @param[in] timeout Whether the cause for the session closure is a timeout (this may interest transport plugins more) */
-	void (* const session_over)(void *transport, guint64 session_id, gboolean timeout);
+	void (* const session_over)(janus_transport_session *transport, guint64 session_id, gboolean timeout);
 
 };
 
@@ -194,11 +228,11 @@ struct janus_transport {
 struct janus_transport_callbacks {
 	/*! \brief Callback to notify a new incoming request
 	 * @param[in] handle The transport session that should be associated to this client
-	 * @param[in] transport Opaque pointer to the transport session instance that received the event
+	 * @param[in] transport Pointer to the transport session instance that received the event
 	 * @param[in] request_id Opaque pointer to a transport plugin specific value that identifies this request, so that an incoming response coming later can be matched
 	 * @param[in] admin Whether this is an admin API or a Janus API request
 	 * @param[in] message The message data as a Jansson json_t object */
-	void (* const incoming_request)(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
+	void (* const incoming_request)(janus_transport *plugin, janus_transport_session *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
 	/*! \brief Callback to notify an existing transport instance went away
 	 * \note Be careful in calling this method, as the core will assume this
 	 * client is gone for good, and will tear down all sessions it originated.
@@ -207,8 +241,8 @@ struct janus_transport_callbacks {
 	 * and their matching with clients your own way (e.g., HTTP/HTTPS connections
 	 * will come and go).
 	 * @param[in] handle The transport session that went away
-	 * @param[in] transport Opaque pointer to the transport session instance that went away */
-	void (* const transport_gone)(janus_transport *plugin, void *transport);
+	 * @param[in] transport Pointer to the transport session instance that went away */
+	void (* const transport_gone)(janus_transport *plugin, janus_transport_session *transport);
 	/*! \brief Callback to check with the core if an API secret must be provided
 	 * @param[in] apisecret The API secret to validate
 	 * @returns TRUE if an API secret is needed, FALSE otherwise */
