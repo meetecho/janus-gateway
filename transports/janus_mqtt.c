@@ -128,6 +128,12 @@ typedef struct janus_mqtt_context {
 			int qos;
 		} publish;
 	} admin;
+	/* SSL config, if needed */
+	gboolean ssl_enable;
+	char *cacert_file;
+	char *cert_file;
+	char *key_file;
+	gboolean verify_peer;
 } janus_mqtt_context;
 
 /* Transport client methods */
@@ -220,6 +226,44 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
 	}
 
+	/* Check if we need to enable SSL support */
+	janus_config_item *ssl = janus_config_get_item_drilldown(config, "general", "ssl_enable");
+	if(ssl && ssl->value && janus_is_true(ssl->value)) {
+		if(strstr(url, "ssl://") != url)
+			JANUS_LOG(LOG_WARN, "SSL enabled, but MQTT url doesn't start with ssl://...\n");
+
+		ctx->ssl_enable = TRUE;
+
+		janus_config_item *cacertfile = janus_config_get_item_drilldown(config, "general", "cacertfile");
+		if(!cacertfile || !cacertfile->value) {
+			JANUS_LOG(LOG_FATAL, "Missing CA certificate for MQTT integration...\n");
+			goto error;
+		}
+		ctx->cacert_file = g_strdup(cacertfile->value);
+
+		janus_config_item *certfile = janus_config_get_item_drilldown(config, "general", "certfile");
+		ctx->cert_file = (certfile && certfile->value) ? g_strdup(certfile->value) : NULL;
+
+		janus_config_item *keyfile = janus_config_get_item_drilldown(config, "general", "keyfile");
+		ctx->key_file = (keyfile && keyfile->value) ? g_strdup(keyfile->value) : NULL;
+
+		if(ctx->cert_file && !ctx->key_file) {
+			JANUS_LOG(LOG_FATAL, "Certificate is set but key isn't for MQTT integration...\n");
+			goto error;
+		}
+		if(!ctx->cert_file && ctx->key_file) {
+			JANUS_LOG(LOG_FATAL, "Key is set but certificate isn't for MQTT integration...\n");
+			goto error;
+		}
+
+		janus_config_item *verify = janus_config_get_item_drilldown(config, "general", "verify_peer");
+		ctx->verify_peer = (verify && verify->value && janus_is_true(verify->value)) ? TRUE : FALSE;
+	} else {
+		JANUS_LOG(LOG_INFO, "MQTT SSL support disabled\n");
+		if(strstr(url, "ssl://") == url)
+			JANUS_LOG(LOG_WARN, "SSL disabled, but MQTT url starts with ssl:// instead of tcp://...\n");
+	}
+
 	/* Connect configuration */
 	janus_config_item *keep_alive_interval_item = janus_config_get_item_drilldown(config, "general", "keep_alive_interval");
 	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ? atoi(keep_alive_interval_item->value) : 20;
@@ -260,8 +304,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "publish_qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
-	}
-	else {
+	} else {
 		janus_mqtt_api_enabled_ = FALSE;
 		ctx->subscribe.topic = NULL;
 		ctx->publish.topic = NULL;
@@ -297,8 +340,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "admin", "publish_qos");
 			ctx->admin.publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
-	}
-	else {
+	} else {
 		janus_mqtt_admin_api_enabled_ = FALSE;
 		ctx->admin.subscribe.topic = NULL;
 		ctx->admin.publish.topic = NULL;
@@ -468,6 +510,16 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	options.automaticReconnect = TRUE;
 	options.onSuccess = janus_mqtt_client_connect_success;
 	options.onFailure = janus_mqtt_client_connect_failure;
+	/* Is SSL enabled? */
+	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
+	if(ctx->ssl_enable) {
+		ssl_opts.trustStore = ctx->cacert_file;
+		ssl_opts.keyStore = ctx->cert_file;
+		ssl_opts.privateKey = ctx->key_file;
+		ssl_opts.enableServerCertAuth = ctx->verify_peer;
+		options.ssl = &ssl_opts;
+	}
+	/* Connect now */
 	options.context = ctx;
 	return MQTTAsync_connect(ctx->client, &options);
 }
@@ -500,7 +552,7 @@ void janus_mqtt_client_connect_success(void *context, MQTTAsync_successData *res
 
 void janus_mqtt_client_connect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed connecting to the broker, return code: %d. Reconnecting...\n", rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed connecting to the broker, return code: %d. Reconnecting...\n", rc);
 	/* Automatic reconnect */
 
 	/* Notify handlers about this transport failure */
@@ -533,7 +585,7 @@ void janus_mqtt_client_reconnect_success(void *context, MQTTAsync_successData *r
 
 void janus_mqtt_client_reconnect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed reconnecting from MQTT broker, return code: %d\n", rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed reconnecting from MQTT broker, return code: %d\n", rc);
 }
 
 int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
@@ -574,8 +626,7 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 		options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 		options.onFailure = janus_mqtt_client_admin_subscribe_failure;
 		return MQTTAsync_subscribe(ctx->client, ctx->admin.subscribe.topic, ctx->admin.subscribe.qos, &options);
-	}
-	else {
+	} else {
 		options.onSuccess = janus_mqtt_client_subscribe_success;
 		options.onFailure = janus_mqtt_client_subscribe_failure;
 		return MQTTAsync_subscribe(ctx->client, ctx->subscribe.topic, ctx->subscribe.qos, &options);
@@ -598,7 +649,7 @@ void janus_mqtt_client_subscribe_success(void *context, MQTTAsync_successData *r
 void janus_mqtt_client_subscribe_failure(void *context, MQTTAsync_failureData *response) {
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed subscribing to MQTT topic: %s, return code: %d. Reconnecting...\n", ctx->subscribe.topic, rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed subscribing to MQTT topic: %s, return code: %d. Reconnecting...\n", ctx->subscribe.topic, rc);
 
 	/* Reconnect */
 	{
@@ -617,7 +668,7 @@ void janus_mqtt_client_admin_subscribe_success(void *context, MQTTAsync_successD
 void janus_mqtt_client_admin_subscribe_failure(void *context, MQTTAsync_failureData *response) {
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed subscribing to MQTT topic: %s, return code: %d. Reconnecting...\n", ctx->admin.subscribe.topic, rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed subscribing to MQTT topic: %s, return code: %d. Reconnecting...\n", ctx->admin.subscribe.topic, rc);
 
 	/* Reconnect */
 	{
@@ -641,8 +692,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
 		options.onFailure = janus_mqtt_client_publish_admin_failure;
 		return MQTTAsync_sendMessage(ctx->client, ctx->admin.publish.topic, &msg, &options);
-	}
-	else {
+	} else {
 		options.onSuccess = janus_mqtt_client_publish_janus_success;
 		options.onFailure = janus_mqtt_client_publish_janus_failure;
 		return MQTTAsync_sendMessage(ctx->client, ctx->publish.topic, &msg, &options);
@@ -657,7 +707,7 @@ void janus_mqtt_client_publish_janus_success(void *context, MQTTAsync_successDat
 void janus_mqtt_client_publish_janus_failure(void *context, MQTTAsync_failureData *response) {
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
 }
 
 void janus_mqtt_client_publish_admin_success(void *context, MQTTAsync_successData *response) {
@@ -668,7 +718,7 @@ void janus_mqtt_client_publish_admin_success(void *context, MQTTAsync_successDat
 void janus_mqtt_client_publish_admin_failure(void *context, MQTTAsync_failureData *response) {
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	int rc = response ? response->code : 0;
-	JANUS_LOG(LOG_ERR, "MQTT client has been failed publishing to MQTT topic: %s, return code: %d\n", ctx->admin.publish.topic, rc);
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->admin.publish.topic, rc);
 }
 
 void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
