@@ -61,7 +61,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -3143,7 +3143,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
