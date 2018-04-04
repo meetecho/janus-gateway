@@ -61,6 +61,7 @@
 # rtsp_user = RTSP authorization username (only if type=rtsp)
 # rtsp_pwd = RTSP authorization password (only if type=rtsp)
 # rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
+# rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
 #
 # Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
 # SDP rtpmap and fmtp attributes the remote camera or RTSP server sent.
