@@ -96,7 +96,7 @@ janus_transport *create(void) {
 
 
 /*! \brief Version of the API, to match the one transport plugins were compiled against */
-#define JANUS_TRANSPORT_API_VERSION	6
+#define JANUS_TRANSPORT_API_VERSION		7
 
 /*! \brief Initialization of all transport plugin properties to NULL
  * 
