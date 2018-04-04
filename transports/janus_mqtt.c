@@ -255,8 +255,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 		janus_config_item *verify = janus_config_get_item_drilldown(config, "general", "verify_peer");
 		ctx->verify_peer = (verify && verify->value && janus_is_true(verify->value)) ? TRUE : FALSE;
-	}
-	else {
+	} else {
 		JANUS_LOG(LOG_INFO, "MQTT SSL support disabled\n");
 		if(strstr(url, "ssl://") == url)
 			JANUS_LOG(LOG_WARN, "SSL disabled, but MQTT url starts with ssl:// instead of tcp://...\n");
@@ -302,8 +301,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "publish_qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
-	}
-	else {
+	} else {
 		janus_mqtt_api_enabled_ = FALSE;
 		ctx->subscribe.topic = NULL;
 		ctx->publish.topic = NULL;
@@ -339,8 +337,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "admin", "publish_qos");
 			ctx->admin.publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
-	}
-	else {
+	} else {
 		janus_mqtt_admin_api_enabled_ = FALSE;
 		ctx->admin.subscribe.topic = NULL;
 		ctx->admin.publish.topic = NULL;
@@ -623,8 +620,7 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 		options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 		options.onFailure = janus_mqtt_client_admin_subscribe_failure;
 		return MQTTAsync_subscribe(ctx->client, ctx->admin.subscribe.topic, ctx->admin.subscribe.qos, &options);
-	}
-	else {
+	} else {
 		options.onSuccess = janus_mqtt_client_subscribe_success;
 		options.onFailure = janus_mqtt_client_subscribe_failure;
 		return MQTTAsync_subscribe(ctx->client, ctx->subscribe.topic, ctx->subscribe.qos, &options);
@@ -690,8 +686,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
 		options.onFailure = janus_mqtt_client_publish_admin_failure;
 		return MQTTAsync_sendMessage(ctx->client, ctx->admin.publish.topic, &msg, &options);
-	}
-	else {
+	} else {
 		options.onSuccess = janus_mqtt_client_publish_janus_success;
 		options.onFailure = janus_mqtt_client_publish_janus_failure;
 		return MQTTAsync_sendMessage(ctx->client, ctx->publish.topic, &msg, &options);
