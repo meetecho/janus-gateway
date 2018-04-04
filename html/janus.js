@@ -1779,81 +1779,49 @@ function Janus(gatewayCallbacks) {
 				if(simulcast && !jsep && (media.video === undefined || media.video === false))
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
-					var width = 0;
-					var height = 0, maxHeight = 0;
-					if(media.video === 'lowres') {
-						// Small resolution, 4:3
-						height = 240;
-						maxHeight = 240;
-						width = 320;
-					} else if(media.video === 'lowres-16:9') {
-						// Small resolution, 16:9
-						height = 180;
-						maxHeight = 180;
-						width = 320;
-					} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
-						// High resolution is only 16:9
-						height = 720;
-						maxHeight = 720;
-						width = 1280;
-						if(navigator.mozGetUserMedia) {
-							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-							if(firefoxVer < 38) {
-								// Unless this is and old Firefox, which doesn't support it
-								Janus.warn(media.video + " unsupported, falling back to stdres (old Firefox)");
-								height = 480;
-								maxHeight = 480;
-								width  = 640;
-							}
-						}
-					} else if(media.video === 'stdres') {
-						// Normal resolution, 4:3
-						height = 480;
-						maxHeight = 480;
-						width  = 640;
-					} else if(media.video === 'stdres-16:9') {
-						// Normal resolution, 16:9
-						height = 360;
-						maxHeight = 360;
-						width = 640;
-					} else {
-						Janus.log("Default video setting is stdres 4:3");
-						height = 480;
-						maxHeight = 480;
-						width = 640;
-					}
-					Janus.log("Adding media constraint:", media.video);
-					if(navigator.mozGetUserMedia) {
-						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-						if(firefoxVer < 38) {
-							videoSupport = {
-								'require': ['height', 'width'],
-								'height': {'max': maxHeight, 'min': height},
-								'width':  {'max': width,  'min': width}
-							};
-						} else {
-							// http://stackoverflow.com/questions/28282385/webrtc-firefox-constraints/28911694#28911694
-							// https://github.com/meetecho/janus-gateway/pull/246
-							videoSupport = {
-								'height': {'ideal': height},
-								'width':  {'ideal': width}
-							};
-						}
-					} else {
-						videoSupport = {
-						    'mandatory': {
-						        'maxHeight': maxHeight,
-						        'minHeight': height,
-						        'maxWidth':  width,
-						        'minWidth':  width
-						    },
-						    'optional': []
-						};
-					}
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
+					} else {
+						var width = 0;
+						var height = 0, maxHeight = 0;
+						if(media.video === 'lowres') {
+							// Small resolution, 4:3
+							height = 240;
+							maxHeight = 240;
+							width = 320;
+						} else if(media.video === 'lowres-16:9') {
+							// Small resolution, 16:9
+							height = 180;
+							maxHeight = 180;
+							width = 320;
+						} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
+							// High resolution is only 16:9
+							height = 720;
+							maxHeight = 720;
+							width = 1280;
+						} else if(media.video === 'stdres') {
+							// Normal resolution, 4:3
+							height = 480;
+							maxHeight = 480;
+							width  = 640;
+						} else if(media.video === 'stdres-16:9') {
+							// Normal resolution, 16:9
+							height = 360;
+							maxHeight = 360;
+							width = 640;
+						} else {
+							Janus.log("Default video setting is stdres 4:3");
+							height = 480;
+							maxHeight = 480;
+							width = 640;
+						}
+						Janus.log("Adding media constraint:", media.video);
+						videoSupport = {
+							'height': {'ideal': height},
+							'width':  {'ideal': width}
+						};
+						Janus.log("Adding video constraint:", videoSupport);
 					}
-					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
 					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
@@ -1881,7 +1849,7 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
-							.then(function(stream) { 
+							.then(function(stream) {
 								if(useAudio){
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
@@ -1890,7 +1858,7 @@ function Janus(gatewayCallbacks) {
 									})
 								} else {
 									gsmCallback(null, stream);
-								} 
+								}
 							})
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
@@ -2043,10 +2011,12 @@ function Janus(gatewayCallbacks) {
 						}
 					}
 
-					navigator.mediaDevices.getUserMedia({
+					var gumConstraints = {
 						audio: audioExist ? audioSupport : false,
 						video: videoExist ? videoSupport : false
-					})
+					};
+					Janus.debug("getUserMedia constraints", gumConstraints);
+					navigator.mediaDevices.getUserMedia(gumConstraints)
 					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
 					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
 				})
