@@ -1025,6 +1025,10 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "claim")) {
+		if(reclaim_session_timeout == 0) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, "Claiming sessions is not enabled");
+			goto jsondone;
+		}
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
 			/* Give old tranport a timeout -- is this the right thing to do? */
