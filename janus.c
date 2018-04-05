@@ -515,7 +515,7 @@ static gpointer janus_sessions_watchdog(gpointer user_data) {
 }
 
 
-janus_session *janus_session_create(guint64 session_id, guint64 secret_session_id) {
+janus_session *janus_session_create(guint64 session_id) {
 	janus_session *session = NULL;
 	if(session_id == 0) {
 		while(session_id == 0) {
@@ -528,13 +528,9 @@ janus_session *janus_session_create(guint64 session_id, guint64 secret_session_i
 			}
 		}
 	}
-	if(secret_session_id == 0) {
-		JANUS_LOG(LOG_INFO, "No secret ID specified for session %"SCNu64"\n", session_id);
-	}
 	session = (janus_session *)g_malloc(sizeof(janus_session));
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"; %p\n", session_id, session);
 	session->session_id = session_id;
-	session->secret_session_id = secret_session_id;
 	janus_refcount_init(&session->ref, janus_session_free);
 	session->source = NULL;
 	g_atomic_int_set(&session->destroyed, 0);
@@ -778,13 +774,10 @@ int janus_process_incoming_request(janus_request *request) {
 	char error_cause[100];
 	json_t *root = request->message;
 	/* Ok, let's start with the ids */
-	guint64 session_id = 0, handle_id = 0, secret_session_id = 0;
+	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
-	json_t *ss = json_object_get(root, "secret_session_id");
-	if(ss && json_is_integer(ss))
-		secret_session_id = json_integer_value(ss);
 	json_t *h = json_object_get(root, "handle_id");
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
@@ -837,12 +830,8 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 		}
-		json_t *secret_id = json_object_get(root, "secret_id");
-		if(secret_id != NULL) {
-			secret_session_id = json_integer_value(secret_id);
-		}
 		/* Handle it */
-		session = janus_session_create(session_id, secret_session_id);
+		session = janus_session_create(session_id);
 		if(session == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -1037,17 +1026,12 @@ int janus_process_incoming_request(janus_request *request) {
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
-		if(session->secret_session_id == 0 || secret_session_id != session->secret_session_id) {
-			janus_mutex_unlock(&session->mutex);
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, "Unauthorized to claim this session");
-			goto jsondone;
-		}
 		if(session->source != NULL) {
 			/* Give old tranport a timeout -- is this the right thing to do? */
 			session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
+			janus_request_destroy(session->source);
+			session->source = NULL;
 		}
-		janus_request_destroy(session->source);
-		session->source = NULL;
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Previous tranport may be gone, clear flag */
 		g_atomic_int_set(&session->transport_gone, 0);

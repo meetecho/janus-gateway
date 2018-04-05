@@ -9,12 +9,12 @@
  * protocol) to interact with the applications, whether they're web based
  * or not. The core also takes care of bridging peers and plugins
  * accordingly, in terms of both messaging and real-time media transfer
- * via WebRTC. 
- * 
+ * via WebRTC.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_GATEWAY_H
 #define _JANUS_GATEWAY_H
 
@@ -40,13 +40,11 @@
 
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
 typedef struct janus_request janus_request;
- 
+
 /*! \brief Gateway-Client session */
 typedef struct janus_session {
 	/*! \brief Janus Gateway-Client session ID */
 	guint64 session_id;
-	/*! \brief Janus Gateway-Client secret session ID */
-	guint64 secret_session_id;
 	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
 	/*! \brief Time of the last activity on the session */
@@ -72,7 +70,7 @@ typedef struct janus_session {
 /*! \brief Method to create a new Janus Gateway-Client session
  * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_create(guint64 session_id,  guint64 secret_session_id);
+janus_session *janus_session_create(guint64 session_id);
 /*! \brief Method to find an existing Janus Gateway-Client session from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
