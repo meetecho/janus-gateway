@@ -45,6 +45,8 @@ typedef struct janus_request janus_request;
 typedef struct janus_session {
 	/*! \brief Janus Gateway-Client session ID */
 	guint64 session_id;
+	/*! \brief Janus Gateway-Client secret session ID */
+	guint64 secret_session_id;
 	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
 	/*! \brief Time of the last activity on the session */
@@ -70,7 +72,7 @@ typedef struct janus_session {
 /*! \brief Method to create a new Janus Gateway-Client session
  * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_create(guint64 session_id);
+janus_session *janus_session_create(guint64 session_id,  guint64 secret_session_id);
 /*! \brief Method to find an existing Janus Gateway-Client session from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
