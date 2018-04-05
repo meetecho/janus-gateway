@@ -784,7 +784,7 @@ int janus_process_incoming_request(janus_request *request) {
 		session_id = json_integer_value(s);
 	json_t *ss = json_object_get(root, "secret_session_id");
 	if(ss && json_is_integer(ss))
-		secret_session_id = json_integer_value(s);
+		secret_session_id = json_integer_value(ss);
 	json_t *h = json_object_get(root, "handle_id");
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
@@ -839,7 +839,7 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		json_t *secret_id = json_object_get(root, "secret_id");
 		if(secret_id != NULL) {
-			secret_session_id = json_integer_value(id);
+			secret_session_id = json_integer_value(secret_id);
 		}
 		/* Handle it */
 		session = janus_session_create(session_id, secret_session_id);
