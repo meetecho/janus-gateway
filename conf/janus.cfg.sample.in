@@ -51,11 +51,11 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							controlled by any transport and never freed).
 ;							To avoid timeouts, keep-alives can be used.
 ;
-;reclaim_session_timeout = 5		; How long (in seconds) we should wait for a
+;reclaim_session_timeout = 0		; How long (in seconds) we should wait for a
 ;							janus session to be reclaimed after the transport
 ;							is gone. After the transport is gone, a session 
 ;							times out when no request is received for 
-;							reclaim_session_timeout seconds (default=5s).
+;							reclaim_session_timeout seconds (default=0s).
 ;							Setting this to 0 will disable the timeout
 ;							mechanism, and sessions will be destroyed immediately
 ;							if the transport is gone.
