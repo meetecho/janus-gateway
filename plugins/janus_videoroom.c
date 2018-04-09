@@ -1392,9 +1392,7 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(p->room_id));
 		json_object_set_new(event, "joining", user);
-		janus_mutex_lock(&p->room->mutex);
 		janus_videoroom_notify_participants(p, event);
-		janus_mutex_unlock(&p->room->mutex);
 		/* user gets deref-ed by the owner event */
 		json_decref(event);
 	}
