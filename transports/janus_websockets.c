@@ -65,6 +65,7 @@ gboolean janus_websockets_is_admin_api_enabled(void);
 int janus_websockets_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_websockets_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -87,6 +88,7 @@ static janus_transport janus_websockets_transport =
 		.send_message = janus_websockets_send_message,
 		.session_created = janus_websockets_session_created,
 		.session_over = janus_websockets_session_over,
+		.session_claimed = janus_websockets_session_claimed,
 	);
 
 /* Transport creator */
@@ -830,6 +832,21 @@ void janus_websockets_session_over(janus_transport_session *transport, guint64 s
 		return;
 	}
 	g_atomic_int_set(&client->session_timeout, 1);
+	lws_callback_on_writable(client->wsi);
+	janus_mutex_unlock(&transport->mutex);
+}
+
+void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* Someone else has claimed the session: close the connection */
+	if(transport == NULL || g_atomic_int_get(&transport->destroyed))
+		return;
+	janus_mutex_lock(&transport->mutex);
+	/* Close the connection, but not the session */
+	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
+	if(!client) {
+		janus_mutex_unlock(&transport->mutex);
+		return;
+	}
 	lws_callback_on_writable(client->wsi);
 	janus_mutex_unlock(&transport->mutex);
 }

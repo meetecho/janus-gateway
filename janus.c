@@ -1027,8 +1027,8 @@ int janus_process_incoming_request(janus_request *request) {
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
-			/* Give old transport a timeout -- is this the right thing to do? */
-			session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
+			/* Notify transport that the session has been claimed */
+			session->source->transport->session_claimed(session->source->instance, session->session_id);
 			janus_request_destroy(session->source);
 			session->source = NULL;
 		}
@@ -4136,7 +4136,8 @@ gint main(int argc, char *argv[])
 					!janus_transport->is_janus_api_enabled ||
 					!janus_transport->is_admin_api_enabled ||
 					!janus_transport->session_created ||
-					!janus_transport->session_over) {
+					!janus_transport->session_over ||
+					!janus_transport->session_claimed) {
 				JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this transport plugin...\n");
 				continue;
 			}

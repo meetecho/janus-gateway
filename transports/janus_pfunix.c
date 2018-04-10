@@ -64,6 +64,7 @@ gboolean janus_pfunix_is_admin_api_enabled(void);
 int janus_pfunix_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_pfunix_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -86,6 +87,7 @@ static janus_transport janus_pfunix_transport =
 		.send_message = janus_pfunix_send_message,
 		.session_created = janus_pfunix_session_created,
 		.session_over = janus_pfunix_session_over,
+		.session_claimed = janus_pfunix_session_claimed,
 	);
 
 /* Transport creator */
@@ -432,6 +434,22 @@ void janus_pfunix_session_over(janus_transport_session *transport, guint64 sessi
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL) {
 		client->session_timeout = TRUE;
+		/* Notify the thread about this */
+		int res = 0;
+		do {
+			res = write(write_fd[1], "x", 1);
+		} while(res == -1 && errno == EINTR);
+	}
+	janus_mutex_unlock(&clients_mutex);
+}
+
+void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* Someone else has claimed the session: close the connection */
+	if(transport == NULL || transport->transport_p == NULL)
+		return;
+	janus_pfunix_client *client = (janus_pfunix_client *)transport->transport_p;
+	janus_mutex_lock(&clients_mutex);
+	if(g_hash_table_lookup(clients, client) != NULL) {
 		/* Notify the thread about this */
 		int res = 0;
 		do {

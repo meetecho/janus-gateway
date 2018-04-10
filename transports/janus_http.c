@@ -20,7 +20,7 @@
  * case you're interested in HTTPS support, it's better to just rely on
  * HTTP in Janus, and put a frontend like Apache HTTPD or nginx to take
  * care of securing the traffic. More details are available in \ref deploy.
- * 
+ *
  * \ingroup transports
  * \ref transports
  */
@@ -68,6 +68,7 @@ gboolean janus_http_is_admin_api_enabled(void);
 int janus_http_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_http_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -90,6 +91,7 @@ static janus_transport janus_http_transport =
 		.send_message = janus_http_send_message,
 		.session_created = janus_http_session_created,
 		.session_over = janus_http_session_over,
+		.session_claimed = janus_http_session_claimed,
 	);
 
 /* Transport creator */
@@ -196,7 +198,7 @@ int janus_http_return_error(janus_transport_session *ts, uint64_t session_id, co
 /* MHD Web Server */
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
-static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
+static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL;
 
 /* Admin/Monitor MHD Web Server */
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
@@ -892,7 +894,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	messages = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_transport_session_destroy);
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_http_session_destroy);
-	
+
 	/* Done */
 	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_REST_NAME);
@@ -1060,6 +1062,11 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, &session_id);
 	janus_mutex_unlock(&sessions_mutex);
+}
+
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* Session has been claimed -- is there anything to do here? */
+	JANUS_LOG(LOG_WARN, "Session has been claimed: (%"SCNu64"), has been claimed\n", session_id);
 }
 
 /* Connection notifiers */
@@ -1258,13 +1265,13 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {
 		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
@@ -1310,7 +1317,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		/* Ok, go on with the keepalive */
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("keepalive"));
 		json_object_set_new(root, "session_id", json_integer(session_id));
@@ -1390,7 +1397,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		janus_refcount_decrease(&ts->ref);
 		goto done;
 	}
-	
+
 	json_error_t error;
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
@@ -1603,13 +1610,13 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Without a payload we don't know what to do */
 	if(!payload) {
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON, "Request payload missing");
@@ -1693,7 +1700,7 @@ void janus_http_request_completed(void *cls, struct MHD_Connection *connection, 
 	janus_mutex_lock(&messages_mutex);
 	g_hash_table_remove(messages, ts);
 	janus_mutex_unlock(&messages_mutex);
-	*con_cls = NULL;   
+	*con_cls = NULL;
 }
 
 /* Worker to handle notifications */

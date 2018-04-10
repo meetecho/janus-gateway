@@ -58,6 +58,7 @@ gboolean janus_mqtt_is_admin_api_enabled(void);
 int janus_mqtt_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 /* Transport setup */
 static janus_transport janus_mqtt_transport_ =
@@ -79,6 +80,7 @@ static janus_transport janus_mqtt_transport_ =
 		.send_message = janus_mqtt_send_message,
 		.session_created = janus_mqtt_session_created,
 		.session_over = janus_mqtt_session_over,
+		.session_claimed = janus_mqtt_session_claimed,
 	);
 
 /* Transport creator */
@@ -196,7 +198,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	janus_config_item *username_item = janus_config_get_item_drilldown(config, "general", "username");
 	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
-	
+
 	janus_config_item *password_item = janus_config_get_item_drilldown(config, "general", "password");
 	ctx->connect.password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
 
@@ -463,6 +465,10 @@ void janus_mqtt_session_created(janus_transport_session *transport, guint64 sess
 
 void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
 	/* We don't care, not even if it's a timeout (should we?), our client is always up */
+}
+
+void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* We don't care (should we?) */
 }
 
 void janus_mqtt_client_connection_lost(void *context, char *cause) {
