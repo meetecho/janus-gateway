@@ -56,7 +56,8 @@ janus_transport *create(void) {
  * - \c is_admin_api_enabled(): this method should return TRUE if Admin API can be used with this transport, and support has been enabled by the user;
  * - \c send_message(): this method asks the transport to send a message (be it a response or an event) to a client on the specified transport;
  * - \c session_created(): this method notifies the transport that a Janus session has been created by one of its requests;
- * - \c session_over(): this method notifies the transport that one of its Janus sessionss is now over, whether because of a timeour or not.
+ * - \c session_over(): this method notifies the transport that one of its Janus sessionss is now over, whether because of a timeout or not.
+ * - \c session_claimed(): this method notifies the transport that it has claimed a session.
  *
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject a transport plugin that doesn't implement any of the
@@ -127,6 +128,7 @@ static janus_transport janus_http_transport plugin =
 		.send_message = NULL,			\
 		.session_created = NULL,		\
 		.session_over = NULL,			\
+		.session_claimed = NULL,			\
 		## __VA_ARGS__ }
 
 
@@ -219,12 +221,13 @@ struct janus_transport {
 	 * \note A transport plugin may decide to close the connection as a result of such an event
 	 * @param[in] transport Pointer to the transport session instance
 	 * @param[in] session_id The session ID that was closed (if the transport cares)
-	 * @param[in] timeout Whether the cause for the session closure is a timeout (this may interest transport plugins more) */
-	void (* const session_over)(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+	 * @param[in] timeout Whether the cause for the session closure is a timeout (this may interest transport plugins more)
+	 * @param[in] claimed Whether the cause for the session closure is due to someone claiming the session */
+	void (* const session_over)(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 	/*! \brief Method to notify the transport plugin that a session it owned was claimed by another transport
 	 * \note A transport plugin should close the connection as a result of such an event
-	 * @param[in] transport Pointer to the transport session instance
-	 * @param[in] session_id The session ID that was closed (if the transport cares) */
+	 * @param[in] transport Pointer to the new transport session instance that has claimed the session
+	 * @param[in] session_id The session ID that was claimed (if the transport cares) */
 	void (* const session_claimed)(janus_transport_session *transport, guint64 session_id);
 
 };

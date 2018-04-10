@@ -67,7 +67,7 @@ gboolean janus_http_is_janus_api_enabled(void);
 gboolean janus_http_is_admin_api_enabled(void);
 int janus_http_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_http_session_created(janus_transport_session *transport, guint64 session_id);
-void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
@@ -1055,9 +1055,10 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
-	JANUS_LOG(LOG_VERB, "Session %s (%"SCNu64"), getting rid of the queue for the long poll\n",
-		timeout ? "has timed out" : "is over", session_id);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
+	JANUS_LOG(LOG_VERB, "Session %s%s (%"SCNu64"), getting rid of the queue for the long poll\n",
+		timeout ? "has timed out" : "is over",
+		claimed ? "but has been claimed" : "and has not been claimed", session_id);
 	/* Get rid of the session's queue of events */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, &session_id);
@@ -1066,7 +1067,14 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* Session has been claimed -- is there anything to do here? */
-	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), has been claimed\n", session_id);
+	JANUS_LOG(LOG_WARN, "Session has been claimed: (%"SCNu64"), has been claimed: adding to hash table\n", session_id);
+	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	session->session_id = session_id;
+	session->events = g_async_queue_new();
+	g_atomic_int_set(&session->destroyed, 0);
+	janus_refcount_init(&session->ref, janus_http_session_free);
+	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 /* Connection notifiers */

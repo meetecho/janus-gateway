@@ -63,7 +63,7 @@ gboolean janus_pfunix_is_janus_api_enabled(void);
 gboolean janus_pfunix_is_admin_api_enabled(void);
 int janus_pfunix_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_pfunix_session_created(janus_transport_session *transport, guint64 session_id);
-void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
@@ -425,7 +425,7 @@ void janus_pfunix_session_created(janus_transport_session *transport, guint64 se
 	/* We don't care */
 }
 
-void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
+void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
 	/* We only care if it's a timeout: if so, close the connection */
 	if(transport == NULL || transport->transport_p == NULL || !timeout)
 		return;
@@ -444,19 +444,8 @@ void janus_pfunix_session_over(janus_transport_session *transport, guint64 sessi
 }
 
 void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id) {
-	/* Someone else has claimed the session: close the connection */
-	if(transport == NULL || transport->transport_p == NULL)
-		return;
-	janus_pfunix_client *client = (janus_pfunix_client *)transport->transport_p;
-	janus_mutex_lock(&clients_mutex);
-	if(g_hash_table_lookup(clients, client) != NULL) {
-		/* Notify the thread about this */
-		int res = 0;
-		do {
-			res = write(write_fd[1], "x", 1);
-		} while(res == -1 && errno == EINTR);
-	}
-	janus_mutex_unlock(&clients_mutex);
+	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
+	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
 

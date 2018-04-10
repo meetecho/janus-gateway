@@ -477,7 +477,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					json_t *event = janus_create_message("timeout", session->session_id, NULL);
 					/* Send this to the transport client and notify the session's over */
 					session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
-					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
+					session->source->transport->session_over(session->source->instance, session->session_id, TRUE, FALSE);
 				}
 				/* Notify event handlers as well */
 				if(janus_events_is_enabled())
@@ -976,7 +976,7 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
 		if(session->source && session->source->transport) {
-			session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
 		}
 		/* Schedule the session for deletion */
 		janus_session_destroy(session);
@@ -1027,13 +1027,15 @@ int janus_process_incoming_request(janus_request *request) {
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
-			/* Notify transport that the session has been claimed */
-			session->source->transport->session_claimed(session->source->instance, session->session_id);
+			/* Notify the old transport that this session is over for them, but has been reclaimed */
+			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, TRUE);
 			janus_request_destroy(session->source);
 			session->source = NULL;
 		}
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
-		/* Previous transport may be gone, clear flag */
+		/* Notify the new transport that it has claimed a session */
+		session->source->transport->session_claimed(session->source->instance, session->session_id);
+		/* Previous transport may be gone, clear flag. */
 		g_atomic_int_set(&session->transport_gone, 0);
 		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
