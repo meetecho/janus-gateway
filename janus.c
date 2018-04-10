@@ -1027,13 +1027,13 @@ int janus_process_incoming_request(janus_request *request) {
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
-			/* Give old tranport a timeout -- is this the right thing to do? */
+			/* Give old transport a timeout -- is this the right thing to do? */
 			session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
 			janus_request_destroy(session->source);
 			session->source = NULL;
 		}
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
-		/* Previous tranport may be gone, clear flag */
+		/* Previous transport may be gone, clear flag */
 		g_atomic_int_set(&session->transport_gone, 0);
 		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
