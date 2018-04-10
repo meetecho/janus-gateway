@@ -1066,7 +1066,7 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* Session has been claimed -- is there anything to do here? */
-	JANUS_LOG(LOG_WARN, "Session has been claimed: (%"SCNu64"), has been claimed\n", session_id);
+	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), has been claimed\n", session_id);
 }
 
 /* Connection notifiers */
