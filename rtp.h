@@ -178,9 +178,9 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] step \b deprecated The expected timestamp step */
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
-#define RTP_AUDIO_SKEW_TH_MS 40
-#define RTP_VIDEO_SKEW_TH_MS 40
-#define SKEW_DETECTION_WAIT_TIME_SECS 15
+#define RTP_AUDIO_SKEW_TH_MS 160
+#define RTP_VIDEO_SKEW_TH_MS 160
+#define SKEW_DETECTION_WAIT_TIME_SECS 10
 
 /*! \brief Use the context info to compensate for audio source skew, if needed
  * @param[in] header The RTP header to update
