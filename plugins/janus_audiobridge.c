@@ -993,7 +993,7 @@ typedef struct janus_audiobridge_rtp_forwarder {
 	srtp_policy_t srtp_policy;
 } janus_audiobridge_rtp_forwarder;
 static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room,
-		const gchar* host, uint16_t port, uint32_t ssrc, int pt,
+		const gchar *host, uint16_t port, uint32_t ssrc, int pt,
 		int srtp_suite, const char *srtp_crypto,
 		gboolean always_on, guint32 stream_id) {
 	if(room == NULL || host == NULL)
@@ -1233,12 +1233,14 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	janus_mutex_lock(&audiobridge->mutex);
 
 	if(janus_audiobridge_create_udp_socket_if_needed(audiobridge)) {
+		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
 	}
 
 	if(janus_audiobridge_create_opus_encoder_if_needed(audiobridge)) {
+		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
@@ -1248,6 +1250,7 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		host, port, ssrc_value, ptype, srtp_suite, srtp_crypto,
 		always_on, forwarder_id);
 
+	g_free((char *)host);
 	janus_mutex_unlock(&audiobridge->mutex);
 	janus_mutex_unlock(&rooms_mutex);
 
@@ -2405,7 +2408,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			ptype = json_integer_value(pt);
 		uint16_t port = json_integer_value(json_object_get(root, "port"));
 		json_t *json_host = json_object_get(root, "host");
-		const gchar* host = json_string_value(json_host);
+		const char *host = json_string_value(json_host);
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
 		/* Besides, we may need to SRTP-encrypt this stream */
