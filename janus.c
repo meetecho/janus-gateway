@@ -1264,16 +1264,16 @@ int janus_process_incoming_request(janus_request *request) {
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 				if(handle->stream && handle->stream->video_ssrc_peer[1]) {
 					json_t *simulcast = json_object();
-					json_object_set(simulcast, "ssrc-0", json_integer(handle->stream->video_ssrc_peer[0]));
-					json_object_set(simulcast, "ssrc-1", json_integer(handle->stream->video_ssrc_peer[1]));
+					json_object_set_new(simulcast, "ssrc-0", json_integer(handle->stream->video_ssrc_peer[0]));
+					json_object_set_new(simulcast, "ssrc-1", json_integer(handle->stream->video_ssrc_peer[1]));
 					if(handle->stream->video_ssrc_peer[2])
-						json_object_set(simulcast, "ssrc-2", json_integer(handle->stream->video_ssrc_peer[2]));
-					json_object_set(body_jsep, "simulcast", simulcast);
+						json_object_set_new(simulcast, "ssrc-2", json_integer(handle->stream->video_ssrc_peer[2]));
+					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
 			/* Check if this is a renegotiation or update */
 			if(renegotiation)
-				json_object_set(body_jsep, "update", json_true());
+				json_object_set_new(body_jsep, "update", json_true());
 		}
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body, body_jsep);
