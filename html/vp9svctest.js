@@ -418,8 +418,25 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
-				remoteFeed.send({"message": listen});
+				var subscribe = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
+				// In case you don't want to receive audio, video or data, even if the
+				// publisher is sending them, set the 'offer_audio', 'offer_video' or
+				// 'offer_data' properties to false (they're true by default), e.g.:
+				// 		subscribe["offer_video"] = false;
+				// For example, if this is Safari or Edge (which don't support VP9), let's avoid video
+				if(Janus.webRTCAdapter.browserDetails.browser === "safari" ||
+						Janus.webRTCAdapter.browserDetails.browser === "edge") {
+					if(video)
+						video = video.toUpperCase()
+					toastr.warning("Publisher is using " + video + ", but Safari and Edge don't support it: disabling video");
+					subscribe["offer_video"] = false;
+				}
+				// Since this demo uses SVC, you can ask the plugin to automatically change
+				// spatial and temporal layers depending on your available bandwidth. This
+				// is disabled by default (it's up to you via explicit commands to ask for a
+				// specific target), you can enable it via the 'autochange' property, i.e.:
+				// 		subscribe["autochange"] = true;
+				remoteFeed.send({"message": subscribe});
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
