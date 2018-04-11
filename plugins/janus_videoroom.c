@@ -78,6 +78,10 @@ notify_joining = true|false (optional, whether to notify all participants when a
             new feeds (publishers), and enabling this may result extra notification
             traffic. This flag is particularly useful when enabled with \c require_pvtid
             for admin to manage listening only participants. default=false)
+audioskew = yes|no (whether the plugin should perform skew
+	analisys and compensation on publishers' audio, EXPERIMENTAL)
+videoskew = yes|no (whether the plugin should perform in this room skew
+	analisys and compensation on publishers' video, EXPERIMENTAL)
 \endverbatim
  *
  * Note that recording will work with all codecs except iSAC.
@@ -1110,6 +1114,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"rec_dir", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"notify_joining", JANUS_JSON_BOOL, 0},
+	{"audioskew", JANUS_JSON_BOOL, 0},
+	{"videoskew", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -1411,6 +1417,8 @@ typedef struct janus_videoroom {
 	gboolean check_allowed;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	gboolean notify_joining;	/* Whether an event is sent to notify all participants if a new participant joins the room */
+	gboolean askew;				/* Whether apply skew componsation on publishers' audio */
+	gboolean vskew;				/* Whether apply skew componsation on publishers' video */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 	janus_refcount ref;			/* Reference counter for this room */
 } janus_videoroom;
@@ -1508,6 +1516,7 @@ typedef struct janus_videoroom_publisher {
 	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; /* The udp socket on which to forward rtp packets */
 	gboolean kicked;	/* Whether this participant has been kicked */
+	janus_rtp_switching_context context[2];
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_publisher;
@@ -1884,6 +1893,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
 			janus_config_item *transport_wide_cc_ext = janus_config_get_item(cat, "transport_wide_cc_ext");
 			janus_config_item *notify_joining = janus_config_get_item(cat, "notify_joining");
+			janus_config_item *askew = janus_config_get_item(cat, "audioskew");
+			janus_config_item *vskew = janus_config_get_item(cat, "videoskew");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
@@ -2015,6 +2026,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->notify_joining = FALSE;
 			if(notify_joining != NULL && notify_joining->value != NULL)
 				videoroom->notify_joining = janus_is_true(notify_joining->value);
+			if(askew != NULL && askew->value != NULL)
+				videoroom->askew = janus_is_true(askew->value);
+			if(vskew != NULL && vskew->value != NULL)
+				videoroom->vskew = janus_is_true(vskew->value);
 			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
@@ -2634,6 +2649,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *playoutdelay_ext = json_object_get(root, "playoutdelay_ext");
 		json_t *transport_wide_cc_ext = json_object_get(root, "transport_wide_cc_ext");
 		json_t *notify_joining = json_object_get(root, "notify_joining");
+		json_t *askew = json_object_get(root, "audioskew");
+		json_t *vskew = json_object_get(root, "videoskew");
 		json_t *record = json_object_get(root, "record");
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
@@ -2804,6 +2821,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* By default, the videoroom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
+		videoroom->askew = askew ? json_is_true(askew) : FALSE;
+		videoroom->vskew = vskew ? json_is_true(vskew) : FALSE;
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
@@ -2934,6 +2953,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "transport_wide_cc_ext", "yes");
 			if(videoroom->notify_joining)
 				janus_config_add_item(config, cat, "notify_joining", "yes");
+			if(videoroom->askew)
+				janus_config_add_item(config, cat, "audioskew", "yes");
+			if(videoroom->vskew)
+				janus_config_add_item(config, cat, "videoskew", "yes");
 			if(videoroom->record)
 				janus_config_add_item(config, cat, "record", "yes");
 			if(videoroom->rec_dir)
@@ -4027,6 +4050,28 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
+
+		/* Skew Compensation */
+		if (videoroom->askew && !video) {
+			janus_rtp_header_update(rtp, &participant->context[0], FALSE, 0);
+			int ret = janus_rtp_skew_compensate_audio(rtp, &participant->context[0], janus_get_real_time());
+			if (ret < 0) {
+				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Dropping %d packets, audio source clock is too fast (id=%"SCNu64", ssrc=%u)\n", participant->room_id, -ret, participant->user_id, ssrc);
+				return;
+			} else if (ret > 0) {
+				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Jumping %d RTP sequence numbers, audio source clock is too slow (id=%"SCNu64", ssrc=%u)\n", participant->room_id, ret, participant->user_id, ssrc);
+			}
+		} else if (videoroom->vskew && video && participant->ssrc[0] == 0) {
+			janus_rtp_header_update(rtp, &participant->context[1], TRUE, 0);
+			int ret = janus_rtp_skew_compensate_video(rtp, &participant->context[1], janus_get_real_time());
+			if (ret < 0) {
+				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Dropping %d packets, video source clock is too fast (id=%"SCNu64", ssrc=%u)\n", participant->room_id, -ret, participant->user_id, ssrc);
+				return;
+			} else if (ret > 0) {
+				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Jumping %d RTP sequence numbers, video source clock is too slow (id=%"SCNu64", ssrc=%u)\n", participant->room_id, ret, participant->user_id, ssrc);
+			}
+		}
+
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
@@ -4776,6 +4821,8 @@ static void *janus_videoroom_handler(void *data) {
 					publisher->recording_base = g_strdup(json_string_value(recfile));
 					JANUS_LOG(LOG_VERB, "Setting recording basename: %s (room %"SCNu64", user %"SCNu64")\n", publisher->recording_base, publisher->room_id, publisher->user_id);
 				}
+				janus_rtp_switching_context_reset(&publisher->context[0]);
+				janus_rtp_switching_context_reset(&publisher->context[1]);
 				/* Done */
 				janus_mutex_lock(&session->mutex);
 				session->participant_type = janus_videoroom_p_type_publisher;
@@ -5828,6 +5875,14 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", participant->audio ? "is" : "is NOT");
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", participant->video ? "is" : "is NOT");
 				JANUS_LOG(LOG_VERB, "The publisher %s going to open a data channel\n", participant->data ? "is" : "is NOT");
+
+				if (participant->audio) {
+					janus_rtp_switching_context_reset(&participant->context[0]);
+				}
+				if (participant->video) {
+					janus_rtp_switching_context_reset(&participant->context[1]);
+				}
+
 				/* Check the codecs we can use, or the ones we should */
 				if(participant->acodec == JANUS_VIDEOROOM_NOAUDIO) {
 					int i=0;
