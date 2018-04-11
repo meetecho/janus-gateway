@@ -1056,7 +1056,7 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 }
 
 void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
-	JANUS_LOG(LOG_VERB, "Session %s%s (%"SCNu64"), getting rid of the queue for the long poll\n",
+	JANUS_LOG(LOG_VERB, "Session %s %s (%"SCNu64"), getting rid of the queue for the long poll\n",
 		timeout ? "has timed out" : "is over",
 		claimed ? "but has been claimed" : "and has not been claimed", session_id);
 	/* Get rid of the session's queue of events */
@@ -1067,7 +1067,7 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* Session has been claimed -- is there anything to do here? */
-	JANUS_LOG(LOG_WARN, "Session has been claimed: (%"SCNu64"), has been claimed: adding to hash table\n", session_id);
+	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), adding to hash table\n", session_id);
 	janus_http_session *session = g_malloc(sizeof(janus_http_session));
 	session->session_id = session_id;
 	session->events = g_async_queue_new();
