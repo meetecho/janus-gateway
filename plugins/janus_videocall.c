@@ -74,9 +74,10 @@
  * 
  * To register a username to call and be called, the \c register request
  * can be used. This works on a "first come, first served" basis: there's
- * no authetication involved, you just specify the username you'd like
- * to use and, if free, it's assigned to you. The \c request has to be
- * formatted as follows:
+ * no authentication involved, you just specify the username you'd like
+ * to use and, if free, it's assigned to you. Notice that there's no
+ * way to unregister: you have to close the handle to free the username.
+ * The \c register request has to be formatted as follows:
  * 
 \verbatim
 {
@@ -172,7 +173,9 @@
 	"video" : true|false,
 	"bitrate" : <numeric bitrate value>,
 	"record" : true|false,
-	"filename" : <base path/filename to use for the recording>
+	"filename" : <base path/filename to use for the recording>,
+	"substream" : <substream to receive (0-2), in case simulcasting is enabled>,
+	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>
 }
 \endverbatim
  *
@@ -181,11 +184,13 @@
  * force on the browser encoding side (e.g., 128000 for 128kbps);
  * \c record enables or disables the recording of this peer; in case
  * recording is enabled, \c filename allows to specify a base
- * path/filename to use for the files (-audio.mjr and -video.mjr are
- * automatically appended). Beware that enabling the recording only
+ * path/filename to use for the files (-audio.mjr, -video.mjr and -data.mjr
+ * are automatically appended). Beware that enabling the recording only
  * records this user's contribution, and not the whole call: to record
  * both sides, you need to enable recording for both the peers in the
- * call.
+ * call. Finally, in case the call uses simulcasting, \c substream and
+ * \c temporal can be used to manually pick which substream and/or temporal
+ * layer should be received from the peer.
  * 
  * A successful request will result in a \c set event:
  * 
@@ -197,7 +202,23 @@
 	}
 }
 \endverbatim
- * 
+ *
+ * Notice that the \c set request is also what you use when you want
+ * to renegotiate a session, e.g., for the purpose of adding/removing
+ * media streams or forcing an ICE restart. In that case, even an empty
+ * \c set request is fine, as long as it accompanies a new JSEP offer
+ * or answer (depending on who originated the session update). The user
+ * receiving the updated JSEP offer/answer will get an \c update event:
+ *
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "update",
+	}
+}
+\endverbatim
+ *
  * To decline an incoming call, cancel an attempt to call or simply
  * hangup an ongoing conversation, the \c hangup request can be used,
  * which has to be formatted as follows:
@@ -1366,6 +1387,20 @@ static void *janus_videocall_handler(void *data) {
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *restart = json_object_get(root, "restart");
+			json_t *substream = json_object_get(root, "substream");
+			if(substream && (!json_is_integer(substream) || json_integer_value(substream) < 0 || json_integer_value(substream) > 2)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (substream should be 0, 1 or 2)\n");
+				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (substream should be 0, 1 or 2)");
+				goto error;
+			}
+			json_t *temporal = json_object_get(root, "temporal");
+			if(temporal && (!json_is_integer(temporal) || json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (temporal should be 0, 1 or 2)\n");
+				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
+				goto error;
+			}
 			if(audio) {
 				session->audio_active = json_is_true(audio);
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -1391,6 +1426,48 @@ static void *janus_videocall_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Sending REMB\n");
 					gateway->relay_rtcp(session->handle, 1, buf, 24);
 					/* FIXME How should we handle a subsequent "no limit" bitrate? */
+				}
+			}
+			if(substream) {
+				session->substream_target = json_integer_value(substream);
+				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
+					session->ssrc[session->substream], session->substream_target, session->substream);
+				if(session->substream_target == session->substream) {
+					/* No need to do anything, we're already getting the right substream, so notify the user */
+					json_t *event = json_object();
+					json_object_set_new(event, "event", json_string("simulcast"));
+					json_object_set_new(event, "substream", json_integer(session->substream));
+					gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
+					json_decref(event);
+				} else {
+					/* We need to change substream, send the peer a PLI */
+					JANUS_LOG(LOG_VERB, "Simulcasting substream change, sending a PLI to kickstart it\n");
+					char buf[12];
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					if(session->peer && session->peer->handle)
+						gateway->relay_rtcp(session->handle, 1, buf, 12);
+				}
+			}
+			if(temporal) {
+				session->templayer_target = json_integer_value(temporal);
+				JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
+					session->templayer_target, session->templayer);
+				if(session->templayer_target == session->templayer) {
+					/* No need to do anything, we're already getting the right temporal, so notify the user */
+					json_t *event = json_object();
+					json_object_set_new(event, "event", json_string("simulcast"));
+					json_object_set_new(event, "temporal", json_integer(session->templayer));
+					gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
+					json_decref(event);
+				} else {
+					/* We need to change temporal, send a PLI */
+					JANUS_LOG(LOG_VERB, "Simulcasting temporal layer change, sending a PLI to kickstart it\n");
+					char buf[12];
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					if(session->peer && session->peer->handle)
+						gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
 			}
 			if(record) {
