@@ -31,7 +31,7 @@
  *
  * The supported requests are \c register , \c unregister , \c call ,
  * \c accept, \c info , \c message , \c dtmf_info , \c recording ,
- * \c hold , \c unhold and \c hangup . \c register can be used,
+ * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
@@ -42,11 +42,350 @@
  * instead; \c message is the method you use to send a SIP message
  * to the other peer; \c recording is used, instead, to record the
  * conversation to one or more .mjr files (depending on the direction you
- * want to record); finally, \c hangup can be used to terminate the
- * communication at any time, either to hangup (BYE) an ongoing call or
- * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
+ * want to record); \c update allows you to update an existing session
+ * (e.g., to do a renegotiation or force an ICE restart); finally, \c hangup
+ * can be used to terminate the communication at any time, either to
+ * hangup (BYE) an ongoing call or to cancel/decline (CANCEL/BYE) a call
+ * that hasn't started yet.
  *
- * Actual API docs: TBD.
+ * No matter the request, an error response or event is always formatted
+ * like this:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ *
+ * Notice that the error syntax above refers to the plugin API messaging,
+ * and not SIP error codes obtained in response to SIP requests, which
+ * are notified using a different syntax:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "<name of the error event>",
+		"code" : <SIP error code>,
+		"reason" : "<SIP error reason>"
+	}
+}
+\endverbatim
+ *
+ * Coming to the available requests, you send a SIP REGISTER using the
+ * \c register request, which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "register",
+	"type" : "<if guest, no SIP REGISTER is actually sent; optional>",
+	"send_register" : <true|false; if false, no SIP REGISTER is actually sent; optional>,
+	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
+	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
+	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
+	"username" : "<SIP URI to register; mandatory>",
+	"secret" : "<password to use to register; optional>",
+	"ha1_secret" : "<prehashed password to use to register; optional>",
+	"authuser" : "<username to use to authenticate (overrides the one in the SIP URI); optional>",
+	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
+	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
+	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>"
+}
+\endverbatim
+ *
+ * A \c registering event will be sent back, as this is an asynchronous request.
+ *
+ * In case it is required to, this request will originate a SIP REGISTER to the
+ * specified server with the right credentials. 401 and 407 responses will be
+ * handled automatically, and so errors will not be notified back to the caller
+ * unless they're definitive (e.g., wrong credentials). A failure to register
+ * will return an error with name \c registration_failed. A successful registration,
+ * instead, is notified in a \c registered event formatted like this:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "registered",
+		"username" : <SIP URI username>,
+		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>
+	}
+}
+\endverbatim
+ *
+ * To unregister, just send an \c unregister request with no other arguments:
+ *
+\verbatim
+{
+	"request" : "unregister"
+}
+\endverbatim
+ *
+ * As before, an \c unregistering event will be sent back. Just as before,
+ * this will also send a SIP REGISTER in case it had been sent originally.
+ * A successful unregistration is notified in an \c unregistered event:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "unregistered",
+		"username" : <SIP URI username>,
+		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>
+	}
+}
+\endverbatim
+ *
+ * Once registered, you can call or wait to be called: notice that you won't
+ * be able to get incoming calls if you chose never to send a REGISTER at
+ * all, though.
+ *
+ * To send a SIP INVITE, you can use the \c call request, which has to
+ * be formatted like this:
+ *
+\verbatim
+{
+	"request" : "call",
+	"username" : "<SIP URI to call; mandatory>",
+	"autoack" : <true|false; if false, will prevent Sofia SIP to send an ACK automatically; helpful as it's the only way to inspect the Record-Route and honor it; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INVITE; optional>",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>",
+	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
+	"ha1_secret" : "<prehashed password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
+	"authuser" : "<username to use to authenticate as to call, only needed in case authentication is needed and no REGISTER was sent; optional>"
+}
+\endverbatim
+ *
+ * A \c calling event will be sent back, as this is an asynchronous request.
+ *
+ * Notice that this request MUST be associated to a JSEP offer: there's no
+ * way to send an offerless INVITE via the SIP plugin. This will generate
+ * a SIP INVITE and send it according to the instructions. While a
+ * <code>100 Trying</code> will not be notified back to the user, a
+ * <code>180 Ringing</code> will, in a \c ringing event:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "ringing",
+	}
+}
+\endverbatim
+ *
+ * If the call is declined, or any other error occurs, a \c hangup error
+ * event will be sent back. If the call is accepted, instead, an \c accepted
+ * event will be sent back to the user, along with the JSEP answer originated
+ * by the callee:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "accepted",
+		"username" : "<SIP URI of the callee>"
+	}
+}
+\endverbatim
+ *
+ * At this point, PeerConnection-related considerations aside, the call
+ * can be considered established. A SIP ACK is sent automatically by the
+ * SIP plugin, so there's no action required of the application to do
+ * that manually.
+ *
+ * Notice that the SIP plugin supports early-media via \c 183 responses
+ * responses. In case a \c 183 response is received, it's sent back to
+ * the user, along with the JSEP answer originated by the callee, in
+ * a \c progress event:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "progress",
+		"username" : "<SIP URI of the callee>"
+	}
+}
+\endverbatim
+ *
+ * In case the caller received a \c progress event, the following
+ * \c accepted event will NOT contain a JSEP answer, as the one received
+ * in the "Session Progress" event will act as the SDP answer for the session.
+ *
+ * Notice that you only use \c call to start a conversation, that is for
+ * the first INVITE. To update a session via a re-INVITE, e.g., to renegotiate
+ * a session to add/remove streams or force an ICE restart, you do NOT
+ * use \c call, but another request called \c update instead. This request
+ * needs no arguments, as the whole context is derived from the current
+ * state of the session. It does need the new JSEP offer to provide, though,
+ * as part of the renegotiation.
+ *
+\verbatim
+{
+	"request" : "update"
+}
+\endverbatim
+ *
+ * An \c updating event will be sent back, as this is an asynchronous request.
+ *
+ * While the \c call request allows you to send a SIP INVITE (and the
+ * \c update request allows you to update an existing session), there is
+ * a way to react to SIP INVITEs as well, that is to handle incoming calls.
+ * Incoming calls are notified to the application via \c incomingcall
+ * events:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "incomingcall",
+		"username" : "<SIP URI of the caller>",
+		"displayname" : "<display name of the caller, if available; optional>",
+		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>"
+	}
+}
+\endverbatim
+ *
+ * The \c incomingcall may or may not be accompanied by a JSEP offer, depending
+ * on whether the caller sent an offerless INVITE or a regular one. Either
+ * way, you can accept the incoming call with the \c accept request:
+ *
+\verbatim
+{
+	"request" : "accept",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>"
+}
+\endverbatim
+ *
+ * An \c accepting event will be sent back, as this is an asynchronous request.
+ *
+ * This will result in a <code>200 OK</code> to be sent back to the caller.
+ * An \c accept request must always be accompanied by a JSEP answer (if the
+ * \c incomingcall event contained an offer) or offer (in case it was an
+ * offerless INVITE). In the former case, an \c accepted event will be
+ * sent back just to confirm the call can be considered established;
+ * in the latter case, instead, an \c accepting event will be sent back
+ * instead, and an \c accepted event will only follow later, as soon as
+ * a JSEP answer is available in the SIP ACK the caller sent back.
+ *
+ * Notice that in case you get an incoming call while you're in another
+ * call, you will NOT get an \c incomingcall event, but a \c missed_call
+ * event instead, and just as a notification as there's no way to have
+ * two calls at the same time on the same handle in the SIP plugin:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "missed_call",
+		"username" : "<SIP URI of the caller>",
+		"displayname" : "<display name of the caller, if available; optional>"
+	}
+}
+\endverbatim
+ *
+ * Closing a session is always done the same way: this means that, no matter
+ * if you're decling a call or hanging up an ongoing session, you always
+ * use the same request. This request is called \c hangup and needs no
+ * additional arguments, as the whole context can be extracted from the
+ * current state of the session in the plugin:
+ *
+\verbatim
+{
+	"request" : "hangup"
+}
+\endverbatim
+ *
+ * An \c hangingup event will be sent back, as this is an asynchronous request.
+ *
+ * As anticipated before, when a call is declined or being hung up, a
+ * \c hangup event is sent instead, which is basically a SIP error event
+ * notification as it includes the \c code and \c reason . A regular BYE,
+ * for instance, would be notified with \c 200 and <code>SIP BYE</code>,
+ * although a more verbose description may be provided as well.
+ *
+ * When a session has been established, there are different requests that
+ * you can use to interact with the session.
+ *
+ * The \c message request allows you to send a SIP MESSAGE to the peer:
+ *
+\verbatim
+{
+	"request" : "message",
+	"content" : "<text to send>"
+}
+\endverbatim
+ *
+ * A \c messagesent event will be sent back. Incoming SIP MESSAGEs, instead,
+ * are notified in \c message events:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "message",
+		"sender" : "<SIP URI of the message sender>",
+		"displayname" : "<display name of the sender, if available; optional>",
+		"content" : "<content of the message>"
+	}
+}
+\endverbatim
+ *
+ * SIP INFO works pretty much the same way, except that you use an \c info
+ * request to one to the peer:
+ *
+\verbatim
+{
+	"request" : "info",
+	"type" : "<content type>"
+	"content" : "<message to send>"
+}
+\endverbatim
+ *
+ * A \c infosent event will be sent back. Incoming SIP INFOs, instead,
+ * are notified in \c info events:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "info",
+		"sender" : "<SIP URI of the message sender>",
+		"displayname" : "<display name of the sender, if available; optional>",
+		"type" : "<content type of the message>",
+		"content" : "<content of the message>"
+	}
+}
+\endverbatim
+ *
+ * You can also record a SIP call, and it works pretty much the same the
+ * VideoCall plugin does. Specifically, you make use of the \c recording
+ * request to either start or stop a recording, using the following syntax:
+ *
+\verbatim
+{
+	"request" : "recording",
+	"action" : "<start|stop, depending on whether you want to start or stop recording something>"
+	"audio" : <true|false; whether or not our audio should be recorded>,
+	"video" : <true|false; whether or not our video should be recorded>,
+	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
+	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
+	"filename" : "<base path/filename to use for all the recordings>"
+}
+\endverbatim
+ *
+ * As you can see, this means that the two sides of conversation are recorded
+ * separately, and so are the audio and video streams if available. You can
+ * choose which ones to record, in case you're interested in just a subset.
+ * The \c filename part is just a prefix, and dictates the actual filenames
+ * that will be used for the up-to-four recordings that may need to be enabled.
+ *
+ * A \c recordingupdated event is sent back in case the request is successful.
  *
  * \ingroup plugins
  * \ref plugins
