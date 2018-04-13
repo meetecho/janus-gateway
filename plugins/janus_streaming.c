@@ -118,8 +118,8 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c list , \c create , \c destroy , \c recording , \c edit , \c enable and
- * \c disable are synchronous requests, which means you'll
+ * \c list , \c info , \c create , \c destroy , \c recording , \c edit ,
+ * \c enable and \c disable are synchronous requests, which means you'll
  * get a response directly within the context of the transaction. \c list
  * lists all the available streams; \c create allows you to create a new
  * mountpoint dynamically, as an alternative to using the configuration
@@ -130,7 +130,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * mountpoint should be available to users without destroying it.
  * \c edit allows you to dynamically edit some mountpoint properties (e.g., the PIN);
  *
- * The \c watch , \c start , \c pause , \c switch and \c stop requests
+ * The \c watch , \c start , \c configure , \c pause , \c switch and \c stop requests
  * instead are all asynchronous, which means you'll get a notification
  * about their success or failure in an event. \c watch asks the plugin
  * to prepare the playout of one of the available streams; \c start
@@ -148,7 +148,486 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * \c admin_key value in an "admin_key" property will succeed, and will
  * be rejected otherwise.
  *
- * Actual API docs: TBD.
+ * \subsection streamingsync Synchronous requests
+ *
+ * To list the available Streaming mountpoints (both those created via
+ * configuration file and those created via API), you can use the \c list
+ * request:
+ *
+\verbatim
+{
+	"request" : "list"
+}
+\endverbatim
+ *
+ * If successful, it will return an array with a list of all the mountpoints.
+ * Notice that only the public mountpoints will be returned: those with
+ * an \c is_private set to yes/true will be skipped. The response will
+ * be formatted like this:
+ *
+\verbatim
+{
+	"streaming" : "list",
+	"list" : [
+		{
+			"id" : <unique ID of mountpoint #1>,
+			"description" : "<description of mountpoint #1>",
+			"type" : "<type of mountpoint #1, in line with the types introduced above>",
+			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
+			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
+		},
+		{
+			"id" : <unique ID of mountpoint #2>,
+			"description" : "<description of mountpoint #2>",
+			"type" : "<type of mountpoint #2, in line with the types introduced above>",
+			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
+			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
+		},
+		...
+	]
+}
+\endverbatim
+ *
+ * As you can see, the \c list request only returns very generic info on
+ * each mounpoint. In case you're interested in learning more details about
+ * a specific mountpoint, you can use the \c info request instead, which
+ * returns more information, or all of it if the mountpoint secret is
+ * provided in the request. An \c info request must be formatted like this:
+ *
+\verbatim
+{
+	"request" : "info"
+	"id" : <unique ID of mountpoint to query>,
+	"secret" : <mountpoint secret; optional, can be used to return more info>"
+}
+\endverbatim
+ *
+ * If successful, this will have the plugin return an object containing
+ * more info on the mountpoint:
+ *
+\verbatim
+{
+	"streaming" : "info",
+	"info" : {
+		"id" : <unique ID of mountpoint>,
+		"name" : "<unique name of mountpoint>",
+		"description" : "<description of mountpoint>",
+		"secret" : "<secret of mountpoint; only available if a valid secret was provided>",
+		"pin" : "<PIN to access mountpoint; only available if a valid secret was provided>",
+		"is_private" : <true|false, depending on whether the mountpoint is listable; only available if a valid secret was provided>,
+		"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
+		"audio" : <true, only present if the mountpoint contains audio>,
+		"audiopt" : <audio payload type, only present if configured and the mountpoint contains audio>,
+		"audiortpmap" : "<audio SDP rtpmap value, only present if configured and the mountpoint contains audio>",
+		"audiofmtp" : "<audio SDP fmtp value, only present if configured and the mountpoint contains audio>",
+		"video" : <true, only present if the mountpoint contains video>,
+		"videopt" : <video payload type, only present if configured and the mountpoint contains video>,
+		"videortpmap" : "<video SDP rtpmap value, only present if configured and the mountpoint contains video>",
+		"videofmtp" : "<video SDP fmtp value, only present if configured and the mountpoint contains video>",
+		...
+	}
+}
+\endverbatim
+ *
+ * Considering the different mountpoint types that you can create in this
+ * plugin, the nature of the rest of the returned info obviously depends
+ * on which mountpoint you're querying. This is especially true for RTP
+ * and RTSP mountpoints. Notice that info like the ports an RTP mountpoint
+ * is listening on will only be returned if you provide the correct secret,
+ * as otherwise they're treated like sensitive information and are not
+ * returned to generic \c info calls.
+ *
+ * We've seen how you can create a new mountpoint via configuration file,
+ * but you can create one via API as well, using the \c create request.
+ * Most importantly, you can also choose whether or not a \c create
+ * request should result in the mountpoint being saved to configuration
+ * file so that it's still available after a server restart. The common
+ * syntax for all \c create requests is the following:
+ *
+\verbatim
+{
+	"request" : "create",
+	"admin_key" : "<plugin administrator key; mandatory if configured>",
+	"type" : "<type of the mountpoint to create; mandatory>",
+	"id" : <unique ID to assign the mountpoint; optional, will be chosen by the server if missing>,
+	"name" : "<unique name for the mountpoint; optional, will be chosen by the server if missing>",
+	"description" : "<description of mountpoint; optional>",
+	"secret" : "<secret to query/edit the mountpoint later; optional>",
+	"pin" : "<PIN required for viewers to access mountpoint; optional>",
+	"is_private" : <true|false, whether the mountpoint should be listable; true by default>,
+	"audio" : <true|false, whether the mountpoint will have audio; false by default>,
+	"video" : <true|false, whether the mountpoint will have video; false by default>,
+	"data" : <true|false, whether the mountpoint will have datachannels; false by default>,
+	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>,
+	...
+}
+\endverbatim
+ *
+ * Of course, different mountpoint types will have different properties
+ * you can specify in a \c create. Please refer to the documentation on
+ * configuration files to see the fields you can pass. The only important
+ * difference to highlight is that, unlike in configuration files, you will
+ * NOT have to escape semicolons with a trailing slash, in those properties
+ * where a semicolon might be needed (e.g., \c audiofmtp or \c videofmtp ).
+ *
+ * A successful \c create will result in a \c created response:
+ *
+\verbatim
+{
+	"streaming" : "created",
+	"create" : "<unique name of the just created mountpoint>",
+	"permanent" : <true|false, depending on whether the mountpoint was saved to configuration file or not>,
+	"stream": {
+		"id" : <unique ID of the just created mountpoint>,
+		"type" : "<type of the just created mountpoint>",
+		"description" : "<description of the just created mountpoint>",
+		"is_private" : <true|false, depending on whether the new mountpoint is listable>,
+		...
+	}
+}
+\endverbatim
+ *
+ * Notice that additional information, namely the ports the mountpoint
+ * bound to, will only be added for new RTP mountpoints, otherwise this
+ * is all that a \c created request will contain. If you want to double
+ * check everything in your \c create request went as expected, you may
+ * want to issue a followup \c info request to compare the results.
+ *
+ * Once you created a mountpoint, you can modify some (not all) of its
+ * properties via an \c edit request. Namely, you can only modify generic
+ * properties like the mountoint description, the secret, the PIN and
+ * whether or not the mountpoint should be listable. All other properties
+ * are considered to be immutable. Again, you can choose whether the changes
+ * should be permanent, e.g., saved to configuration file, or not. Notice
+ * that an \c edit request requires the right secret to be provided, if
+ * the mountpoint has one, or will return an error instead. The \c edit
+ * request must be formatted like this:
+ *
+\verbatim
+{
+	"request" : "edit",
+	"id" : <unique ID of the mountpoint to edit; mandatory>,
+	"secret" : "<secret to edit the mountpoint; mandatory if configured>",
+	"new_description" : "<new description for the mountpoint; optional>",
+	"new_secret" : "<new secret for the mountpoint; optional>",
+	"new_pin" : "<new PIN for the mountpoint; optional>",
+	"new_is_private" : <true|false, depending on whether the mountpoint should be now listable; optional>,
+	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>
+}
+\endverbatim
+ *
+ * A successful \c edit will result in an \c edited response:
+ *
+\verbatim
+{
+	"streaming" : "edited",
+	"id" : <unique ID of the just edited mountpoint>,
+	"permanent" : <true|false, depending on whether the changes were saved to configuration file or not>
+}
+\endverbatim
+ *
+ * Just as you can create and edit mountpoints, you can of course also destroy
+ * them. Again, this applies to all mountpoints, whether created statically
+ * via configuration file or dynamically via API, and the mountpoint destruction
+ * can be made permanent in the configuration file as well. A \c destroy
+ * request must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "destroy",
+	"id" : <unique ID of the mountpoint to destroy; mandatory>,
+	"secret" : "<secret to destroy the mountpoint; mandatory if configured>",
+	"permanent" : <true|false, whether the mountpoint should be removed from the configuration file or not; false by default>
+}
+\endverbatim
+ *
+ * If successful, the result will be confirmed in a \c destroyed event:
+ *
+\verbatim
+{
+	"streaming" : "destroyed",
+	"id" : <unique ID of the just destroyed mountpoint>
+}
+\endverbatim
+ *
+ * Notice that destroying a mountpoint while viewers are still subscribed
+ * to it will result in all viewers being kicked.
+ *
+ * You can also dynamically enable and disable mountpoints via API. A
+ * disabled mountpoint is a mountpoint that exists, and still works as
+ * expected, but is not accessible to viewers until it's enabled again.
+ * This is a useful property, especially in case of mountpoints that
+ * need to be prepared in advance but must not be accessible until a
+ * specific moment, and a much better alternative to just create the
+ * mountpoint at the very last minute and destroy it otherwise. The
+ * syntax for both the \c enable and \c disable requests is the same,
+ * and looks like the following:
+ *
+\verbatim
+{
+	"request" : "enable|disable",
+	"id" : <unique ID of the mountpoint to enable/disable; mandatory>,
+	"secret" : "<secret to enable/disable the mountpoint; mandatory if configured>"
+}
+\endverbatim
+ *
+ * In both cases, a generic \c ok is returned if successful:
+ *
+\verbatim
+{
+	"streaming" : "ok"
+}
+\endverbatim
+ *
+ * Finally, you can record a mountpoint to the internal Janus .mjr format
+ * using the \c recording request. The same request can also be used to
+ * stop recording. Although the same request is used in both cases, though,
+ * the syntax for the two use cases differs a bit, namely in terms of the
+ * type of some properties.
+ *
+ * To start recording a new mountpoint, the request should be formatted
+ * like this:
+ *
+\verbatim
+{
+	"request" : "recording",
+	"action" : "start",
+	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
+	"audio" : "<enable audio recording, and use this base path/filename; optional>",
+	"video" : "<enable video recording, and use this base path/filename; optional>",
+	"data" : "<enable data recording, and use this base path/filename; optional>",
+	"audio" : <true|false; whether or not audio should be recorded>,
+	"video" : <true|false; whether or not video should be recorded>,
+	"data" : <true|false; whether or not datachannel messages should be recorded>
+}
+\endverbatim
+ *
+ * To stop a recording, instead, this is the request syntax:
+ *
+\verbatim
+{
+	"request" : "recording",
+	"action" : "stop",
+	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
+	"audio" : <true|false; whether or not audio recording should be stopped>,
+	"video" : <true|false; whether or not video recording should be stopped>,
+	"data" : <true|false; whether or not datachannel recording should be stopped>
+}
+\endverbatim
+ *
+ * As you can notice, when you want to start a recording the \c audio ,
+ * \c video and \c data properties are strings, and specify the base path
+ * to use for the recording filename; when stopping a recording, instead,
+ * they're interpreted as boolean properties. Notice that, as with all
+ * APIs that wrap .mjr recordings, the filename you specify here is not
+ * the actual filename: an \c .mjr extension is always going to be added
+ * by the Janus core, so you should take this into account when tracking
+ * the related recording files.
+ *
+ * Whether you started or stopped a recording, a successful request will
+ * always result in a simple \c ok response:
+ *
+\verbatim
+{
+	"streaming" : "ok"
+}
+\endverbatim
+ *
+ * \subsection streamingasync Asynchronous requests
+ *
+ * All the requests we've gone through so far are synchronous. This means
+ * that they return a response right away. That said, many of the requests
+ * this plugin supports are asynchronous instead, which means Janus will
+ * send an ack when they're received, and a response will only follow
+ * later on. This is especially true for requests dealing with the
+ * management and setup of mountpoint viewers, e.g., for the purpose of
+ * negotiating a WebRTC PeerConnection to receive media from a mountpoint.
+ *
+ * To subscribe to a specific mountpoint, an interested viewer can make
+ * use of the \c watch request. As suggested by the request name, this
+ * instructs the plugin to setup a new PeerConnection to allow the new
+ * viewer to watch the specified mountpoint. The \c watch request must
+ * be formatted like this:
+ *
+\verbatim
+{
+	"request" : "watch",
+	"id" : <unique ID of the mountpoint to subscribe to; mandatory>,
+	"pin" : "<PIN required to access the mountpoint; mandatory if configured>",
+	"offer_audio" : <true|false; whether or not audio should be negotiated; true by default if the mountpoint has audio>,
+	"offer_video" : <true|false; whether or not video should be negotiated; true by default if the mountpoint has video>,
+	"offer_data" : <true|false; whether or not datachannels should be negotiated; true by default if the mountpoint has datachannels>
+}
+\endverbatim
+ *
+ * As you can see, it's just a matter of specifying the ID of the mountpoint to
+ * subscribe to and, if needed, the PIN to access the mountpoint in case
+ * it's protected. The \c offer_audio , \c offer_video and \c offer_data are
+ * also particularly interesting, though, as they allow you to only subscribe
+ * to a subset of the mountpoint media. By default, in fact, a \c watch
+ * request will result in the plugin preparing a new SDP offer trying to
+ * negotiate all the media streams available in the mountpoint; in case
+ * the viewer knows they don't support one of the mountpoint codecs, though
+ * (e.g., the video in the mountpoint is VP8, but they only support H.264),
+ * or are not interested in getting all the media (e.g., they're ok with
+ * just audio and not video, or don't have enough bandwidth for both),
+ * they can use those properties to shape the SDP offer to their needs.
+ *
+ * As anticipated, if successful this request will generate a new JSEP SDP
+ * offer, which will be attached to a \c preparing status event:
+ *
+\verbatim
+{
+	"status" : "preparing"
+}
+\endverbatim
+ *
+ * At this stage, to complete the setup of a subscription the viewer is
+ * supposed to send a JSEP SDP answer back to the plugin. This is done
+ * by means of a \c start request, which in this case MUST be associated
+ * with a JSEP SDP answer but otherwise requires no arguments:
+ *
+\verbatim
+{
+	"request" : "start"
+}
+\endverbatim
+ *
+ * If successful this request returns a \c starting status event:
+ *
+\verbatim
+{
+	"status" : "starting"
+}
+\endverbatim
+ *
+ * Once this is done, all that's needed is waiting for the WebRTC PeerConnection
+ * establishment to succeed. As soon as that happens, the Streaming plugin
+ * can start relaying media from the mountpoint the viewer subscribed to
+ * to the viewer themselves.
+ *
+ * Notice that the same exact steps we just went through (\c watch request,
+ * followed by JSEP offer by the plugin, followed by \c start request with
+ * JSEP answer by the viewer) is what you also use when renegotiations are
+ * needed, e.g., for the purpose of ICE restarts.
+ *
+ * As a viewer, you can temporarily pause and resume the whole media delivery
+ * with a \c pause and, again, \c start request (in this case without any JSEP
+ * SDP answer attached). Neither expect other arguments, as the context
+ * is implicitly derived from the handle they're sent on:
+ *
+\verbatim
+{
+	"request" : "pause"
+}
+\endverbatim
+ *
+\verbatim
+{
+	"request" : "start"
+}
+\endverbatim
+ *
+ * Unsurprisingly, they just result in, respectively, \c pausing and
+ * \c starting events:
+ *
+\verbatim
+{
+	"status" : "pausing"
+}
+\endverbatim
+ *
+\verbatim
+{
+	"status" : "starting"
+}
+\endverbatim
+ *
+ * For more drill-down manipulations of a subscription, a \c configure
+ * request can be used instead. This request allows viewers to dynamically
+ * change some properties associated to their media subscription, e.g.,
+ * in terms of what should and should not be sent at a specific time. A
+ * \c configure request must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "configure",
+	"audio" : <true|false, depending on whether audio should be relayed or not; optional>,
+	"video" : <true|false, depending on whether video should be relayed or not; optional>,
+	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
+	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
+	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>
+}
+\endverbatim
+ *
+ * As you can see, the \c audio , \c video and \c data properties can be
+ * used as a media-level pause/resume functionality, whereas \c pause
+ * and \c start simply pause and resume all streams at the same time.
+ * The \c substream and \c temporal properties, instead, only make sense
+ * when the mountpoint is configured with video simulcasting support, and
+ * as such the viewer is interested in receiving a specific substream
+ * or temporal layer, rather than any other of the available ones.
+ *
+ * Another interesting feature in the Streaming plugin is the so-called
+ * mountpoint "switching". Basically, when subscribed to a specific
+ * mountpoint and receiving media from there, you can at any time "switch"
+ * to a different mountpoint, and as such start receiving media from that
+ * other mountpoint instead. Think of it as changing channel on a TV: you
+ * keep on using the same PeerConnection, the plugin simply changes the
+ * source of the media transparently. Of course, while powerful and effective
+ * this request has some limitations. First of all, it only works with RTP
+ * mountpoints, and not other mountpoint types; besides, the two mountpoints
+ * must have the same media configuration, that is, use the same codecs,
+ * the same payload types, etc. In fact, since the same PeerConnection is
+ * used for this feature, switching to a mountpoint with a different
+ * configuration might result in media incompatible with the PeerConnection
+ * setup being relayed to the viewer, and as such in no audio/video being
+ * played. That said, a \c switch request must be formatted like this:
+ *
+\verbatim
+{
+	"request" : "switch",
+	"id" : <unique ID of the new mountpoint to switch to; mandatory>
+}
+\endverbatim
+ *
+ * If successful, you'll be unsubscribed from the previous mountpoint,
+ * and subscribed to the new mountpoint instead. The event to confirm
+ * the switch was successful will look like this:
+ *
+\verbatim
+{
+	"switched" : "ok",
+	"id" : <unique ID of the new mountpoint>
+}
+\endverbatim
+ *
+ * Finally, to stop the subscription to the mountpoint and tear down the
+ * related PeerConnection, you can use the \c stop request. Since context
+ * is implicit, no other argument is required:
+ *
+\verbatim
+{
+	"request" : "stop"
+}
+\endverbatim
+ *
+ * If successful, the plugin will attempt to tear down the PeerConnection,
+ * and will send back a \c stopping status event:
+ *
+\verbatim
+{
+	"status" : "stopping"
+}
+\endverbatim
+ *
+ * Once a PeerConnection has been torn down and the subscription closed,
+ * as a viewer you're free to subscribe to a different mountpoint instead.
+ * In fact, while you can't watch more than one mountpoint at the same
+ * time on the same handle, there's no limit on how many mountpoints
+ * you can watch in sequence, again on the same handle. If you're interested
+ * in subscribing to multiple mountpoints at the same time, instead, you'll
+ * have to create multiple handles for the purpose.
  *
  * \ingroup plugins
  * \ref plugins
@@ -1451,6 +1930,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(ml, "pin", json_string(mp->pin));
 		if(admin && mp->is_private)
 			json_object_set_new(ml, "is_private", json_true());
+		json_object_set_new(ml, "enabled", mp->enabled ? json_true() : json_false());
 		if(mp->audio) {
 			json_object_set_new(ml, "audio", json_true());
 			if(mp->codecs.audio_pt != -1)
@@ -2347,7 +2827,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		/* Prepare response/notification */
 		response = json_object();
-		json_object_set_new(response, "mountpoint", json_string("edited"));
+		json_object_set_new(response, "streaming", json_string("edited"));
 		json_object_set_new(response, "id", json_integer(mp->id));
 		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		/* Also notify event handlers */
