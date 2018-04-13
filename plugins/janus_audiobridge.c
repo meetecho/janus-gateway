@@ -351,7 +351,7 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 }
 \endverbatim
  * 
- * You can add a new RTP forwarder for an existing room exists using the
+ * You can add a new RTP forwarder for an existing room using the
  * \c rtp_forward request, which has to be formatted as follows:
  *
 \verbatim
@@ -362,8 +362,8 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
 	"port" : <port to forward the RTP packets to>,
-	"srtp_suite" : <length of authentication tag (32 or 80)>,
-	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES)>",
+	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
+	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>",
 	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
 }
 \endverbatim
@@ -423,7 +423,9 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 			"ip" : "<IP this forwarder is streaming to>",
 			"port" : <port this forwarder is streaming to>,
 			"ssrc" : <SSRC this forwarder is using, if any>,
-			"ptype" : <payload type this forwarder is using, if any>
+			"ptype" : <payload type this forwarder is using, if any>,
+			"srtp" : <true|false, whether the RTP stream is encrypted>,
+			"always_on" : <true|false, whether this forwarder works even when no participant is in or not>
 		},
 		// Other forwarders
 	]
@@ -2597,6 +2599,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(fl, "port", json_integer(ntohs(rf->serv_addr.sin_port)));
 			json_object_set_new(fl, "ssrc", json_integer(rf->ssrc ? rf->ssrc : stream_id));
 			json_object_set_new(fl, "ptype", json_integer(rf->payload_type));
+			if(rf->is_srtp)
+				json_object_set_new(fl, "srtp", json_true());
 			json_object_set_new(fl, "always_on", rf->always_on ? json_true() : json_false());
 			json_array_append_new(list, fl);
 		}
