@@ -162,7 +162,7 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 }
 \endverbatim
  *
- * A successful destruction procedure will result in an \c edited response:
+ * A successful edit procedure will result in an \c edited response:
  *
 \verbatim
 {
@@ -190,6 +190,16 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 {
 	"audiobridge" : "destroyed",
 	"room" : <unique numeric ID>
+}
+\endverbatim
+ *
+ * This will also result in a \c destroyed event being sent to all the
+ * participants in the audio room, which will look like this:
+ *
+\verbatim
+{
+	"audiobridge" : "destroyed",
+	"room" : <unique numeric ID of the destroyed room>
 }
 \endverbatim
  *
