@@ -188,7 +188,7 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
  * 
 \verbatim
 {
-	"audiobridge" : "created",
+	"audiobridge" : "destroyed",
 	"room" : <unique numeric ID>
 }
 \endverbatim
