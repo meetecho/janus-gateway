@@ -43,6 +43,8 @@
  * take care of any adaptation that may be needed to make this work with
  * the signalling protocol of your choice.
  *
+ * \section nosipapi NoSIP Plugin API
+ *
  * The plugin mainly supports two requests, \c generate and \c process,
  * which are both asynchronous. The \c generate request take a JSEP offer
  * or answer, and generates a barebone SDP the "legacy" application can
