@@ -3394,10 +3394,10 @@ static void *janus_audiobridge_handler(void *data) {
 					/* Start recording (ignore if recording already) */
 					if(participant->arc != NULL) {
 						JANUS_LOG(LOG_WARN, "Already recording participant's audio (room %"SCNu64", user %"SCNu64")\n",
-							participant->user_id, participant->room->room_id);
+							participant->room->room_id, participant->user_id);
 					} else {
 						JANUS_LOG(LOG_INFO, "Starting recording of participant's audio (room %"SCNu64", user %"SCNu64")\n",
-							participant->user_id, participant->room->room_id);
+							participant->room->room_id, participant->user_id);
 						char filename[255];
 						gint64 now = janus_get_real_time();
 						memset(filename, 0, 255);
@@ -3413,7 +3413,7 @@ static void *janus_audiobridge_handler(void *data) {
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "audiobridge-%"SCNu64"-%"SCNu64"-%"SCNi64"-audio",
-								participant->user_id, participant->room->room_id, now);
+								participant->room->room_id, participant->user_id, now);
 							participant->arc = janus_recorder_create(NULL, "opus", filename);
 							if(participant->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
