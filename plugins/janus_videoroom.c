@@ -700,7 +700,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 }
 \endverbatim
  *
- * To get a list of the forwarders for a specific publisher, instead, you
+ * To get a list of all the forwarders in a specific room, instead, you
  * can make use of the \c listforwarders request, which has to be
  * formatted as follows:
  *
@@ -708,8 +708,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 {
 	"request" : "listforwarders",
 	"room" : <unique numeric ID of the room>,
-	"secret" : "<room secret; mandatory if configured>",
-	"publisher_id" : <unique numeric ID of the publisher to query>
+	"secret" : "<room secret; mandatory if configured>"
 }
 \endverbatim
  *
@@ -720,20 +719,25 @@ notify_joining = true|false (optional, whether to notify all participants when a
 {
 	"videoroom" : "forwarders",
 	"room" : <unique numeric ID of the room>,
-	"publisher_id" : <unique numeric ID of the publisher>,
-	"rtp_forwarders" : [		// Array of RTP forwarder objects
-		{	// RTP forwarder #1
-			"audio_stream_id" : <unique numeric ID assigned to this audio RTP forwarder, if any>,
-			"video_stream_id" : <unique numeric ID assigned to this video RTP forwarder, if any>,
-			"data_stream_id" : <unique numeric ID assigned to this datachannel messages forwarder, if any>
-			"ip" : "<IP this forwarder is streaming to>",
-			"port" : <port this forwarder is streaming to>,
-			"ssrc" : <SSRC this forwarder is using, if any>,
-			"pt" : <payload type this forwarder is using, if any>,
-			"substream" : <video substream this video forwarder is relaying, if any>,
-			"srtp" : <true|false, whether the RTP stream is encrypted>
+	"rtp_forwarders" : [		// Array of publishers with RTP forwarders
+		{	// Publisher #1
+			"publisher_id" : <unique numeric ID of publisher #1>,
+			"rtp_forwarders" : [		// Array of RTP forwarders
+				{	// RTP forwarder #1
+					"audio_stream_id" : <unique numeric ID assigned to this audio RTP forwarder, if any>,
+					"video_stream_id" : <unique numeric ID assigned to this video RTP forwarder, if any>,
+					"data_stream_id" : <unique numeric ID assigned to this datachannel messages forwarder, if any>
+					"ip" : "<IP this forwarder is streaming to>",
+					"port" : <port this forwarder is streaming to>,
+					"ssrc" : <SSRC this forwarder is using, if any>,
+					"pt" : <payload type this forwarder is using, if any>,
+					"substream" : <video substream this video forwarder is relaying, if any>,
+					"srtp" : <true|false, whether the RTP stream is encrypted>
+				},
+				// Other forwarders for this publisher
+			],
 		},
-		// Other forwarders
+		// Other publishers
 	]
 }
 \endverbatim * 
