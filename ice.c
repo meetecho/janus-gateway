@@ -3319,7 +3319,7 @@ void *janus_ice_send_thread(void *data) {
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
 			}
-			if(stream) {
+			if(stream && stream->audio_recv) {
 				/* Create a RR too */
 				int rrlen = 32;
 				char rtcpbuf[32];
@@ -3372,7 +3372,7 @@ void *janus_ice_send_thread(void *data) {
 				/* Enqueue it, we'll send it later */
 				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
 			}
-			if(stream) {
+			if(stream && stream->video_recv) {
 				/* Create a RR too (for each SSRC, if we're simulcasting) */
 				int vindex=0;
 				for(vindex=0; vindex<3; vindex++) {
@@ -3394,7 +3394,7 @@ void *janus_ice_send_thread(void *data) {
 					}
 				}
 			}
-			if (stream && stream->do_transport_wide_cc) {
+			if(stream && stream->do_transport_wide_cc) {
 				/* Create a transport wide feedback message */
 				size_t size = 1300;
 				char rtcpbuf[1300];
