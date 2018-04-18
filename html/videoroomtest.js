@@ -585,15 +585,15 @@ function newRemoteFeed(id, display, audio, video) {
 				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
-					if($('#remotevideo'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-						$('#remotevideo'+remoteFeed.rfindex).append(
+					if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+						$('#videoremote'+remoteFeed.rfindex).append(
 							'<div class="no-video-container">' +
 								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 								'<span class="no-video-text">No remote video available</span>' +
 							'</div>');
 					}
 				} else {
-					$('#remotevideo'+remoteFeed.rfindex+ ' .no-video-container').remove();
+					$('#videoremote'+remoteFeed.rfindex+ ' .no-video-container').remove();
 					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
 				}
 				if(!addButtons)
