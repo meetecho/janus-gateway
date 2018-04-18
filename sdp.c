@@ -168,7 +168,6 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
-					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 					if(stream->video_rtcp_ctx[0] == NULL) {
 						stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
 						stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
