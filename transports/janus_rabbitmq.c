@@ -68,7 +68,8 @@ gboolean janus_rabbitmq_is_janus_api_enabled(void);
 gboolean janus_rabbitmq_is_admin_api_enabled(void);
 int janus_rabbitmq_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_rabbitmq_session_created(janus_transport_session *transport, guint64 session_id);
-void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+void janus_rabbitmq_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -91,6 +92,7 @@ static janus_transport janus_rabbitmq_transport =
 		.send_message = janus_rabbitmq_send_message,
 		.session_created = janus_rabbitmq_session_created,
 		.session_over = janus_rabbitmq_session_over,
+		.session_claimed = janus_rabbitmq_session_claimed,
 	);
 
 /* Transport creator */
@@ -601,8 +603,13 @@ void janus_rabbitmq_session_created(janus_transport_session *transport, guint64 
 	/* We don't care */
 }
 
-void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
+void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
 	/* We don't care, not even if it's a timeout (should we?), our client is always up */
+}
+
+void janus_rabbitmq_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
+	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
 

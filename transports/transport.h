@@ -6,23 +6,23 @@
  * the gateway and all the transports need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
- * 
+ *
  * In particular, the gateway implements the \c janus_transport_callbacks
  * interface. This means that, as a transport plugin, you can use the
  * methods it exposes to contact the gateway, e.g., in order to notify
  * an incoming message. In particular, the methods the gateway exposes
  * to transport plugins are:
- * 
- * - \c incoming_request(): to notify an incoming JSON message/event 
+ *
+ * - \c incoming_request(): to notify an incoming JSON message/event
  * from one of the transport clients.
- * 
+ *
  * On the other hand, a transport plugin that wants to register at the
  * gateway needs to implement the \c janus_transport interface. Besides,
  * as a transport plugin is a shared object, and as such external to the
  * gateway itself, in order to be dynamically loaded at startup it needs
  * to implement the \c create_t() hook as well, that should return a
  * pointer to the plugin instance. This is an example of such a step:
- * 
+ *
 \verbatim
 static janus_transport mytransport = {
 	[..]
@@ -33,14 +33,14 @@ janus_transport *create(void) {
 	return &mytransport;
 }
 \endverbatim
- * 
+ *
  * This will make sure that your transport plugin is loaded at startup
  * by the gateway, if it is deployed in the proper folder.
- * 
+ *
  * As anticipated and described in the above example, a transport plugin
  * must basically be an instance of the \c janus_transport type. As such,
  * it must implement the following methods and callbacks for the gateway:
- * 
+ *
  * - \c init(): this is called by the gateway as soon as your transport
  * plugin is started; this is where you should setup your transport plugin
  * (e.g., static stuff and reading the configuration file);
@@ -56,12 +56,13 @@ janus_transport *create(void) {
  * - \c is_admin_api_enabled(): this method should return TRUE if Admin API can be used with this transport, and support has been enabled by the user;
  * - \c send_message(): this method asks the transport to send a message (be it a response or an event) to a client on the specified transport;
  * - \c session_created(): this method notifies the transport that a Janus session has been created by one of its requests;
- * - \c session_over(): this method notifies the transport that one of its Janus sessionss is now over, whether because of a timeour or not.
- * 
+ * - \c session_over(): this method notifies the transport that one of its Janus sessionss is now over, whether because of a timeout or not.
+ * - \c session_claimed(): this method notifies the transport that it has claimed a session.
+ *
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject a transport plugin that doesn't implement any of the
  * mandatory callbacks.
- * 
+ *
  * The gateway \c janus_transport_callbacks interface is provided to a
  * transport plugin, together with the path to the configurations files
  * folder, in the \c init() method. This path can be used to read and
@@ -72,8 +73,8 @@ janus_transport *create(void) {
  * as it doesn't collide with existing ones. Besides, the existing transport
  * plugins use the same INI format for configuration files the gateway
  * uses (relying on the \c janus_config helpers for the purpose) but
- * again, if you prefer a different format (XML, JSON, etc.) that's up to you. 
- * 
+ * again, if you prefer a different format (XML, JSON, etc.) that's up to you.
+ *
  * \ingroup transportapi
  * \ref transportapi
  */
@@ -99,15 +100,15 @@ janus_transport *create(void) {
 #define JANUS_TRANSPORT_API_VERSION		7
 
 /*! \brief Initialization of all transport plugin properties to NULL
- * 
+ *
  * \note All transport plugins MUST add this as the FIRST line when initializing
  * their transport plugin structure, e.g.:
- * 
+ *
 \verbatim
 static janus_transport janus_http_transport plugin =
 	{
 		JANUS_TRANSPORT_INIT,
-		
+
 		.init = janus_http_init,
 		[..]
 \endverbatim
@@ -127,6 +128,7 @@ static janus_transport janus_http_transport plugin =
 		.send_message = NULL,			\
 		.session_created = NULL,		\
 		.session_over = NULL,			\
+		.session_claimed = NULL,			\
 		## __VA_ARGS__ }
 
 
@@ -163,7 +165,7 @@ janus_transport_session *janus_transport_session_create(void *transport_p, void 
  * used by the core anymore: e.g., a WebSocket connection was closed, an
  * HTTP connection associated with a pending request was lost, etc. Remember
  * to decrease the counter in case you increased it in other methods (this
- * method does this automatically as far as the create was concerned). 
+ * method does this automatically as far as the create was concerned).
  * @param session Pointer to the janus_transport_session instance */
 void janus_transport_session_destroy(janus_transport_session *session);
 
@@ -219,8 +221,14 @@ struct janus_transport {
 	 * \note A transport plugin may decide to close the connection as a result of such an event
 	 * @param[in] transport Pointer to the transport session instance
 	 * @param[in] session_id The session ID that was closed (if the transport cares)
-	 * @param[in] timeout Whether the cause for the session closure is a timeout (this may interest transport plugins more) */
-	void (* const session_over)(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+	 * @param[in] timeout Whether the cause for the session closure is a timeout (this may interest transport plugins more)
+	 * @param[in] claimed Whether the cause for the session closure is due to someone claiming the session */
+	void (* const session_over)(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+	/*! \brief Method to notify the transport plugin that a session it owned was claimed by another transport
+	 * \note A transport plugin should close the connection as a result of such an event
+	 * @param[in] transport Pointer to the new transport session instance that has claimed the session
+	 * @param[in] session_id The session ID that was claimed (if the transport cares) */
+	void (* const session_claimed)(janus_transport_session *transport, guint64 session_id);
 
 };
 
