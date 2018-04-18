@@ -157,6 +157,9 @@ janus_plugin *create(void) {
 
 #include <glib.h>
 
+#include "refcount.h"
+
+
 /*! \brief Version of the API, to match the one plugins were compiled against
  *
  * \note This was added in version 0.0.7 of the gateway, to address changes
@@ -166,7 +169,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	9
+#define JANUS_PLUGIN_API_VERSION	10
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -221,13 +224,15 @@ typedef struct json_t json_t;
 
 /*! \brief Plugin-Gateway session mapping */
 struct janus_plugin_session {
-	/*! \brief Opaque pointer to the gateway session */
+	/*! \brief Opaque pointer to the gateway core-level handle */
 	void *gateway_handle;
 	/*! \brief Opaque pointer to the plugin session */
 	void *plugin_handle;
 	/*! \brief Whether this mapping has been stopped definitely or not: if so,
 	 * the plugin shouldn't make use of it anymore */
-	int stopped:1;
+	volatile gint stopped;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief The plugin session and callbacks interface */

@@ -61,7 +61,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -95,6 +95,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
@@ -3142,7 +3143,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3707,6 +3708,16 @@ ldd janus | grep asan
  * \details The plugin.h header specifies the API a plugin needs to
  * implement and make available in order to be used by the gateway and
  * exposed to browsers. 
+ * \ingroup plugins
+ */
+
+/*! \defgroup luapapi Lua plugin API
+ * \brief Lua plugin (aka, how to write your own plugin in Lua)
+ * \details The Janus Lua plugin allows you to write your application
+ * logic in Lua, instead of creating a new plugin in C: check the
+ * documentation in janus_lua.c for info on the APIs. Some additional
+ * hooks in C may be required, which is what the janus_lua_data.c and
+ * janus_lua_extra.c code is for.
  * \ingroup plugins
  */
 

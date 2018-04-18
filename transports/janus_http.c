@@ -20,7 +20,7 @@
  * case you're interested in HTTPS support, it's better to just rely on
  * HTTP in Janus, and put a frontend like Apache HTTPD or nginx to take
  * care of securing the traffic. More details are available in \ref deploy.
- * 
+ *
  * \ingroup transports
  * \ref transports
  */
@@ -65,9 +65,10 @@ const char *janus_http_get_author(void);
 const char *janus_http_get_package(void);
 gboolean janus_http_is_janus_api_enabled(void);
 gboolean janus_http_is_admin_api_enabled(void);
-int janus_http_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
-void janus_http_session_created(void *transport, guint64 session_id);
-void janus_http_session_over(void *transport, guint64 session_id, gboolean timeout);
+int janus_http_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
+void janus_http_session_created(janus_transport_session *transport, guint64 session_id);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -90,6 +91,7 @@ static janus_transport janus_http_transport =
 		.send_message = janus_http_send_message,
 		.session_created = janus_http_session_created,
 		.session_over = janus_http_session_over,
+		.session_claimed = janus_http_session_claimed,
 	);
 
 /* Transport creator */
@@ -127,18 +129,50 @@ typedef struct janus_http_msg {
 static GHashTable *messages = NULL;
 static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
 
+static void janus_http_msg_destroy(void *msg) {
+	if(!msg)
+		return;
+	janus_http_msg *request = (janus_http_msg *)msg;
+	if(request->payload != NULL)
+		g_free(request->payload);
+	if(request->contenttype != NULL)
+		free(request->contenttype);
+	if(request->acrh != NULL)
+		g_free(request->acrh);
+	if(request->acrm != NULL)
+		g_free(request->acrm);
+	g_free(request);
+}
+
 
 /* Helper for long poll: HTTP events to push per session */
 typedef struct janus_http_session {
-	GAsyncQueue *events;	/* Events to notify for this session */
-	gint64 destroyed;		/* Whether this session has been destroyed */
+	guint64 session_id;			/* Core session identifier */
+	GAsyncQueue *events;		/* Events to notify for this session */
+	volatile gint destroyed;	/* Whether this session has been destroyed */
+	janus_refcount ref;			/* Reference counter for this session */
 } janus_http_session;
 /* We keep track of created sessions as we handle long polls */
 const char *keepalive_id = "keepalive";
 GHashTable *sessions = NULL;
-GList *old_sessions = NULL;
-GThread *sessions_watchdog = NULL;
 janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+
+static void janus_http_session_destroy(janus_http_session *session) {
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
+}
+
+static void janus_http_session_free(const janus_refcount *session_ref) {
+	janus_http_session *session = janus_refcount_containerof(session_ref, janus_http_session, ref);
+	/* This session can be destroyed, free all the resources */
+	if(session->events) {
+		json_t *event = NULL;
+		while((event = g_async_queue_try_pop(session->events)) != NULL)
+			json_decref(event);
+		g_async_queue_unref(session->events);
+	}
+	g_free(session);
+}
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
@@ -152,19 +186,19 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 /* Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
 int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /* Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
-void janus_http_request_completed (void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
+void janus_http_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
 /* Worker to handle requests that are actually long polls */
-int janus_http_notifier(janus_http_msg *msg, int max_events);
+int janus_http_notifier(janus_transport_session *ts, janus_http_session *session, int max_events);
 /* Helper to quickly send a success response */
-int janus_http_return_success(janus_http_msg *msg, char *payload);
+int janus_http_return_success(janus_transport_session *ts, char *payload);
 /* Helper to quickly send an error response */
-int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+int janus_http_return_error(janus_transport_session *ts, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 
 
 /* MHD Web Server */
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
-static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
+static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL;
 
 /* Admin/Monitor MHD Web Server */
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
@@ -541,49 +575,6 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	return daemon;
 }
 
-
-/* HTTP/Janus sessions watchdog/garbage collector (sort of) */
-static void *janus_http_sessions_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "HTTP/Janus sessions watchdog started\n");
-	gint64 now = 0;
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		janus_mutex_lock(&sessions_mutex);
-		/* Iterate on all the sessions */
-		now = janus_get_monotonic_time();
-		if(old_sessions != NULL) {
-			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old HTTP/Janus sessions sessions...\n", g_list_length(old_sessions));
-			while(sl) {
-				janus_http_session *session = (janus_http_session *)sl->data;
-				if(!session) {
-					sl = sl->next;
-					continue;
-				}
-				if(now-session->destroyed >= G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old HTTP/Janus session\n");
-					GList *rm = sl->next;
-					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;
-					/* Remove all events */
-					json_t *event = NULL;
-					while((event = g_async_queue_try_pop(session->events)) != NULL)
-						json_decref(event);
-					g_async_queue_unref(session->events);
-					g_free(session);
-					continue;
-				}
-				sl = sl->next;
-			}
-		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(500000);
-	}
-	JANUS_LOG(LOG_INFO, "HTTP/Janus sessions watchdog stopped\n");
-	return NULL;
-}
-
-
 /* Static helper method to fill in the CORS headers */
 static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response *response) {
 	if(msg == NULL || response == NULL)
@@ -901,18 +892,9 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	http_janus_api_enabled = ws || sws;
 	http_admin_api_enabled = admin_ws || admin_sws;
 
-	messages = g_hash_table_new(NULL, NULL);
-	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	old_sessions = NULL;
-	GError *error = NULL;
-	/* Start the HTTP/Janus sessions watchdog */
-	sessions_watchdog = g_thread_try_new("http watchdog", &janus_http_sessions_watchdog, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the HTTP/Janus sessions watchdog thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
-	
+	messages = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_transport_session_destroy);
+	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_http_session_destroy);
+
 	/* Done */
 	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_REST_NAME);
@@ -947,10 +929,7 @@ void janus_http_destroy(void) {
 	allow_origin = NULL;
 
 	g_hash_table_destroy(messages);
-	if(sessions_watchdog != NULL) {
-		g_thread_join(sessions_watchdog);
-		sessions_watchdog = NULL;
-	}
+	g_hash_table_destroy(sessions);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -994,7 +973,7 @@ gboolean janus_http_is_admin_api_enabled(void) {
 	return http_admin_api_enabled;
 }
 
-int janus_http_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
+int janus_http_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
 	JANUS_LOG(LOG_HUGE, "Got a %s API %s to send (%p)\n", admin ? "admin" : "Janus", request_id ? "response" : "event", transport);
 	if(message == NULL) {
 		JANUS_LOG(LOG_ERR, "No message...\n");
@@ -1011,7 +990,7 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 		guint64 session_id = json_integer_value(s);
 		janus_mutex_lock(&sessions_mutex);
 		janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
-		if(session == NULL || session->destroyed) {
+		if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Can't notify event, no session object...\n");
 			janus_mutex_unlock(&sessions_mutex);
 			json_decref(message);
@@ -1026,20 +1005,21 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 			return 0;
 		}
 		/* This is a response, we need a valid transport instance */
-		if(transport == NULL) {
+		if(transport == NULL || transport->transport_p == NULL) {
 			JANUS_LOG(LOG_ERR, "Invalid HTTP instance...\n");
 			json_decref(message);
 			return -1;
 		}
 		/* We have a response */
-		janus_http_msg *msg = (janus_http_msg *)transport;
+		janus_transport_session *session = (janus_transport_session *)transport;
 		janus_mutex_lock(&messages_mutex);
-		if(g_hash_table_lookup(messages, msg) == NULL) {
+		if(g_hash_table_lookup(messages, session) == NULL) {
 			janus_mutex_unlock(&messages_mutex);
 			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
 			json_decref(message);
 			return -1;
 		}
+		janus_http_msg *msg = (janus_http_msg *)transport->transport_p;
 		janus_mutex_unlock(&messages_mutex);
 		if(!msg->connection) {
 			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
@@ -1055,8 +1035,8 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 	return 0;
 }
 
-void janus_http_session_created(void *transport, guint64 session_id) {
-	if(transport == NULL)
+void janus_http_session_created(janus_transport_session *transport, guint64 session_id) {
+	if(transport == NULL || transport->transport_p == NULL)
 		return;
 	JANUS_LOG(LOG_VERB, "Session created (%"SCNu64"), create a queue for the long poll\n", session_id);
 	/* Create a queue of events for this session */
@@ -1067,29 +1047,33 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 		return;
 	}
 	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	session->session_id = session_id;
 	session->events = g_async_queue_new();
-	session->destroyed = 0;
+	g_atomic_int_set(&session->destroyed, 0);
+	janus_refcount_init(&session->ref, janus_http_session_free);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_http_session_over(void *transport, guint64 session_id, gboolean timeout) {
-	if(transport == NULL)
-		return;
-	JANUS_LOG(LOG_VERB, "Session %s (%"SCNu64"), getting rid of the queue for the long poll\n",
-		timeout ? "has timed out" : "is over", session_id);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
+	JANUS_LOG(LOG_VERB, "Session %s %s (%"SCNu64"), getting rid of the queue for the long poll\n",
+		timeout ? "has timed out" : "is over",
+		claimed ? "but has been claimed" : "and has not been claimed", session_id);
 	/* Get rid of the session's queue of events */
 	janus_mutex_lock(&sessions_mutex);
-	janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
-	if(session == NULL || session->destroyed) {
-		/* Nothing to do */
-		janus_mutex_unlock(&sessions_mutex);
-		return;
-	}
 	g_hash_table_remove(sessions, &session_id);
-	/* We leave it to the watchdog to remove the session */
-	session->destroyed = janus_get_monotonic_time();
-	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* Session has been claimed -- is there anything to do here? */
+	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), adding to hash table\n", session_id);
+	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	session->session_id = session_id;
+	session->events = g_async_queue_new();
+	g_atomic_int_set(&session->destroyed, 0);
+	janus_refcount_init(&session->ref, janus_http_session_free);
+	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
 
@@ -1146,8 +1130,9 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 
 	/* Is this the first round? */
 	int firstround = 0;
-	janus_http_msg *msg = (janus_http_msg *)*ptr;
-	if (msg == NULL) {
+	janus_transport_session *ts = (janus_transport_session *)*ptr;
+	janus_http_msg *msg = NULL;
+	if(ts == NULL) {
 		firstround = 1;
 		JANUS_LOG(LOG_DBG, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
@@ -1155,10 +1140,11 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		msg->connection = connection;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
+		ts = janus_transport_session_create(msg, janus_http_msg_destroy);
 		janus_mutex_lock(&messages_mutex);
-		g_hash_table_insert(messages, msg, msg);
+		g_hash_table_insert(messages, ts, ts);
 		janus_mutex_unlock(&messages_mutex);
-		*ptr = msg;
+		*ptr = ts;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
 		/* Notify handlers about this new transport instance */
@@ -1178,14 +1164,15 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 				uint16_t port = janus_http_sockaddr_to_port((struct sockaddr *)conninfo->client_addr);
 				json_object_set_new(info, "port", json_integer(port));
 			}
-			gateway->notify_event(&janus_http_transport, msg, info);
+			gateway->notify_event(&janus_http_transport, ts, info);
 		}
 	} else {
 		JANUS_LOG(LOG_DBG, "Processing HTTP %s request on %s...\n", method, url);
+		msg = (janus_http_msg *)ts->transport_p;
 	}
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
 	if (!strcasecmp(method, "OPTIONS")) {
@@ -1286,13 +1273,13 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {
 		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
@@ -1338,7 +1325,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		/* Ok, go on with the keepalive */
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("keepalive"));
 		json_object_set_new(root, "session_id", json_integer(session_id));
@@ -1347,7 +1334,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			json_object_set_new(root, "apisecret", json_string(secret));
 		if(token)
 			json_object_set_new(root, "token", json_string(token));
-		gateway->incoming_request(&janus_http_transport, msg, (void *)keepalive_id, FALSE, root, NULL);
+		gateway->incoming_request(&janus_http_transport, ts, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
 			char *location = g_malloc(strlen(ws_path) + strlen(session_path) + 2);
@@ -1364,7 +1351,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		janus_mutex_lock(&sessions_mutex);
 		janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
 		janus_mutex_unlock(&sessions_mutex);
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
@@ -1372,6 +1359,8 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			MHD_destroy_response(response);
 			goto done;
 		}
+		janus_refcount_increase(&ts->ref);
+		janus_refcount_increase(&session->ref);
 		/* How many messages can we send back in a single response? (just one by default) */
 		int max_events = 1;
 		const char *maxev = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "maxev");
@@ -1390,7 +1379,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 				/* Return just this message and leave */
 				gchar *event_text = json_dumps(event, json_format);
 				json_decref(event);
-				ret = janus_http_return_success(msg, event_text);
+				ret = janus_http_return_success(ts, event_text);
 			} else {
 				/* The application is willing to receive more events at the same time, anything to report? */
 				json_t *list = json_array();
@@ -1406,24 +1395,26 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 				/* Return the array of messages and leave */
 				gchar *list_text = json_dumps(list, json_format);
 				json_decref(list);
-				ret = janus_http_return_success(msg, list_text);
+				ret = janus_http_return_success(ts, list_text);
 			}
 		} else {
 			/* Still no message, wait */
-			ret = janus_http_notifier(msg, max_events);
+			ret = janus_http_notifier(ts, session, max_events);
 		}
+		janus_refcount_decrease(&session->ref);
+		janus_refcount_decrease(&ts->ref);
 		goto done;
 	}
-	
+
 	json_error_t error;
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
 	if(!root) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
 		goto done;
 	}
 	if(!json_is_object(root)) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 		json_decref(root);
 		goto done;
 	}
@@ -1438,8 +1429,8 @@ parsingdone:
 		json_object_set_new(root, "handle_id", json_integer(handle_id));
 
 	/* Suspend the connection and pass the ball to the core */
-	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
+	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", ts);
+	gateway->incoming_request(&janus_http_transport, ts, ts, FALSE, root, &error);
 	/* Wait for a response (but not forever) */
 	struct timeval now;
 	gettimeofday(&now, NULL);
@@ -1459,7 +1450,7 @@ parsingdone:
 		char *response_text = json_dumps(msg->response, json_format);
 		json_decref(msg->response);
 		msg->response = NULL;
-		ret = janus_http_return_success(msg, response_text);
+		ret = janus_http_return_success(ts, response_text);
 	}
 
 done:
@@ -1483,8 +1474,9 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 
 	/* Is this the first round? */
 	int firstround = 0;
-	janus_http_msg *msg = (janus_http_msg *)*ptr;
-	if (msg == NULL) {
+	janus_transport_session *ts = (janus_transport_session *)*ptr;
+	janus_http_msg *msg = NULL;
+	if (ts == NULL) {
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
@@ -1492,10 +1484,11 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		msg->connection = connection;
 		janus_mutex_init(&msg->wait_mutex);
 		janus_condition_init(&msg->wait_cond);
+		ts = janus_transport_session_create(msg, janus_http_msg_destroy);
 		janus_mutex_lock(&messages_mutex);
-		g_hash_table_insert(messages, msg, msg);
+		g_hash_table_insert(messages, ts, ts);
 		janus_mutex_unlock(&messages_mutex);
-		*ptr = msg;
+		*ptr = ts;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
 		/* Notify handlers about this new transport instance */
@@ -1515,8 +1508,11 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 				uint16_t port = janus_http_sockaddr_to_port((struct sockaddr *)conninfo->client_addr);
 				json_object_set_new(info, "port", json_integer(port));
 			}
-			gateway->notify_event(&janus_http_transport, msg, info);
+			gateway->notify_event(&janus_http_transport, ts, info);
 		}
+	} else {
+		JANUS_LOG(LOG_DBG, "Processing HTTP %s request on %s...\n", method, url);
+		msg = (janus_http_msg *)ts->transport_p;
 	}
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
@@ -1616,33 +1612,33 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	if(session_path != NULL && !strcmp(session_path, "info")) {
 		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
 		if(strcasecmp(method, "GET")) {
-			ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Use GET for the info endpoint");
+			ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Use GET for the info endpoint");
 			goto done;
 		}
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Without a payload we don't know what to do */
 	if(!payload) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "Request payload missing");
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON, "Request payload missing");
 		goto done;
 	}
 	json_error_t error;
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
 	if(!root) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
 		goto done;
 	}
 	if(!json_is_object(root)) {
-		ret = janus_http_return_error(msg, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 		json_decref(root);
 		goto done;
 	}
@@ -1658,7 +1654,7 @@ parsingdone:
 
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
+	gateway->incoming_request(&janus_http_transport, ts, ts, TRUE, root, &error);
 	/* Wait for a response (but not forever) */
 	struct timeval now;
 	gettimeofday(&now, NULL);
@@ -1678,7 +1674,7 @@ parsingdone:
 		char *response_text = json_dumps(msg->response, json_format);
 		json_decref(msg->response);
 		msg->response = NULL;
-		ret = janus_http_return_success(msg, response_text);
+		ret = janus_http_return_success(ts, response_text);
 	}
 
 done:
@@ -1690,7 +1686,7 @@ done:
 }
 
 int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
-	janus_http_msg *request = cls;
+	janus_http_msg *request = (janus_http_msg *)cls;
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
@@ -1706,57 +1702,36 @@ int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, cons
 }
 
 void janus_http_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
-	JANUS_LOG(LOG_DBG, "Request completed, freeing data\n");
-	janus_http_msg *request = *con_cls;
-	if(!request)
+	janus_transport_session *ts = (janus_transport_session *)*con_cls;
+	if(!ts)
 		return;
 	janus_mutex_lock(&messages_mutex);
-	g_hash_table_remove(messages, request);
+	g_hash_table_remove(messages, ts);
 	janus_mutex_unlock(&messages_mutex);
-	if(request->payload != NULL)
-		g_free(request->payload);
-	if(request->contenttype != NULL)
-		free(request->contenttype);
-	if(request->acrh != NULL)
-		g_free(request->acrh);
-	if(request->acrm != NULL)
-		g_free(request->acrm);
-	g_free(request);
-	*con_cls = NULL;   
+	*con_cls = NULL;
 }
 
 /* Worker to handle notifications */
-int janus_http_notifier(janus_http_msg *msg, int max_events) {
+int janus_http_notifier(janus_transport_session *ts, janus_http_session *session, int max_events) {
+	if(!ts)
+		return MHD_NO;
+	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection)
 		return MHD_NO;
-	struct MHD_Connection *connection = msg->connection;
 	if(max_events < 1)
 		max_events = 1;
 	JANUS_LOG(LOG_DBG, "... handling long poll...\n");
-	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
-	guint64 session_id = msg->session_id;
-	janus_mutex_lock(&sessions_mutex);
-	janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
-	janus_mutex_unlock(&sessions_mutex);
-	if(!session || session->destroyed) {
-		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
-		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		janus_http_add_cors_headers(msg, response);
-		ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
-		MHD_destroy_response(response);
-		return ret;
-	}
 	gint64 start = janus_get_monotonic_time();
 	gint64 end = 0;
 	json_t *event = NULL, *list = NULL;
 	gboolean found = FALSE;
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
-		if(session->destroyed)
+		if(g_atomic_int_get(&session->destroyed))
 			break;
 		event = g_async_queue_try_pop(session->events);
-		if(session->destroyed || g_atomic_int_get(&stopping) || event != NULL) {
+		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&stopping) || event != NULL) {
 			if(event == NULL)
 				break;
 			/* Gotcha! */
@@ -1785,7 +1760,7 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 	if((max_events == 1 && event == NULL) || (max_events > 1 && list == NULL))
 		found = FALSE;
 	if(!found) {
-		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
+		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session->session_id);
 		/* Turn this into a "keepalive" response */
 		char tr[12];
 		janus_http_random_string(12, (char *)&tr);
@@ -1805,12 +1780,17 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_HUGE, "We have a message to serve...\n\t%s\n", payload_text);
 	/* Send event */
-	ret = janus_http_return_success(msg, payload_text);
+	ret = janus_http_return_success(ts, payload_text);
 	return ret;
 }
 
 /* Helper to quickly send a success response */
-int janus_http_return_success(janus_http_msg *msg, char *payload) {
+int janus_http_return_success(janus_transport_session *ts, char *payload) {
+	if(!ts) {
+		g_free(payload);
+		return MHD_NO;
+	}
+	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection) {
 		if(payload)
 			free(payload);
@@ -1828,7 +1808,7 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 }
 
 /* Helper to quickly send an error response */
-int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) {
+int janus_http_return_error(janus_transport_session *ts, uint64_t session_id, const char *transaction, gint error, const char *format, ...) {
 	gchar *error_string = NULL;
 	gchar error_buf[512];
 	if(format == NULL) {
@@ -1858,5 +1838,5 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 	gchar *reply_text = json_dumps(reply, json_format);
 	json_decref(reply);
 	/* Use janus_http_return_error to send the error response */
-	return janus_http_return_success(msg, reply_text);
+	return janus_http_return_success(ts, reply_text);
 }

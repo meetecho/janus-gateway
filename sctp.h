@@ -44,6 +44,7 @@
 #include <glib.h>
 
 #include "mutex.h"
+#include "refcount.h"
 
 
 /*! \brief SCTP stuff initialization
@@ -124,6 +125,10 @@ typedef struct janus_sctp_association {
 #endif
 	/*! \brief Mutex to lock/unlock this instance */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_sctp_association;
 
 /*! \brief Helper structure to handle incoming and outgoing messages */
