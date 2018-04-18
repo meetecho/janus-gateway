@@ -464,13 +464,13 @@ plugins_libjanus_lua_la_SOURCES = plugins/janus_lua.c plugins/janus_lua_data.h p
 plugins_libjanus_lua_la_CFLAGS = $(plugins_cflags) $(LUA_CFLAGS)
 plugins_libjanus_lua_la_LDFLAGS = $(plugins_ldflags) $(LUA_LDFLAGS) $(LUA_LIBS)
 plugins_libjanus_lua_la_LIBADD = $(plugins_libadd) $(LUA_LIBADD)
-conf_DATA += conf/janus.plugin.lua.cfg.sample
+conf_DATA += conf/janus.plugin.lua.jcfg.sample
 lua_DATA += \
 	plugins/lua/echotest.lua \
 	plugins/lua/videoroom.lua \
 	plugins/lua/janus-logger.lua \
 	plugins/lua/janus-sdp.lua
-EXTRA_DIST += conf/janus.plugin.lua.cfg.sample.in
+EXTRA_DIST += conf/janus.plugin.lua.jcfg.sample.in
 endif
 
 
