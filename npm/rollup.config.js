@@ -5,7 +5,9 @@ export default {
     name: 'Janus',
     input: 'module.js',
     output: {
-        strict: false
+        strict: false,
+        format: 'es',
+        file: '../html/janus.es.js',
     },
     plugins: [
         replace({
