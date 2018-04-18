@@ -181,15 +181,15 @@ janus_config *janus_config_parse(const char *config_file) {
 	char *tmp_filename = g_strdup(config_file);
 	char *filename = get_filename(tmp_filename);
 	if(filename == NULL) {
-		g_free(tmp_filename);
 		JANUS_LOG(LOG_ERR, "Invalid filename %s\n", config_file);
+		g_free(tmp_filename);
 		return NULL;
 	}
 	/* Open file */
 	FILE *file = fopen(config_file, "rt");
 	if(!file) {
-		g_free(tmp_filename);
 		JANUS_LOG(LOG_ERR, "  -- Error reading configuration file '%s'... error %d (%s)\n", filename, errno, strerror(errno));
+		g_free(tmp_filename);
 		return NULL;
 	}
 	/* Create configuration instance */
