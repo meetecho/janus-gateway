@@ -102,7 +102,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
  * something) participants of a specific room and their details.
  *
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
- * \c unpublish , \c start , \c pause , \c switch , \c stop and \c leave
+ * \c unpublish , \c start , \c pause , \c switch and \c leave
  * requests instead are all asynchronous, which
  * means you'll get a notification about their success or failure in
  * an event. \c join allows you to join a specific video room, specifying
@@ -117,8 +117,8 @@ notify_joining = true|false (optional, whether to notify all participants when a
  * the \c switch request can be used to change the source of the media
  * flowing over a specific PeerConnection (e.g., I was watching Alice,
  * I want to watch Bob now) without having to create a new handle for
- * that; \c stop interrupts a viewer instance; finally, \c leave allows
- * you to leave a video room for good.
+ * that; \c finally, \c leave allows you to leave a video room for good
+ * (or, in the case of viewers, definitely closes a subscription).
  *
  * \c create can be used to create a new video room, and has to be
  * formatted as follows:
@@ -3835,7 +3835,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch")
-			|| !strcasecmp(request_text, "stop") || !strcasecmp(request_text, "leave")) {
+			|| !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 
 		janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
