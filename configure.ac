@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.3.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.4.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -15,9 +15,9 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
-JANUS_VERSION=31
+JANUS_VERSION=40
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.3.1"
+JANUS_VERSION_STRING="0.4.0"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -90,6 +90,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_audiobridge=no])
                AS_IF([test "x$enable_plugin_echotest" != "xyes"],
                      [enable_plugin_echotest=no])
+               AS_IF([test "x$enable_plugin_lua" != "xyes"],
+                     [enable_plugin_lua=no])
                AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
@@ -505,6 +507,13 @@ AC_ARG_ENABLE([plugin-echotest],
                      [enable_plugin_echotest=no])],
               [enable_plugin_echotest=yes])
 
+AC_ARG_ENABLE([plugin-lua],
+              [AS_HELP_STRING([--disable-plugin-lua],
+                              [Disable lua plugin])],
+              [AS_IF([test "x$enable_plugin_lua" != "xyes"],
+                     [enable_plugin_lua=no])],
+              [enable_plugin_lua=yes])
+
 AC_ARG_ENABLE([plugin-recordplay],
               [AS_HELP_STRING([--disable-plugin-recordplay],
                               [Disable record&play plugin])],
@@ -642,8 +651,29 @@ PKG_CHECK_MODULES([OGG],
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
 
+PKG_CHECK_MODULES([LUA],
+                  [lua],
+                  [
+                    AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
+                          [enable_plugin_lua=yes])
+                  ],
+                  [PKG_CHECK_MODULES([LUA],
+                                     [lua5.3],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
+                                             [enable_plugin_lua=yes])
+                                     ],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xyes"],
+                                             [AC_MSG_ERROR([lua-libs not found. See README.md for installation instructions or use --disable-plugin-lua])])
+                                     ])
+                  ])
+AC_SUBST([LUA_CFLAGS])
+AC_SUBST([LUA_LIBS])
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_LUA], [test "x$enable_plugin_lua" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIPRE], [test "x$enable_plugin_sipre" = "xyes"])
@@ -834,6 +864,9 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+AM_COND_IF([ENABLE_PLUGIN_LUA],
+	[echo "    Lua Interpreter:       yes"],
+	[echo "    Lua Interpreter:       no"])
 echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],

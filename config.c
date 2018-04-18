@@ -682,8 +682,7 @@ void janus_config_destroy(janus_config *config) {
 		g_list_free_full(config->list, (GDestroyNotify)janus_config_container_destroy);
 		config->list = NULL;
 	}
-	if(config->name)
-		g_free((gpointer)config->name);
+	g_free((gpointer)config->name);
 	g_free((gpointer)config);
 	config = NULL;
 }
