@@ -25,7 +25,7 @@ option "no-media-timer" t "Time (in s) that should pass with no media (audio or 
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
 option "session-timeout" s "Session timeout value, in seconds (default=60)" int typestr="number" optional
-option "reclaim-session-timeout" - "Reclaim session timeout value, in seconds (default=0)" int typestr="number" optional
+option "reclaim-session-timeout" m "Reclaim session timeout value, in seconds (default=0)" int typestr="number" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
