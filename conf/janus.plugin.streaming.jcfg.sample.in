@@ -103,7 +103,7 @@ file-live-sample: {
 	filename = "@streamdir@/radio.alaw"
 	audio = true
 	video = false
-	secret = adminpwd
+	secret = "adminpwd"
 }
 
 file-ondemand-sample: {
