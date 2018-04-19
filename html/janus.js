@@ -1531,7 +1531,10 @@ function Janus(gatewayCallbacks) {
 		}
 		if(addTracks && stream !== null && stream !== undefined) {
 			Janus.log('Adding local stream');
-			stream.getTracks().forEach(function(track) { config.pc.addTrack(track, stream); });
+			stream.getTracks().forEach(function(track) {
+				Janus.log('Adding local track:', track);
+				config.pc.addTrack(track, stream);
+			});
 		}
 		// Any data channel to create?
 		if(isDataEnabled(media) && !config.dataChannel) {
@@ -2128,9 +2131,19 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Creating offer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
-		var mediaConstraints = {
-			'offerToReceiveAudio':isAudioRecvEnabled(media),
-			'offerToReceiveVideo':isVideoRecvEnabled(media)
+		var mediaConstraints = {};
+		if(!media.update || Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
+			mediaConstraints["offerToReceiveAudio"] = isAudioRecvEnabled(media);
+			mediaConstraints["offerToReceiveVideo"] = isVideoRecvEnabled(media);
+		} else {
+			// Firefox >= 59 uses Transceivers, which means that if we use, for instance,
+			// offerToReceiveAudio:true in a renegotiation where we have an audio m-line
+			// already, we'll get a new recvonly audio m-line even if we didn't want it
+			// Note: we should probably start using Transceivers more in janus.js
+			if(media.addAudio)
+				mediaConstraints["offerToReceiveAudio"] = isAudioRecvEnabled(media);
+			if(media.addVideo)
+				mediaConstraints["offerToReceiveVideo"] = isVideoRecvEnabled(media);
 		}
 		var iceRestart = callbacks.iceRestart === true ? true : false;
 		if(iceRestart) {
