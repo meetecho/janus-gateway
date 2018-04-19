@@ -2336,9 +2336,10 @@ function Janus(gatewayCallbacks) {
 		} else {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
 		}
-		var mediaConstraints = {};
+		var mediaConstraints = null;
 		if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
 			// Firefox >= 59 uses Transceivers
+			mediaConstraints = {};
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
@@ -2423,8 +2424,19 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 		} else {
-			mediaConstraints["offerToReceiveAudio"] = isAudioRecvEnabled(media);
-			mediaConstraints["offerToReceiveVideo"] = isVideoRecvEnabled(media);
+			if(Janus.webRTCAdapter.browserDetails.browser == "firefox" || Janus.webRTCAdapter.browserDetails.browser == "edge") {
+				mediaConstraints = {
+					offerToReceiveAudio: isAudioRecvEnabled(media),
+					offerToReceiveVideo: isVideoRecvEnabled(media)
+				};
+			} else {
+				mediaConstraints = {
+					mandatory: {
+						OfferToReceiveAudio: isAudioRecvEnabled(media),
+						OfferToReceiveVideo: isVideoRecvEnabled(media)
+					}
+				};
+			}
 		}
 		Janus.debug(mediaConstraints);
 		// Check if this is Firefox and we've been asked to do simulcasting
