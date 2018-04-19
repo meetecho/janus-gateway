@@ -3051,6 +3051,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 	/* Destroy the handle */
 	janus_session_handles_remove(session, ice_handle);
 
+	janus_refcount_decrease(&plugin_session->ref);
 	return G_SOURCE_REMOVE;
 }
 
@@ -3058,6 +3059,7 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle: enqueue it as a timed source */
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return;
+	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
 	g_source_set_callback(timeout_source, janus_plugin_end_session_internal, plugin_session, NULL);
 	g_source_attach(timeout_source, sessions_watchdog_context);
