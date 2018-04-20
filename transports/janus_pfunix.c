@@ -416,22 +416,11 @@ void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean tim
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL) {
 		client->session_timeout = TRUE;
-		if(client->fd != -1) {
-			/* Shutdown the client socket */
-			shutdown(client->fd, SHUT_WR);
-		} else {
-			/* Destroy the client */
-			g_hash_table_remove(clients_by_path, client->addr.sun_path);
-			g_hash_table_remove(clients, client);
-			if(client->messages != NULL) {
-				char *response = NULL;
-				while((response = g_async_queue_try_pop(client->messages)) != NULL) {
-					g_free(response);
-				}
-				g_async_queue_unref(client->messages);
-			}
-			g_free(client);
-		}
+		/* Notify the thread about this */
+		int res = 0;
+		do {
+			res = write(write_fd[1], "x", 1);
+		} while(res == -1 && errno == EINTR);
 	}
 	janus_mutex_unlock(&clients_mutex);
 }
@@ -492,7 +481,11 @@ void *janus_pfunix_thread(void *data) {
 		if(res == 0)
 			continue;
 		if(res < 0) {
-			JANUS_LOG(LOG_ERR, "poll() failed\n");
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", strerror(errno));
+				continue;
+			}
+			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, strerror(errno));
 			break;
 		}
 		int i = 0;
@@ -572,11 +565,30 @@ void *janus_pfunix_thread(void *data) {
 					while((payload = g_async_queue_try_pop(client->messages)) != NULL) {
 						int res = 0;
 						do {
+							if(client->fd < 0)
+								break;
 							res = write(client->fd, payload, strlen(payload));
 						} while(res == -1 && errno == EINTR);
 						/* FIXME Should we check if sent everything? */
 						JANUS_LOG(LOG_HUGE, "Written %d/%zu bytes on %d\n", res, strlen(payload), client->fd);
 						g_free(payload);
+					}
+					if(client->session_timeout) {
+						/* We should actually get rid of this connection, now */
+						shutdown(SHUT_RDWR, poll_fds[i].fd);
+						close(poll_fds[i].fd);
+						client->fd = -1;
+						/* Destroy the client */
+						g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
+						g_hash_table_remove(clients, client);
+						if(client->messages != NULL) {
+							char *response = NULL;
+							while((response = g_async_queue_try_pop(client->messages)) != NULL) {
+								g_free(response);
+							}
+							g_async_queue_unref(client->messages);
+						}
+						g_free(client);
 					}
 				}
 				janus_mutex_unlock(&clients_mutex);
@@ -596,8 +608,9 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %d\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", cfd);
 							/* Allocate new client */
-							janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
+							janus_pfunix_client *client = g_malloc(sizeof(janus_pfunix_client));
 							client->fd = cfd;
+							memset(&client->addr, 0, sizeof(client->addr));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
 							client->session_timeout = FALSE;
@@ -640,7 +653,7 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %s\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", uaddr->sun_path);
 							/* Allocate new client */
-							client = g_malloc0(sizeof(janus_pfunix_client));
+							client = g_malloc(sizeof(janus_pfunix_client));
 							client->fd = -1;
 							memcpy(&client->addr, uaddr, sizeof(struct sockaddr_un));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
@@ -738,7 +751,7 @@ void *janus_pfunix_thread(void *data) {
 	}
 
 	socklen_t addrlen = sizeof(struct sockaddr_un);
-	void *addr = g_malloc0(addrlen+1);
+	void *addr = g_malloc(addrlen+1);
 	if(pfd > -1) {
 		/* Unlink the path name first */
 		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {

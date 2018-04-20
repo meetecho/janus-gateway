@@ -81,7 +81,6 @@
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
@@ -96,6 +95,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
 
@@ -155,9 +155,12 @@
  * above mentioned steps on your behalf. Needless to say, you're very welcome
  * to provide wrapper APIs yourself, if you feel a sudden urge to do so! :-)
  *
- * <hr>
+ * \section janusjs Using janus.js
  *
- * As a first step, you should include the \c janus.js library in your project:
+ * As a first step, you should include the Janus library in your project.
+ * Depending on your needs you can either use \c janus.js or one of the generated
+ * JavaScript module variants of it. For available module syntaxes and how to build the
+ * corresponding variants, see: \ref js-modules
  *
 \verbatim
 <script type="text/javascript" src="janus.js" ></script>
@@ -187,6 +190,23 @@ Janus.init({
    });
  \endverbatim
  *
+ * \note When using one of the JavaScript module variants of \c janus.js, you
+ * will need to import the \c Janus symbol from the module first. See also: \ref js-modules
+ * For example, using the ECMAScript module variant, the above example should be altered to:
+ *
+ *
+ \verbatim
+import * as Janus from './janus.es.js'
+
+Janus.init({
+   debug: true,
+   dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
+   callback: function() {
+	   // Done!
+   });
+});
+ \endverbatim
+ *
  * Once the library has been initialized, you can start creating sessions.
  * Normally, each browser tab will need a single session with the gateway: in
  * fact, each gateway session can contain several different plugin handles
@@ -207,7 +227,7 @@ Janus.init({
  * automatic for fallback/failover during setup;
  * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
  * will be used if you skip this property);
- * - \c ipv6: whether IPv6 candidates should ge gathered or not;
+ * - \c ipv6: whether IPv6 candidates should be gathered or not;
  * - \c withCredentials: whether the \c withCredentials property of XHR requests
  * should be enabled or not (false by default, and only valid when using HTTP
  * as a transport, ignored for WebSockets);
@@ -431,7 +451,11 @@ janus.attach(
  * mechanism provided by the \c Handle API, in particular describing
  * the properties and callbacks that may be involved. To follow the approach
  * outlined by the W3C WebRTC API, this negotiation mechanism is heavily
- * based on asynchronous methods as well.
+ * based on asynchronous methods as well. Notice that the following paragraphs
+ * address the first negotiation step, that is the one to create a new
+ * PeerConnection from scratch: to know how to originate or handle a
+ * renegotiation instead (e.g., to add/remove/replace a media source, or
+ * force an ICE restart) check the \ref renegotiation section instead.
  *
  * - \c createOffer takes a single parameter, that can contain any of the
  * following properties and callbacks:
@@ -576,10 +600,222 @@ janus.attach(
  * or receive some from them. Handling this is just a matter of checking
  * the \c type of the \c jsep object and reacting accordingly.
  *  
+ * \section renegotiation Updating an existing PeerConnection (renegotiations)
+ * While the JavaScript APIs described above will suffice for most of the
+ * common scenarios, there are cases when updates on a PeerConnection may
+ * be needed. This can happen whenever, for instance, you want to add a
+ * new media source (e.g., add video to an audio only call), replace an
+ * existing one (e.g., switch from capturing the camera to sharing your
+ * screen), or trigger an ICE restart because of a network change. All
+ * these actions require a renegotiation to occur, which means a new SDP
+ * offer/answer round to update the existing PeerConnection.
+ *
+ * Since version \c 0.2.6, renegotiations are indeed supported by Janus,
+ * and the \c janus.js library exposes ways to easily handle the process
+ * of updating a media session. More specifically, there are additional
+ * properties you can pass to \c createOffer and \c createAnswer for the
+ * purpose: most of the properties introduced in the previous section will
+ * still be usable, as it will be clearer in the next paragraphs.
+ *
+ * The new properties you can pass to \c media in \c createOffer and
+ * \c createAnswer are the following:
+ *
+ * - \c addAudio: if set, start capturing audio if you weren't (will fail
+ * if you're sending audio already);
+ * - \c addVideo: if set, start capturing video if you weren't (will fail
+ * if you're sending video already);
+ * - \c addData: if set, negotiate a datachannel if it didn't exist (is
+ * actually just a synonym for \c data:true );
+ * - \c removeAudio: if set, stop capturing audio and remove the local audio track;
+ * - \c removeVideo: if set, stop capturing video and remove the local video track;
+ * - \c replaceAudio: if set, stop capturing the current audio (remove the
+ * local audio track), and capture a new audio source;
+ * - \c replaceVideo: if set, stop capturing the current video (remove the
+ * local video track), and capture a new video source.
+ *
+ * Notice that these properties are only processed when you're trying a
+ * renegotiation, and will be ignored when creating a new PeerConnection.
+ *
+ * These properties don't replace the existing \c media properties, but go
+ * along with them. For instance, when adding a new video stream, or
+ * replacing an existing one, you can still use the video related properties
+ * as before, e.g., to pass a specific device ID or asking for a screenshare
+ * instead of a camera. Besides, notice that you'll currently have to pass
+ * info on the streams you want to keep as well, or they might be removed:
+ * this means that, if for instance you want to replace the video source,
+ * but want to keep the audio as it is, passing \c audio:false to the new
+ * createOffer will potentially disable audio.
+ *
+ * Here's a simple example of how you can use \c removeVideo to remove
+ * the local video capture in a session, e.g., in the EchoTest demo:
+ *
+ \verbatim
+// Remove local video
+echotest.createOffer(
+    {
+        media: { removeVideo: true },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * This other example shows how you can add a new video stream to an-audio
+ * only PeerConnection instead:
+ *
+ \verbatim
+// Add local video
+echotest.createOffer(
+    {
+        media: { addVideo: true },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * Finally, this example shows how you can replace the video track, by
+ * also showing how you can combine this with one of the properties we
+ * already met in the previous section:
+ *
+ \verbatim
+// Replace local video
+echotest.createOffer(
+    {
+        media: {
+            video: {
+                deviceId: "44f4740bee234ce6ddcfea8e59e8ed7505054f75edf27e3a12294686b37ff6a7"
+            },
+            replaceVideo: true
+        },
+        success: function(jsep) {
+            Janus.debug(jsep);
+            echotest.send({message: {audio: true, video: true}, "jsep": jsep});
+        },
+        error: function(error) {
+            bootbox.alert("WebRTC error... " + JSON.stringify(error));
+        }
+    });
+ \endverbatim
+ *
+ * Notice that renegotiations involving media changes (both local and remote)
+ * will likely result in new calls to the \c onlocalstream and \c onremotestream
+ * application callbacks: as such, be prepared to see those callbacks called
+ * for the same PeerConnection more than once during the course of a media session.
+ *
+ * \section restarts ICE restarts
+ * While ICE restarts can be achieved with a renegotiation, they're complex
+ * enough to deserve a specific subsection. In fact, ICE restarts don't
+ * address changes in the media, but in the underlying transport itself.
+ * They're used, for instance, when there's a network change (e.g., the
+ * IP address changed, or the user switched from WiFi to 4G). In order for
+ * this to work, new candidates must be exchanged, and connectivity checks
+ * must be restarted in order to find the new optimal path.
+ *
+ * With \c janus.js, you can only force an ICE restart when sending a new
+ * offer. In order to do so, all you need to do is add `iceRestart:true`
+ * to your `createOffer` call, and an ICE restart will be requested. The
+ * following example shows how this can be done with the EchoTest:
+ *
+ \verbatim
+echotest.createOffer({
+    iceRestart: true,
+    media: { data: true },
+    success: function(jsep) {
+        echotest.send({message: {audio: true, video: true}, jsep: jsep});
+	}
+});
+ \endverbatim
+ *
+ * In this particular example, we're not asking for any change on the
+ * media streams, but just an ICE restart. If successful, as soon as the
+ * answer is received, the client and Janus will restart the ICE process
+ * and find a new path for the media packets.
+ *
+ * Notice that, with Janus and its plugins, you won't always be able to
+ * force an ICE restart by sending a new SDP offer yourself: some plugins,
+ * like the Streaming plugin for instance, will want to always send an
+ * offer themselves, which means they'll be the ones actually forcing the
+ * ICE restart from a negotiation perspective. In order to still allow
+ * users to actually originate the process, all the stock Janus plugins
+ * that assume they'll be sending offers for some or all of their media
+ * streams also expose APIs to force an ICE restart from the server side.
+ * You can learn more about this on a plugin level basis
+ * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/753">here</a> and
+ * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/1099">here</a>.
+ *
  * <hr>
  *
  * This is it! For more information about the API, have a look at the
  * demo pages that are available in the \b html folder in this package.
+ *
+ */
+
+/*!\page js-modules Using janus.js as JavaScript module
+ *
+ * To facilitate integration of \c janus.js within modular JavaScript code bases,
+ * you can instruct the build system(s) to generate a modular variants of \c janus.js.
+ * Generated modules may then be copied to your own JavaScript projects and seamlessly integrated with your own project's build system.
+ *
+ * Building the modules can be done in two ways:
+ *
+ * -# As part of a regular build of the Janus Gateway, using \c make, by enabling the integrated support via \c configure
+ * -# By running NPM commands manually. This may be useful if you are looking to build just the JavaScript modules without
+ *    incurring the overhead of a full build of the Janus Gateway.
+ *
+ * \section auto-build-js-modules Building modules using make
+ * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module flag
+ * (with or without a \c =yes directive) to \c configure before invoking \c make to build the Janus Gateway.
+ * Please note: if you do not pass any such flag, by default no modules will be built.
+ *
+ * The following table provides a summary of available module formats and their corresponding \c configure options:
+ *
+ * <table class="table table-striped">
+ * <tr><th>Module format (syntax)</th><th>File name</th><th>configure flag to pass</th></tr>
+ * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c --enable-javascript-es-module</td></tr>
+ * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c --enable-javascript-umd-module</td></tr>
+ * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c --enable-javascript-common-js-module</td></tr>
+ * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c --enable-javascript-iffe-module</td></tr>
+ * </table>
+ *
+ * The \c --enable-all-js-modules shortcut is available, in case you want to enable and build them all.
+ *
+ * When built and installed, these module variants may be found in the \c $PREFIX/share/janus/javascript
+ * folder, alongside the \c janus.js file itself (assuming \c $PREFIX the installation directory passed to \c configure).
+ *
+ * \note Building the JavaScript modules still requires NPM and may involve an \c install which means \c npm must be able
+ * to download dependencies. By default \c configure will attempt to auto-detect available \c npm on your PATH, but
+ * if you have installed NPM outside the PATH you can override this by passing the (full) path to your \c npm executable, e.g.:
+ *
+ \verbatim
+ ./configure NPM=/path/to/my/custom/npm --enable-javascript-es-module=yes
+ \endverbatim
+ *
+ * \section manual-build-modules Building modules manually with NPM
+ * You can also opt to build modules by invoking \c npm manually. The \c npm subdirectory contains the necessary
+ * configuration files to get you started:
+ *
+ \verbatim
+ cd ./npm
+ npm install
+ npm run rollup -- --o /path/to/desired/output/file-name.js --f cjs # or es, iffe, umd, amd, ...
+ \endverbatim
+ *
+ * Using \c npm directly is useful if you want to build the JavaScript modules only, without building the Janus Gateway itself
+ * or if you are looking for advanced customisation options or alternative formats which are not integrated in \c configure yet.
+ * As you may have surmised from the example command, the actual build consists mostly of invoking \c rollup with the
+ * correct parameters. For more information on available parameters, please refer to the \c rollup documentation:
+ *
+ * -# https://rollupjs.org/#command-line-flags
+ * -# https://rollupjs.org/#configuration-files
  *
  */
 
@@ -1560,9 +1796,10 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * There are a couple of ways to authenticate requests in Janus:
  *
  * - using a \ref token (useful for web users);
+ * - using a \ref signed (useful for web users);
  * - using a \ref secret (useful when wrapping the Janus API).
  *
- * \section token Token based authentication mechanism
+ * \section token Stored token based authentication mechanism
  * The token based authentication mechanism expects all users to provide,
  * in each request, a \c token string attribute: if this token is
  * known to Janus, the request will be accepted, otherwise it will be
@@ -1719,6 +1956,73 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 	}
 }
 \endverbatim
+ *
+ * \section signed HMAC-Signed token authentication
+ * Simple token based authentication requires the application host to
+ * continuously update the Janus instance on permission changes.
+ * Since Janus stores the tokens in memory, it can be problematic to guarantee
+ * the permissions of a dynamic application stay in sync with Janus.
+ *
+ * This problem can be solved by using a type of nonce / lease system to
+ * let the application server generate automatically expiring tokens without
+ * requiring direct communication with or any data storage in Janus.
+ *
+ * You can use the HMAC signed token mechanism by enabling token authentication
+ * in general, as above (\c -A or \c --token-auth) and specifying an encryption
+ * secret using \c --token-auth-secret. The same can be accomplished using
+ * \c token_auth and \c token_auth_secret in the \c general section of
+ * \c janus.cfg.
+ *
+ * With Signed token support enabled, dynamic token creation via the \ref admin
+ * is not supported. Instead, Janus will look for tokens with a format like:
+ *
+\verbatim
+<timestamp>,janus,<plugin1>[,plugin2...]:<signature>
+\endverbatim
+ *
+ * Where \c timestamp is a UNIX timestamp (seconds since 0:00 UTC, 1.1.1970)
+ * that marks the point in time at which the token expires;
+ * \c plugin1 etc. are the \c bundle names of plugins (such as \c janus.plugin.videoroom);
+ * and \c signature is the base64-encoded HMAC-SHA1 signature of the expiry
+ * timestamp in ASCII format, hashed using the \c --token-auth-secret as a key.
+ *
+ * The following function can be used to sign tokens using the node.js crypto library:
+ *
+\verbatim
+const crypto = require('crypto');
+function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) => {
+  const expiry = Math.floor(Date.now() / 1000) + timeout;
+
+  const strdata = [expiry.toString(), realm, ...data].join(',');
+  const hmac = crypto.createHmac('sha1', secret);
+  hmac.setEncoding('base64');
+  hmac.write(strdata);
+  hmac.end();
+
+  return [strdata, hmac.read()].join(':');
+};
+
+const token = getJanusToken('janus', ['janus.plugin.videoroom']),
+\endverbatim
+ *
+ * The \c janus parameter here is the \c realm of the token. For authenticating the
+ * Janus API it should always be set to \c janus.
+ *
+ * When Janus encounters a token, it will:
+ *
+ * - verify that the timestamp has not passed
+ * - verify that the signature matches the timestamp
+ * - if the request requires access to a plugin, verify that the signature allows access
+ *
+ * Since the auth secret should never leave the application side, a signature
+ * like this can only be generated by the application server, which needs to
+ * be configured using the same secret.
+ *
+ * Please note that tokens of this sort cannot be revoked after being signed
+ * and passed to the client. Instead of signing tokens with late expirys,
+ * it is recommended to use tokens with shorter durations and generate and
+ * transition to a new token within the expiry time of every last token when
+ * the lease time is unknown and security is critical.
  *
  * \section secret Shared static secret
  * Several deployers showed an interest in wrapping the Janus API on
@@ -2287,11 +2591,11 @@ var servers = [ws_server, http_server];
  *
  * \section daemon Running Janus as a daemon
  * Since version \c 0.1.0, you can run Janus as a daemon application. To
- * do so, just pass either \c -b or <code>\--daemon</code> as a command line
+ * do so, just pass either \c -b or \c --daemon as a command line
  * argument, and Janus will be daemonized. Just beware, though, that
  * since this results in stdout/stdin/stderr being closed, you MUST
  * specify a log file for Janus to use, either via command line (\c -L
- * or <code>\--log-file</code>) or in \c janus.cfg.
+ * or \c --log-file ) or in \c janus.cfg.
  *
  * \section bg Running in background
  * Another simple way to run Janus in the background is to just append the
@@ -2635,29 +2939,35 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/DamonOehlman">Damon Oehlman</a></td>
  * 		<td><a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway:
  * experimental and incomplete as per the author words, but a good starting point</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
  * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://www.sipwise.com/">sip:wise</a></td>
  * 		<td><a href="https://www.npmjs.com/~sipwise">admin/videoroom client</a></td>
  * 		<td>Node.js clients that implement the Admin API and VideoRoom functionality</td>
+ * </tr>
+ * <tr>
+ * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
+ * 		<td><a href="https://github.com/mquander/minijanus.js">minijanus.js</a></td>
+ * 		<td>A super-simplistic and -minimal wrapper for talking to the Janus signalling API</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
@@ -2713,6 +3023,18 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/davibe">Davide Bertola</a></td>
  * 		<td><a href="https://github.com/davibe/cordova-webrtc-janus-gateway">cordova-webrtc-janus-gateway</a></td>
  * 		<td>cordova application that interfaces with Janus and is based on the PhoneRTC cordova plugin</td>
+ * </tr>
+ * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
+ * 		<td><a href="https://github.com/atyenoria/react-native-webrtc-janus-gateway">react-native-webrtc-janus-gateway</a></td>
+ * 		<td>Video conference system for mobile application on react-native-webrtc + Janus Webrtc Gateway</td>
+ * </tr>
+ * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/WorldViews">WorldViews</a></td>
+ * 		<td><a href="https://github.com/WorldViews/JanusMobile">JanusMobile</a></td>
+ * 		<td>react-native based Janus mobile client</td>
  * </tr>
  * </table>
  * <br/>
@@ -2773,6 +3095,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-rtpbroadcast">janus-gateway-rtpbroadcast</a></td>
  * 		<td>Janus-gateway plugin to broadcast RTP video</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
+ * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
+ * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
+ * </tr>
  * </table>
  * <br/>
  *
@@ -2807,7 +3134,6 @@ ldd janus | grep asan
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
@@ -2869,7 +3195,7 @@ ldd janus | grep asan
  * -# <a href="#certificates">I'm trying the demos, but I get "Janus down" or certificate errors!</a>\n
  * -# <a href="#nodejs">Can I use Janus with node.js or other frameworks?</a>\n
  * -# <a href="#monitoring">How do I monitor/manage my Janus instance?</a>\n
- * -# <a href="#plugins">I want to write my own plugin, where do I start?</a>\n
+ * -# <a href="#writeplugin">I want to write my own plugin, where do I start?</a>\n
  * -# <a href="#ulimit">I'm using the VideoRoom plugin and, when several users are handled, I get
  *    a "Too many open files" errors and Janus crashes</a>\n
  * -# <a href="#https">When I enable the HTTPS web server in Janus, the CPU goes crazy</a>\n
@@ -2935,7 +3261,10 @@ ldd janus | grep asan
  *    - Presentation at <a href="https://www.youtube.com/watch?v=gArqopeNQY0">DevDay Napoli</a> (in Italian);
  *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>;
  *    - Presentation on different SIP options in Janus at <a href="https://www.youtube.com/watch?v=anmyMC6Ovl8&t=25112s">OpenSIPS 2017</a>;
- *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>. \n\n
+ *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>;
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=cSV0X1JgcKY">WebRTC Rockstars Tour (Singapore)</a>;
+ *    - Presentation at <a href="https://youtu.be/dsVDzh9sS1A?t=51m00s">WebRTC Meetup Tokyo #17</a> (in Japanese);
+ *    - Interview on the origins of Janus, at <a href="http://www.allthingsrtc.org/2017/10/30/lorenzo-miniero-creator-janus/">AllThingRTC.org</a>. \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
@@ -3187,7 +3516,7 @@ ldd janus | grep asan
  *    page from where this effort was merged. More guidelines and implementations
  *    will definitely follow. \n\n
  *    .
- * \anchor plugins
+ * \anchor writeplugin
  * -# <b>I want to write my own plugin, where do I start?</b>\n
  *    .
  *    Great! Depending on the kind of plugin you want to implement (application plugin,

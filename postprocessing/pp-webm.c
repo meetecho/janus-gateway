@@ -44,10 +44,26 @@
 #define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
 #endif
 
+#if LIBAVCODEC_VER_AT_LEAST(56, 56)
+#ifndef CODEC_FLAG_GLOBAL_HEADER
+#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
+#endif
+#ifndef FF_INPUT_BUFFER_PADDING_SIZE
+#define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
+#endif
+#endif
+
+#if LIBAVCODEC_VER_AT_LEAST(57, 14)
+#define USE_CODECPAR
+#endif
+
 
 /* WebM output */
 static AVFormatContext *fctx;
 static AVStream *vStream;
+#ifdef USE_CODECPAR
+static AVCodecContext *vEncoder;
+#endif
 static int max_width = 0, max_height = 0, fps = 0;
 
 int janus_pp_webm_create(char *destination, int vp8) {
@@ -81,6 +97,30 @@ int janus_pp_webm_create(char *destination, int vp8) {
 		return -1;
 	}
 	snprintf(fctx->filename, sizeof(fctx->filename), "%s", destination);
+#ifdef USE_CODECPAR
+	AVCodec *codec = avcodec_find_encoder(vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9);
+	if(!codec) {
+		/* Error opening video codec */
+		JANUS_LOG(LOG_ERR, "Encoder not available\n");
+		return -1;
+	}
+	fctx->video_codec = codec;
+	fctx->oformat->video_codec = codec->id;
+	vStream = avformat_new_stream(fctx, codec);
+	vStream->id = fctx->nb_streams-1;
+	vEncoder = avcodec_alloc_context3(codec);
+	vEncoder->width = max_width;
+	vEncoder->height = max_height;
+	vEncoder->time_base = (AVRational){ 1, fps };
+	vEncoder->pix_fmt = AV_PIX_FMT_YUV420P;
+	vEncoder->flags |= CODEC_FLAG_GLOBAL_HEADER;
+	if(avcodec_open2(vEncoder, codec, NULL) < 0) {
+		/* Error opening video codec */
+		JANUS_LOG(LOG_ERR, "Encoder error\n");
+		return -1;
+	}
+	avcodec_parameters_from_context(vStream->codecpar, vEncoder);
+#else
 	//~ vStream = av_new_stream(fctx, 0);
 	vStream = avformat_new_stream(fctx, 0);
 	if(vStream == NULL) {
@@ -110,6 +150,7 @@ int janus_pp_webm_create(char *destination, int vp8) {
 	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
 	if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+#endif
 	//~ fctx->timestamp = 0;
 	//~ if(url_fopen(&fctx->pb, fctx->filename, URL_WRONLY) < 0) {
 	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
@@ -215,7 +256,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 						int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
 						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-						JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 						if(vp8w > max_width)
 							max_width = vp8w;
 						if(vp8h > max_height)
@@ -413,7 +454,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
 							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-							JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 							/* Is this the first keyframe we find? */
 							if(keyframe_ts == 0) {
 								keyframe_ts = tmp->ts;
@@ -578,10 +619,17 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 void janus_pp_webm_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
+#ifdef USE_CODECPAR
+	if(vEncoder != NULL)
+		avcodec_close(vEncoder);
+#else
 	if(vStream != NULL && vStream->codec != NULL)
 		avcodec_close(vStream->codec);
+#endif
 	if(fctx != NULL && fctx->streams[0] != NULL) {
+#ifndef USE_CODECPAR
 		av_free(fctx->streams[0]->codec);
+#endif
 		av_free(fctx->streams[0]);
 	}
 	if(fctx != NULL) {

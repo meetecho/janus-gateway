@@ -49,7 +49,7 @@
  * \ref plugins
  */
 
-#include "plugins/plugin.h"
+#include "plugin.h"
 
 #include <jansson.h>
 
@@ -57,11 +57,11 @@
 #include <curl/curl.h>
 #endif
 
-#include "debug.h"
-#include "apierror.h"
-#include "config.h"
-#include "mutex.h"
-#include "utils.h"
+#include "../debug.h"
+#include "../apierror.h"
+#include "../config.h"
+#include "../mutex.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -194,6 +194,7 @@ static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
 static void *janus_textroom_handler(void *data);
+static void janus_textroom_hangup_media_internal(janus_plugin_session *handle);
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -246,6 +247,8 @@ static char *admin_key = NULL;
 
 typedef struct janus_textroom_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	GHashTable *rooms;			/* Map of rooms this user is in, and related participant instance */
 	janus_mutex mutex;			/* Mutex to lock this session */
 	volatile gint setup;
@@ -330,6 +333,7 @@ static void *janus_textroom_watchdog(void *data) {
 		if(old_rooms != NULL) {
 			GList *rl = old_rooms;
 			now = janus_get_monotonic_time();
+			JANUS_LOG(LOG_HUGE, "Checking %d old Textrooms...\n", g_list_length(old_rooms));
 			while(rl) {
 				janus_textroom_room *textroom = (janus_textroom_room*)rl->data;
 				if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping)){
@@ -537,6 +541,19 @@ void janus_textroom_destroy(void) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
+	/* Remove all textrooms */
+	janus_mutex_lock(&rooms_mutex);
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, rooms);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_textroom_room *room = value;
+		if(!room->destroyed) {
+			room->destroyed = janus_get_monotonic_time();
+			old_rooms = g_list_append(old_rooms, room);
+		}
+	}
+	janus_mutex_unlock(&rooms_mutex);
 	if(watchdog != NULL) {
 		g_thread_join(watchdog);
 		watchdog = NULL;
@@ -594,12 +611,20 @@ const char *janus_textroom_get_package(void) {
 	return JANUS_TEXTROOM_PACKAGE;
 }
 
+static janus_textroom_session *janus_textroom_lookup_session(janus_plugin_session *handle) {
+	janus_textroom_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_textroom_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}
-	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
+	janus_textroom_session *session = g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	session->destroyed = 0;
@@ -619,18 +644,19 @@ void janus_textroom_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing Echo Test session...\n");
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_textroom_hangup_media(handle);
+		JANUS_LOG(LOG_VERB, "Removing Text Room session...\n");
+		janus_textroom_hangup_media_internal(handle);
 		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -642,14 +668,17 @@ json_t *janus_textroom_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
 	/* TODO Return meaningful info: participant details, rooms they're in, etc. */
 	json_t *info = json_object();
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -663,6 +692,8 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	json_t *root = message;
 	json_t *response = NULL;
 
+	janus_mutex_lock(&sessions_mutex);
+
 	if(message == NULL) {
 		JANUS_LOG(LOG_ERR, "No message??\n");
 		error_code = JANUS_TEXTROOM_ERROR_NO_MESSAGE;
@@ -670,7 +701,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		goto plugin_response;
 	}
 
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
@@ -716,15 +747,17 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto plugin_response;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(root != NULL)
 			json_decref(root);
 		if(jsep != NULL)
 			json_decref(jsep);
 		g_free(transaction);
 		return result;
-	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack")) {
+	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "restart")) {
 		/* These messages are handled asynchronously */
-		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
+		janus_mutex_unlock(&sessions_mutex);
+		janus_textroom_message *msg = g_malloc(sizeof(janus_textroom_message));
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -741,6 +774,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 
 plugin_response:
 		{
+			janus_mutex_unlock(&sessions_mutex);
 			if(!response) {
 				/* Prepare JSON error event */
 				response = json_object();
@@ -763,14 +797,19 @@ void janus_textroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_textroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -794,7 +833,7 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *buf, int l
 		return;
 	if(buf == NULL || len <= 0)
 		return;
-	char *text = g_malloc0(len+1);
+	char *text = g_malloc(len+1);
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
@@ -1020,7 +1059,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		json_t *display = json_object_get(root, "display");
 		const char *display_text = json_string_value(display);
 		/* Create a participant instance */
-		participant = g_malloc0(sizeof(janus_textroom_participant));
+		participant = g_malloc(sizeof(janus_textroom_participant));
 		participant->session = session;
 		participant->room = textroom;
 		participant->username = g_strdup(username_text);
@@ -1818,10 +1857,16 @@ void janus_textroom_slow_link(janus_plugin_session *handle, int uplink, int vide
 }
 
 void janus_textroom_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_textroom_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1867,22 +1912,17 @@ static void *janus_textroom_handler(void *data) {
 	int error_code = 0;
 	char error_cause[512];
 	json_t *root = NULL;
-	gboolean do_offer = FALSE;
+	gboolean do_offer = FALSE, sdp_update = FALSE;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
 			janus_textroom_message_free(msg);
 			continue;
 		}
-		janus_textroom_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_textroom_session *)msg->handle->plugin_handle;
-		}
+		janus_textroom_session *session = janus_textroom_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -1916,6 +1956,8 @@ static void *janus_textroom_handler(void *data) {
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
+		do_offer = FALSE;
+		sdp_update = FALSE;
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		do_offer = FALSE;
@@ -1926,6 +1968,15 @@ static void *janus_textroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "PeerConnection already setup");
 				goto error;
 			}
+			do_offer = TRUE;
+		} else if(!strcasecmp(request_text, "restart")) {
+			if(!g_atomic_int_get(&session->setup)) {
+				JANUS_LOG(LOG_ERR, "PeerConnection not setup\n");
+				error_code = JANUS_TEXTROOM_ERROR_ALREADY_SETUP;
+				g_snprintf(error_cause, 512, "PeerConnection not setup");
+				goto error;
+			}
+			sdp_update = TRUE;
 			do_offer = TRUE;
 		} else if(!strcasecmp(request_text, "ack")) {
 			/* The peer sent their answer back: do nothing */
@@ -1944,12 +1995,21 @@ static void *janus_textroom_handler(void *data) {
 			int ret = gateway->push_event(msg->handle, &janus_textroom_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
-			/* Send an offer */
+			/* Send an offer (whether it's for an ICE restart or not) */
+			if(sdp_update) {
+				/* Renegotiation: increase version */
+				session->sdp_version++;
+			} else {
+				/* New session: generate new values */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			char sdp[500];
 			g_snprintf(sdp, sizeof(sdp), sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time());			/* We need current time here */
+				session->sdp_sessid, session->sdp_version);
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+			if(sdp_update)
+				json_object_set_new(jsep, "restart", json_true());
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();

@@ -31,6 +31,7 @@
  * \ref core
  */
 
+#include <errno.h>
 #include <sys/time.h>
  
 #include "text2pcap.h"
@@ -50,57 +51,49 @@ const char *janus_text2pcap_packet_string(janus_text2pcap_packet type) {
 }
 
 janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, int truncate) {
+	janus_text2pcap *tp;
+	char newname[1024];
+	char *fname;
+	FILE *f;
+
 	if(truncate < 0)
 		return NULL;
-	/* Create the text2pcap instance */
-	janus_text2pcap *tp = g_malloc0(sizeof(janus_text2pcap));
-	if(tp == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
-	tp->filename = NULL;
-	tp->file = NULL;
-	tp->truncate = truncate;
-	g_atomic_int_set(&tp->writable, 0);
+
+	/* Copy given filename or generate a random one */
+	if (filename == NULL)
+		g_snprintf(newname, sizeof(newname),
+		    "janus-text2pcap-%"SCNu32".txt", janus_random_uint32());
+	else
+		g_strlcpy(newname, filename, sizeof(newname));
+
 	if(dir != NULL) {
 		/* Create the directory, if needed */
 		if(janus_mkdir(dir, 0755) < 0) {
 			JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
 			return NULL;
 		}
-	}
-	char newname[1024];
-	memset(newname, 0, 1024);
-	if(filename == NULL) {
-		/* Choose a random username */
-		g_snprintf(newname, 1024, "janus-text2pcap-%"SCNu32".txt", janus_random_uint32());
+
+		fname = g_strdup_printf("%s/%s", dir, newname);
 	} else {
-		/* Just copy the filename */
-		g_snprintf(newname, 1024, "%s", filename);
+		fname = g_strdup(newname);
 	}
+
 	/* Try opening the file now */
-	if(dir == NULL) {
-		tp->file = fopen(newname, "ab");
-		if(tp->file == NULL)
-			tp->file = fopen(newname, "wb");
-		if(tp->file != NULL)
-			tp->filename = g_strdup(newname);
-	} else {
-		char path[1024];
-		memset(path, 0, 1024);
-		g_snprintf(path, 1024, "%s/%s", dir, newname);
-		tp->file = fopen(path, "ab");
-		if(tp->file == NULL)
-			tp->file = fopen(path, "wb");
-		if(tp->file != NULL)
-			tp->filename = g_strdup(path);
-	}
-	if(tp->file == NULL) {
-		JANUS_LOG(LOG_ERR, "fopen error: %d\n", errno);
+	f = fopen(fname, "ab");
+	if (f == NULL) {
+		JANUS_LOG(LOG_ERR, "fopen(%s) error: %d\n", fname, errno);
+		g_free(fname);
 		return NULL;
 	}
+
+	/* Create the text2pcap instance */
+	tp = g_malloc(sizeof(janus_text2pcap));
+	tp->filename = fname;
+	tp->file = f;
+	tp->truncate = truncate;
 	g_atomic_int_set(&tp->writable, 1);
 	janus_mutex_init(&tp->mutex);
+
 	return tp;
 }
 
