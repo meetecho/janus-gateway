@@ -1872,11 +1872,21 @@ function Janus(gatewayCallbacks) {
 							height = 180;
 							maxHeight = 180;
 							width = 320;
-						} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
-							// High resolution is only 16:9
+						} else if(media.video === 'hires' || media.video === 'hires-16:9' || media.video === 'hdres') {
+							// High(HD) resolution is only 16:9
 							height = 720;
 							maxHeight = 720;
 							width = 1280;
+						} else if(media.video === 'fhdres') {
+							// Full HD resolution is only 16:9
+							height = 1080;
+							maxHeight = 1080;
+							width = 1920;
+						} else if(media.video === '4kres') {
+							// 4K resolution is only 16:9
+							height = 2160;
+							maxHeight = 2160;
+							width = 3840;
 						} else if(media.video === 'stdres') {
 							// Normal resolution, 4:3
 							height = 480;
