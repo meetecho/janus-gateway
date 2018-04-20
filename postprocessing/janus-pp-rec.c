@@ -644,14 +644,14 @@ int main(int argc, char *argv[])
 			ssrc = ntohl(rtp->ssrc);
 			JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
 		}
-		if(ssrc != ntohl(rtp->ssrc)) {
-			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n",
-				ntohl(rtp->ssrc), ssrc);
-			/* Skip data */
-			offset += len;
-			count++;
-			continue;
-		}
+		/* if(ssrc != ntohl(rtp->ssrc)) { */
+		/* 	JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n", */
+		/* 		ntohl(rtp->ssrc), ssrc); */
+		/* 	/\* Skip data *\/ */
+		/* 	offset += len; */
+		/* 	count++; */
+		/* 	continue; */
+		/* } */
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
 		p->seq = ntohs(rtp->seq_number);
