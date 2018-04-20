@@ -1619,6 +1619,22 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 		janus_session *session = (janus_session *)handle->session;
 		json_t *info = json_object();
 		json_object_set_new(info, "selected-pair", json_string(sp));
+#ifdef HAVE_LIBNICE_TCP
+		json_t *candidates = json_object();
+		json_t *lcand = json_object();
+		json_object_set_new(lcand, "address", json_string(laddress));
+		json_object_set_new(lcand, "port", json_integer(lport));
+		json_object_set_new(lcand, "type", json_string(ltype));
+		json_object_set_new(lcand, "transport", json_string(local->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp"));
+		json_object_set_new(candidates, "local", lcand);
+		json_t *rcand = json_object();
+		json_object_set_new(rcand, "address", json_string(raddress));
+		json_object_set_new(rcand, "port", json_integer(rport));
+		json_object_set_new(rcand, "type", json_string(rtype));
+		json_object_set_new(rcand, "transport", json_string(remote->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp"));
+		json_object_set_new(candidates, "remote", rcand);
+		json_object_set_new(info, "candidates", candidates);
+#endif
 		json_object_set_new(info, "stream_id", json_integer(stream_id));
 		json_object_set_new(info, "component_id", json_integer(component_id));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
@@ -2418,6 +2434,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
 				janus_rtcp_parse(rtcp_ctx, buf, buflen);
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", len);
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
