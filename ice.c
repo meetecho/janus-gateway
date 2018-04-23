@@ -1632,12 +1632,14 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 		json_object_set_new(lcand, "port", json_integer(lport));
 		json_object_set_new(lcand, "type", json_string(ltype));
 		json_object_set_new(lcand, "transport", json_string(local->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp"));
+		json_object_set_new(lcand, "family", json_integer(nice_address_ip_version(&local->addr)));
 		json_object_set_new(candidates, "local", lcand);
 		json_t *rcand = json_object();
 		json_object_set_new(rcand, "address", json_string(raddress));
 		json_object_set_new(rcand, "port", json_integer(rport));
 		json_object_set_new(rcand, "type", json_string(rtype));
 		json_object_set_new(rcand, "transport", json_string(remote->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp"));
+		json_object_set_new(rcand, "family", json_integer(nice_address_ip_version(&remote->addr)));
 		json_object_set_new(candidates, "remote", rcand);
 		json_object_set_new(info, "candidates", candidates);
 #endif
