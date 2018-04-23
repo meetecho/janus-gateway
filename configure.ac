@@ -108,6 +108,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_videocall=no])
                AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
                      [enable_plugin_videoroom=no])
+               AS_IF([test "x$enable_plugin_cookietime" != "xyes"],
+                     [enable_plugin_cookietime=no])
                AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
                      [enable_plugin_voicemail=no])
               ],
@@ -569,6 +571,13 @@ AC_ARG_ENABLE([plugin-videoroom],
                      [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
+AC_ARG_ENABLE([plugin-cookietime],
+              [AS_HELP_STRING([--disable-plugin-cookietime],
+                              [Disable cookietime plugin])],
+              [AS_IF([test "x$enable_plugin_cookietime" != "xyes"],
+                     [enable_plugin_cookietime=no])],
+              [enable_plugin_cookietime=yes])
+
 AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
                               [Disable voicemail plugin])],
@@ -680,6 +689,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_COOKIETIME], [test "x$enable_plugin_cookietime" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
@@ -854,6 +864,9 @@ AM_COND_IF([ENABLE_PLUGIN_AUDIOBRIDGE],
 AM_COND_IF([ENABLE_PLUGIN_VIDEOROOM],
 	[echo "    Video Room:            yes"],
 	[echo "    Video Room:            no"])
+AM_COND_IF([ENABLE_PLUGIN_COOKIETIME],
+	[echo "    CookieTime:            yes"],
+	[echo "    CookieTime:            no"])
 AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
 	[echo "    Voice Mail:            yes"],
 	[echo "    Voice Mail:            no"])
