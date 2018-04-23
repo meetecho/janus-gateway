@@ -485,6 +485,8 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "connection", json_string("hangup"));
+		if(reason != NULL)
+			json_object_set_new(info, "reason", json_string(reason));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 	}
 }
@@ -1607,15 +1609,19 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 		default:
 			break;
 	}
-	g_snprintf(sp, 200, "%s:%d [%s,%s] <-> %s:%d [%s,%s]",
+	g_snprintf(sp, sizeof(sp), "%s:%d [%s,%s] <-> %s:%d [%s,%s]",
 		laddress, lport, ltype, local->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp",
 		raddress, rport, rtype, remote->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp");
 #endif
-	gchar *prev_selected_pair = component->selected_pair;
-	component->selected_pair = g_strdup(sp);
-	g_clear_pointer(&prev_selected_pair, g_free);
+	gboolean newpair = FALSE;
+	if(component->selected_pair == NULL || strcmp(sp, component->selected_pair)) {
+		newpair = TRUE;
+		gchar *prev_selected_pair = component->selected_pair;
+		component->selected_pair = g_strdup(sp);
+		g_clear_pointer(&prev_selected_pair, g_free);
+	}
 	/* Notify event handlers */
-	if(janus_events_is_enabled()) {
+	if(newpair && janus_events_is_enabled()) {
 		janus_session *session = (janus_session *)handle->session;
 		json_t *info = json_object();
 		json_object_set_new(info, "selected-pair", json_string(sp));
