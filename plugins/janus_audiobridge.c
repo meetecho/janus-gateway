@@ -635,6 +635,9 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
 #define JANUS_AUDIOBRIDGE_PACKAGE			"janus.plugin.audiobridge"
 
+#define MIN_SEQUENTIAL 						2
+#define MAX_MISORDER						50
+
 /* Plugin methods */
 janus_plugin *create(void);
 int janus_audiobridge_init(janus_callbacks *callback, const char *config_path);
@@ -827,6 +830,7 @@ typedef struct janus_audiobridge_room {
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
+static gboolean use_fec = FALSE;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
@@ -868,6 +872,9 @@ typedef struct janus_audiobridge_participant {
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
+	uint16_t expected_seq;          /* Expected sequence number */
+	uint16_t probation; 		/* Used to determine new ssrc validity */
+	uint32_t last_timestamp;	/* Last in seq timestamp */
 	gboolean reset;				/* Whether or not the Opus context must be reset, without re-joining the room */
 	GThread *thread;			/* Encoding thread for this participant */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
@@ -1137,7 +1144,6 @@ typedef struct wav_header {
 /* Opus settings */		
 #define	BUFFER_SAMPLES	8000
 #define	OPUS_SAMPLES	160
-#define USE_FEC			0
 #define DEFAULT_COMPLEXITY	4
 
 
@@ -1321,6 +1327,10 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_AUDIOBRIDGE_NAME);
 		}
+		janus_config_item *fec = janus_config_get_item_drilldown(config, "general", "use_fec");
+		use_fec = fec && fec->value && janus_is_true(fec->value);
+		JANUS_LOG(LOG_VERB, "FEC: %s\n", use_fec ? "enable" : "disable");
+
 		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
@@ -2757,12 +2767,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			int error = 0;
 			OpusDecoder *decoder = opus_decoder_create(participant->room->sampling_rate, 1, &error);
 			if(error != OPUS_OK) {
-				JANUS_LOG(LOG_ERR, "Error resetting Opus decoder...\n");
+				JANUS_LOG(LOG_ERR, "(participant %"SCNu64") Error resetting Opus decoder...\n", participant->user_id);
 			} else {
 				if(participant->decoder)
 					opus_decoder_destroy(participant->decoder);
 				participant->decoder = decoder;
-				JANUS_LOG(LOG_VERB, "Opus decoder reset\n");
+				JANUS_LOG(LOG_VERB, "(participant %"SCNu64") Opus decoder reset\n", participant->user_id);
 			}
 			participant->reset = FALSE;
 		}
@@ -2776,6 +2786,29 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		/* We might check the audio level extension to see if this is silence */
 		pkt->silence = FALSE;
 		pkt->length = 0;
+
+		//First check if probation period
+		if(participant->probation == MIN_SEQUENTIAL){
+			participant->probation--;
+			participant->expected_seq = pkt->seq_number + 1;
+			JANUS_LOG(LOG_WARN, "(participant %"SCNu64") Probation started with ssrc = %"SCNu32", seq = %"SCNu16" \n", participant->user_id, ntohl(rtp->ssrc), pkt->seq_number);
+			g_free(pkt->data);
+			g_free(pkt);
+			return;
+		}
+		else if(participant->probation != 0){
+			//Decrease probation
+			participant->probation--;
+			//TODO: Reset probation if sequence number is incorrect and DSSRC also; must have a correct sequence
+			if(!participant->probation){
+				//Probation is ended
+			JANUS_LOG(LOG_WARN, "(participant %"SCNu64") Probation ended with ssrc = %"SCNu32", seq = %"SCNu16" \n", participant->user_id, ntohl(rtp->ssrc), pkt->seq_number);
+			}
+			participant->expected_seq = pkt->seq_number + 1;
+			g_free(pkt->data);
+			g_free(pkt);
+			return;
+		}
 
 		if(participant->extmap_id > 0) {
 			/* Check the audio levels, in case we need to notify participants about who's talking */
@@ -2831,16 +2864,93 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		int plen = 0;
 		const unsigned char *payload = (const unsigned char *)janus_rtp_payload(buf, len, &plen);
 		if(!payload) {
-			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error accessing the RTP payload\n");
+			JANUS_LOG(LOG_ERR, "(participant %"SCNu64")[Opus] Ops! got an error accessing the RTP payload\n", participant->user_id);
 			g_free(pkt->data);
 			g_free(pkt);
 		  	participant->working = FALSE;
 			return;
 		}
-		pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
+
+
+		//Check sequence number received, verify if relevant to expected one.
+		if(pkt->seq_number == participant->expected_seq){
+			/* regular decode */
+            //output_samples = max_frame_size;
+            pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, 0);
+
+            //update last_timestamp
+            participant->last_timestamp = pkt->timestamp;
+
+            //Increment according to previous seq_number
+			participant->expected_seq = pkt->seq_number + 1;
+		}
+		else if(pkt->seq_number > participant->expected_seq){
+			//Sequence(s) losts
+			uint16_t gap = pkt->seq_number - participant->expected_seq;
+			JANUS_LOG(LOG_VERB, "(participant %"SCNu64"),   %"SCNu16" sequence(s) lost, sequence = %"SCNu16",  expected seq = %"SCNu16" \n", participant->user_id, gap, pkt->seq_number, participant->expected_seq);
+
+			//Use FEC if sequence lost < DEFAULT_PREBUFFERING
+			uint16_t start_lost_seq = participant->expected_seq;
+			if(use_fec && gap < DEFAULT_PREBUFFERING){
+				for(uint8_t i = 1; i <= gap ; i++){
+					int32_t output_samples;
+					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
+					lost_pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
+					lost_pkt->ssrc = 0;
+					lost_pkt->timestamp = participant->last_timestamp + (i * 960);
+					lost_pkt->seq_number = start_lost_seq++;
+					lost_pkt->silence = FALSE;
+					lost_pkt->length = 0;
+
+					JANUS_LOG(LOG_VERB, "(participant %"SCNu64"), Prepare lost packet with seq = %"SCNu16", timestamp = %"SCNu32" \n", participant->user_id, lost_pkt->seq_number, lost_pkt->timestamp);
+					if(i == gap){
+						/* attempt to decode with in-band FEC from next packet */
+                		opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
+                		JANUS_LOG(LOG_VERB, "(participant %"SCNu64",   FEC(1) output_samples =  %"SCNu32" \n", participant->user_id, output_samples);
+                		lost_pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)lost_pkt->data, output_samples, 1);
+                	}
+                	else{
+                		opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
+                		JANUS_LOG(LOG_VERB, "(participant %"SCNu64"),   FEC(NULL) output_samples =  %"SCNu32" \n", participant->user_id, output_samples);
+                    	lost_pkt->length = opus_decode(participant->decoder, NULL, plen, (opus_int16 *)lost_pkt->data, output_samples, 1);
+                	}
+
+					if(lost_pkt->length < 0) {
+						JANUS_LOG(LOG_ERR, "(participant %"SCNu64")[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", participant->user_id, lost_pkt->length, opus_strerror(lost_pkt->length));
+						g_free(lost_pkt->data);
+						g_free(lost_pkt);
+						return;
+					}
+   					/* Enqueue the decoded frame */
+					janus_mutex_lock(&participant->qmutex);
+					/* Insert packets sorting by sequence number */
+					participant->inbuf = g_list_insert_sorted(participant->inbuf, lost_pkt, &janus_audiobridge_rtp_sort);
+					janus_mutex_unlock(&participant->qmutex);
+				}
+			}
+			//then regular decode
+			pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, 0); //NO FEC
+			//Increment according to previous seq_number
+			participant->expected_seq = pkt->seq_number + 1;
+		}else{
+			//In late sequence or sequence wrapped
+			//Check first if sequence wrapped
+			if((participant->expected_seq - pkt->seq_number) > MAX_MISORDER){
+				JANUS_LOG(LOG_VERB, "(participant %"SCNu64"),   SN WRAPPED seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", participant->user_id, pkt->seq_number, participant->expected_seq);
+				participant->expected_seq = pkt->seq_number + 1;
+			}
+			else{
+				JANUS_LOG(LOG_WARN, "(participant %"SCNu64"),   IN LATE SN seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", participant->user_id, pkt->seq_number, participant->expected_seq);
+			}
+			g_free(pkt->data);
+			g_free(pkt);
+			return;
+		}
+
+
 		participant->working = FALSE;
 		if(pkt->length < 0) {
-			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
+			JANUS_LOG(LOG_ERR, "(participant %"SCNu64")[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", participant->user_id, pkt->length, opus_strerror(pkt->length));
 			g_free(pkt->data);
 			g_free(pkt);
 			return;
@@ -2851,25 +2961,27 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		participant->inbuf = g_list_insert_sorted(participant->inbuf, pkt, &janus_audiobridge_rtp_sort);
 		if(participant->prebuffering) {
 			/* Still pre-buffering: do we have enough packets now? */
-			if(g_list_length(participant->inbuf) == DEFAULT_PREBUFFERING) {
+			if(g_list_length(participant->inbuf) > DEFAULT_PREBUFFERING) { //If we have packets lost during prebuffering ... best to test > instead of == to stop prebuffering
 				participant->prebuffering = FALSE;
-				JANUS_LOG(LOG_VERB, "Prebuffering done! Finally adding the user to the mix\n");
+				JANUS_LOG(LOG_VERB, "(participant %"SCNu64") Prebuffering done! Finally adding the user to the mix\n", participant->user_id);
 			} else {
-				JANUS_LOG(LOG_VERB, "Still prebuffering (got %d packets), not adding the user to the mix yet\n", g_list_length(participant->inbuf));
+				JANUS_LOG(LOG_VERB, "(participant %"SCNu64") Still prebuffering (got %d packets), not adding the user to the mix yet\n", participant->user_id, g_list_length(participant->inbuf));
 			}
 		} else {
 			/* Make sure we're not queueing too many packets: if so, get rid of the older ones */
-			if(g_list_length(participant->inbuf) >= DEFAULT_PREBUFFERING*2) {
+			if(g_list_length(participant->inbuf) >= DEFAULT_PREBUFFERING*3) {
 				gint64 now = janus_get_monotonic_time();
 				if(now - participant->last_drop > 5*G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "Too many packets in queue (%d > %d), removing older ones\n",
-						g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
+					JANUS_LOG(LOG_VERB, "(participant %"SCNu64") Too many packets in queue (%d > %d), removing older ones\n", participant->user_id,
+						g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*3);
 					participant->last_drop = now;
 				}
 				while(g_list_length(participant->inbuf) > DEFAULT_PREBUFFERING*2) {
 					/* Remove this packet: it's too old */
 					GList *first = g_list_first(participant->inbuf);
 					janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
+					JANUS_LOG(LOG_ERR, "(participant %"SCNu64") list length = %d, Remove sequence = %d\n", participant->user_id,
+						g_list_length(participant->inbuf), pkt->seq_number);
 					participant->inbuf = g_list_remove_link(participant->inbuf, first);
 					first = NULL;
 					if(pkt == NULL)
@@ -3151,6 +3263,9 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->encoder = NULL;
 				participant->decoder = NULL;
 				participant->reset = FALSE;
+				participant->expected_seq = 0;
+				participant->probation = MIN_SEQUENTIAL;
+				participant->last_timestamp = 0;
 				janus_mutex_init(&participant->qmutex);
 				participant->arc = NULL;
 				janus_mutex_init(&participant->rec_mutex);
@@ -3204,7 +3319,7 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(participant->encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				/* FIXME This settings should be configurable */
-				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(USE_FEC));
+				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(use_fec));
 			}
 			opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 			if(participant->decoder == NULL) {
@@ -3621,7 +3736,7 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(new_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				/* FIXME This settings should be configurable */
-				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(USE_FEC));
+				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(use_fec));
 				opus_encoder_ctl(new_encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 				/* Opus decoder */
 				error = 0;
@@ -3931,8 +4046,8 @@ static void *janus_audiobridge_handler(void *data) {
 			answer->s_name = g_strdup(s_name);
 			/* Add a fmtp attribute */
 			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp",
-				"%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=0\r\n",
-					participant->opus_pt, participant->room->sampling_rate);
+				"%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=%s\r\n",
+					participant->opus_pt, participant->room->sampling_rate, use_fec ? "1" : "0");
 			janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 			/* Is the audio level extension negotiated? */
 			participant->extmap_id = 0;

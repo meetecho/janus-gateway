@@ -30,6 +30,7 @@
 								; if this key is provided in the request
 ;events = no					; Whether events should be sent to event
 								; handlers (default is yes)
+use_fec = false                 ; enable or disable FEC feature (opus)
 
 [1234]
 description = Demo Room
