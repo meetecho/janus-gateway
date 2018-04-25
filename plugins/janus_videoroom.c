@@ -5264,6 +5264,9 @@ static void *janus_videoroom_handler(void *data) {
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
 				participant->data_active = FALSE;
+                janus_videoroom_participant_free(session->participant);
+                session->participant = NULL;
+                session->participant_type = janus_videoroom_p_type_none;
 				session->started = FALSE;
 				//~ session->destroy = TRUE;
 			} else {
