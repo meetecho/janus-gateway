@@ -5264,6 +5264,9 @@ static void *janus_videoroom_handler(void *data) {
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
 				participant->data_active = FALSE;
+                janus_videoroom_participant_free(session->participant);
+                session->participant = NULL;
+                session->participant_type = janus_videoroom_p_type_none;
 				session->started = FALSE;
 				//~ session->destroy = TRUE;
 			} else {
@@ -5684,6 +5687,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(room_id));
 				json_object_set_new(event, "left", json_string("ok"));
+                janus_videoroom_listener_free(session->participant);
+                session->participant = NULL;
+                session->participant_type = janus_videoroom_p_type_none;
 				session->started = FALSE;
 			} else {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
