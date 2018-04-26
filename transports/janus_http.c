@@ -792,6 +792,18 @@ void janus_http_destroy(void) {
 	g_thread_join(httptimer);
 	g_main_context_unref(httpctx);
 
+	/* Resume all pending connections, before stopping the webservers */
+	janus_mutex_lock(&messages_mutex);
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, messages);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_transport_session *transport = value;
+		janus_http_msg *msg = (janus_http_msg *)transport->transport_p;
+		MHD_resume_connection(msg->connection);
+	}
+	janus_mutex_unlock(&messages_mutex);
+
 	JANUS_LOG(LOG_INFO, "Stopping webserver(s)...\n");
 	if(ws)
 		MHD_stop_daemon(ws);
@@ -805,11 +817,9 @@ void janus_http_destroy(void) {
 	if(admin_sws)
 		MHD_stop_daemon(admin_sws);
 	admin_sws = NULL;
-	if(cert_pem_bytes != NULL)
-		g_free((gpointer)cert_pem_bytes);
+	g_free((gpointer)cert_pem_bytes);
 	cert_pem_bytes = NULL;
-	if(cert_key_bytes != NULL)
-		g_free((gpointer)cert_key_bytes);
+	g_free((gpointer)cert_key_bytes);
 	cert_key_bytes = NULL;
 	g_free(allow_origin);
 	allow_origin = NULL;
@@ -1058,6 +1068,8 @@ static int janus_http_admin_client_connect(void *cls, const struct sockaddr *add
 static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
+	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
+		return MHD_NO;
 	char *payload = NULL;
 	json_t *root = NULL;
 	struct MHD_Response *response = NULL;
@@ -1423,6 +1435,8 @@ done:
 static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
+	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
+		return MHD_NO;
 	char *payload = NULL;
 	json_t *root = NULL;
 	struct MHD_Response *response = NULL;
