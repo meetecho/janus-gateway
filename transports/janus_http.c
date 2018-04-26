@@ -1385,15 +1385,13 @@ parsingdone:
 	if(handle_id > 0)
 		json_object_set_new(root, "handle_id", json_integer(handle_id));
 
-	/* Suspend the connection and pass the ball to the core */
-	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
 	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
 		500, &janus_http_response_callback, msg, NULL);
 	if(response == NULL) {
 		ret = MHD_NO;
 	} else {
 		g_atomic_int_set(&msg->suspended, 1);
+		/* Suspend the connection */
 		MHD_suspend_connection(msg->connection);
 		MHD_add_response_header(response, "Content-Type", "application/json");
 		janus_http_add_cors_headers(msg, response);
@@ -1404,6 +1402,9 @@ parsingdone:
 		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
 		g_source_attach(msg->timeout, httpctx);
 	}
+	/* Pass the ball to the core */
+	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
+	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
 
 done:
 	g_strfreev(basepath);
@@ -1599,15 +1600,13 @@ parsingdone:
 	if(handle_id > 0)
 		json_object_set_new(root, "handle_id", json_integer(handle_id));
 
-	/* Suspend the connection and pass the ball to the core */
-	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
 	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
 		500, &janus_http_response_callback, msg, NULL);
 	if(response == NULL) {
 		ret = MHD_NO;
 	} else {
 		g_atomic_int_set(&msg->suspended, 1);
+		/* Suspend the connection */
 		MHD_suspend_connection(msg->connection);
 		MHD_add_response_header(response, "Content-Type", "application/json");
 		janus_http_add_cors_headers(msg, response);
@@ -1618,6 +1617,9 @@ parsingdone:
 		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
 		g_source_attach(msg->timeout, httpctx);
 	}
+	/* Pass the ball to the core */
+	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
+	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
 
 done:
 	g_strfreev(basepath);
