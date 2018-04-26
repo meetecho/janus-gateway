@@ -1401,10 +1401,10 @@ parsingdone:
 		msg->timeout = g_timeout_source_new_seconds(10);
 		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
 		g_source_attach(msg->timeout, httpctx);
+		/* Pass the ball to the core */
+		JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
+		gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
 	}
-	/* Pass the ball to the core */
-	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
 
 done:
 	g_strfreev(basepath);
@@ -1616,10 +1616,10 @@ parsingdone:
 		msg->timeout = g_timeout_source_new_seconds(10);
 		g_source_set_callback(msg->timeout, janus_http_timeout, msg, NULL);
 		g_source_attach(msg->timeout, httpctx);
+		/* Pass the ball to the core */
+		JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
+		gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
 	}
-	/* Pass the ball to the core */
-	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
-	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
 
 done:
 	g_strfreev(basepath);
