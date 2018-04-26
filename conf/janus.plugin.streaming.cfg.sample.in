@@ -57,9 +57,10 @@
 ; srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
 ;
 ; The following options are only valid for the 'rstp' type:
-; url = RTSP stream URL (only for restreaming RTSP)
-; rtsp_user = RTSP authorization username (only if type=rtsp)
-; rtsp_pwd = RTSP authorization password (only if type=rtsp)
+; url = RTSP stream URL
+; rtsp_user = RTSP authorization username, if needed
+; rtsp_pwd = RTSP authorization password, if needed
+; rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
 ; rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 ;
 ; Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact

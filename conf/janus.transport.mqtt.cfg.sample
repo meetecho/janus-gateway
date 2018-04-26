@@ -4,7 +4,9 @@ enable = no							; Whether the support must be enabled
 json = indented						; Whether the JSON messages should be indented (default),
 									; plain (no indentation) or compact (no indentation and no spaces)
 
-url = tcp://localhost:1883			; The connection URL of the MQTT broker
+url = tcp://localhost:1883			; The connection URL of the MQTT broker: if you want
+									; to use SSL, make sure you type ssl:// instead of tcp://,
+									; and that you configure the SSL settings below
 ;client_id = guest					; Client identifier
 ;username = guest					; Username to use to authenticate, if needed
 ;password = guest					; Password to use to authenticate, if needed
@@ -15,6 +17,12 @@ subscribe_topic = to-janus			; Topic for incoming messages
 ;subscribe_qos = 1					; QoS for incoming messages
 publish_topic = from-janus			; Topic for outgoing messages
 ;publish_qos = 1					; QoS for outgoing messages
+;ssl_enable = yes					; Whether ssl support must be enabled
+;verify_peer = yes				; Whether peer verification must be enabled
+; Certificates to use when SSL support is enabled, if needed
+;cacertfile = /path/to/cacert.pem
+;certfile = /path/to/cert.pem
+;keyfile = /path/to/key.pem
 
 [admin]
 ;admin_enable = no					; Whether the support must be enabled

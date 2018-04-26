@@ -445,7 +445,7 @@ function unpublishOwnFeed() {
 }
 
 function newRemoteFeed(id, display, audio, video) {
-	// A new feed has been published, create a new plugin handle and attach to it as a listener
+	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
 	var remoteFeed = null;
 	janus.attach(
 		{
@@ -457,7 +457,7 @@ function newRemoteFeed(id, display, audio, video) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
+				var listen = { "request": "join", "room": myroom, "ptype": "subscriber", "feed": id, "private_id": mypvtid };
 				// In case you don't want to receive audio, video or data, even if the
 				// publisher is sending them, set the 'offer_audio', 'offer_video' or
 				// 'offer_data' properties to false (they're true by default), e.g.:
@@ -476,7 +476,7 @@ function newRemoteFeed(id, display, audio, video) {
 				bootbox.alert("Error attaching plugin... " + error);
 			},
 			onmessage: function(msg, jsep) {
-				Janus.debug(" ::: Got a message (listener) :::");
+				Janus.debug(" ::: Got a message (subscriber) :::");
 				Janus.debug(msg);
 				var event = msg["videoroom"];
 				Janus.debug("Event: " + event);
@@ -585,15 +585,15 @@ function newRemoteFeed(id, display, audio, video) {
 				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
-					if($('#remotevideo'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-						$('#remotevideo'+remoteFeed.rfindex).append(
+					if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+						$('#videoremote'+remoteFeed.rfindex).append(
 							'<div class="no-video-container">' +
 								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 								'<span class="no-video-text">No remote video available</span>' +
 							'</div>');
 					}
 				} else {
-					$('#remotevideo'+remoteFeed.rfindex+ ' .no-video-container').remove();
+					$('#videoremote'+remoteFeed.rfindex+ ' .no-video-container').remove();
 					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
 				}
 				if(!addButtons)

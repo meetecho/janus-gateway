@@ -18,7 +18,6 @@
 
 #include "janus.h"
 #include "ice.h"
-#include "dtls.h"
 #include "sdp.h"
 #include "utils.h"
 #include "debug.h"
@@ -109,12 +108,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		if(m->type == JANUS_SDP_AUDIO) {
 			if(handle->rtp_profile == NULL && m->proto != NULL)
 				handle->rtp_profile = g_strdup(m->proto);
+			audio++;
+			if(audio > 1) {
+				temp = temp->next;
+				continue;
+			}
 			if(m->port > 0) {
-				audio++;
-				if(audio > 1) {
-					temp = temp->next;
-					continue;
-				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
@@ -159,16 +158,15 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			if(handle->rtp_profile == NULL && m->proto != NULL)
 				handle->rtp_profile = g_strdup(m->proto);
+			video++;
+			if(video > 1) {
+				temp = temp->next;
+				continue;
+			}
 			if(m->port > 0) {
-				video++;
-				if(video > 1) {
-					temp = temp->next;
-					continue;
-				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing video candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
-					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 					stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 					if(stream->video_rtcp_ctx[0] == NULL) {
 						stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
@@ -211,13 +209,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* Is this SCTP for DataChannels? */
 			if(!strcasecmp(m->proto, "DTLS/SCTP")) {
+				data++;
+				if(data > 1) {
+					temp = temp->next;
+					continue;
+				}
 				if(m->port > 0) {
 					/* Yep */
-					data++;
-					if(data > 1) {
-						temp = temp->next;
-						continue;
-					}
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, stream->stream_id);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
 						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS);
@@ -267,19 +265,15 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				} else if(!strcasecmp(a->name, "fingerprint")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (local) : %s\n", handle->handle_id, a->value);
 					if(strcasestr(a->value, "sha-256 ") == a->value) {
-						if(rhashing)
-							g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
+						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-256");
-						if(rfingerprint)
-							g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
+						g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
 						rfingerprint = g_strdup(a->value + strlen("sha-256 "));
 					} else if(strcasestr(a->value, "sha-1 ") == a->value) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]  Hashing algorithm not the one we expected (sha-1 instead of sha-256), but that's ok\n", handle->handle_id);
-						if(rhashing)
-							g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
+						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-1");
-						if(rfingerprint)
-							g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
+						g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
 						rfingerprint = g_strdup(a->value + strlen("sha-1 "));
 					} else {
 						/* FIXME We should handle this somehow anyway... OpenSSL supports them all */
@@ -301,13 +295,11 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					/* TODO Handle holdconn... */
 				} else if(!strcasecmp(a->name, "ice-ufrag")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE ufrag (local):   %s\n", handle->handle_id, a->value);
-					if(ruser)
-						g_free(ruser);	/* FIXME We're overwriting the global one, if any */
+					g_free(ruser);	/* FIXME We're overwriting the global one, if any */
 					ruser = g_strdup(a->value);
 				} else if(!strcasecmp(a->name, "ice-pwd")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE pwd (local):     %s\n", handle->handle_id, a->value);
-					if(rpass)
-						g_free(rpass);	/* FIXME We're overwriting the global one, if any */
+					g_free(rpass);	/* FIXME We're overwriting the global one, if any */
 					rpass = g_strdup(a->value);
 				}
 			}
@@ -338,18 +330,14 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 			}
 			/* Store fingerprint and hashing */
-			if(stream->remote_hashing != NULL)
-				g_free(stream->remote_hashing);
+			g_free(stream->remote_hashing);
 			stream->remote_hashing = g_strdup(rhashing);
-			if(stream->remote_fingerprint != NULL)
-				g_free(stream->remote_fingerprint);
+			g_free(stream->remote_fingerprint);
 			stream->remote_fingerprint = g_strdup(rfingerprint);
 			/* Store the ICE username and password for this stream */
-			if(stream->ruser != NULL)
-				g_free(stream->ruser);
+			g_free(stream->ruser);
 			stream->ruser = g_strdup(ruser);
-			if(stream->rpass != NULL)
-				g_free(stream->rpass);
+			g_free(stream->rpass);
 			stream->rpass = g_strdup(rpass);
 		}
 		/* Is simulcasting enabled, using rid? (we need to check this before parsing SSRCs) */

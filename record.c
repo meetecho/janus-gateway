@@ -61,6 +61,20 @@ void janus_recorder_deinit(void) {
 	g_free(rec_tempext);
 }
 
+static void janus_recorder_free(const janus_refcount *recorder_ref) {
+	janus_recorder *recorder = janus_refcount_containerof(recorder_ref, janus_recorder, ref);
+	/* This recorder can be destroyed, free all the resources */
+	janus_recorder_close(recorder);
+	g_free(recorder->dir);
+	recorder->dir = NULL;
+	g_free(recorder->filename);
+	recorder->filename = NULL;
+	fclose(recorder->file);
+	recorder->file = NULL;
+	g_free(recorder->codec);
+	recorder->codec = NULL;
+	g_free(recorder);
+}
 
 janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
@@ -185,6 +199,9 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
 	janus_mutex_init(&rc->mutex);
+	/* Done */
+	g_atomic_int_set(&rc->destroyed, 0);
+	janus_refcount_init(&rc->ref, janus_recorder_free);
 	g_free(copy_for_parent);
 	g_free(copy_for_base);
 	return rc;
@@ -293,20 +310,8 @@ int janus_recorder_close(janus_recorder *recorder) {
 	return 0;
 }
 
-int janus_recorder_free(janus_recorder *recorder) {
-	if(!recorder)
-		return -1;
-	janus_recorder_close(recorder);
-	janus_mutex_lock_nodebug(&recorder->mutex);
-	g_free(recorder->dir);
-	recorder->dir = NULL;
-	g_free(recorder->filename);
-	recorder->filename = NULL;
-	fclose(recorder->file);
-	recorder->file = NULL;
-	g_free(recorder->codec);
-	recorder->codec = NULL;
-	janus_mutex_unlock_nodebug(&recorder->mutex);
-	g_free(recorder);
-	return 0;
+void janus_recorder_destroy(janus_recorder *recorder) {
+	if(!recorder || !g_atomic_int_compare_and_exchange(&recorder->destroyed, 0, 1))
+		return;
+	janus_refcount_decrease(&recorder->ref);
 }

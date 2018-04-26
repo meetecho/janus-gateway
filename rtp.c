@@ -289,7 +289,7 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate current delay */
 			gint32 delay_now = context->a_last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (31*context->a_prev_delay + delay_now)/32;
+			gint32 delay_estimate = (63*context->a_prev_delay + delay_now)/64;
 			/* Save previous delay for the next iteration*/
 			context->a_prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */

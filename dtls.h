@@ -21,6 +21,7 @@
 #include "rtp.h"
 #include "rtpsrtp.h"
 #include "sctp.h"
+#include "refcount.h"
 #include "dtls-bio.h"
 
 /*! \brief DTLS stuff initialization
@@ -90,6 +91,10 @@ typedef struct janus_dtls_srtp {
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
 #endif
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_dtls_srtp;
 
 

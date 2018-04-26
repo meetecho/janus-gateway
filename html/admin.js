@@ -305,6 +305,20 @@ function updateSettings() {
 								setLockingDebug(!settings["locking_debug"]);
 						});
 					});
+				} else if(k === 'refcount_debug') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
+					$('#'+k + "_button")
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable reference counters debug" : "Disable reference counters debug");
+					$('#'+k + "_button").click(function() {
+						var text = (!settings["refcount_debug"] ?
+							"Are you sure you want to enable the reference counters debug?<br/>This will print a line on the console any time a reference counter is increased/decreased"
+								: "Are you sure you want to disable the reference counters debug?");
+						bootbox.confirm(text, function(result) {
+							if(result)
+								setRefcountDebug(!settings["refcount_debug"]);
+						});
+					});
 				} else if(k === 'log_timestamps') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
@@ -377,6 +391,11 @@ function setLogLevel(level) {
 
 function setLockingDebug(enable) {
 	var request = { "janus": "set_locking_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
+function setRefcountDebug(enable) {
+	var request = { "janus": "set_refcount_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 
