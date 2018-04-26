@@ -134,7 +134,6 @@ static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
 static void janus_http_msg_destroy(void *msg) {
 	if(!msg)
 		return;
-	JANUS_LOG(LOG_WARN, "janus_http_msg_destroy\n");
 	janus_http_msg *request = (janus_http_msg *)msg;
 	g_free(request->payload);
 	g_free(request->contenttype);
@@ -167,7 +166,6 @@ static void janus_http_session_destroy(janus_http_session *session) {
 static void janus_http_session_free(const janus_refcount *session_ref) {
 	janus_http_session *session = janus_refcount_containerof(session_ref, janus_http_session, ref);
 	/* This session can be destroyed, free all the resources */
-	JANUS_LOG(LOG_WARN, "janus_http_session_free\n");
 	if(session->events) {
 		json_t *event = NULL;
 		while((event = g_async_queue_try_pop(session->events)) != NULL)
