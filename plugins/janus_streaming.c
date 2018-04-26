@@ -945,6 +945,8 @@ typedef struct janus_streaming_rtp_source {
 	janus_network_address data_iface;
 	/* Only needed for SRTP forwarders */
 	gboolean is_srtp;
+	int srtpsuite;
+	char *srtpcrypto;
 	srtp_t srtp_ctx;
 	srtp_policy_t srtp_policy;
 } janus_streaming_rtp_source;
@@ -2537,6 +2539,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(diface)
 						janus_config_add_item(config, mp->name, "dataiface", json_string_value(diface));
 				}
+				if(source->srtpsuite > 0 && source->srtpcrypto) {
+					g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
+					janus_config_add_item(config, mp->name, "srtpsuite", value);
+					janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
+				}
 			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
 				janus_streaming_file_source *source = mp->source;
 				janus_config_add_item(config, mp->name, "filename", source->filename);
@@ -2806,6 +2813,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						json_t *diface = json_object_get(root, "dataiface");
 						if(diface)
 							janus_config_add_item(config, mp->name, "dataiface", json_string_value(diface));
+					}
+					if(source->srtpsuite > 0 && source->srtpcrypto) {
+						g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
+						janus_config_add_item(config, mp->name, "srtpsuite", value);
+						janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
 					}
 				}
 			} else {
@@ -4070,6 +4082,7 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	}
 	janus_mutex_unlock(&source->buffermsg_mutex);
 	if(source->is_srtp) {
+		g_free(source->srtpcrypto);
 		srtp_dealloc(source->srtp_ctx);
 		g_free(source->srtp_policy.key);
 	}
@@ -4303,6 +4316,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			return NULL;
 		}
 		live_rtp_source->is_srtp = TRUE;
+		live_rtp_source->srtpsuite = srtpsuite;
+		live_rtp_source->srtpcrypto = g_strdup(srtpcrypto);
 	}
 	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_iface = doaudio && !janus_network_address_is_null(aiface) ? *aiface : nil;
