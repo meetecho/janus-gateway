@@ -129,6 +129,10 @@ int janus_dtls_bio_filter_free(BIO *bio) {
 int janus_dtls_bio_filter_write(BIO *bio, const char *in, int inl) {
 	JANUS_LOG(LOG_HUGE, "janus_dtls_bio_filter_write: %p, %d\n", in, inl);
 	/* Forward data to the write BIO */
+	if(inl <= 0) {
+		/* ... unless the size is negative or zero */
+		return inl;
+	}
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 	long ret = BIO_write(bio->next_bio, in, inl);
 #else
