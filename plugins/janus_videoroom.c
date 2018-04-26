@@ -649,8 +649,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"video_ptype_3" : <if simulcasting or doing VP9-SVC, video payload type to use the third substream/layer; optional>,
 	"data_port" : <port to forward the datachannel messages to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
-	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>",
-	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
+	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>"
 }
 \endverbatim
  *
