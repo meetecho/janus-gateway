@@ -662,6 +662,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"room" : <unique numeric ID, same as request>,
 	"publisher_id" : <unique numeric ID, same as request>,
 	"rtp_stream" : {
+		"host" : "<host this forwarder is streaming to, same as request>",
 		"audio" : <audio port, same as request if configured>,
 		"audio_stream_id" : <unique numeric ID assigned to the audio RTP forwarder, if any>,
 		"video" : <video port, same as request if configured>,
