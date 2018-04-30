@@ -3581,11 +3581,8 @@ static void *janus_streaming_handler(void *data) {
 						goto error;
 					}
 					/* This mountpoint is simulcasting, let's aim high by default */
-					session->substream = -1;
 					session->substream_target = 2;
-					session->templayer = -1;
 					session->templayer_target = 2;
-					janus_vp8_simulcast_context_reset(&session->simulcast_context);
 					/* Unless the request contains a target */
 					json_t *substream = json_object_get(root, "substream");
 					if(substream) {
@@ -5853,33 +5850,6 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 							json_decref(event);
 						//~ } else {
 							//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
-						}
-					}
-				}
-				/* If we haven't received our desired substream yet, let's drop temporarily */
-				if(session->last_relayed == 0) {
-					/* Let's start slow */
-					session->last_relayed = janus_get_monotonic_time();
-				} else {
-					/* Check if 250ms went by with no packet relayed */
-					gint64 now = janus_get_monotonic_time();
-					if(now-session->last_relayed >= 250000) {
-						session->last_relayed = now;
-						int substream = session->substream-1;
-						if(substream < 0)
-							substream = 0;
-						if(session->substream != substream) {
-							JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-								session->substream, substream);
-							session->substream = substream;
-							/* Notify the viewer */
-							json_t *event = json_object();
-							json_object_set_new(event, "streaming", json_string("event"));
-							json_t *result = json_object();
-							json_object_set_new(result, "substream", json_integer(session->substream));
-							json_object_set_new(event, "result", result);
-							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-							json_decref(event);
 						}
 					}
 				}
