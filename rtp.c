@@ -447,7 +447,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 				context->v_last_ssrc, ssrc);
 			context->v_last_ssrc = ssrc;
 			context->v_base_ts_prev = context->v_last_ts;
-			context->v_base_ts = timestamp;
+			context->v_base_ts = timestamp+1000000;
 			context->v_base_seq_prev = context->v_last_seq;
 			context->v_base_seq = seq;
 			/* How much time since the last video RTP packet? We compute an offset accordingly */
