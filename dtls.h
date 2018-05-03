@@ -81,8 +81,6 @@ typedef struct janus_dtls_srtp {
 	srtp_policy_t remote_policy;
 	/*! \brief libsrtp policy for outgoing SRTP packets */
 	srtp_policy_t local_policy;
-	/*! \brief Mutex to lock/unlock this libsrtp context */
-	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
 	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
