@@ -2390,6 +2390,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
+		const char *srtp_profile = janus_get_dtls_srtp_profile(dtls->srtp_profile);
+		json_object_set_new(d, "srtp-profile", json_string(srtp_profile ? srtp_profile : "none"));
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_started > 0)
 			json_object_set_new(d, "handshake-started", json_integer(dtls->dtls_started));

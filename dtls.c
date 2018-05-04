@@ -55,6 +55,24 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
+const gchar *janus_get_dtls_srtp_profile(int profile) {
+	switch(profile) {
+		case SRTP_AES128_CM_SHA1_80:
+			return "SRTP_AES128_CM_SHA1_80";
+		case SRTP_AES128_CM_SHA1_32:
+			return "SRTP_AES128_CM_SHA1_32";
+#ifdef HAVE_SRTP_AESGCM
+		case SRTP_AEAD_AES_256_GCM:
+			return "SRTP_AEAD_AES_256_GCM";
+		case SRTP_AEAD_AES_128_GCM:
+			return "SRTP_AEAD_AES_128_GCM";
+#endif
+		default:
+			return NULL;
+	}
+	return NULL;
+}
+
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	if(!janus_events_is_enabled())
@@ -876,6 +894,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
 					goto done;
 				}
+				dtls->srtp_profile = srtp_profile->id;
 				dtls->srtp_valid = 1;
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 #ifdef HAVE_SCTP
