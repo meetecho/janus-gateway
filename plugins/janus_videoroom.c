@@ -4212,7 +4212,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				}
 			}
 		}
-		janus_mutex_unlock(&participant->subscribers_mutex);
 	}
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
