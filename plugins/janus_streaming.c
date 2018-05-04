@@ -3379,20 +3379,14 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	}
 	session->substream = -1;
-	session->substream_target = 0;
+	session->substream_target = 2;
 	session->templayer = -1;
-	session->templayer_target = 0;
+	session->templayer_target = 2;
 	session->last_relayed = 0;
 	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	session->stopping = TRUE;
 	session->started = FALSE;
 	session->paused = FALSE;
-	session->substream = -1;
-	session->substream_target = 0;
-	session->templayer = -1;
-	session->templayer_target = 0;
-	session->last_relayed = 0;
-	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	janus_streaming_mountpoint *mp = session->mountpoint;
 	if(mp) {
 		janus_mutex_lock(&mp->mutex);
@@ -3747,12 +3741,6 @@ done:
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
 				if(source && source->simulcast) {
-					/* This mountpoint is simulcasting, let's aim high by default */
-					session->substream = -1;
-					session->substream_target = 2;
-					session->templayer = -1;
-					session->templayer_target = 2;
-					janus_vp8_simulcast_context_reset(&session->simulcast_context);
 					/* Unless the request contains a target */
 					json_t *substream = json_object_get(root, "substream");
 					if(substream) {
