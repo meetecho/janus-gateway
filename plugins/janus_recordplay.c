@@ -1063,9 +1063,7 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 			janus_refcount_decrease(&session->ref);
 			/* FIXME Should we notify this back to the user somehow? */
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Record&Play playout thread...\n", error->code, error->message ? error->message : "??");
-			if(gateway) {
-				gateway->close_pc(session->handle);
-			}
+			gateway->close_pc(session->handle);
 		}
 	}
 	janus_refcount_decrease(&session->ref);
@@ -1117,30 +1115,28 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	if(gateway) {
-		janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;	
-		if(!session) {
-			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
-			return;
-		}
-		if(g_atomic_int_get(&session->destroyed))
-			return;
-		if(video && session->simulcast_ssrc) {
-			/* The user is simulcasting: drop everything except the base layer */
-			janus_rtp_header *header = (janus_rtp_header *)buf;
-			uint32_t ssrc = ntohl(header->ssrc);
-			if(ssrc != session->simulcast_ssrc) {
-				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
-				return;
-			}
-		}
-		/* Are we recording? */
-		if(session->recorder) {
-			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
-		}
-
-		janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
 	}
+	if(g_atomic_int_get(&session->destroyed))
+		return;
+	if(video && session->simulcast_ssrc) {
+		/* The user is simulcasting: drop everything except the base layer */
+		janus_rtp_header *header = (janus_rtp_header *)buf;
+		uint32_t ssrc = ntohl(header->ssrc);
+		if(ssrc != session->simulcast_ssrc) {
+			JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+			return;
+		}
+	}
+	/* Are we recording? */
+	if(session->recorder) {
+		janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
+	}
+
+	janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
 }
 
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -2287,8 +2283,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 				/* Update payload type */
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
-				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+				gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
 				gettimeofday(&now, NULL);
 				abefore.tv_sec = now.tv_sec;
 				abefore.tv_usec = now.tv_usec;
@@ -2328,8 +2323,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
-					if(gateway != NULL)
-						gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
 					asent = TRUE;
 					audio = audio->next;
 				}
@@ -2347,8 +2341,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
-					if(gateway != NULL)
-						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+					gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
 					video = video->next;
 				}
 				vsent = TRUE;
@@ -2392,8 +2385,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						/* Update payload type */
 						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
-						if(gateway != NULL)
-							gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
 						video = video->next;
 					}
 					vsent = TRUE;
