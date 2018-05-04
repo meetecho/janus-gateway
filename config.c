@@ -56,10 +56,8 @@ static char *trim(char *s) {
 static void janus_config_free_item(gpointer data) {
 	janus_config_item *i = (janus_config_item *)data;
 	if(i) {
-		if(i->name)
-			g_free((gpointer)i->name);
-		if(i->value)
-			g_free((gpointer)i->value);
+		g_free((gpointer)i->name);
+		g_free((gpointer)i->value);
 		g_free(i);
 	}
 }
@@ -67,8 +65,7 @@ static void janus_config_free_item(gpointer data) {
 static void janus_config_free_category(gpointer data) {
 	janus_config_category *c = (janus_config_category *)data;
 	if(c) {
-		if(c->name)
-			g_free((gpointer)c->name);
+		g_free((gpointer)c->name);
 		if(c->items)
 			g_list_free_full(c->items, janus_config_free_item);
 		g_free(c);
@@ -188,10 +185,6 @@ error:
 
 janus_config *janus_config_create(const char *name) {
 	janus_config *jc = g_malloc0(sizeof(janus_config));
-	if(jc == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	if(name != NULL) {
 		jc->name = g_strdup(name);
 	}
@@ -258,10 +251,6 @@ janus_config_category *janus_config_add_category(janus_config *config, const cha
 		return c;
 	}
 	c = g_malloc0(sizeof(janus_config_category));
-	if(c == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	c->name = g_strdup(category);
 	config->categories = g_list_append(config->categories, c);
 	return c;
@@ -293,10 +282,6 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	if(item == NULL) {
 		/* Create it */
 		item = g_malloc0(sizeof(janus_config_item));
-		if(item == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
 		item->name = g_strdup(name);
 		item->value = g_strdup(value);
 		if(c != NULL) {
@@ -309,8 +294,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	} else {
 		/* Update it */
 		char *item_value = g_strdup(value);
-		if(item->value)
-			g_free((gpointer)item->value);
+		g_free((gpointer)item->value);
 		item->value = item_value;
 	}
 	return item;
@@ -453,8 +437,7 @@ void janus_config_destroy(janus_config *config) {
 		g_list_free_full(config->categories, janus_config_free_category);
 		config->categories = NULL;
 	}
-	if(config->name)
-		g_free((gpointer)config->name);
+	g_free((gpointer)config->name);
 	g_free((gpointer)config);
 	config = NULL;
 }

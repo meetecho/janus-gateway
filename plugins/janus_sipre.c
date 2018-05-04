@@ -33,7 +33,10 @@
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
  *
- * Actual API docs: TBD.
+ * Actual API docs: TBD. For the time being, refer to the Sofia SIP plugin
+ * documentation, as while some of the features listed there may not be
+ * available in the SIPre plugin as of now, all of the messages are supposed
+ * to be formatted exactly the same way.
  *
  * \ingroup plugins
  * \ref plugins
@@ -162,6 +165,7 @@ static struct janus_json_parameter call_parameters[] = {
 	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"srtp", JANUS_JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
 	/* The following are only needed in case "guest" registrations
 	 * still need an authenticated INVITE for some reason */
 	{"secret", JSON_STRING, 0},
@@ -204,8 +208,8 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
-static GThread *watchdog;
 static void *janus_sipre_handler(void *data);
+static void janus_sipre_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_sipre_message {
 	janus_plugin_session *handle;
@@ -216,23 +220,6 @@ typedef struct janus_sipre_message {
 static GAsyncQueue *messages = NULL;
 static janus_sipre_message exit_message;
 
-static void janus_sipre_message_free(janus_sipre_message *msg) {
-	if(!msg || msg == &exit_message)
-		return;
-
-	msg->handle = NULL;
-
-	g_free(msg->transaction);
-	msg->transaction = NULL;
-	if(msg->message)
-		json_decref(msg->message);
-	msg->message = NULL;
-	if(msg->jsep)
-		json_decref(msg->jsep);
-	msg->jsep = NULL;
-
-	g_free(msg);
-}
 
 /* libre SIP stack */
 static volatile int libre_inited = 0;
@@ -296,7 +283,7 @@ typedef struct janus_sipre_mqueue_payload {
 	void *data;					/* Payload specific data */
 } janus_sipre_mqueue_payload;
 static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode, void *data) {
-	janus_sipre_mqueue_payload *payload = g_malloc0(sizeof(janus_sipre_mqueue_payload));
+	janus_sipre_mqueue_payload *payload = g_malloc(sizeof(janus_sipre_mqueue_payload));
 	payload->session = session;
 	payload->msg = msg;
 	payload->rcode = rcode;
@@ -473,9 +460,11 @@ typedef struct janus_sipre_stack {
 typedef struct janus_sipre_media {
 	char *remote_ip;
 	gboolean earlymedia;
+	gboolean update;
 	gboolean ready;
 	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
+	janus_srtp_profile srtp_profile;
 	gboolean on_hold;
 	gboolean has_audio;
 	int audio_rtp_fd, audio_rtcp_fd;
@@ -486,7 +475,6 @@ typedef struct janus_sipre_media {
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
-	int audio_srtp_suite_in, audio_srtp_suite_out;
 	gboolean audio_send;
 	janus_sdp_mdirection pre_hold_audio_dir;
 	gboolean has_video;
@@ -498,7 +486,6 @@ typedef struct janus_sipre_media {
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
-	int video_srtp_suite_in, video_srtp_suite_out;
 	gboolean video_send;
 	janus_sdp_mdirection pre_hold_video_dir;
 	janus_rtp_switching_context context;
@@ -523,27 +510,177 @@ typedef struct janus_sipre_session {
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	volatile gint hangingup;
-	gint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint destroyed;
+	janus_refcount ref;
 	janus_mutex mutex;
 } janus_sipre_session;
 static GHashTable *sessions;
-static GList *old_sessions;
 static GHashTable *identities;
 static GHashTable *callids;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
+static void janus_sipre_srtp_cleanup(janus_sipre_session *session);
+
+static void janus_sipre_session_destroy(janus_sipre_session *session) {
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1)) {
+		/* Unregister */
+		mqueue_push(mq, janus_sipre_mqueue_event_do_unregister, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+		/* Close re-related stuff for this SIP session */
+		mqueue_push(mq, janus_sipre_mqueue_event_do_close, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+		/* Destroy this SIP session in the queue handler */
+		mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+	}
+}
+
+static void janus_sipre_session_free(const janus_refcount *session_ref) {
+	janus_sipre_session *session = janus_refcount_containerof(session_ref, janus_sipre_session, ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
+	/* This session can be destroyed, free all the resources */
+	if(session->account.identity) {
+		g_hash_table_remove(identities, session->account.identity);
+		g_free(session->account.identity);
+		session->account.identity = NULL;
+	}
+	session->account.sips = TRUE;
+	if(session->account.proxy) {
+		g_free(session->account.proxy);
+		session->account.proxy = NULL;
+	}
+	if(session->account.outbound_proxy) {
+		g_free(session->account.outbound_proxy);
+		session->account.outbound_proxy = NULL;
+	}
+	if(session->account.secret) {
+		g_free(session->account.secret);
+		session->account.secret = NULL;
+	}
+	if(session->account.username) {
+		g_free(session->account.username);
+		session->account.username = NULL;
+	}
+	if(session->account.display_name) {
+		g_free(session->account.display_name);
+		session->account.display_name = NULL;
+	}
+	if(session->account.authuser) {
+		g_free(session->account.authuser);
+		session->account.authuser = NULL;
+	}
+	if(session->callee) {
+		g_free(session->callee);
+		session->callee = NULL;
+	}
+	if(session->callid) {
+		g_hash_table_remove(callids, session->callid);
+		g_free(session->callid);
+		session->callid = NULL;
+	}
+	if(session->sdp) {
+		janus_sdp_destroy(session->sdp);
+		session->sdp = NULL;
+	}
+	if(session->transaction) {
+		g_free(session->transaction);
+		session->transaction = NULL;
+	}
+	if(session->media.remote_ip) {
+		g_free(session->media.remote_ip);
+		session->media.remote_ip = NULL;
+	}
+	janus_sipre_srtp_cleanup(session);
+	session->handle = NULL;
+	g_free(session);
+	session = NULL;
+}
+
+static void janus_sipre_message_free(janus_sipre_message *msg) {
+	if(!msg || msg == &exit_message)
+		return;
+
+	if(msg->handle && msg->handle->plugin_handle) {
+		janus_sipre_session *session = (janus_sipre_session *)msg->handle->plugin_handle;
+		janus_refcount_decrease(&session->ref);
+	}
+	msg->handle = NULL;
+
+	g_free(msg->transaction);
+	msg->transaction = NULL;
+	if(msg->message)
+		json_decref(msg->message);
+	msg->message = NULL;
+	if(msg->jsep)
+		json_decref(msg->jsep);
+	msg->jsep = NULL;
+
+	g_free(msg);
+}
+
 
 /* SRTP stuff (in case we need SDES) */
-static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean video, char **crypto) {
+static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean video, char **profile, char **crypto) {
 	if(session == NULL)
 		return -1;
+	/* Which SRTP profile are we going to negotiate? */
+	int key_length = 0, salt_length = 0, master_length = 0;
+	if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_32) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_32");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_80) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_80");
+#ifdef HAVE_SRTP_AESGCM
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_128_GCM) {
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_128_GCM");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_256_GCM) {
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_256_GCM");
+#endif
+	} else {
+		JANUS_LOG(LOG_ERR, "[SIPre-%s] Unsupported SRTP profile\n", session->account.username);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] %s\n", session->account.username, *profile);
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] Key/Salt/Master: %d/%d/%d\n",
+		session->account.username, master_length, key_length, salt_length);
 	/* Generate key/salt */
-	uint8_t *key = g_malloc0(SRTP_MASTER_LENGTH);
-	srtp_crypto_get_random(key, SRTP_MASTER_LENGTH);
+	uint8_t *key = g_malloc0(master_length);
+	srtp_crypto_get_random(key, master_length);
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_local_policy : &session->media.audio_local_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+#ifdef HAVE_SRTP_AESGCM
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+#endif
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Unsupported SRTP profile\n", session->account.username);
+			break;
+	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = key;
 	policy->next = NULL;
@@ -552,38 +689,86 @@ static int janus_sipre_srtp_set_local(janus_sipre_session *session, gboolean vid
 	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+		g_free(*profile);
+		*profile = NULL;
 		g_free(key);
 		policy->key = NULL;
 		return -2;
 	}
 	/* Base64 encode the salt */
-	*crypto = g_base64_encode(key, SRTP_MASTER_LENGTH);
+	*crypto = g_base64_encode(key, master_length);
 	if((video && session->media.video_srtp_out) || (!video && session->media.audio_srtp_out)) {
 		JANUS_LOG(LOG_VERB, "%s outbound SRTP session created\n", video ? "Video" : "Audio");
 	}
 	return 0;
 }
-static int janus_sipre_srtp_set_remote(janus_sipre_session *session, gboolean video, const char *crypto, int suite) {
-	if(session == NULL || crypto == NULL)
+static int janus_sipre_srtp_set_remote(janus_sipre_session *session, gboolean video, const char *profile, const char *crypto) {
+	if(session == NULL || profile == NULL || crypto == NULL)
 		return -1;
+	/* Which SRTP profile is being negotiated? */
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] %s\n", session->account.username, profile);
+	gsize key_length = 0, salt_length = 0, master_length = 0;
+	if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+#ifdef HAVE_SRTP_AESGCM
+	} else if(!strcasecmp(profile, "AEAD_AES_128_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AEAD_AES_256_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+#endif
+	} else {
+		JANUS_LOG(LOG_ERR, "[SIPre-%s] Unsupported SRTP profile %s\n", session->account.username, profile);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] Key/Salt/Master: %zu/%zu/%zu\n",
+		session->account.username, master_length, key_length, salt_length);
 	/* Base64 decode the crypto string and set it as the remote SRTP context */
 	gsize len = 0;
 	guchar *decoded = g_base64_decode(crypto, &len);
-	if(len < SRTP_MASTER_LENGTH) {
+	if(len < master_length) {
 		/* FIXME Can this happen? */
 		g_free(decoded);
-		return -2;
+		return -3;
 	}
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_remote_policy : &session->media.audio_remote_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
-	if(suite == 32) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtcp));
-	} else if(suite == 80) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+#ifdef HAVE_SRTP_AESGCM
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+#endif
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Unsupported SRTP profile\n", session->account.username);
+			break;
 	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = decoded;
@@ -609,32 +794,29 @@ static void janus_sipre_srtp_cleanup(janus_sipre_session *session) {
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	/* Audio */
 	if(session->media.audio_srtp_out)
 		srtp_dealloc(session->media.audio_srtp_out);
 	session->media.audio_srtp_out = NULL;
 	g_free(session->media.audio_local_policy.key);
 	session->media.audio_local_policy.key = NULL;
-	session->media.audio_srtp_suite_out = 0;
 	if(session->media.audio_srtp_in)
 		srtp_dealloc(session->media.audio_srtp_in);
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
-	session->media.audio_srtp_suite_in = 0;
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
 	session->media.video_srtp_out = NULL;
 	g_free(session->media.video_local_policy.key);
 	session->media.video_local_policy.key = NULL;
-	session->media.video_srtp_suite_out = 0;
 	if(session->media.video_srtp_in)
 		srtp_dealloc(session->media.video_srtp_in);
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
-	session->media.video_srtp_suite_in = 0;
 }
 
 
@@ -724,44 +906,6 @@ static void *janus_sipre_relay_thread(void *data);
 #define JANUS_SIPRE_ERROR_IO_ERROR			450
 #define JANUS_SIPRE_ERROR_RECORDING_ERROR		451
 #define JANUS_SIPRE_ERROR_TOO_STRICT			452
-
-
-/* SIPre watchdog/garbage collector (sort of) */
-static void *janus_sipre_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "SIPre watchdog started\n");
-	gint64 now = 0;
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		janus_mutex_lock(&sessions_mutex);
-		/* Iterate on all the sessions */
-		now = janus_get_monotonic_time();
-		if(old_sessions != NULL) {
-			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old SIPre sessions...\n", g_list_length(old_sessions));
-			while(sl) {
-				janus_sipre_session *session = (janus_sipre_session *)sl->data;
-				if(!session) {
-					sl = sl->next;
-					continue;
-				}
-				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old SIPre session\n");
-					GList *rm = sl->next;
-					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;
-					/* Destroy this SIP session in the queue handler */
-					mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-					continue;
-				}
-				sl = sl->next;
-			}
-		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(500000);
-	}
-	JANUS_LOG(LOG_INFO, "SIPre watchdog stopped\n");
-	return NULL;
-}
 
 
 /* Random string helper (for call-ids) */
@@ -909,7 +1053,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	RAND_poll();
 #endif
 
-	sessions = g_hash_table_new(NULL, NULL);
+	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sipre_session_destroy);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	janus_mutex_init(&sessions_mutex);
@@ -920,13 +1064,6 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
-	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("sipre watchdog", &janus_sipre_watchdog, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIPre watchdog thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
 	/* Launch the thread that will handle incoming API messages */
 	handler_thread = g_thread_try_new("sipre handler", janus_sipre_handler, NULL, &error);
 	if(error != NULL) {
@@ -979,10 +1116,6 @@ void janus_sipre_destroy(void) {
 		g_thread_join(sipstack_thread);
 		sipstack_thread = NULL;
 	}
-	if(watchdog != NULL) {
-		g_thread_join(watchdog);
-		watchdog = NULL;
-	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
@@ -1031,6 +1164,14 @@ const char *janus_sipre_get_package(void) {
 	return JANUS_SIPRE_PACKAGE;
 }
 
+static janus_sipre_session *janus_sipre_lookup_session(janus_plugin_session *handle) {
+	janus_sipre_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_sipre_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1057,11 +1198,13 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
 	session->media.earlymedia = FALSE;
+	session->media.update = FALSE;
 	session->media.ready = FALSE;
 	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	session->media.on_hold = FALSE;
 	session->media.has_audio = FALSE;
 	session->media.audio_rtp_fd = -1;
@@ -1074,8 +1217,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc_peer = 0;
 	session->media.audio_pt = -1;
 	session->media.audio_pt_name = NULL;
-	session->media.audio_srtp_suite_in = 0;
-	session->media.audio_srtp_suite_out = 0;
 	session->media.audio_send = TRUE;
 	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
 	session->media.has_video = FALSE;
@@ -1089,8 +1230,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc_peer = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
-	session->media.video_srtp_suite_in = 0;
-	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	/* Initialize the RTP context */
@@ -1099,10 +1238,11 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
-	session->destroyed = 0;
+	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
+	janus_refcount_init(&session->ref, janus_sipre_session_free);
 
 	mqueue_push(mq, janus_sipre_mqueue_event_do_init, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 
@@ -1119,25 +1259,18 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No SIPre session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&sessions_mutex);
-	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_sipre_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
-		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
-		/* Unregister */
-		mqueue_push(mq, janus_sipre_mqueue_event_do_unregister, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-		/* Close re-related stuff for this SIP session */
-		mqueue_push(mq, janus_sipre_mqueue_event_do_close, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
-	}
+	JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+	janus_sipre_hangup_media_internal(handle);
+	/* Remove the session from the table: this will trigger a destroy */
+	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
@@ -1146,11 +1279,15 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
@@ -1179,14 +1316,27 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
-	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
+	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	janus_refcount_decrease(&session->ref);
 	return info;
 }
 
 struct janus_plugin_result *janus_sipre_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
+	}
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+
+	janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -1201,14 +1351,19 @@ void janus_sipre_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
@@ -1218,7 +1373,7 @@ void janus_sipre_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 	if(gateway) {
 		/* Honour the audio/video active flags */
 		janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -1289,7 +1444,7 @@ void janus_sipre_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 		return;
 	if(gateway) {
 		janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -1339,15 +1494,21 @@ void janus_sipre_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 }
 
 void janus_sipre_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_sipre_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sipre_session *session = (janus_sipre_session *)handle->plugin_handle;
+	janus_sipre_session *session = janus_sipre_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
@@ -1365,25 +1526,25 @@ void janus_sipre_hangup_media(janus_plugin_session *handle) {
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_free(session->arc);
+		janus_recorder_destroy(session->arc);
 	}
 	session->arc = NULL;
 	if(session->arc_peer) {
 		janus_recorder_close(session->arc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-		janus_recorder_free(session->arc_peer);
+		janus_recorder_destroy(session->arc_peer);
 	}
 	session->arc_peer = NULL;
 	if(session->vrc) {
 		janus_recorder_close(session->vrc);
 		JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_free(session->vrc);
+		janus_recorder_destroy(session->vrc);
 	}
 	session->vrc = NULL;
 	if(session->vrc_peer) {
 		janus_recorder_close(session->vrc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-		janus_recorder_free(session->vrc_peer);
+		janus_recorder_destroy(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
@@ -1398,26 +1559,21 @@ static void *janus_sipre_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
 			janus_sipre_message_free(msg);
 			continue;
 		}
-		janus_sipre_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_sipre_session *)msg->handle->plugin_handle;
-		}
+		janus_sipre_session *session = janus_sipre_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sipre_message_free(msg);
 			continue;
 		}
-		if(session->destroyed) {
+		if(g_atomic_int_get(&session->destroyed)) {
 			janus_mutex_unlock(&sessions_mutex);
 			janus_sipre_message_free(msg);
 			continue;
@@ -1773,6 +1929,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
+			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 			json_t *srtp = json_object_get(root, "srtp");
 			if(srtp) {
 				const char *srtp_text = json_string_value(srtp);
@@ -1788,6 +1945,29 @@ static void *janus_sipre_handler(void *data) {
 					error_code = JANUS_SIPRE_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
 					goto error;
+				}
+				if(offer_srtp) {
+					/* Any SRTP profile different from the default? */
+					srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+					const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
+					if(profile) {
+						if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+						} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+#ifdef HAVE_SRTP_AESGCM
+						} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+						} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
+							srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+#endif
+						} else {
+							JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
+							error_code = JANUS_SIPRE_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
+							goto error;
+						}
+					}
 				}
 			}
 			/* Parse address */
@@ -1819,6 +1999,7 @@ static void *janus_sipre_handler(void *data) {
 			janus_sipre_srtp_cleanup(session);
 			session->media.require_srtp = require_srtp;
 			session->media.has_srtp_local = offer_srtp;
+			session->media.srtp_profile = srtp_profile;
 			if(offer_srtp) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
 			}
@@ -1842,7 +2023,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			if(janus_sipre_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -1850,13 +2031,13 @@ static void *janus_sipre_handler(void *data) {
 			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, FALSE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
 			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-			janus_sdp_free(session->sdp);
+			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
 			/* Prepare the From header */
@@ -1993,7 +2174,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			if(janus_sipre_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -2001,7 +2182,7 @@ static void *janus_sipre_handler(void *data) {
 			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, TRUE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -2015,7 +2196,7 @@ static void *janus_sipre_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-			janus_sdp_free(session->sdp);
+			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
 			/* Also notify event handlers */
@@ -2045,11 +2226,75 @@ static void *janus_sipre_handler(void *data) {
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
+		} else if(!strcasecmp(request_text, "update")) {
+			/* Update an existing call */
+			if(!(session->status == janus_sipre_call_status_inviting || session->status == janus_sipre_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sipre_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			if(session->sdp == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no local SDP?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no local SDP?)");
+				goto error;
+			}
+			/* Any SDP to handle? if not, something's wrong */
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp) {
+				JANUS_LOG(LOG_ERR, "Missing SDP update\n");
+				error_code = JANUS_SIPRE_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP update");
+				goto error;
+			}
+			if(!json_is_true(json_object_get(msg->jsep, "update"))) {
+				JANUS_LOG(LOG_ERR, "Missing SDP update\n");
+				error_code = JANUS_SIPRE_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Missing SDP update");
+				goto error;
+			}
+			/* Parse the SDP we got, manipulate some things, and generate a new one */
+			char sdperror[100];
+			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
+			if(!parsed_sdp) {
+				JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
+				error_code = JANUS_SIPRE_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
+				goto error;
+			}
+			session->sdp->o_version++;
+			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, FALSE);
+			if(sdp == NULL) {
+				JANUS_LOG(LOG_ERR, "Error manipulating SDP\n");
+				janus_sdp_destroy(parsed_sdp);
+				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
+				g_snprintf(error_cause, 512, "Error manipulating SDP");
+				goto error;
+			}
+			/* Take note of the new SDP */
+			janus_sdp_destroy(session->sdp);
+			session->sdp = parsed_sdp;
+			session->media.update = TRUE;
+			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
+			/* Send the re-INVITE */
+			session->temp_sdp = sdp;
+			mqueue_push(mq, janus_sipre_mqueue_event_do_update, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
+			/* Send an ack back */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("updating"));
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
 			if(session->status != janus_sipre_call_status_invited) {
@@ -2067,6 +2312,7 @@ static void *janus_sipre_handler(void *data) {
 				goto error;
 			}
 			session->media.earlymedia = FALSE;
+			session->media.update = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_closing;
@@ -2186,6 +2432,7 @@ static void *janus_sipre_handler(void *data) {
 				goto error;
 			}
 			session->media.earlymedia = FALSE;
+			session->media.update = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_closing;
@@ -2368,7 +2615,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->arc) {
 						janus_recorder_close(session->arc);
 						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_free(session->arc);
+						janus_recorder_destroy(session->arc);
 					}
 					session->arc = NULL;
 				}
@@ -2376,7 +2623,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->vrc) {
 						janus_recorder_close(session->vrc);
 						JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_free(session->vrc);
+						janus_recorder_destroy(session->vrc);
 					}
 					session->vrc = NULL;
 				}
@@ -2384,7 +2631,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->arc_peer) {
 						janus_recorder_close(session->arc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-						janus_recorder_free(session->arc_peer);
+						janus_recorder_destroy(session->arc_peer);
 					}
 					session->arc_peer = NULL;
 				}
@@ -2392,7 +2639,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->vrc_peer) {
 						janus_recorder_close(session->vrc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-						janus_recorder_free(session->vrc_peer);
+						janus_recorder_destroy(session->vrc_peer);
 					}
 					session->vrc_peer = NULL;
 				}
@@ -2614,27 +2861,16 @@ void janus_sipre_sdp_process(janus_sipre_session *session, janus_sdp *sdp, gbool
 				if(!strcasecmp(a->name, "crypto")) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						gint32 tag = 0;
-						int suite;
-						char crypto[81];
+						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" AES_CM_128_HMAC_SHA1_%2d inline:%80s",
-							&tag, &suite, crypto);
+						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto);
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
 							gboolean video = (m->type == JANUS_SDP_VIDEO);
-							int current_suite = video ? session->media.video_srtp_suite_in : session->media.audio_srtp_suite_in;
-							if(current_suite == 0) {
-								if(video)
-									session->media.video_srtp_suite_in = suite;
-								else
-									session->media.audio_srtp_suite_in = suite;
-								janus_sipre_srtp_set_remote(session, video, crypto, suite);
-								session->media.has_srtp_remote = TRUE;
-							} else {
-								JANUS_LOG(LOG_WARN, "We already configured a %s crypto context (AES_CM_128_HMAC_SHA1_%d), skipping additional crypto line\n",
-									video ? "video" : "audio", current_suite);
-							}
+							janus_sipre_srtp_set_remote(session, video, profile, crypto);
+							session->media.has_srtp_remote = TRUE;
 						}
 					}
 				}
@@ -2682,22 +2918,22 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_sipre_srtp_set_local(session, FALSE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_sipre_srtp_set_local(session, FALSE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_sipre_srtp_set_local(session, TRUE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_sipre_srtp_set_local(session, TRUE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
@@ -2850,8 +3086,8 @@ static int janus_sipre_allocate_local_ports(janus_sipre_session *session) {
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.video_rtp_fd);
 				session->media.video_rtp_fd = -1;
-				close(session->media.video_rtp_fd);
-				session->media.video_rtp_fd = -1;
+				close(session->media.video_rtcp_fd);
+				session->media.video_rtcp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -2909,7 +3145,12 @@ static void janus_sipre_connect_sockets(janus_sipre_session *session, struct soc
 /* Thread to relay RTP/RTCP frames coming from the SIPre peer */
 static void *janus_sipre_relay_thread(void *data) {
 	janus_sipre_session *session = (janus_sipre_session *)data;
-	if(!session || !session->account.username || !session->callee) {
+	if(!session) {
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	if(!session->account.username || !session->callee) {
+		janus_refcount_decrease(&session->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
@@ -2933,13 +3174,14 @@ static void *janus_sipre_relay_thread(void *data) {
 
 	if(!session->callee) {
 		JANUS_LOG(LOG_VERB, "[SIPre-%s] Leaving thread, no callee...\n", session->account.username);
+		janus_refcount_decrease(&session->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
-	int resfd = 0, bytes = 0;
+	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
@@ -2949,7 +3191,7 @@ static void *janus_sipre_relay_thread(void *data) {
 	gboolean goon = TRUE;
 	int astep = 0, vstep = 0;
 	guint32 ats = 0, vts = 0;
-	while(goon && session != NULL && !session->destroyed &&
+	while(goon && session != NULL && !g_atomic_int_get(&session->destroyed) &&
 			session->status > janus_sipre_call_status_idle &&
 			session->status < janus_sipre_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 
@@ -3009,7 +3251,7 @@ static void *janus_sipre_relay_thread(void *data) {
 			/* No data, keep going */
 			continue;
 		}
-		if(session == NULL || session->destroyed ||
+		if(session == NULL || g_atomic_int_get(&session->destroyed) ||
 				session->status <= janus_sipre_call_status_idle ||
 				session->status >= janus_sipre_call_status_closing)
 			break;
@@ -3033,22 +3275,26 @@ static void *janus_sipre_relay_thread(void *data) {
 							session->account.username, strerror(error));
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
+						continue;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIPre-%s] Got a '%s' on the video RTCP socket, closing it\n",
 							session->account.username, strerror(error));
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
+						continue;
 					}
-					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
-					continue;
 				}
-				JANUS_LOG(LOG_ERR, "[SIPre-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
+				/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
+				pollerrs++;
+				if(pollerrs < 100)
+					continue;
+				JANUS_LOG(LOG_ERR, "[SIPre-%s] Too many errors polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIPre-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
+				janus_sipre_message *msg = g_malloc(sizeof(janus_sipre_message));
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;
@@ -3074,6 +3320,7 @@ static void *janus_sipre_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
 							(!video && session->media.audio_ssrc_peer != ntohl(header->ssrc))) {
@@ -3186,6 +3433,7 @@ static void *janus_sipre_relay_thread(void *data) {
 	janus_sipre_srtp_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "Leaving SIPre relay thread\n");
+	janus_refcount_decrease(&session->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
@@ -3268,7 +3516,7 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 			json_object_set_new(calling, "username", json_string(session->account.username));
 			json_object_set_new(calling, "register_sent", json_true());
 			json_object_set_new(call, "result", calling);
-			if(!session->destroyed) {
+			if(!g_atomic_int_get(&session->destroyed)) {
 				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			}
@@ -3300,7 +3548,7 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 				json_object_set_new(result, "reason", json_string(reason));
 			}
 			json_object_set_new(event, "result", result);
-			if(!session->destroyed) {
+			if(!g_atomic_int_get(&session->destroyed)) {
 				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			}
@@ -3380,7 +3628,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 			json_object_set_new(result, "displayname", json_string(dname));
 		}
 		json_object_set_new(missed, "result", result);
-		if(!session->destroyed) {
+		if(!g_atomic_int_get(&session->destroyed)) {
 			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, missed, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 		}
@@ -3426,13 +3674,13 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		/* Check if offer has neither audio nor video, fail with 488 */
 		if(!session->media.has_audio && !session->media.has_video) {
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-			janus_sdp_free(sdp);
+			janus_sdp_destroy(sdp);
 			return;
 		}
 		/* Also fail with 488 if there's no remote IP address that can be used for RTP */
 		if(!session->media.remote_ip) {
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-			janus_sdp_free(sdp);
+			janus_sdp_destroy(sdp);
 			return;
 		}
 	}
@@ -3454,14 +3702,14 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 	}
 	json_object_set_new(call, "result", calling);
-	if(!session->destroyed) {
+	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 	}
 	json_decref(call);
 	if(jsep)
 		json_decref(jsep);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
@@ -3500,7 +3748,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 	}
 	gboolean changed = FALSE;
 	janus_sipre_sdp_process(session, sdp, FALSE, TRUE, &changed);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Check if offer has neither audio nor video, fail with 488 */
 	if (!session->media.has_audio && !session->media.has_video) {
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
@@ -3556,9 +3804,10 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	/* If we asked for SRTP and are not getting it, fail */
 	if(session->media.require_srtp && !session->media.has_srtp_remote) {
 		JANUS_LOG(LOG_ERR, "We asked for mandatory SRTP but didn't get any in the reply!\n");
-		janus_sdp_free(sdp);
+		janus_sdp_destroy(sdp);
 		/* Hangup immediately */
 		session->media.earlymedia = FALSE;
+		session->media.update = FALSE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		session->status = janus_sipre_call_status_closing;
@@ -3570,9 +3819,10 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	if(!session->media.remote_ip) {
 		/* No remote address parsed? Give up */
 		JANUS_LOG(LOG_ERR, "No remote IP address found for RTP, something's wrong with the SDP!\n");
-		janus_sdp_free(sdp);
+		janus_sdp_destroy(sdp);
 		/* Hangup immediately */
 		session->media.earlymedia = FALSE;
+		session->media.update = FALSE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		session->status = janus_sipre_call_status_closing;
@@ -3590,17 +3840,19 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 	}
 	session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
-	if(update && !session->media.earlymedia) {
+	if(update && !session->media.earlymedia && !session->media.update) {
 		/* Don't push to the browser if this is in response to a hold/unhold we sent ourselves */
 		JANUS_LOG(LOG_WARN, "This is an update to an existing call (possibly in response to hold/unhold)\n");
 		return 0;
 	}
-	if(!session->media.earlymedia) {
+	if(!session->media.earlymedia && !session->media.update) {
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+		janus_refcount_increase(&session->ref);
 		g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 		if(error != NULL) {
+			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 		}
 	}
@@ -3622,21 +3874,25 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	json_object_set_new(calling, "event", json_string(in_progress ? "progress" : "accepted"));
 	json_object_set_new(calling, "username", json_string(session->callee));
 	json_object_set_new(call, "result", calling);
-	if(!session->destroyed) {
+	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 	}
 	json_decref(call);
 	json_decref(jsep);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Also notify event handlers */
-	if(notify_events && gateway->events_is_enabled()) {
+	if(!session->media.update && notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "event", json_string(in_progress ? "progress" : "accepted"));
 		if(session->callid)
 			json_object_set_new(info, "call-id", json_string(session->callid));
 		json_object_set_new(info, "username", json_string(session->callee));
 		gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+	}
+	if(session->media.update) {
+		/* We just received a 200 OK to an update we sent */
+		session->media.update = FALSE;
 	}
 
 	return 0;
@@ -3725,7 +3981,7 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	}
 	json_object_set_new(result, "reason", json_string(err ? strerror(err) : reason));
 	json_object_set_new(event, "result", result);
-	if(!session->destroyed) {
+	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 	}
@@ -3743,6 +3999,7 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	mem_deref(session->stack.sess);
 	session->stack.sess = NULL;
 	session->media.earlymedia = FALSE;
+	session->media.update = FALSE;
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
 	session->status = janus_sipre_call_status_idle;
@@ -3755,64 +4012,11 @@ void janus_sipre_cb_exit(void *arg) {
 		JANUS_LOG(LOG_HUGE, "[SIPre-??] janus_sipre_cb_exit\n");
 		return;
 	}
-	if(!session->destroyed)
+	if(!g_atomic_int_get(&session->destroyed))
 		return;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] Cleaning SIP stack\n", session->account.username);
-	if(session->account.identity) {
-		g_hash_table_remove(identities, session->account.identity);
-		g_free(session->account.identity);
-		session->account.identity = NULL;
-	}
-	session->account.sips = TRUE;
-	if(session->account.proxy) {
-		g_free(session->account.proxy);
-		session->account.proxy = NULL;
-	}
-	if(session->account.outbound_proxy) {
-		g_free(session->account.outbound_proxy);
-		session->account.outbound_proxy = NULL;
-	}
-	if(session->account.secret) {
-		g_free(session->account.secret);
-		session->account.secret = NULL;
-	}
-	if(session->account.username) {
-		g_free(session->account.username);
-		session->account.username = NULL;
-	}
-	if(session->account.display_name) {
-		g_free(session->account.display_name);
-		session->account.display_name = NULL;
-	}
-	if(session->account.authuser) {
-		g_free(session->account.authuser);
-		session->account.authuser = NULL;
-	}
-	if(session->callee) {
-		g_free(session->callee);
-		session->callee = NULL;
-	}
-	if(session->callid) {
-		g_hash_table_remove(callids, session->callid);
-		g_free(session->callid);
-		session->callid = NULL;
-	}
-	if(session->sdp) {
-		janus_sdp_free(session->sdp);
-		session->sdp = NULL;
-	}
-	if(session->transaction) {
-		g_free(session->transaction);
-		session->transaction = NULL;
-	}
-	if(session->media.remote_ip) {
-		g_free(session->media.remote_ip);
-		session->media.remote_ip = NULL;
-	}
-	janus_sipre_srtp_cleanup(session);
-	session->handle = NULL;
-	g_free(session);
-	session = NULL;
+	/* TODO use refcount decrease here */
+	janus_refcount_decrease(&session->ref);
 }
 
 /* Callback to implement SIP requests in the re_main loop thread */
@@ -3899,7 +4103,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(unreging, "username", json_string(session->account.username));
 				json_object_set_new(unreging, "register_sent", json_true());
 				json_object_set_new(event, "result", unreging);
-				if(!session->destroyed) {
+				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				}
@@ -3924,7 +4128,12 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, session->stack.sipstack,
 				session->account.proxy,
-				session->account.identity, session->account.identity, session->stack.expires,
+#ifdef HAVE_LIBRE_SIPREGNEWAPI
+				session->account.identity, NULL,
+#else
+				session->account.identity,
+#endif
+				session->account.identity, session->stack.expires,
 				session->account.username,
 				outbound_proxy, (outbound_proxy[0] ? 1 : 0), 0,
 				janus_sipre_cb_auth, session, FALSE,
@@ -3940,7 +4149,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				if(!session->destroyed) {
+				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				}
@@ -3993,7 +4202,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				if(!session->destroyed) {
+				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				}
@@ -4033,7 +4242,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				if(!session->destroyed) {
+				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				}
@@ -4083,6 +4292,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 						/* Send an error message on the current call */
 						err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
 						session->media.earlymedia = FALSE;
+						session->media.update = FALSE;
 						session->media.ready = FALSE;
 						session->media.on_hold = FALSE;
 						session->status = janus_sipre_call_status_idle;
@@ -4203,7 +4413,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			json_object_set_new(result, "code", json_integer(200));
 			json_object_set_new(result, "reason", json_string("BYE"));
 			json_object_set_new(event, "result", result);
-			if(!session->destroyed) {
+			if(!g_atomic_int_get(&session->destroyed)) {
 				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			}
@@ -4217,6 +4427,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
 			session->media.earlymedia = FALSE;
+			session->media.update = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_idle;

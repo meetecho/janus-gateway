@@ -31,5 +31,5 @@ backend = http://your.webserver.here/and/a/path
 				; be retransmitted after the maximum number of attemps
 				; is reached, then it's lost. Beware that retransmissions
 				; will also delay pending events and increase the queue.
-;max_retransmisson = 5
+;max_retransmissions = 5
 ;retransmissions_backoff = 100

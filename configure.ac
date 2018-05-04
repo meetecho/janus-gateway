@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.4.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -15,6 +15,11 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
+JANUS_VERSION=40
+AC_SUBST(JANUS_VERSION)
+JANUS_VERSION_STRING="0.4.0"
+AC_SUBST(JANUS_VERSION_STRING)
+
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include -I/usr/local/include"
@@ -29,6 +34,7 @@ esac
 
 glib_version=2.34
 ssl_version=1.0.1
+jansson_version=2.5
 
 ##
 # Janus
@@ -84,6 +90,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_audiobridge=no])
                AS_IF([test "x$enable_plugin_echotest" != "xyes"],
                      [enable_plugin_echotest=no])
+               AS_IF([test "x$enable_plugin_lua" != "xyes"],
+                     [enable_plugin_lua=no])
                AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
@@ -199,7 +207,7 @@ PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
                     nice
-                    jansson
+                    jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
                   ])
@@ -227,10 +235,9 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       ])
 AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
-AC_CHECK_LIB([crypto],
-             [RAND_egd],
-             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)],
-             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)]
+AC_SEARCH_LIBS([tls_config_set_ca_mem],[tls],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)]
              )
 
 AC_CHECK_LIB([nice],
@@ -261,6 +268,10 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                                         JANUS_MANUAL_LIBS+=" -lsrtp2"
                                         enable_libsrtp2=yes
                                         AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                        AC_CHECK_LIB([srtp2],
+                                                     [srtp_crypto_policy_set_aes_gcm_256_16_auth],
+                                                     [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                     [AC_MSG_NOTICE([libsrtp2 does not have support for AES-GCM profiles])])
                                       ],
                                       [
                                         AS_IF([test "x$enable_libsrtp2" = "xyes"],
@@ -285,7 +296,10 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                                                                [
                                                                  libsrtp >= 1.5.0
                                                                ])
-
+                                             AC_CHECK_LIB([srtp],
+                                                          [crypto_policy_set_aes_gcm_256_16_auth],
+                                                          [AC_DEFINE(HAVE_SRTP_AESGCM)],
+                                                          [AC_MSG_NOTICE([libsrtp does not have support for AES-GCM profiles])])
                                            ],
                                            [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
                          ],
@@ -346,6 +360,14 @@ AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
               [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or remove --enable-docs])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
+if test "x$enable_docs" = "xyes"; then
+	doxygen_version=$($DOXYGEN --version)
+	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
+					   [],
+					   [],
+					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
+					  )
+fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
               [gengetopt],
@@ -362,7 +384,7 @@ fi
 PKG_CHECK_MODULES([TRANSPORTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 PKG_CHECK_MODULES([MHD],
@@ -469,7 +491,7 @@ AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 PKG_CHECK_MODULES([PLUGINS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],
@@ -485,6 +507,13 @@ AC_ARG_ENABLE([plugin-echotest],
               [AS_IF([test "x$enable_plugin_echotest" != "xyes"],
                      [enable_plugin_echotest=no])],
               [enable_plugin_echotest=yes])
+
+AC_ARG_ENABLE([plugin-lua],
+              [AS_HELP_STRING([--disable-plugin-lua],
+                              [Disable lua plugin])],
+              [AS_IF([test "x$enable_plugin_lua" != "xyes"],
+                     [enable_plugin_lua=no])],
+              [enable_plugin_lua=yes])
 
 AC_ARG_ENABLE([plugin-recordplay],
               [AS_HELP_STRING([--disable-plugin-recordplay],
@@ -570,11 +599,12 @@ AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([LIBRE],
-                  [libre],
+                  [libre >= 0.5.7],
                   [
                     AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
                           [
                            enable_plugin_sipre=yes
+                           AC_DEFINE(HAVE_LIBRE_SIPREGNEWAPI)
                            AC_CHECK_LIB([re],
                                         [sip_set_trace],
                                         [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
@@ -582,9 +612,23 @@ PKG_CHECK_MODULES([LIBRE],
                                        )
                           ])
                   ],
-                  [
-                    AS_IF([test "x$enable_plugin_sipre" = "xyes"],
-                          [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                  [PKG_CHECK_MODULES([LIBRE],
+                                     [libre],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
+                                            [
+                                             enable_plugin_sipre=yes
+                                             AC_CHECK_LIB([re],
+                                                          [sip_set_trace],
+                                                          [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
+                                                          [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
+                                                         )
+                                            ])
+                                     ],
+                                     [
+                                      AS_IF([test "x$enable_plugin_sipre" = "xyes"],
+                                            [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                                     ])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -615,8 +659,29 @@ PKG_CHECK_MODULES([OGG],
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
 
+PKG_CHECK_MODULES([LUA],
+                  [lua],
+                  [
+                    AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
+                          [enable_plugin_lua=yes])
+                  ],
+                  [PKG_CHECK_MODULES([LUA],
+                                     [lua5.3],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
+                                             [enable_plugin_lua=yes])
+                                     ],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xyes"],
+                                             [AC_MSG_ERROR([lua-libs not found. See README.md for installation instructions or use --disable-plugin-lua])])
+                                     ])
+                  ])
+AC_SUBST([LUA_CFLAGS])
+AC_SUBST([LUA_LIBS])
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_LUA], [test "x$enable_plugin_lua" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIPRE], [test "x$enable_plugin_sipre" = "xyes"])
@@ -636,7 +701,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xye
 PKG_CHECK_MODULES([EVENTS],
                   [
                     glib-2.0 >= $glib_version
-                    jansson
+                    jansson >= $jansson_version
                   ])
 
 
@@ -706,11 +771,11 @@ AC_ARG_ENABLE([post-processing],
 AS_IF([test "x$enable_post_processing" = "xyes"],
       [PKG_CHECK_MODULES([POST_PROCESSING],
                          [
-                           glib-2.0,
-                           jansson,
-                           libavutil,
-                           libavcodec,
-                           libavformat,
+                           glib-2.0 >= $glib_version
+                           jansson >= $jansson_version
+                           libavutil
+                           libavcodec
+                           libavformat
                            ogg
                          ])
       ])
@@ -734,7 +799,7 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_LIBSRTP_2],
-	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "SSL/crypto library:        BoringSSL"
@@ -811,6 +876,9 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+AM_COND_IF([ENABLE_PLUGIN_LUA],
+	[echo "    Lua Interpreter:       yes"],
+	[echo "    Lua Interpreter:       no"])
 echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],

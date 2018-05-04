@@ -55,7 +55,6 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
-
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	if(!janus_events_is_enabled())
@@ -79,19 +78,19 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
 	json_object_set_new(info, "component_id", json_integer(component->component_id));
 	json_object_set_new(info, "retransmissions", json_integer(dtls->retransmissions));
-	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
 
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"ALL:NULL:eNULL:aNULL"
+#define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
 
 static SSL_CTX *ssl_ctx = NULL;
-static X509* ssl_cert = NULL;
-static EVP_PKEY* ssl_key = NULL;
+static X509 *ssl_cert = NULL;
+static EVP_PKEY *ssl_key = NULL;
 
 static gchar local_fingerprint[160];
 gchar *janus_dtls_get_local_fingerprint(void) {
@@ -105,7 +104,7 @@ void *janus_dtls_sctp_setup_thread(void *data);
 #endif
 
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 /*
  * DTLS locking stuff to make OpenSSL thread safe (not needed for 1.1.0)
  *
@@ -155,7 +154,7 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 #endif
 
 
-static int janus_dtls_generate_keys(X509** certificate, EVP_PKEY** private_key) {
+static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key) {
 	static const int num_bits = 2048;
 	BIGNUM *bne = NULL;
 	RSA *rsa_key = NULL;
@@ -263,8 +262,9 @@ error:
 }
 
 
-static int janus_dtls_load_keys(const char* server_pem, const char* server_key, X509** certificate, EVP_PKEY** private_key) {
-	FILE* f = NULL;
+static int janus_dtls_load_keys(const char *server_pem, const char *server_key, const char *password,
+		X509 **certificate, EVP_PKEY **private_key) {
+	FILE *f = NULL;
 
 	f = fopen(server_pem, "r");
 	if(!f) {
@@ -283,7 +283,7 @@ static int janus_dtls_load_keys(const char* server_pem, const char* server_key, 
 		JANUS_LOG(LOG_FATAL, "Error opening key file\n");
 		goto error;
 	}
-	*private_key = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+	*private_key = PEM_read_PrivateKey(f, NULL, NULL, (void *)password);
 	if(!*private_key) {
 		JANUS_LOG(LOG_FATAL, "PEM_read_PrivateKey failed\n");
 		goto error;
@@ -306,9 +306,9 @@ error:
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password) {
 	const char *crypto_lib = NULL;
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
 	crypto_lib = "LibreSSL";
 #else
@@ -329,9 +329,12 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	crypto_lib = "BoringSSL";
 #endif
 	JANUS_LOG(LOG_INFO, "Crypto: %s\n", crypto_lib);
+#ifndef HAVE_SRTP_AESGCM
+	JANUS_LOG(LOG_WARN, "The libsrtp installation does not support AES-GCM profiles\n");
+#endif
 
 	/* Go on and create the DTLS context */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
 #else
 	ssl_ctx = SSL_CTX_new(DTLS_method());
@@ -341,7 +344,12 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 		return -1;
 	}
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
-	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
+	SSL_CTX_set_tlsext_use_srtp(ssl_ctx,
+#ifdef HAVE_SRTP_AESGCM
+		"SRTP_AEAD_AES_256_GCM:SRTP_AEAD_AES_128_GCM:SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
+#else
+		"SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
+#endif
 
 	if(!server_pem && !server_key) {
 		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
@@ -352,7 +360,7 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	} else if(!server_pem || !server_key) {
 		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified\n");
 		return -2;
-	} else if(janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
+	} else if(janus_dtls_load_keys(server_pem, server_key, password, &ssl_cert, &ssl_key) != 0) {
 		return -3;
 	}
 
@@ -399,6 +407,32 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	return 0;
 }
 
+static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
+	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
+	/* This stack can be destroyed, free all the resources */
+	dtls->component = NULL;
+	if(dtls->ssl != NULL) {
+		SSL_free(dtls->ssl);
+		dtls->ssl = NULL;
+	}
+	/* BIOs are destroyed by SSL_free */
+	dtls->read_bio = NULL;
+	dtls->write_bio = NULL;
+	dtls->filter_bio = NULL;
+	if(dtls->srtp_valid) {
+		if(dtls->srtp_in) {
+			srtp_dealloc(dtls->srtp_in);
+			dtls->srtp_in = NULL;
+		}
+		if(dtls->srtp_out) {
+			srtp_dealloc(dtls->srtp_out);
+			dtls->srtp_out = NULL;
+		}
+		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
+	}
+	g_free(dtls);
+	dtls = NULL;
+}
 
 void janus_dtls_srtp_cleanup(void) {
 	if(ssl_cert != NULL) {
@@ -413,6 +447,9 @@ void janus_dtls_srtp_cleanup(void) {
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 	}
+#if JANUS_USE_OPENSSL_PRE_1_1_API
+	g_free(janus_dtls_locks);
+#endif
 }
 
 
@@ -433,17 +470,15 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = g_malloc0(sizeof(janus_dtls_srtp));
-	if(dtls == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	g_atomic_int_set(&dtls->destroyed, 0);
+	janus_refcount_init(&dtls->ref, janus_dtls_srtp_free);
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
 	dtls->ssl = SSL_new(ssl_ctx);
 	if(!dtls->ssl) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error creating DTLS session! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	SSL_set_ex_data(dtls->ssl, 0, dtls);
@@ -452,7 +487,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->read_bio, -1);
@@ -460,7 +495,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->write_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating write BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->write_bio, -1);
@@ -469,34 +504,29 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->filter_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating filter BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	/* Chain filter and write BIOs */
 	BIO_push(dtls->filter_bio, dtls->write_bio);
 	/* Set the filter as the BIO to use for outgoing data */
 	SSL_set_bio(dtls->ssl, dtls->read_bio, dtls->filter_bio);
+	/* The role may change later, depending on the negotiation */
 	dtls->dtls_role = role;
-	if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting connect state (DTLS client)\n", handle->handle_id);
-		SSL_set_connect_state(dtls->ssl);
-	} else {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting accept state (DTLS server)\n", handle->handle_id);
-		SSL_set_accept_state(dtls->ssl);
-	}
 	/* https://code.google.com/p/chromium/issues/detail?id=406458
 	 * Specify an ECDH group for ECDHE ciphers, otherwise they cannot be
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
 	 */
-	EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
-	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	SSL_set_options(dtls->ssl, flags);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
 #ifdef HAVE_DTLS_SETTIMEOUT
@@ -519,13 +549,62 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 	if(dtls == NULL || dtls->ssl == NULL)
 		return;
-	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED)
+	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED) {
+		/* Starting the handshake now: enforce the role */
+		dtls->dtls_started = janus_get_monotonic_time();
+		if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
+			SSL_set_connect_state(dtls->ssl);
+		} else {
+			SSL_set_accept_state(dtls->ssl);
+		}
 		dtls->dtls_state = JANUS_DTLS_STATE_TRYING;
+	}
 	SSL_do_handshake(dtls->ssl);
 	janus_dtls_fd_bridge(dtls);
 
 	/* Notify event handlers */
 	janus_dtls_notify_state_change(dtls);
+}
+
+int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
+#ifdef HAVE_SCTP
+	if(dtls == NULL)
+		return -1;
+	janus_ice_component *component = (janus_ice_component *)dtls->component;
+	if(component == NULL)
+		return -2;
+	janus_ice_stream *stream = component->stream;
+	if(!stream)
+		return -3;
+	janus_ice_handle *handle = stream->handle;
+	if(!handle || !handle->agent)
+		return -4;
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return -5;
+	dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
+	if(dtls->sctp == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating SCTP association...\n", handle->handle_id);
+		return -6;
+	}
+	/* We need to start it in a thread, since it has blocking accept/connect stuff */
+	janus_refcount_increase(&dtls->ref);
+	janus_refcount_increase(&dtls->sctp->ref);
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
+	g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		janus_refcount_decrease(&dtls->ref);
+		janus_refcount_decrease(&dtls->sctp->ref);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+		return -7;
+	}
+	return 0;
+#else
+	/* Support for datachannels hasn't been built in */
+	return -1;
+#endif
 }
 
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len) {
@@ -554,6 +633,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+		return;
+	}
+	if(dtls->dtls_started == 0) {
+		/* Handshake not started yet: maybe we're still waiting for the answer and the DTLS role? */
 		return;
 	}
 	janus_dtls_fd_bridge(dtls);
@@ -647,93 +730,151 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				goto done;
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
-				if(component->stream_id == handle->audio_id || component->stream_id == handle->video_id) {
-					/* Complete with SRTP setup */
-					unsigned char material[SRTP_MASTER_LENGTH*2];
-					unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
-					/* Export keying material for SRTP */
-					if(!SSL_export_keying_material(dtls->ssl, material, SRTP_MASTER_LENGTH*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
-						/* Oops... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
-							handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
-						goto done;
-					}
-					/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
-					if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
-						local_key = material;
-						remote_key = local_key + SRTP_MASTER_KEY_LENGTH;
-						local_salt = remote_key + SRTP_MASTER_KEY_LENGTH;
-						remote_salt = local_salt + SRTP_MASTER_SALT_LENGTH;
-					} else {
-						remote_key = material;
-						local_key = remote_key + SRTP_MASTER_KEY_LENGTH;
-						remote_salt = local_key + SRTP_MASTER_KEY_LENGTH;
-						local_salt = remote_salt + SRTP_MASTER_SALT_LENGTH;
-					}
-					/* Build master keys and set SRTP policies */
-						/* Remote (inbound) */
-					srtp_crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
-					srtp_crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
-					dtls->remote_policy.ssrc.type = ssrc_any_inbound;
-					unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
-					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
-					memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
-					memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
-#if HAS_DTLS_WINDOW_SIZE
-					dtls->remote_policy.window_size = 128;
-					dtls->remote_policy.allow_repeat_tx = 0;
+				/* Which SRTP profile is being negotiated? */
+				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, srtp_profile->name);
+				int key_length = 0, salt_length = 0, master_length = 0;
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+					case SRTP_AES128_CM_SHA1_32:
+						key_length = SRTP_MASTER_KEY_LENGTH;
+						salt_length = SRTP_MASTER_SALT_LENGTH;
+						master_length = SRTP_MASTER_LENGTH;
+						break;
+#ifdef HAVE_SRTP_AESGCM
+					case SRTP_AEAD_AES_256_GCM:
+						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM256_MASTER_LENGTH;
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM128_MASTER_LENGTH;
+						break;
 #endif
-					dtls->remote_policy.next = NULL;
-						/* Local (outbound) */
-					srtp_crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
-					srtp_crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
-					dtls->local_policy.ssrc.type = ssrc_any_outbound;
-					unsigned char local_policy_key[SRTP_MASTER_LENGTH];
-					dtls->local_policy.key = (unsigned char *)&local_policy_key;
-					memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
-					memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
-#if HAS_DTLS_WINDOW_SIZE
-					dtls->local_policy.window_size = 128;
-					dtls->local_policy.allow_repeat_tx = 0;
-#endif
-					dtls->local_policy.next = NULL;
-					/* Create SRTP sessions */
-					srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
-					if(res != srtp_err_status_ok) {
-						/* Something went wrong... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
-						goto done;
-					}
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
-					res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
-					if(res != srtp_err_status_ok) {
-						/* Something went wrong... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
-						goto done;
-					}
-					dtls->srtp_valid = 1;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %lu\n", handle->handle_id, srtp_profile->id);
+						break;
 				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Key/Salt/Master: %d/%d/%d\n",
+					handle->handle_id, master_length, key_length, salt_length);
+				/* Complete with SRTP setup */
+				unsigned char material[master_length*2];
+				unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
+				/* Export keying material for SRTP */
+				if(!SSL_export_keying_material(dtls->ssl, material, master_length*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
+					/* Oops... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
+						handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
+					goto done;
+				}
+				/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
+				if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
+					local_key = material;
+					remote_key = local_key + key_length;
+					local_salt = remote_key + key_length;
+					remote_salt = local_salt + salt_length;
+				} else {
+					remote_key = material;
+					local_key = remote_key + key_length;
+					remote_salt = local_key + key_length;
+					local_salt = remote_salt + salt_length;
+				}
+				/* Build master keys and set SRTP policies */
+					/* Remote (inbound) */
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtcp));
+						break;
+					case SRTP_AES128_CM_SHA1_32:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->remote_policy.rtcp));
+						break;
+#ifdef HAVE_SRTP_AESGCM
+					case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->remote_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->remote_policy.rtcp));
+						break;
+#endif
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %s\n", handle->handle_id, srtp_profile->name);
+						break;
+				}
+				dtls->remote_policy.ssrc.type = ssrc_any_inbound;
+				unsigned char remote_policy_key[master_length];
+				dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
+				memcpy(dtls->remote_policy.key, remote_key, key_length);
+				memcpy(dtls->remote_policy.key + key_length, remote_salt, salt_length);
+#if HAS_DTLS_WINDOW_SIZE
+				dtls->remote_policy.window_size = 128;
+				dtls->remote_policy.allow_repeat_tx = 0;
+#endif
+				dtls->remote_policy.next = NULL;
+					/* Local (outbound) */
+				switch(srtp_profile->id) {
+					case SRTP_AES128_CM_SHA1_80:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtcp));
+						break;
+					case SRTP_AES128_CM_SHA1_32:
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(dtls->local_policy.rtcp));
+						break;
+#ifdef HAVE_SRTP_AESGCM
+					case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(dtls->local_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(dtls->local_policy.rtcp));
+						break;
+#endif
+					default:
+						/* Will never happen? */
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported SRTP profile %s\n", handle->handle_id, srtp_profile->name);
+						break;
+				}
+				dtls->local_policy.ssrc.type = ssrc_any_outbound;
+				unsigned char local_policy_key[master_length];
+				dtls->local_policy.key = (unsigned char *)&local_policy_key;
+				memcpy(dtls->local_policy.key, local_key, key_length);
+				memcpy(dtls->local_policy.key + key_length, local_salt, salt_length);
+#if HAS_DTLS_WINDOW_SIZE
+				dtls->local_policy.window_size = 128;
+				dtls->local_policy.allow_repeat_tx = 0;
+#endif
+				dtls->local_policy.next = NULL;
+				/* Create SRTP sessions */
+				srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
+				if(res != srtp_err_status_ok) {
+					/* Something went wrong... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
+					goto done;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+				res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
+				if(res != srtp_err_status_ok) {
+					/* Something went wrong... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
+					goto done;
+				}
+				dtls->srtp_valid = 1;
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 #ifdef HAVE_SCTP
-				if(component->stream_id == handle->data_id ||
-						(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) &&
-						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
-					/* FIXME Create SCTP association as well (5000 should be dynamic, from the SDP...) */
-					dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
-					if(dtls->sctp != NULL) {
-						/* FIXME We need to start it in a thread, though, since it has blocking accept/connect stuff */
-						GError *error = NULL;
-						char tname[16];
-						g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
-						g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
-						if(error != NULL) {
-							/* Something went wrong... */
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-						}
-						dtls->srtp_valid = 1;
-					}
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+					/* Create SCTP association as well */
+					janus_dtls_srtp_create_sctp(dtls);
 				}
 #endif
 				dtls->ready = 1;
@@ -753,14 +894,16 @@ done:
 
 void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
 	/* Send alert */
+	janus_refcount_increase(&dtls->ref);
 	if(dtls != NULL && dtls->ssl != NULL) {
 		SSL_shutdown(dtls->ssl);
 		janus_dtls_fd_bridge(dtls);
 	}
+	janus_refcount_decrease(&dtls->ref);
 }
 
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
-	if(dtls == NULL)
+	if(!dtls || !g_atomic_int_compare_and_exchange(&dtls->destroyed, 0, 1))
 		return;
 	dtls->ready = 0;
 	dtls->retransmissions = 0;
@@ -768,32 +911,11 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
 		janus_sctp_association_destroy(dtls->sctp);
+		janus_refcount_decrease(&dtls->sctp->ref);
 		dtls->sctp = NULL;
 	}
 #endif
-	/* Destroy DTLS stack and free resources */
-	dtls->component = NULL;
-	if(dtls->ssl != NULL) {
-		SSL_free(dtls->ssl);
-		dtls->ssl = NULL;
-	}
-	/* BIOs are destroyed by SSL_free */
-	dtls->read_bio = NULL;
-	dtls->write_bio = NULL;
-	dtls->filter_bio = NULL;
-	if(dtls->srtp_valid) {
-		if(dtls->srtp_in) {
-			srtp_dealloc(dtls->srtp_in);
-			dtls->srtp_in = NULL;
-		}
-		if(dtls->srtp_out) {
-			srtp_dealloc(dtls->srtp_out);
-			dtls->srtp_out = NULL;
-		}
-		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
-	}
-	g_free(dtls);
-	dtls = NULL;
+	janus_refcount_decrease(&dtls->ref);
 }
 
 /* DTLS alert callback */
@@ -872,8 +994,8 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		/* Update stats (TODO Do the same for the last second window as well)
 		 * FIXME: the Data stats includes the bytes used for the handshake */
 		if(bytes > 0) {
-			component->out_stats.data_packets++;
-			component->out_stats.data_bytes += bytes;
+			component->out_stats.data.packets++;
+			component->out_stats.data.bytes += bytes;
 		}
 		/* Check if there's anything left to send (e.g., fragmented packets) */
 		pending = BIO_ctrl_pending(dtls->filter_bio);
@@ -941,6 +1063,13 @@ gboolean janus_dtls_retry(gpointer stack) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
 		goto stoptimer;
 	}
+	if(janus_get_monotonic_time() - dtls->dtls_started >= 20*G_USEC_PER_SEC) {
+		/* FIXME Should we really give up after 20 seconds waiting for DTLS? */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] DTLS taking too much time for component %d in stream %d...\n",
+			handle->handle_id, component->component_id, stream->stream_id);
+		janus_ice_webrtc_hangup(handle, "DTLS timeout");
+		goto stoptimer;
+	}
 	struct timeval timeout = {0};
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
@@ -977,6 +1106,7 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
+		janus_refcount_decrease(&dtls->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
@@ -984,6 +1114,7 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
+	janus_refcount_decrease(&dtls->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }

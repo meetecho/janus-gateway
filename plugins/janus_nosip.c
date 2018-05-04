@@ -42,8 +42,106 @@
  * plugin, though, will generate and expect plain SDP, so you'll need to
  * take care of any adaptation that may be needed to make this work with
  * the signalling protocol of your choice.
- * 
- * Actual API docs: TBD.
+ *
+ * \section nosipapi NoSIP Plugin API
+ *
+ * The plugin mainly supports two requests, \c generate and \c process,
+ * which are both asynchronous. The \c generate request take a JSEP offer
+ * or answer, and generates a barebone SDP the "legacy" application can
+ * use; the \c process request, on the other hand, processes a remote
+ * barebone SDP, and matches it to the plugin may have generated before,
+ * in order to then return a JSEP offer or answer that can be used to
+ * setup a PeerConnection. 
+ *
+ * The \c generate request must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "generate",
+	"info" : "<opaque string that the user can provide for context; optional>",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>"
+}
+\endverbatim
+ *
+ * As anticipated, this requires a JSEP offer or answer passed via Janus
+ * API as part of a WebRTC PeerConnection negotiation. If the conversion
+ * of the WebRTC JSEP SDP to barebone SDP is successful, a \c generated
+ * event is sent back to the user:
+ *
+\verbatim
+{
+	"event" : "generated",
+	"type" : "<offer|answer, depending on the nature of the provided JSEP>",
+	"sdp" : "<barebone SDP content>"
+}
+\endverbatim
+ *
+ * The \c process request, instead, must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "process",
+	"type" : "<offer|answer, depending on the nature of the provided SDP>",
+	"sdp" : "<barebone SDP to convert>"
+	"info" : "<opaque string that the user can provide for context; optional>",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>"
+}
+\endverbatim
+ *
+ * As anticipated, this requires a "legacy" SDP offer or answer passed via
+ * NoSIP plugin messaging, which is why the caller must specify if it's an
+ * offer or answer. If the request is successful, a \c processed event is
+ * sent back to the user, along to the JSEP offer or answer that Janus
+ * generated out of the barebone SDP:
+ *
+\verbatim
+{
+	"event" : "processed",
+	"srtp" : "<whether the barebone SDP mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>"
+}
+\endverbatim
+ *
+ * To close a session you can use the \c hangup request, which needs no
+ * additional arguments, as the whole context can be extracted from the
+ * current state of the session in the plugin:
+ *
+\verbatim
+{
+	"request" : "hangup"
+}
+\endverbatim
+ *
+ * An \c hangingup event will be sent back, as this is an asynchronous request.
+ *
+ * Finally, just as in the SIP and SIPre plugins, the multimedia session
+ * can be recorded. Considering the NoSIP plugin also assumes two peers
+ * are in a call with each other (although it makes no assumptions on
+ * the signalling that ties them together), it works exactly the same
+ * way as the SIP and SIPre plugin do when it comes to recording.
+ * Specifically, you make use of the \c recording request to either start
+ * or stop a recording, using the following syntax:
+ *
+\verbatim
+{
+	"request" : "recording",
+	"action" : "<start|stop, depending on whether you want to start or stop recording something>"
+	"audio" : <true|false; whether or not our audio should be recorded>,
+	"video" : <true|false; whether or not our video should be recorded>,
+	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
+	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
+	"filename" : "<base path/filename to use for all the recordings>"
+}
+\endverbatim
+ *
+ * As you can see, this means that the two sides of conversation are recorded
+ * separately, and so are the audio and video streams if available. You can
+ * choose which ones to record, in case you're interested in just a subset.
+ * The \c filename part is just a prefix, and dictates the actual filenames
+ * that will be used for the up-to-four recordings that may need to be enabled.
+ *
+ * A \c recordingupdated event is sent back in case the request is successful.
  *
  * \ingroup plugins
  * \ref plugins
@@ -136,13 +234,17 @@ static struct janus_json_parameter request_parameters[] = {
 };
 static struct janus_json_parameter generate_parameters[] = {
 	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter process_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	{"srtp_profile", JSON_STRING, 0},
+	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -163,8 +265,8 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
-static GThread *watchdog;
 static void *janus_nosip_handler(void *data);
+static void janus_nosip_hangup_media_internal(janus_plugin_session *handle);
 
 typedef struct janus_nosip_message {
 	janus_plugin_session *handle;
@@ -175,10 +277,86 @@ typedef struct janus_nosip_message {
 static GAsyncQueue *messages = NULL;
 static janus_nosip_message exit_message;
 
+
+typedef struct janus_nosip_media {
+	char *remote_ip;
+	int ready:1;
+	gboolean autoack;
+	gboolean require_srtp, has_srtp_local, has_srtp_remote;
+	janus_srtp_profile srtp_profile;
+	int has_audio:1;
+	int audio_rtp_fd, audio_rtcp_fd;
+	int local_audio_rtp_port, remote_audio_rtp_port;
+	int local_audio_rtcp_port, remote_audio_rtcp_port;
+	guint32 audio_ssrc, audio_ssrc_peer;
+	int audio_pt;
+	const char *audio_pt_name;
+	srtp_t audio_srtp_in, audio_srtp_out;
+	srtp_policy_t audio_remote_policy, audio_local_policy;
+	gboolean audio_send;
+	int has_video:1;
+	int video_rtp_fd, video_rtcp_fd;
+	int local_video_rtp_port, remote_video_rtp_port;
+	int local_video_rtcp_port, remote_video_rtcp_port;
+	guint32 video_ssrc, video_ssrc_peer;
+	int video_pt;
+	const char *video_pt_name;
+	srtp_t video_srtp_in, video_srtp_out;
+	srtp_policy_t video_remote_policy, video_local_policy;
+	gboolean video_send;
+	janus_rtp_switching_context context;
+	int pipefd[2];
+	gboolean updated;
+} janus_nosip_media;
+
+typedef struct janus_nosip_session {
+	janus_plugin_session *handle;
+	gint64 sdp_version;
+	janus_nosip_media media;	/* Media gatewaying stuff (same stuff as the SIP plugin) */
+	janus_sdp *sdp;				/* The SDP this user sent */
+	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
+	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
+	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
+	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
+	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
+	volatile gint hangingup;
+	volatile gint destroyed;
+	janus_refcount ref;
+	janus_mutex mutex;
+} janus_nosip_session;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+
+static void janus_nosip_srtp_cleanup(janus_nosip_session *session);
+
+static void janus_nosip_session_destroy(janus_nosip_session *session) {
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
+}
+
+static void janus_nosip_session_free(const janus_refcount *session_ref) {
+	janus_nosip_session *session = janus_refcount_containerof(session_ref, janus_nosip_session, ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
+	/* This session can be destroyed, free all the resources */
+	janus_sdp_destroy(session->sdp);
+	session->sdp = NULL;
+	g_free(session->media.remote_ip);
+	session->media.remote_ip = NULL;
+	janus_nosip_srtp_cleanup(session);
+	session->handle = NULL;
+	g_free(session);
+	session = NULL;
+}
+
 static void janus_nosip_message_free(janus_nosip_message *msg) {
 	if(!msg || msg == &exit_message)
 		return;
 
+	if(msg->handle && msg->handle->plugin_handle) {
+		janus_nosip_session *session = (janus_nosip_session *)msg->handle->plugin_handle;
+		janus_refcount_decrease(&session->ref);
+	}
 	msg->handle = NULL;
 
 	g_free(msg->transaction);
@@ -194,67 +372,70 @@ static void janus_nosip_message_free(janus_nosip_message *msg) {
 }
 
 
-typedef struct janus_nosip_media {
-	char *remote_ip;
-	int ready:1;
-	gboolean autoack;
-	gboolean require_srtp, has_srtp_local, has_srtp_remote;
-	int has_audio:1;
-	int audio_rtp_fd, audio_rtcp_fd;
-	int local_audio_rtp_port, remote_audio_rtp_port;
-	int local_audio_rtcp_port, remote_audio_rtcp_port;
-	guint32 audio_ssrc, audio_ssrc_peer;
-	int audio_pt;
-	const char *audio_pt_name;
-	srtp_t audio_srtp_in, audio_srtp_out;
-	srtp_policy_t audio_remote_policy, audio_local_policy;
-	int audio_srtp_suite_in, audio_srtp_suite_out;
-	gboolean audio_send;
-	int has_video:1;
-	int video_rtp_fd, video_rtcp_fd;
-	int local_video_rtp_port, remote_video_rtp_port;
-	int local_video_rtcp_port, remote_video_rtcp_port;
-	guint32 video_ssrc, video_ssrc_peer;
-	int video_pt;
-	const char *video_pt_name;
-	srtp_t video_srtp_in, video_srtp_out;
-	srtp_policy_t video_remote_policy, video_local_policy;
-	int video_srtp_suite_in, video_srtp_suite_out;
-	gboolean video_send;
-	janus_rtp_switching_context context;
-	int pipefd[2];
-	gboolean updated;
-} janus_nosip_media;
-
-typedef struct janus_nosip_session {
-	janus_plugin_session *handle;
-	janus_nosip_media media;	/* Media gatewaying stuff (same stuff as the SIP plugin) */
-	janus_sdp *sdp;				/* The SDP this user sent */
-	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
-	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
-	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
-	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
-	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
-	volatile gint hangingup;
-	gint64 destroyed;	/* Time at which this session was marked as destroyed */
-	janus_mutex mutex;
-} janus_nosip_session;
-static GHashTable *sessions;
-static GList *old_sessions;
-static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
-
-
 /* SRTP stuff (in case we need SDES) */
-static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean video, char **crypto) {
+static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean video, char **profile, char **crypto) {
 	if(session == NULL)
 		return -1;
+	/* Which SRTP profile are we going to negotiate? */
+	int key_length = 0, salt_length = 0, master_length = 0;
+	if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_32) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_32");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AES128_CM_SHA1_80) {
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+		*profile = g_strdup("AES_CM_128_HMAC_SHA1_80");
+#ifdef HAVE_SRTP_AESGCM
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_128_GCM) {
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_128_GCM");
+	} else if(session->media.srtp_profile == JANUS_SRTP_AEAD_AES_256_GCM) {
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+		*profile = g_strdup("AEAD_AES_256_GCM");
+#endif
+	} else {
+		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unsupported SRTP profile\n", session);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[NoSIP-%p] %s\n", session, *profile);
+	JANUS_LOG(LOG_WARN, "[NoSIP-%p] Key/Salt/Master: %d/%d/%d\n",
+		session, master_length, key_length, salt_length);
 	/* Generate key/salt */
-	uint8_t *key = g_malloc0(SRTP_MASTER_LENGTH);
-	srtp_crypto_get_random(key, SRTP_MASTER_LENGTH);
+	uint8_t *key = g_malloc0(master_length);
+	srtp_crypto_get_random(key, master_length);
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_local_policy : &session->media.audio_local_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+#ifdef HAVE_SRTP_AESGCM
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+#endif
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unsupported SRTP profile\n", session);
+			break;
+	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = key;
 	policy->next = NULL;
@@ -263,38 +444,86 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
+		g_free(*profile);
+		*profile = NULL;
 		g_free(key);
 		policy->key = NULL;
 		return -2;
 	}
 	/* Base64 encode the salt */
-	*crypto = g_base64_encode(key, SRTP_MASTER_LENGTH);
+	*crypto = g_base64_encode(key, master_length);
 	if((video && session->media.video_srtp_out) || (!video && session->media.audio_srtp_out)) {
 		JANUS_LOG(LOG_VERB, "%s outbound SRTP session created\n", video ? "Video" : "Audio");
 	}
 	return 0;
 }
-static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean video, const char *crypto, int suite) {
-	if(session == NULL || crypto == NULL)
+static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean video, const char *profile, const char *crypto) {
+	if(session == NULL || profile == NULL || crypto == NULL)
 		return -1;
+	/* Which SRTP profile is being negotiated? */
+	JANUS_LOG(LOG_WARN, "[NoSIP-%p] %s\n", session, profile);
+	gsize key_length = 0, salt_length = 0, master_length = 0;
+	if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+		key_length = SRTP_MASTER_KEY_LENGTH;
+		salt_length = SRTP_MASTER_SALT_LENGTH;
+		master_length = SRTP_MASTER_LENGTH;
+#ifdef HAVE_SRTP_AESGCM
+	} else if(!strcasecmp(profile, "AEAD_AES_128_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+		key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM128_MASTER_LENGTH;
+	} else if(!strcasecmp(profile, "AEAD_AES_256_GCM")) {
+		session->media.srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+		key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+		salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+		master_length = SRTP_AESGCM256_MASTER_LENGTH;
+#endif
+	} else {
+		JANUS_LOG(LOG_ERR, "[NoSIP-%p] Unsupported SRTP profile %s\n", session, profile);
+		return -2;
+	}
+	JANUS_LOG(LOG_WARN, "[NoSIP-%p] Key/Salt/Master: %zu/%zu/%zu\n",
+		session, master_length, key_length, salt_length);
 	/* Base64 decode the crypto string and set it as the remote SRTP context */
 	gsize len = 0;
 	guchar *decoded = g_base64_decode(crypto, &len);
-	if(len < SRTP_MASTER_LENGTH) {
+	if(len < master_length) {
 		/* FIXME Can this happen? */
 		g_free(decoded);
-		return -2;
+		return -3;
 	}
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_remote_policy : &session->media.audio_remote_policy;
-	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
-	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
-	if(suite == 32) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtcp));
-	} else if(suite == 80) {
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
-		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+	switch(session->media.srtp_profile) {
+		case JANUS_SRTP_AES128_CM_SHA1_32:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AES128_CM_SHA1_80:
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+			break;
+#ifdef HAVE_SRTP_AESGCM
+		case JANUS_SRTP_AEAD_AES_128_GCM:
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_128_16_auth(&(policy->rtcp));
+			break;
+		case JANUS_SRTP_AEAD_AES_256_GCM:
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtp));
+			srtp_crypto_policy_set_aes_gcm_256_16_auth(&(policy->rtcp));
+			break;
+#endif
+		default:
+			/* Will never happen? */
+			JANUS_LOG(LOG_WARN, "[NoSIP-%p] Unsupported SRTP profile\n", session);
+			break;
 	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = decoded;
@@ -320,32 +549,29 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	/* Audio */
 	if(session->media.audio_srtp_out)
 		srtp_dealloc(session->media.audio_srtp_out);
 	session->media.audio_srtp_out = NULL;
 	g_free(session->media.audio_local_policy.key);
 	session->media.audio_local_policy.key = NULL;
-	session->media.audio_srtp_suite_out = 0;
 	if(session->media.audio_srtp_in)
 		srtp_dealloc(session->media.audio_srtp_in);
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
-	session->media.audio_srtp_suite_in = 0;
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
 	session->media.video_srtp_out = NULL;
 	g_free(session->media.video_local_policy.key);
 	session->media.video_local_policy.key = NULL;
-	session->media.video_srtp_suite_out = 0;
 	if(session->media.video_srtp_in)
 		srtp_dealloc(session->media.video_srtp_in);
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
-	session->media.video_srtp_suite_in = 0;
 }
 
 
@@ -370,50 +596,6 @@ static void *janus_nosip_relay_thread(void *data);
 #define JANUS_NOSIP_ERROR_IO_ERROR				448
 #define JANUS_NOSIP_ERROR_RECORDING_ERROR		449
 #define JANUS_NOSIP_ERROR_TOO_STRICT			450
-
-
-/* NoSIP watchdog/garbage collector (sort of) */
-static void *janus_nosip_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "NoSIP watchdog started\n");
-	gint64 now = 0;
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		janus_mutex_lock(&sessions_mutex);
-		/* Iterate on all the sessions */
-		now = janus_get_monotonic_time();
-		if(old_sessions != NULL) {
-			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old NoSIP sessions...\n", g_list_length(old_sessions));
-			while(sl) {
-				janus_nosip_session *session = (janus_nosip_session *)sl->data;
-				if(!session) {
-					sl = sl->next;
-					continue;
-				}
-				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old NoSIP session\n");
-					GList *rm = sl->next;
-					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;
-					janus_sdp_free(session->sdp);
-					session->sdp = NULL;
-					g_free(session->media.remote_ip);
-					session->media.remote_ip = NULL;
-					janus_nosip_srtp_cleanup(session);
-					session->handle = NULL;
-					g_free(session);
-					session = NULL;
-					continue;
-				}
-				sl = sl->next;
-			}
-		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(500000);
-	}
-	JANUS_LOG(LOG_INFO, "NoSIP watchdog stopped\n");
-	return NULL;
-}
 
 
 /* Plugin implementation */
@@ -503,7 +685,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	RAND_poll();
 #endif
 
-	sessions = g_hash_table_new(NULL, NULL);
+	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_nosip_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_nosip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -511,13 +693,6 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
-	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("nosip watchdog", &janus_nosip_watchdog, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP watchdog thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
 	/* Launch the thread that will handle incoming messages */
 	handler_thread = g_thread_try_new("nosip handler", janus_nosip_handler, NULL, &error);
 	if(error != NULL) {
@@ -538,10 +713,6 @@ void janus_nosip_destroy(void) {
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
-	}
-	if(watchdog != NULL) {
-		g_thread_join(watchdog);
-		watchdog = NULL;
 	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -587,6 +758,14 @@ const char *janus_nosip_get_package(void) {
 	return JANUS_NOSIP_PACKAGE;
 }
 
+static janus_nosip_session *janus_nosip_lookup_session(janus_plugin_session *handle) {
+	janus_nosip_session *session = NULL;
+	if (g_hash_table_contains(sessions, handle)) {
+		session = (janus_nosip_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -601,6 +780,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
+	session->media.srtp_profile = 0;
 	session->media.has_audio = 0;
 	session->media.audio_rtp_fd = -1;
 	session->media.audio_rtcp_fd = -1;
@@ -612,8 +792,6 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc_peer = 0;
 	session->media.audio_pt = -1;
 	session->media.audio_pt_name = NULL;
-	session->media.audio_srtp_suite_in = 0;
-	session->media.audio_srtp_suite_out = 0;
 	session->media.audio_send = TRUE;
 	session->media.has_video = 0;
 	session->media.video_rtp_fd = -1;
@@ -626,8 +804,6 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc_peer = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
-	session->media.video_srtp_suite_in = 0;
-	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.context);
@@ -635,10 +811,11 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
-	session->destroyed = 0;
+	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
+	janus_refcount_init(&session->ref, janus_nosip_session_free);
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -652,21 +829,17 @@ void janus_nosip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_nosip_session *session = janus_nosip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No NoSIP session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	janus_mutex_lock(&sessions_mutex);
-	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_nosip_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
-		JANUS_LOG(LOG_VERB, "Destroying NoSIP session (%p)...\n", session);
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
-	}
+	JANUS_LOG(LOG_VERB, "Destroying NoSIP session (%p)...\n", session);
+	janus_nosip_hangup_media_internal(handle);
+	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
@@ -675,11 +848,15 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_nosip_session *session = janus_nosip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	if(session->sdp) {
@@ -699,14 +876,28 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
-	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
+	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	janus_refcount_decrease(&session->ref);
 	return info;
 }
 
 struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
-	janus_nosip_message *msg = g_malloc0(sizeof(janus_nosip_message));
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_nosip_session *session = janus_nosip_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
+	}
+
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+
+	janus_nosip_message *msg = g_malloc(sizeof(janus_nosip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -721,14 +912,19 @@ void janus_nosip_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_nosip_session *session = janus_nosip_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -737,7 +933,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 	if(gateway) {
 		/* Honour the audio/video active flags */
 		janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -804,7 +1000,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 		return;
 	if(gateway) {
 		janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -850,15 +1046,21 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 }
 
 void janus_nosip_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_nosip_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+static void janus_nosip_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_nosip_session *session = (janus_nosip_session *)handle->plugin_handle;
+	janus_nosip_session *session = janus_nosip_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
@@ -875,25 +1077,25 @@ void janus_nosip_hangup_media(janus_plugin_session *handle) {
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_free(session->arc);
+		janus_recorder_destroy(session->arc);
 	}
 	session->arc = NULL;
 	if(session->arc_peer) {
 		janus_recorder_close(session->arc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-		janus_recorder_free(session->arc_peer);
+		janus_recorder_destroy(session->arc_peer);
 	}
 	session->arc_peer = NULL;
 	if(session->vrc) {
 		janus_recorder_close(session->vrc);
 		JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_free(session->vrc);
+		janus_recorder_destroy(session->vrc);
 	}
 	session->vrc = NULL;
 	if(session->vrc_peer) {
 		janus_recorder_close(session->vrc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-		janus_recorder_free(session->vrc_peer);
+		janus_recorder_destroy(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
@@ -908,26 +1110,21 @@ static void *janus_nosip_handler(void *data) {
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
-		if(msg == NULL)
-			continue;
 		if(msg == &exit_message)
 			break;
 		if(msg->handle == NULL) {
 			janus_nosip_message_free(msg);
 			continue;
 		}
-		janus_nosip_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_nosip_session *)msg->handle->plugin_handle;
-		}
+		janus_nosip_session *session = janus_nosip_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_nosip_message_free(msg);
 			continue;
 		}
-		if(session->destroyed) {
+		if(g_atomic_int_get(&session->destroyed)) {
 			janus_mutex_unlock(&sessions_mutex);
 			janus_nosip_message_free(msg);
 			continue;
@@ -976,6 +1173,7 @@ static void *janus_nosip_handler(void *data) {
 			/* Any SDP to handle? if not, something's wrong */
 			const char *msg_sdp_type = json_string_value(json_object_get(generate ? msg->jsep : root, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(generate ? msg->jsep : root, "sdp"));
+			gboolean sdp_update = json_is_true(json_object_get(generate ? msg->jsep : root, "update"));
 			if(!msg_sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
@@ -999,6 +1197,7 @@ static void *janus_nosip_handler(void *data) {
 			const char *info = json_string_value(json_object_get(root, "info"));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean do_srtp = FALSE, require_srtp = FALSE;
+			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 			if(generate) {
 				json_t *srtp = json_object_get(root, "srtp");
 				if(srtp) {
@@ -1016,24 +1215,50 @@ static void *janus_nosip_handler(void *data) {
 						g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
 						goto error;
 					}
-				}
-				if(offer) {
-					/* Clean up SRTP stuff from before first, in case it's still needed */
-					janus_nosip_srtp_cleanup(session);
-					session->media.require_srtp = require_srtp;
-					session->media.has_srtp_local = do_srtp;
 					if(do_srtp) {
-						JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
+						/* Any SRTP profile different from the default? */
+						srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+						const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
+						if(profile) {
+							if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+							} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+#ifdef HAVE_SRTP_AESGCM
+							} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
+								srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
+							} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
+								srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
+#endif
+							} else {
+								JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
+								error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+								g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
+								goto error;
+							}
+						}
 					}
-				} else {
-					/* Make sure the request is consistent with the state (original offer) */
-					if(session->media.require_srtp && !session->media.has_srtp_remote) {
-						JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
-						error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
-						g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
-						goto error;
+				}
+				if(!sdp_update) {
+					if(offer) {
+						/* Clean up SRTP stuff from before first, in case it's still needed */
+						janus_nosip_srtp_cleanup(session);
+						session->media.require_srtp = require_srtp;
+						session->media.has_srtp_local = do_srtp;
+						session->media.srtp_profile = srtp_profile;
+						if(do_srtp) {
+							JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
+						}
+					} else {
+						/* Make sure the request is consistent with the state (original offer) */
+						if(session->media.require_srtp && !session->media.has_srtp_remote) {
+							JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
+							error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
+							g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
+							goto error;
+						}
+						do_srtp = do_srtp || session->media.has_srtp_remote;
 					}
-					do_srtp = do_srtp || session->media.has_srtp_remote;
 				}
 			}
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
@@ -1046,37 +1271,39 @@ static void *janus_nosip_handler(void *data) {
 				goto error;
 			}
 			if(generate) {
-				/* Allocate RTP ports and merge them with the anonymized SDP */
-				if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
-					JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-					session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
-				}
-				if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
-					JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-					session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
-				}
-				if(janus_nosip_allocate_local_ports(session) < 0) {
-					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-					janus_sdp_free(parsed_sdp);
-					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
-					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
-					goto error;
+				if(!sdp_update) {
+					/* Allocate RTP ports and merge them with the anonymized SDP */
+					if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
+						JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
+						session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
+					}
+					if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
+						JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
+						session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+					}
+					if(janus_nosip_allocate_local_ports(session) < 0) {
+						JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+						janus_sdp_destroy(parsed_sdp);
+						error_code = JANUS_NOSIP_ERROR_IO_ERROR;
+						g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+						goto error;
+					}
 				}
 				char *sdp = janus_nosip_sdp_manipulate(session, parsed_sdp, FALSE);
 				if(sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
 					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-				janus_sdp_free(session->sdp);
+				janus_sdp_destroy(session->sdp);
 				session->sdp = parsed_sdp;
 				JANUS_LOG(LOG_VERB, "Prepared SDP %s for (%p)\n%s", msg_sdp_type, info, sdp);
 				g_atomic_int_set(&session->hangingup, 0);
 				/* Also notify event handlers */
-				if(notify_events && gateway->events_is_enabled()) {
+				if(!sdp_update && notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("generated"));
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
@@ -1088,11 +1315,13 @@ static void *janus_nosip_handler(void *data) {
 				json_object_set_new(result, "event", json_string("generated"));
 				json_object_set_new(result, "type", json_string(offer ? "offer" : "answer"));
 				json_object_set_new(result, "sdp", json_string(sdp));
+				if(sdp_update)
+					json_object_set_new(result, "update", json_true());
 				g_free(sdp);
 			} else {
 				/* We got a barebone offer or answer from our peer: process it accordingly */
 				gboolean changed = FALSE;
-				if(offer) {
+				if(!sdp_update && offer) {
 					/* Clean up SRTP stuff from before first, in case it's still needed */
 					janus_nosip_srtp_cleanup(session);
 				}
@@ -1100,7 +1329,7 @@ static void *janus_nosip_handler(void *data) {
 				/* Check if offer has neither audio nor video, fail */
 				if(!session->media.has_audio && !session->media.has_video) {
 					JANUS_LOG(LOG_ERR, "No audio and no video being negotiated\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "No audio and no video being negotiated");
 					goto error;
@@ -1108,16 +1337,16 @@ static void *janus_nosip_handler(void *data) {
 				/* Also fail if there's no remote IP address that can be used for RTP */
 				if(!session->media.remote_ip) {
 					JANUS_LOG(LOG_ERR, "No remote IP address\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "No remote IP address");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-				janus_sdp_free(session->sdp);
+				janus_sdp_destroy(session->sdp);
 				session->sdp = parsed_sdp;
 				/* Also notify event handlers */
-				if(notify_events && gateway->events_is_enabled()) {
+				if(!sdp_update && notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("processed"));
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
@@ -1131,17 +1360,21 @@ static void *janus_nosip_handler(void *data) {
 					json_object_set_new(result, "srtp",
 						json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 				}
+				if(sdp_update)
+					json_object_set_new(result, "update", json_true());
 				localjsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			}
 			/* If this is an answer, start the media */
-			if(!offer) {
+			if(!sdp_update && !offer) {
 				/* Start the media */
 				session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "nosiprtp %p", session);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_nosip_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
@@ -1298,7 +1531,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->arc) {
 						janus_recorder_close(session->arc);
 						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_free(session->arc);
+						janus_recorder_destroy(session->arc);
 					}
 					session->arc = NULL;
 				}
@@ -1306,7 +1539,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->vrc) {
 						janus_recorder_close(session->vrc);
 						JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_free(session->vrc);
+						janus_recorder_destroy(session->vrc);
 					}
 					session->vrc = NULL;
 				}
@@ -1314,7 +1547,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->arc_peer) {
 						janus_recorder_close(session->arc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-						janus_recorder_free(session->arc_peer);
+						janus_recorder_destroy(session->arc_peer);
 					}
 					session->arc_peer = NULL;
 				}
@@ -1322,7 +1555,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->vrc_peer) {
 						janus_recorder_close(session->vrc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-						janus_recorder_free(session->vrc_peer);
+						janus_recorder_destroy(session->vrc_peer);
 					}
 					session->vrc_peer = NULL;
 				}
@@ -1446,27 +1679,16 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 				if(!strcasecmp(a->name, "crypto")) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						gint32 tag = 0;
-						int suite;
-						char crypto[81];
+						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" AES_CM_128_HMAC_SHA1_%2d inline:%80s",
-							&tag, &suite, crypto);
+						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto);
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
 							gboolean video = (m->type == JANUS_SDP_VIDEO);
-							int current_suite = video ? session->media.video_srtp_suite_in : session->media.audio_srtp_suite_in;
-							if(current_suite == 0) {
-								if(video)
-									session->media.video_srtp_suite_in = suite;
-								else
-									session->media.audio_srtp_suite_in = suite;
-								janus_nosip_srtp_set_remote(session, video, crypto, suite);
-								session->media.has_srtp_remote = TRUE;
-							} else {
-								JANUS_LOG(LOG_WARN, "We already configured a %s crypto context (AES_CM_128_HMAC_SHA1_%d), skipping additional crypto line\n",
-									video ? "video" : "audio", current_suite);
-							}
+							janus_nosip_srtp_set_remote(session, video, profile, crypto);
+							session->media.has_srtp_remote = TRUE;
 						}
 					}
 				}
@@ -1514,22 +1736,22 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_nosip_srtp_set_local(session, FALSE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_nosip_srtp_set_local(session, FALSE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
 			if(session->media.has_srtp_local) {
+				char *profile = NULL;
 				char *crypto = NULL;
-				session->media.audio_srtp_suite_out = 80;
-				janus_nosip_srtp_set_local(session, TRUE, &crypto);
-				/* FIXME 32? 80? Both? */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
+				janus_nosip_srtp_set_local(session, TRUE, &profile, &crypto);
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
+				g_free(profile);
 				g_free(crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
@@ -1771,7 +1993,7 @@ static void *janus_nosip_relay_thread(void *data) {
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
-	int resfd = 0, bytes = 0;
+	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
@@ -1782,7 +2004,7 @@ static void *janus_nosip_relay_thread(void *data) {
 	int astep = 0, vstep = 0;
 	guint32 ats = 0, vts = 0;
 	while(goon && session != NULL &&
-			!session->destroyed && !g_atomic_int_get(&session->hangingup)) {
+			!g_atomic_int_get(&session->destroyed) && !g_atomic_int_get(&session->hangingup)) {
 		if(session->media.updated) {
 			/* Apparently there was a session update */
 			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0)) {
@@ -1840,7 +2062,7 @@ static void *janus_nosip_relay_thread(void *data) {
 			/* No data, keep going */
 			continue;
 		}
-		if(session == NULL || session->destroyed)
+		if(session == NULL || g_atomic_int_get(&session->destroyed))
 			break;
 		int i = 0;
 		for(i=0; i<num; i++) {
@@ -1868,10 +2090,12 @@ static void *janus_nosip_relay_thread(void *data) {
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
 					}
-					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
-					continue;
 				}
-				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Error polling %d (socket #%d): %s...\n", session,
+				/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
+				pollerrs++;
+				if(pollerrs < 100)
+					continue;
+				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Too many errors polling %d (socket #%d): %s...\n", session,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, error, strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
@@ -1898,6 +2122,7 @@ static void *janus_nosip_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
 							(!video && session->media.audio_ssrc_peer != ntohl(header->ssrc))) {
@@ -2007,6 +2232,7 @@ static void *janus_nosip_relay_thread(void *data) {
 	janus_nosip_srtp_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Leaving NoSIP relay thread\n");
+	janus_refcount_decrease(&session->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }

@@ -61,9 +61,10 @@ const char *janus_pfunix_get_author(void);
 const char *janus_pfunix_get_package(void);
 gboolean janus_pfunix_is_janus_api_enabled(void);
 gboolean janus_pfunix_is_admin_api_enabled(void);
-int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
-void janus_pfunix_session_created(void *transport, guint64 session_id);
-void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean timeout);
+int janus_pfunix_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
+void janus_pfunix_session_created(janus_transport_session *transport, guint64 session_id);
+void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -86,6 +87,7 @@ static janus_transport janus_pfunix_transport =
 		.send_message = janus_pfunix_send_message,
 		.session_created = janus_pfunix_session_created,
 		.session_over = janus_pfunix_session_over,
+		.session_claimed = janus_pfunix_session_claimed,
 	);
 
 /* Transport creator */
@@ -122,14 +124,30 @@ static int write_fd[2];
 
 /* Unix Sockets client session */
 typedef struct janus_pfunix_client {
-	int fd;						/* Client socket (in case SOCK_SEQPACKET is used) */
-	struct sockaddr_un addr;	/* Client address (in case SOCK_DGRAM is used) */
-	gboolean admin;				/* Whether this client is for the Admin or Janus API */
-	GAsyncQueue *messages;		/* Queue of outgoing messages to push */
-	gboolean session_timeout;	/* Whether a Janus session timeout occurred in the core */
+	int fd;							/* Client socket (in case SOCK_SEQPACKET is used) */
+	struct sockaddr_un addr;		/* Client address (in case SOCK_DGRAM is used) */
+	gboolean admin;					/* Whether this client is for the Admin or Janus API */
+	GAsyncQueue *messages;			/* Queue of outgoing messages to push */
+	gboolean session_timeout;		/* Whether a Janus session timeout occurred in the core */
+	janus_transport_session *ts;	/* Janus core-transport session */
 } janus_pfunix_client;
 static GHashTable *clients = NULL, *clients_by_fd = NULL, *clients_by_path = NULL;
 static janus_mutex clients_mutex = JANUS_MUTEX_INITIALIZER;
+
+static void janus_pfunix_client_free(void *client_ref) {
+	if(!client_ref)
+		return;
+	JANUS_LOG(LOG_WARN, "Freeing unix sockets client\n");
+	janus_pfunix_client *client = (janus_pfunix_client *) client_ref;
+	if(client->messages != NULL) {
+		char *response = NULL;
+		while((response = g_async_queue_try_pop(client->messages)) != NULL) {
+			g_free(response);
+		}
+		g_async_queue_unref(client->messages);
+	}
+	g_free(client);
+}
 
 
 /* Helper to create a named Unix Socket out of the path to link to */
@@ -363,15 +381,15 @@ gboolean janus_pfunix_is_admin_api_enabled(void) {
 	return admin_pfd > -1;
 }
 
-int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
+int janus_pfunix_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
 	if(message == NULL)
 		return -1;
-	if(transport == NULL) {
+	if(transport == NULL || transport->transport_p == NULL) {
 		json_decref(message);
 		return -1;
 	}
 	/* Make sure this is related to a still valid Unix Sockets session */
-	janus_pfunix_client *client = (janus_pfunix_client *)transport;
+	janus_pfunix_client *client = (janus_pfunix_client *)transport->transport_p;
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) == NULL) {
 		janus_mutex_unlock(&clients_mutex);
@@ -403,37 +421,31 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	return 0;
 }
 
-void janus_pfunix_session_created(void *transport, guint64 session_id) {
+void janus_pfunix_session_created(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care */
 }
 
-void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean timeout) {
+void janus_pfunix_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
 	/* We only care if it's a timeout: if so, close the connection */
-	if(transport == NULL || !timeout)
+	if(transport == NULL || transport->transport_p == NULL || !timeout)
 		return;
 	/* FIXME Should we really close the connection in case of a timeout? */
-	janus_pfunix_client *client = (janus_pfunix_client *)transport;
+	janus_pfunix_client *client = (janus_pfunix_client *)transport->transport_p;
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL) {
 		client->session_timeout = TRUE;
-		if(client->fd != -1) {
-			/* Shutdown the client socket */
-			shutdown(client->fd, SHUT_WR);
-		} else {
-			/* Destroy the client */
-			g_hash_table_remove(clients_by_path, client->addr.sun_path);
-			g_hash_table_remove(clients, client);
-			if(client->messages != NULL) {
-				char *response = NULL;
-				while((response = g_async_queue_try_pop(client->messages)) != NULL) {
-					g_free(response);
-				}
-				g_async_queue_unref(client->messages);
-			}
-			g_free(client);
-		}
+		/* Notify the thread about this */
+		int res = 0;
+		do {
+			res = write(write_fd[1], "x", 1);
+		} while(res == -1 && errno == EINTR);
 	}
 	janus_mutex_unlock(&clients_mutex);
+}
+
+void janus_pfunix_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
+	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
 
@@ -540,12 +552,12 @@ void *janus_pfunix_thread(void *data) {
 					}
 					JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
 					/* Notify core */
-					gateway->transport_gone(&janus_pfunix_transport, client);
+					gateway->transport_gone(&janus_pfunix_transport, client->ts);
 					/* Notify handlers about this transport being gone */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
 						json_object_set_new(info, "event", json_string("disconnected"));
-						gateway->notify_event(&janus_pfunix_transport, client, info);
+						gateway->notify_event(&janus_pfunix_transport, client->ts, info);
 					}
 					/* Close socket */
 					shutdown(SHUT_RDWR, poll_fds[i].fd);
@@ -554,14 +566,8 @@ void *janus_pfunix_thread(void *data) {
 					/* Destroy the client */
 					g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
 					g_hash_table_remove(clients, client);
-					if(client->messages != NULL) {
-						char *response = NULL;
-						while((response = g_async_queue_try_pop(client->messages)) != NULL) {
-							g_free(response);
-						}
-						g_async_queue_unref(client->messages);
-					}
-					g_free(client);
+					/* Unref the transport instance */
+					janus_transport_session_destroy(client->ts);
 					janus_mutex_unlock(&clients_mutex);
 					continue;
 				}
@@ -576,11 +582,30 @@ void *janus_pfunix_thread(void *data) {
 					while((payload = g_async_queue_try_pop(client->messages)) != NULL) {
 						int res = 0;
 						do {
+							if(client->fd < 0)
+								break;
 							res = write(client->fd, payload, strlen(payload));
 						} while(res == -1 && errno == EINTR);
 						/* FIXME Should we check if sent everything? */
 						JANUS_LOG(LOG_HUGE, "Written %d/%zu bytes on %d\n", res, strlen(payload), client->fd);
 						g_free(payload);
+					}
+					if(client->session_timeout) {
+						/* We should actually get rid of this connection, now */
+						shutdown(SHUT_RDWR, poll_fds[i].fd);
+						close(poll_fds[i].fd);
+						client->fd = -1;
+						/* Destroy the client */
+						g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
+						g_hash_table_remove(clients, client);
+						if(client->messages != NULL) {
+							char *response = NULL;
+							while((response = g_async_queue_try_pop(client->messages)) != NULL) {
+								g_free(response);
+							}
+							g_async_queue_unref(client->messages);
+						}
+						g_free(client);
 					}
 				}
 				janus_mutex_unlock(&clients_mutex);
@@ -600,11 +625,14 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %d\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", cfd);
 							/* Allocate new client */
-							janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
+							janus_pfunix_client *client = g_malloc(sizeof(janus_pfunix_client));
 							client->fd = cfd;
+							memset(&client->addr, 0, sizeof(client->addr));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
 							client->session_timeout = FALSE;
+							/* Create a transport instance as well */
+							client->ts = janus_transport_session_create(client, janus_pfunix_client_free);
 							/* Take note of this new client */
 							janus_mutex_lock(&clients_mutex);
 							g_hash_table_insert(clients_by_fd, GINT_TO_POINTER(cfd), client);
@@ -616,7 +644,7 @@ void *janus_pfunix_thread(void *data) {
 								json_object_set_new(info, "event", json_string("connected"));
 								json_object_set_new(info, "admin_api", client->admin ? json_true() : json_false());
 								json_object_set_new(info, "fd", json_integer(client->fd));
-								gateway->notify_event(&janus_pfunix_transport, client, info);
+								gateway->notify_event(&janus_pfunix_transport, client->ts, info);
 							}
 						}
 					} else {
@@ -644,12 +672,14 @@ void *janus_pfunix_thread(void *data) {
 							JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %s\n",
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", uaddr->sun_path);
 							/* Allocate new client */
-							client = g_malloc0(sizeof(janus_pfunix_client));
+							client = g_malloc(sizeof(janus_pfunix_client));
 							client->fd = -1;
 							memcpy(&client->addr, uaddr, sizeof(struct sockaddr_un));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
 							client->session_timeout = FALSE;
+							/* Create a transport instance as well */
+							client->ts = janus_transport_session_create(client, janus_pfunix_client_free);
 							/* Take note of this new client */
 							g_hash_table_insert(clients_by_path, uaddr->sun_path, client);
 							g_hash_table_insert(clients, client, client);
@@ -660,7 +690,7 @@ void *janus_pfunix_thread(void *data) {
 								json_object_set_new(info, "admin_api", client->admin ? json_true() : json_false());
 								json_object_set_new(info, "fd", json_integer(client->fd));
 								json_object_set_new(info, "type", json_string("SOCK_DGRAM"));
-								gateway->notify_event(&janus_pfunix_transport, client, info);
+								gateway->notify_event(&janus_pfunix_transport, client->ts, info);
 							}
 						}
 						janus_mutex_unlock(&clients_mutex);
@@ -670,7 +700,7 @@ void *janus_pfunix_thread(void *data) {
 						json_error_t error;
 						json_t *root = json_loads(buffer, 0, &error);
 						/* Notify the core, passing both the object and, since it may be needed, the error */
-						gateway->incoming_request(&janus_pfunix_transport, client, NULL, client->admin, root, &error);
+						gateway->incoming_request(&janus_pfunix_transport, client->ts, NULL, client->admin, root, &error);
 					}
 				} else {
 					/* Client data: receive message */
@@ -701,12 +731,12 @@ void *janus_pfunix_thread(void *data) {
 					if(res == 0) {
 						JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
 						/* Notify core */
-						gateway->transport_gone(&janus_pfunix_transport, client);
+						gateway->transport_gone(&janus_pfunix_transport, client->ts);
 						/* Notify handlers about this transport being gone */
 						if(notify_events && gateway->events_is_enabled()) {
 							json_t *info = json_object();
 							json_object_set_new(info, "event", json_string("disconnected"));
-							gateway->notify_event(&janus_pfunix_transport, client, info);
+							gateway->notify_event(&janus_pfunix_transport, client->ts, info);
 						}
 						/* Close socket */
 						shutdown(SHUT_RDWR, poll_fds[i].fd);
@@ -715,14 +745,8 @@ void *janus_pfunix_thread(void *data) {
 						/* Destroy the client */
 						g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
 						g_hash_table_remove(clients, client);
-						if(client->messages != NULL) {
-							char *response = NULL;
-							while((response = g_async_queue_try_pop(client->messages)) != NULL) {
-								g_free(response);
-							}
-							g_async_queue_unref(client->messages);
-						}
-						g_free(client);
+						/* Unref the transport instance */
+						janus_transport_session_destroy(client->ts);
 						janus_mutex_unlock(&clients_mutex);
 						continue;
 					}
@@ -735,14 +759,14 @@ void *janus_pfunix_thread(void *data) {
 					json_error_t error;
 					json_t *root = json_loads(buffer, 0, &error);
 					/* Notify the core, passing both the object and, since it may be needed, the error */
-					gateway->incoming_request(&janus_pfunix_transport, client, NULL, client->admin, root, &error);
+					gateway->incoming_request(&janus_pfunix_transport, client->ts, NULL, client->admin, root, &error);
 				}
 			}
 		}
 	}
 
 	socklen_t addrlen = sizeof(struct sockaddr_un);
-	void *addr = g_malloc0(addrlen+1);
+	void *addr = g_malloc(addrlen+1);
 	if(pfd > -1) {
 		/* Unlink the path name first */
 		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {

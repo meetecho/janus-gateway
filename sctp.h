@@ -44,6 +44,7 @@
 #include <glib.h>
 
 #include "mutex.h"
+#include "refcount.h"
 
 
 /*! \brief SCTP stuff initialization
@@ -111,6 +112,12 @@ typedef struct janus_sctp_association {
 	uint16_t remote_port;
 	/*! \brief Queue of incoming/outgoing messages */
 	GAsyncQueue *messages;
+	/*! \brief Buffer for handling partial messages */
+	char *buffer;
+	/*! \brief Current size of the buffer for handling partial messages */
+	size_t buflen;
+	/*! \brief Current offset of the buffer for handling partial messages */
+	size_t offset;
 	/*! \brief Thread for handling SCTP messaging */
 	GThread *thread;
 #ifdef DEBUG_SCTP
@@ -118,6 +125,10 @@ typedef struct janus_sctp_association {
 #endif
 	/*! \brief Mutex to lock/unlock this instance */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_sctp_association;
 
 /*! \brief Helper structure to handle incoming and outgoing messages */

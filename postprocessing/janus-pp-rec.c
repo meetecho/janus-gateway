@@ -64,6 +64,7 @@
 #include <jansson.h>
 
 #include "../debug.h"
+#include "../version.h"
 #include "pp-rtp.h"
 #include "pp-webm.h"
 #include "pp-h264.h"
@@ -81,12 +82,13 @@ gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
-int working = 0;
+static int working = 0;
+
+static int post_reset_trigger = 200;
 
 
 /* Signal handler */
-void janus_pp_handle_signal(int signum);
-void janus_pp_handle_signal(int signum) {
+static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
@@ -97,12 +99,22 @@ int main(int argc, char *argv[])
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
 
+	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
 		if(val >= LOG_NONE && val <= LOG_MAX)
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
+	}
+	if(g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
+		if(val >= 0)
+			post_reset_trigger = val;
+		JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
 	}
 	
 	/* Evaluate arguments */
@@ -162,6 +174,7 @@ int main(int argc, char *argv[])
 	long offset = 0;
 	uint16_t len = 0;
 	uint32_t count = 0;
+	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -304,7 +317,7 @@ int main(int argc, char *argv[])
 							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
 							exit(1);
 						}
-					} else if(!strcasecmp(c, "g711")) {
+					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = 1;
 						if(extension && strcasecmp(extension, ".wav")) {
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
@@ -362,7 +375,7 @@ int main(int argc, char *argv[])
 	/* Now let's parse the frames and order them */
 	uint32_t last_ts = 0, reset = 0;
 	int times_resetted = 0;
-	uint32_t post_reset_pkts = 0;
+	int post_reset_pkts = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -407,14 +420,12 @@ int main(int argc, char *argv[])
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
-			janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
-			if(p == NULL) {
-				JANUS_LOG(LOG_ERR, "Memory error!\n");
-				return -1;
-			}
+			janus_pp_frame_packet *p = g_malloc(sizeof(janus_pp_frame_packet));
+			p->seq = 0;
 			/* We "abuse" the timestamp field for the timing info */
 			p->ts = when-c_time;
 			p->len = len;
+			p->pt = 0;
 			p->drop = 0;
 			p->offset = offset;
 			p->skip = 0;
@@ -445,12 +456,20 @@ int main(int argc, char *argv[])
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
 		}
+		if(ssrc == 0) {
+			ssrc = ntohl(rtp->ssrc);
+			JANUS_LOG(LOG_INFO, "SSRC detected: %"SCNu32"\n", ssrc);
+		}
+		if(ssrc != ntohl(rtp->ssrc)) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected SSRC: %"SCNu32" != %"SCNu32"\n",
+				ntohl(rtp->ssrc), ssrc);
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
-		if(p == NULL) {
-			JANUS_LOG(LOG_ERR, "Memory error!\n");
-			return -1;
-		}
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
 		/* Due to resets, we need to mess a bit with the original timestamps */
@@ -461,7 +480,7 @@ int main(int argc, char *argv[])
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
 			gboolean late_pkt = FALSE;
 			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				if(post_reset_pkts > 1000) {
+				if(post_reset_pkts > post_reset_trigger) {
 					reset = ntohl(rtp->timestamp);
 					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
 					times_resetted++;
@@ -469,13 +488,13 @@ int main(int argc, char *argv[])
 				}
 			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
 					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
 					late_pkt = TRUE;
 					times_resetted--;
 				}
 			} else if(ntohl(rtp->timestamp) < reset) {
-				if(post_reset_pkts < 1000) {
+				if(post_reset_pkts < post_reset_trigger) {
 					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
 				} else {
@@ -517,7 +536,7 @@ int main(int argc, char *argv[])
 			/* First element becomes the list itself (and the last item), at least for now */
 			list = p;
 			last = p;
-		} else {
+		} else if(!p->drop) {
 			/* Check where we should insert this, starting from the end */
 			int added = 0;
 			janus_pp_frame_packet *tmp = last;
@@ -566,12 +585,20 @@ int main(int argc, char *argv[])
 						tmp->next = p;
 						p->prev = tmp;
 						break;
+					} else if(tmp->seq == p->seq) {
+						/* Maybe a retransmission? Skip */
+						JANUS_LOG(LOG_WARN, "Skipping duplicate packet (seq=%"SCNu16")\n", p->seq);
+						p->drop = 1;
+						break;
 					}
 				}
 				/* If either the timestamp ot the sequence number we just got is smaller, keep going back */
 				tmp = tmp->prev;
 			}
-			if(!added) {
+			if(p->drop) {
+				/* We don't need this */
+				g_free(p);
+			} else if(!added) {
 				/* We reached the start */
 				p->next = list;
 				list->prev = p;

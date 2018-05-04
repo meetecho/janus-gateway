@@ -8,11 +8,11 @@
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
  * have been changed by the gateway). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTCP_H
 #define _JANUS_RTCP_H
 
@@ -37,8 +37,9 @@ typedef enum {
     RTCP_PSFB = 206,
     RTCP_XR = 207,
 } rtcp_type;
- 
- 
+typedef rtcp_type janus_rtcp_type;
+
+
 /*! \brief RTCP Header (http://tools.ietf.org/html/rfc3550#section-6.1) */
 typedef struct rtcp_header
 {
@@ -55,6 +56,7 @@ typedef struct rtcp_header
 #endif
 	uint16_t length:16;
 } rtcp_header;
+typedef rtcp_header janus_rtcp_header;
 
 /*! \brief RTCP Sender Information (http://tools.ietf.org/html/rfc3550#section-6.4.1) */
 typedef struct sender_info
@@ -65,6 +67,7 @@ typedef struct sender_info
 	uint32_t s_packets;
 	uint32_t s_octets;
 } sender_info;
+typedef sender_info janus_sender_info;
 
 /*! \brief RTCP Report Block (http://tools.ietf.org/html/rfc3550#section-6.4.1) */
 typedef struct report_block
@@ -76,6 +79,7 @@ typedef struct report_block
 	uint32_t lsr;
 	uint32_t delay;
 } report_block;
+typedef report_block janus_report_block;
 
 /*! \brief RTCP Sender Report (http://tools.ietf.org/html/rfc3550#section-6.4.1) */
 typedef struct rtcp_sr
@@ -85,6 +89,7 @@ typedef struct rtcp_sr
 	sender_info si;
 	report_block rb[1];
 } rtcp_sr;
+typedef rtcp_sr janus_rtcp_sr;
 
 /*! \brief RTCP Receiver Report (http://tools.ietf.org/html/rfc3550#section-6.4.2) */
 typedef struct rtcp_rr
@@ -93,12 +98,14 @@ typedef struct rtcp_rr
 	uint32_t ssrc;
 	report_block rb[1];
 } rtcp_rr;
+typedef rtcp_rr janus_rtcp_rr;
 
 /*! \brief RTCP SDES (http://tools.ietf.org/html/rfc3550#section-6.5) */
 typedef struct rtcp_sdes_chunk
 {
 	uint32_t ssrc;
 } rtcp_sdes_chunk;
+typedef rtcp_sdes_chunk janus_rtcp_sdes_chunk;
 
 typedef struct rtcp_sdes_item
 {
@@ -106,6 +113,7 @@ typedef struct rtcp_sdes_item
 	uint8_t len;
 	char content[1];
 } rtcp_sdes_item;
+typedef rtcp_sdes_item janus_rtcp_sdes_item;
 
 typedef struct rtcp_sdes
 {
@@ -113,13 +121,15 @@ typedef struct rtcp_sdes
 	rtcp_sdes_chunk chunk;
 	rtcp_sdes_item item;
 } rtcp_sdes;
+typedef rtcp_sdes janus_rtcp_sdes;
 
 /*! \brief RTCP BYE (http://tools.ietf.org/html/rfc3550#section-6.6) */
 typedef struct rtcp_bye
 {
 	rtcp_header header;
 	uint32_t ssrc[1];
-} rtcp_bye_t;
+} rtcp_bye;
+typedef rtcp_bye janus_rtcp_bye;
 
 /*! \brief RTCP APP (http://tools.ietf.org/html/rfc3550#section-6.7) */
 typedef struct rtcp_app
@@ -127,7 +137,8 @@ typedef struct rtcp_app
 	rtcp_header header;
 	uint32_t ssrc;
 	char name[4];
-} rtcp_app_t;
+} rtcp_app;
+typedef rtcp_app janus_rtcp_app;
 
 /*! \brief RTCP NACK (http://tools.ietf.org/html/rfc4585#section-6.2.1) */
 typedef struct rtcp_nack
@@ -137,6 +148,7 @@ typedef struct rtcp_nack
 	/*! \brief bitmask of following lost packets */
 	uint16_t blp;
 } rtcp_nack;
+typedef rtcp_nack janus_rtcp_nack;
 
 /*! \brief Janus representation (linked list) of sequence numbers to send again */
 typedef struct janus_nack {
@@ -157,6 +169,7 @@ typedef struct rtcp_remb
 	/*! \brief SSRC feedback (we expect at max three SSRCs in there) */
 	uint32_t ssrc[3];
 } rtcp_remb;
+typedef rtcp_remb janus_rtcp_fb_remb;
 
 
 /*! \brief RTCP FIR (http://tools.ietf.org/search/rfc5104#section-4.3.1.1) */
@@ -167,6 +180,7 @@ typedef struct rtcp_fir
 	/*! \brief Sequence number (only the first 8 bits are used, the other 24 are reserved) */
 	uint32_t seqnr;
 } rtcp_fir;
+typedef rtcp_fir janus_rtcp_fb_fir;
 
 
 /*! \brief RTCP-FB (http://tools.ietf.org/html/rfc4585) */
@@ -181,6 +195,7 @@ typedef struct rtcp_fb
 	/*! \brief Feedback Control Information */
 	char fci[1];
 } rtcp_fb;
+typedef rtcp_fb janus_rtcp_fb;
 
 /*! \brief RTCP Extended Report Block (https://tools.ietf.org/html/rfc3611#section-3) */
 typedef struct extended_report_block
@@ -195,6 +210,7 @@ typedef struct extended_report_block
 	char content[1];
 
 } extended_report_block;
+typedef extended_report_block janus_extended_report_block;
 
 /*! \brief RTCP Extended Report (https://tools.ietf.org/html/rfc3611#section-2) */
 typedef struct rtcp_xr
@@ -203,6 +219,7 @@ typedef struct rtcp_xr
 	uint32_t ssrc;
 	extended_report_block erb[1];
 } rtcp_xr;
+typedef rtcp_xr janus_rtcp_xr;
 
 
 /*! \brief Internal RTCP state context (for RR/SR) */
@@ -231,29 +248,78 @@ typedef struct rtcp_context
 	/* Last RR/SR we sent */
 	int64_t last_sent;
 
+	/* Estimated round-trip time */
+	uint32_t rtt;
+
 	/* RFC 3550 A.3 */
 	uint32_t received;
 	uint32_t received_prior;
 	uint32_t expected;
 	uint32_t expected_prior;
 	uint32_t lost, lost_remote;
+
+	uint32_t retransmitted;
+	uint32_t retransmitted_prior;
+
+	/* Inbound RR process */
+	int64_t rr_last_ts;
+	uint32_t rr_last_ehsnr;
+	uint32_t rr_last_lost;
+	uint32_t rr_last_nack_count;
+	gint sent_packets_since_last_rr;
+	gint nack_count;
+
+	/* Outbound RR process */
+	int64_t out_rr_last_ts;
+
+	/* Link quality estimations */
+	double in_link_quality;
+	double in_media_link_quality;
+	double out_link_quality;
+	double out_media_link_quality;
 } rtcp_context;
-/*! \brief Method to retrieve the LSR from an existing RTCP context
+typedef rtcp_context janus_rtcp_context;
+
+/*! \brief Stores transport wide packet reception statistics */
+typedef struct rtcp_transport_wide_cc_stats
+{
+	/*! \brief Transwport wide sequence number */
+	guint32 transport_seq_num;
+	/*! \brief Reception time */
+	guint64 timestamp;
+} rtcp_transport_wide_cc_stats;
+typedef rtcp_transport_wide_cc_stats janus_rtcp_transport_wide_cc_stats;
+
+/*! \brief Method to retrieve the estimated round-trip time from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @returns The last SR received */
-uint32_t janus_rtcp_context_get_lsr(rtcp_context *ctx);
+ * @returns The estimated round-trip time */
+uint32_t janus_rtcp_context_get_rtt(janus_rtcp_context *ctx);
 /*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
-uint32_t janus_rtcp_context_get_lost_all(rtcp_context *ctx, gboolean remote);
+uint32_t janus_rtcp_context_get_lost_all(janus_rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
-uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx, gboolean remote);
-
-
+uint32_t janus_rtcp_context_get_jitter(janus_rtcp_context *ctx, gboolean remote);
+/*! \brief Method to retrieve inbound link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Inbound link quality estimation */
+uint32_t janus_rtcp_context_get_in_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve inbound media link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Inbound media link quality estimation */
+uint32_t janus_rtcp_context_get_in_media_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve outbound link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Outbound link quality estimation */
+uint32_t janus_rtcp_context_get_out_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to retrieve outbound media link quality from an existing RTCP context
+ * @param[in] ctx The RTCP context to query
+ * @returns Outbound media link quality estimation */
+uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx);
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
@@ -270,7 +336,7 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
+int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fix an RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] ctx RTCP context to update, if needed (optional)
@@ -281,7 +347,7 @@ int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
  * @param[in] newssrcl The SSRC of the sender to put in the message
  * @param[in] newssrcr The SSRC of the receiver to put in the message
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
+int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
 
 /*! \brief Method to filter an outgoing RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] packet The message data
@@ -295,13 +361,13 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report
  * @param[in] rb Pointer to a valid report_block area of the RTCP data
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb);
+int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
 
 /*! \brief Method to check whether an RTCP message contains a BYE message
  * @param[in] packet The message data
@@ -356,7 +422,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate);
  * @param[in] cname The CNAME to write
  * @param[in] cnamelen The CNAME data length in bytes
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
+int janus_rtcp_sdes_cname(char *packet, int len, const char *cname, int cnamelen);
 
 /*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate
  * @param[in] packet The buffer data (MUST be at least 24 chars)
@@ -400,5 +466,15 @@ int janus_rtcp_pli(char *packet, int len);
  * @param[in] nacks List of packets to NACK
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
+
+/*! \brief Method to generate a new RTCP transport wide message to report reception stats
+ * @param[in] packet The buffer data (MUST be at least 16 chars)
+ * @param[in] len The message data length in bytes
+ * @param[ssrc] ssrc SSRC of the origin stream
+ * @param[media] madia SSRC of the destination stream
+ * @param[media] feedback_packet_count Feedback paccket count
+ * @param[media] transport_wide_cc_stats List of rtp packet reception stats
+ * @returns The message data length in bytes, if successful, -1 on errors */
+int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t len, guint32 ssrc, guint32 media, guint8 feedback_packet_count, GQueue *transport_wide_cc_stats);
 
 #endif
