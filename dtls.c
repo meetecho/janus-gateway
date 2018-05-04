@@ -731,6 +731,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
 				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				if(srtp_profile == NULL) {
+					/* Should never happen, but just in case... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No SRTP profile selected...\n", handle->handle_id);
+					dtls->dtls_state = JANUS_DTLS_STATE_FAILED;
+					/* Notify event handlers */
+					janus_dtls_notify_state_change(dtls);
+					goto done;
+				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, srtp_profile->name);
 				int key_length = 0, salt_length = 0, master_length = 0;
 				switch(srtp_profile->id) {
