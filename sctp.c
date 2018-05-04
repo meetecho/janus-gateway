@@ -263,6 +263,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
+		janus_mutex_unlock(&sctp->mutex);
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
 		janus_refcount_decrease(&sctp->ref);	/* This is for the failed thread */
 		janus_refcount_decrease(&sctp->ref);
