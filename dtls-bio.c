@@ -131,6 +131,7 @@ int janus_dtls_bio_filter_write(BIO *bio, const char *in, int inl) {
 	/* Forward data to the write BIO */
 	if(inl <= 0) {
 		/* ... unless the size is negative or zero */
+		JANUS_LOG(LOG_WARN, "janus_dtls_bio_filter_write failed: negative size (%d)\n", inl);
 		return inl;
 	}
 #if JANUS_USE_OPENSSL_PRE_1_1_API
