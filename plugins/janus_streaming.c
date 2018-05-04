@@ -3671,7 +3671,6 @@ done:
 				g_strlcat(sdptemp, buffer, 2048);
 			}
 #endif
-			janus_mutex_unlock(&mp->mutex);
 			sdp = g_strdup(sdptemp);
 			JANUS_LOG(LOG_VERB, "Going to %s this SDP:\n%s\n", sdp_type, sdp);
 			result = json_object();
@@ -4036,13 +4035,10 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 		close(source->video_rtcp_fd);
 	}
 #endif
-	if(source->data_fd > 0) {
-		close(source->data_fd);
-	}
-	if(source->pipefd[0] > 0) {
+	if(source->pipefd[0] > -1) {
 		close(source->pipefd[0]);
 	}
-	if(source->pipefd[1] > 0) {
+	if(source->pipefd[1] > -1) {
 		close(source->pipefd[1]);
 	}
 	janus_mutex_lock(&source->keyframe.mutex);
@@ -4777,7 +4773,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	if(source == NULL || source->curldata == NULL)
 		return -1;
 	/* First of all, send a latching packet to the RTSP server port(s) */
-	if(source->rtsp_asport > 0) {
+	if(source->rtsp_asport > 0 && source->audio_fd >= 0) {
 		JANUS_LOG(LOG_VERB, "RTSP audio latching: %s:%u\n", source->rtsp_ahost, source->rtsp_asport);
 		/* Resolve address to get an IP */
 		struct addrinfo *res = NULL;
@@ -4807,7 +4803,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 			(void)sendto(source->audio_fd, &rtp, 12, 0, &remote, addrlen);
 		}
 	}
-	if(source->rtsp_vsport > 0) {
+	if(source->rtsp_vsport > 0 && source->video_fd[0] >= 0) {
 		JANUS_LOG(LOG_VERB, "RTSP video latching: %s:%u\n", source->rtsp_vhost, source->rtsp_vsport);
 		/* Resolve address to get an IP */
 		struct addrinfo *res = NULL;
