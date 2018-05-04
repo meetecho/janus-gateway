@@ -1883,8 +1883,6 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		janus_refcount_increase(&audiobridge->ref);
 		audiobridge->thread = g_thread_try_new(tname, &janus_audiobridge_mixer_thread, audiobridge, &error);
 		if(error != NULL) {
-			janus_refcount_decrease(&audiobridge->ref);
-			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
