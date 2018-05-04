@@ -921,8 +921,10 @@ void janus_sctp_handle_data_message(janus_sctp_association *sctp, char *buffer, 
 	} else {
 		/* Assuming DATA_CHANNEL_PPID_DOMSTRING */
 		/* XXX: Protect for non 0 terminated buffer */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message received of length %zu on channel with id %d: %.*s\n",
-		       sctp->handle_id, length, channel->id, (int)length, buffer);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message received of length %zu on channel with id %d.\n",
+		       sctp->handle_id, length, channel->id);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Message contents: %.*s\n",
+		       sctp->handle_id, (int)length, buffer);
 		/* FIXME: notify this to the core */
 		janus_dtls_notify_data((janus_dtls_srtp *)sctp->dtls, buffer, (int)length);
 	}
