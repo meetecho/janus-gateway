@@ -889,6 +889,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	janus_mutex_lock(&sessions_mutex);
 	janus_recordplay_session *session = janus_recordplay_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
