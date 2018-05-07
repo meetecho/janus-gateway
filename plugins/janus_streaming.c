@@ -4331,11 +4331,13 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_rtp_switching_context_reset(&live_rtp_source->context[2]);
 	janus_mutex_init(&live_rtp_source->rec_mutex);
 	live_rtp_source->audio_fd = audio_fd;
-	live_rtp_source->audio_rtcp_fd = -1;
 	live_rtp_source->video_fd[0] = video_fd[0];
 	live_rtp_source->video_fd[1] = video_fd[1];
 	live_rtp_source->video_fd[2] = video_fd[2];
+#ifdef HAVE_LIBCURL
+	live_rtp_source->audio_rtcp_fd = -1;
 	live_rtp_source->video_rtcp_fd = -1;
+#endif
 	live_rtp_source->data_fd = data_fd;
 	pipe(live_rtp_source->pipefd);
 	live_rtp_source->last_received_audio = janus_get_monotonic_time();
