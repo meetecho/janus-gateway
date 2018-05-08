@@ -4035,22 +4035,17 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
-		uint32_t ssrc = ntohl(rtp->ssrc);
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
+			uint32_t ssrc = ntohl(rtp->ssrc);
 			if(ssrc == participant->ssrc[0])
 				sc = 0;
 			else if(ssrc == participant->ssrc[1])
 				sc = 1;
 			else if(ssrc == participant->ssrc[2])
 				sc = 2;
-		} else {
-			/* Set the SSRC of the publisher */
-			rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
 		}
-		/* Set the payload type of the publisher */
-		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
 		if(participant->srtp_contexts && g_hash_table_size(participant->srtp_contexts) > 0) {
@@ -4110,6 +4105,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			rtp->ssrc = htonl(ssrc);
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
+		/* Overwrite the SSRC if we're not simulcasting */
+		if(sc == -1) {
+			/* Set the SSRC of the publisher */
+			rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
+		}
+		/* Set the payload type of the publisher */
+		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		if(sc < 1) {
 			/* Save the frame if we're recording
 			 * FIXME: for video, we're currently only recording the base substream, when simulcasting */
