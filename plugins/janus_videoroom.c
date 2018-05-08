@@ -3728,8 +3728,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if((p->sdp && p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
-				json_object_set_new(pl, "internal_audio_ssrc", json_integer(p->audio_ssrc));
-				json_object_set_new(pl, "internal_video_ssrc", json_integer(p->video_ssrc));
 			}
 			json_array_append_new(list, pl);
 		}
@@ -4105,11 +4103,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			rtp->ssrc = htonl(ssrc);
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
-		/* Overwrite the SSRC if we're not simulcasting */
-		if(sc == -1) {
-			/* Set the SSRC of the publisher */
-			rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
-		}
 		/* Set the payload type of the publisher */
 		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		if(sc < 1) {
@@ -4734,8 +4727,6 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->subscribers_mutex);
 				publisher->audio_pt = -1;	/* We'll deal with this later */
 				publisher->video_pt = -1;	/* We'll deal with this later */
-				publisher->audio_ssrc = janus_random_uint32();
-				publisher->video_ssrc = janus_random_uint32();
 				publisher->audio_level_extmap_id = 0;
 				publisher->video_orient_extmap_id = 0;
 				publisher->playout_delay_extmap_id = 0;
