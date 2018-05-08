@@ -44,6 +44,7 @@ Makefile.in
 /postprocessing/*.o
 
 /conf/janus.cfg.sample
+/conf/janus.plugin.auviousrecordplay.cfg.sample
 /conf/janus.plugin.lua.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample

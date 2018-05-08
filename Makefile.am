@@ -425,6 +425,16 @@ conf_DATA += conf/janus.plugin.auviousroom.cfg.sample
 EXTRA_DIST += conf/janus.plugin.auviousroom.cfg.sample
 endif
 
+if ENABLE_PLUGIN_AUVIOUSRECORDPLAY
+plugin_LTLIBRARIES += plugins/libjanus_auviousrecordplay.la
+plugins_libjanus_auviousrecordplay_la_SOURCES = plugins/janus_auviousrecordplay.c
+plugins_libjanus_auviousrecordplay_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_auviousrecordplay_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_auviousrecordplay_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.auviousrecordplay.cfg.sample
+EXTRA_DIST += conf/janus.plugin.auviousrecordplay.cfg.sample
+endif
+
 if ENABLE_PLUGIN_VOICEMAIL
 plugin_LTLIBRARIES += plugins/libjanus_voicemail.la
 plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
