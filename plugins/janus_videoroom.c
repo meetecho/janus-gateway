@@ -1300,7 +1300,6 @@ typedef struct janus_videoroom_session {
 	janus_mutex mutex;
 	janus_refcount ref;
 } janus_videoroom_session;
-// janus_plugin_session -> janus_videoroom_session
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
@@ -1541,9 +1540,9 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 	g_free(msg);
 }
 
-void janus_videoroom_codecstr(janus_videoroom * videoroom, char* audio_codecs, char* video_codecs, int str_len, const char* split)
+static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_codecs, char *video_codecs, int str_len, const char *split)
 {
-	if(audio_codecs){
+	if (audio_codecs) {
 		audio_codecs[0] = 0;
 		g_snprintf(audio_codecs, str_len, "%s", janus_audiocodec_name(videoroom->acodec[0]));
 		if (videoroom->acodec[1] != JANUS_AUDIOCODEC_NONE) {
@@ -1555,7 +1554,7 @@ void janus_videoroom_codecstr(janus_videoroom * videoroom, char* audio_codecs, c
 			g_strlcat(audio_codecs, janus_audiocodec_name(videoroom->acodec[2]), str_len);
 		}
 	}
-	if(video_codecs){
+	if (video_codecs) {
 		video_codecs[0] = 0;
 		g_snprintf(video_codecs, str_len, "%s", janus_videocodec_name(videoroom->vcodec[0]));
 		if (videoroom->vcodec[1] != JANUS_VIDEOCODEC_NONE) {
@@ -1569,8 +1568,8 @@ void janus_videoroom_codecstr(janus_videoroom * videoroom, char* audio_codecs, c
 	}
 }
 
-void janus_videoroom_reqfir(janus_videoroom_publisher* publisher, const char* reason){
-	/* Send a FIR to the new RTP forward publisher */
+static void janus_videoroom_reqfir(janus_videoroom_publisher *publisher, const char *reason){
+	/* Send a FIR */
 	char buf[20];
 	janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 	JANUS_LOG(LOG_VERB, "%s sending FIR to %"SCNu64" (%s)\n", reason, publisher->user_id, publisher->display ? publisher->display : "??");
@@ -1680,7 +1679,6 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	forward->ssrc = ssrc;
 	forward->substream = substream;
 	forward->is_data = is_data;
-	// host to ip
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
 	forward->serv_addr.sin_port = htons(port);
@@ -1936,7 +1934,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_unlock(&rooms_mutex);
 			/* Compute a list of the supported codecs for the summary */
 			char audio_codecs[100], video_codecs[100];
-			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, 100, "|");
+			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
 			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 				videoroom->room_id, videoroom->room_name,
 				videoroom->is_private ? "private" : "public",
@@ -1961,7 +1959,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		janus_videoroom *vr = value;
 		/* Compute a list of the supported codecs for the summary */
 		char audio_codecs[100], video_codecs[100];
-		janus_videoroom_codecstr(vr, audio_codecs, video_codecs, 100, "|");
+		janus_videoroom_codecstr(vr, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
 		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu32", max %d publishers, FIR frequency of %d seconds, %s audio codec(s), %s video codec(s)\n",
 			vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq,
 			audio_codecs, video_codecs);
@@ -2697,7 +2695,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		/* Compute a list of the supported codecs for the summary */
 		char audio_codecs[100], video_codecs[100];
-		janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, 100, "|");
+		janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
 		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
@@ -2733,7 +2731,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 			char video_codecs[100];
 			char audio_codecs[100];
-			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, 100, ",");
+			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
 			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
 			janus_config_add_item(config, cat, "videocodec", video_codecs);
 			if(videoroom->do_svc)
@@ -2887,7 +2885,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 			char audio_codecs[100];
 			char video_codecs[100];
-			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, 100, ",");
+			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
 			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
 			janus_config_add_item(config, cat, "videocodec", video_codecs);
 			if(videoroom->do_svc)
@@ -3026,7 +3024,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));
 				char audio_codecs[100];
 				char video_codecs[100];
-				janus_videoroom_codecstr(room, audio_codecs, video_codecs, 100, ",");
+				janus_videoroom_codecstr(room, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
 				json_object_set_new(rl, "audiocodec", json_string(audio_codecs));
 				json_object_set_new(rl, "videocodec", json_string(video_codecs));
 				if(room->do_svc)
@@ -3701,7 +3699,9 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			json_object_set_new(pub, "videoroom", json_string("event"));
 			json_object_set_new(pub, "room", json_integer(participant->room_id));
 			json_object_set_new(pub, "publishers", list);
+			janus_mutex_lock(&participant->room->mutex);
 			janus_videoroom_notify_participants(participant, pub);
+			janus_mutex_unlock(&participant->room->mutex);
 			json_decref(pub);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -3960,7 +3960,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				}
 				if((now-participant->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
 					/* FIXME We send a FIR every tot seconds */
-					janus_videoroom_reqfir(participant, "");
+					janus_videoroom_reqfir(participant, "Regular keyframe request");
 				}
 			}
 		}

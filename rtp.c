@@ -602,7 +602,16 @@ const char *janus_srtp_error_str(int error) {
 	return janus_srtp_error[error];
 }
 
-
+/* Payload types we'll offer internally */
+#define OPUS_PT		111
+#define ISAC32_PT	104
+#define ISAC16_PT	103
+#define PCMU_PT		0
+#define PCMA_PT		8
+#define G722_PT		9
+#define VP8_PT		96
+#define VP9_PT		101
+#define H264_PT		107
 const char *janus_audiocodec_name(janus_audiocodec acodec) {
 	switch(acodec) {
 		case JANUS_AUDIOCODEC_NONE:
