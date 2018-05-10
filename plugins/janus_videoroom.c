@@ -3508,8 +3508,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if((p->sdp && p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
-				json_object_set_new(pl, "internal_audio_ssrc", json_integer(p->audio_ssrc));
-				json_object_set_new(pl, "internal_video_ssrc", json_integer(p->video_ssrc));
 			}
 			json_array_append_new(list, pl);
 		}
@@ -3795,22 +3793,17 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
-		uint32_t ssrc = ntohl(rtp->ssrc);
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
+			uint32_t ssrc = ntohl(rtp->ssrc);
 			if(ssrc == participant->ssrc[0])
 				sc = 0;
 			else if(ssrc == participant->ssrc[1])
 				sc = 1;
 			else if(ssrc == participant->ssrc[2])
 				sc = 2;
-		} else {
-			/* Set the SSRC of the publisher */
-			rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
 		}
-		/* Set the payload type of the publisher */
-		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
 		if(participant->srtp_contexts && g_hash_table_size(participant->srtp_contexts) > 0) {
@@ -3870,6 +3863,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			rtp->ssrc = htonl(ssrc);
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
+		/* Set the payload type of the publisher */
+		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		if(sc < 1) {
 			/* Save the frame if we're recording
 			 * FIXME: for video, we're currently only recording the base substream, when simulcasting */
@@ -4484,8 +4479,6 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->subscribers_mutex);
 				publisher->audio_pt = -1;	/* We'll deal with this later */
 				publisher->video_pt = -1;	/* We'll deal with this later */
-				publisher->audio_ssrc = janus_random_uint32();
-				publisher->video_ssrc = janus_random_uint32();
 				publisher->audio_level_extmap_id = 0;
 				publisher->video_orient_extmap_id = 0;
 				publisher->playout_delay_extmap_id = 0;

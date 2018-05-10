@@ -2605,19 +2605,19 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(!strcasecmp(type_text, "rtp")) {
 			janus_streaming_rtp_source *source = mp->source;
 			if (source->audio_fd != -1) {
-				json_object_set_new(ml, "audio_port", json_integer(janus_streaming_get_fd_port(source->audio_fd)));
+				json_object_set_new(ml, "audio_port", json_integer(source->audio_port));
 			}
 			if (source->video_fd[0] != -1) {
-				json_object_set_new(ml, "video_port", json_integer(janus_streaming_get_fd_port(source->video_fd[0])));
+				json_object_set_new(ml, "video_port", json_integer(source->video_port[0]));
 			}
 			if (source->video_fd[1] != -1) {
-				json_object_set_new(ml, "video_port_2", json_integer(janus_streaming_get_fd_port(source->video_fd[1])));
+				json_object_set_new(ml, "video_port_2", json_integer(source->video_port[1]));
 			}
 			if (source->video_fd[2] != -1) {
-				json_object_set_new(ml, "video_port_3", json_integer(janus_streaming_get_fd_port(source->video_fd[2])));
+				json_object_set_new(ml, "video_port_3", json_integer(source->video_port[2]));
 			}
 			if (source->data_fd != -1) {
-				json_object_set_new(ml, "data_port", json_integer(janus_streaming_get_fd_port(source->data_fd)));
+				json_object_set_new(ml, "data_port", json_integer(source->data_port));
 			}
 		}
 		json_object_set_new(response, "stream", ml);
@@ -4160,6 +4160,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		aport = janus_streaming_get_fd_port(audio_fd);
 	}
 	int video_fd[3] = {-1, -1, -1};
 	if(dovideo) {
@@ -4172,6 +4173,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		vport = janus_streaming_get_fd_port(video_fd[0]);
 		if(simulcast) {
 			if(vport2 > 0) {
 				video_fd[1] = janus_streaming_create_fd(vport2, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
@@ -4185,6 +4187,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
 				}
+				vport2 = janus_streaming_get_fd_port(video_fd[1]);
 			}
 			if(vport3 > 0) {
 				video_fd[2] = janus_streaming_create_fd(vport3, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
@@ -4200,6 +4203,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
 				}
+				vport3 = janus_streaming_get_fd_port(video_fd[2]);
 			}
 		}
 	}
@@ -4221,6 +4225,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		dport = janus_streaming_get_fd_port(data_fd);
 #else
 		JANUS_LOG(LOG_WARN, "Mountpoint wants to do datachannel relaying, but datachannels support was not compiled...\n");
 		dodata = FALSE;
