@@ -1540,8 +1540,7 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 	g_free(msg);
 }
 
-static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_codecs, char *video_codecs, int str_len, const char *split)
-{
+static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_codecs, char *video_codecs, int str_len, const char *split) {
 	if (audio_codecs) {
 		audio_codecs[0] = 0;
 		g_snprintf(audio_codecs, str_len, "%s", janus_audiocodec_name(videoroom->acodec[0]));
@@ -1568,7 +1567,7 @@ static void janus_videoroom_codecstr(janus_videoroom *videoroom, char *audio_cod
 	}
 }
 
-static void janus_videoroom_reqfir(janus_videoroom_publisher *publisher, const char *reason){
+static void janus_videoroom_reqfir(janus_videoroom_publisher *publisher, const char *reason) {
 	/* Send a FIR */
 	char buf[20];
 	janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
@@ -1581,6 +1580,7 @@ static void janus_videoroom_reqfir(janus_videoroom_publisher *publisher, const c
 	/* Update the time of when we last sent a keyframe request */
 	publisher->fir_latest = janus_get_monotonic_time();
 }
+
 /* Error codes */
 #define JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR		499
 #define JANUS_VIDEOROOM_ERROR_NO_MESSAGE		421
