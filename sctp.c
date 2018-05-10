@@ -351,7 +351,10 @@ static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore ad
 void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len) {
 	if(sctp == NULL || buf == NULL || len <= 0)
 		return;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP data to send (%d bytes) coming from a plugin: %.*s\n", sctp->handle_id, len, len, buf);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP data to send (%d bytes) coming from a plugin.\n",
+		  sctp->handle_id, len);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Outgoing SCTP contents: %.*s\n",
+		  sctp->handle_id, len, buf);
 	/* FIXME Is there any open channel we can use? */
 	int i = 0, found = 0;
 	for(i = 0; i < NUMBER_OF_CHANNELS; i++) {
@@ -921,9 +924,9 @@ void janus_sctp_handle_data_message(janus_sctp_association *sctp, char *buffer, 
 	} else {
 		/* Assuming DATA_CHANNEL_PPID_DOMSTRING */
 		/* XXX: Protect for non 0 terminated buffer */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message received of length %zu on channel with id %d.\n",
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP data received of length %zu on channel with id %d.\n",
 		       sctp->handle_id, length, channel->id);
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Message contents: %.*s\n",
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming SCTP contents: %.*s\n",
 		       sctp->handle_id, (int)length, buffer);
 		/* FIXME: notify this to the core */
 		janus_dtls_notify_data((janus_dtls_srtp *)sctp->dtls, buffer, (int)length);
