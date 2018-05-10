@@ -1703,7 +1703,7 @@ playdone:
 			if (json_object_get(msg->message, "video") != NULL) {
 				offer_video = json_is_true(json_object_get(msg->message, "video"));
 				if (json_object_get(msg->message, "vcodec") != NULL) {
-					acodec = json_string_value(json_object_get(msg->message, "vcodec"));
+					vcodec = json_string_value(json_object_get(msg->message, "vcodec"));
 				} else {
 					vcodec = "h264";
 				}
