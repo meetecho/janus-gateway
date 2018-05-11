@@ -2561,8 +2561,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				}
 				if(source->srtpsuite > 0 && source->srtpcrypto) {
 					g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
-					janus_config_add_item(config, mp->name, "srtpsuite", value);
-					janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
+					janus_config_add(config, c, janus_config_item_create("srtpsuite", value));
+					janus_config_add(config, c, janus_config_item_create("srtpcrypto", source->srtpcrypto));
 				}
 			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
 				janus_streaming_file_source *source = mp->source;
@@ -2834,8 +2834,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					}
 					if(source->srtpsuite > 0 && source->srtpcrypto) {
 						g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
-						janus_config_add_item(config, mp->name, "srtpsuite", value);
-						janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
+						janus_config_add(config, c, janus_config_item_create("srtpsuite", value));
+						janus_config_add(config, c, janus_config_item_create("srtpcrypto", source->srtpcrypto));
 					}
 				}
 			} else {
