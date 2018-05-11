@@ -104,7 +104,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
  * something) participants of a specific room and their details.
  *
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
- * \c unpublish , \c start , \c pause , \c switch , \c stop and \c leave
+ * \c unpublish , \c start , \c pause , \c switch and \c leave
  * requests instead are all asynchronous, which
  * means you'll get a notification about their success or failure in
  * an event. \c join allows you to join a specific video room, specifying
@@ -119,8 +119,8 @@ notify_joining = true|false (optional, whether to notify all participants when a
  * the \c switch request can be used to change the source of the media
  * flowing over a specific PeerConnection (e.g., I was watching Alice,
  * I want to watch Bob now) without having to create a new handle for
- * that; \c stop interrupts a viewer instance; finally, \c leave allows
- * you to leave a video room for good.
+ * that; \c finally, \c leave allows you to leave a video room for good
+ * (or, in the case of viewers, definitely closes a subscription).
  *
  * \c create can be used to create a new video room, and has to be
  * formatted as follows:
@@ -651,8 +651,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"video_ptype_3" : <if simulcasting or doing VP9-SVC, video payload type to use the third substream/layer; optional>,
 	"data_port" : <port to forward the datachannel messages to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
-	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>",
-	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
+	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>"
 }
 \endverbatim
  *
@@ -665,6 +664,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"room" : <unique numeric ID, same as request>,
 	"publisher_id" : <unique numeric ID, same as request>,
 	"rtp_stream" : {
+		"host" : "<host this forwarder is streaming to, same as request>",
 		"audio" : <audio port, same as request if configured>,
 		"audio_stream_id" : <unique numeric ID assigned to the audio RTP forwarder, if any>,
 		"video" : <video port, same as request if configured>,
@@ -3744,8 +3744,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if((p->sdp && p->session->started)) {
 				if(p->audio_level_extmap_id > 0)
 					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
-				json_object_set_new(pl, "internal_audio_ssrc", json_integer(p->audio_ssrc));
-				json_object_set_new(pl, "internal_video_ssrc", json_integer(p->video_ssrc));
 			}
 			json_array_append_new(list, pl);
 		}
@@ -3845,13 +3843,14 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_mutex_unlock(&videoroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("forwarders"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "rtp_forwarders", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch")
-			|| !strcasecmp(request_text, "stop") || !strcasecmp(request_text, "leave")) {
+			|| !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 
 		janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
@@ -4050,22 +4049,17 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
-		uint32_t ssrc = ntohl(rtp->ssrc);
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
+			uint32_t ssrc = ntohl(rtp->ssrc);
 			if(ssrc == participant->ssrc[0])
 				sc = 0;
 			else if(ssrc == participant->ssrc[1])
 				sc = 1;
 			else if(ssrc == participant->ssrc[2])
 				sc = 2;
-		} else {
-			/* Set the SSRC of the publisher */
-			rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
 		}
-		/* Set the payload type of the publisher */
-		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
 		if(participant->srtp_contexts && g_hash_table_size(participant->srtp_contexts) > 0) {
@@ -4125,6 +4119,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			rtp->ssrc = htonl(ssrc);
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
+		/* Set the payload type of the publisher */
+		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		if(sc < 1) {
 			/* Save the frame if we're recording
 			 * FIXME: for video, we're currently only recording the base substream, when simulcasting */
@@ -4227,7 +4223,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				}
 			}
 		}
-		janus_mutex_unlock(&participant->subscribers_mutex);
 	}
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
@@ -4757,8 +4752,6 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->subscribers_mutex);
 				publisher->audio_pt = -1;	/* We'll deal with this later */
 				publisher->video_pt = -1;	/* We'll deal with this later */
-				publisher->audio_ssrc = janus_random_uint32();
-				publisher->video_ssrc = janus_random_uint32();
 				publisher->audio_level_extmap_id = 0;
 				publisher->video_orient_extmap_id = 0;
 				publisher->playout_delay_extmap_id = 0;

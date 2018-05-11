@@ -636,10 +636,13 @@ rtspiface = network interface IP address or device name to listen on when receiv
 
 #include "plugin.h"
 
-#include <jansson.h>
 #include <errno.h>
+#include <netdb.h>
 #include <sys/poll.h>
+#include <sys/socket.h>
 #include <sys/time.h>
+
+#include <jansson.h>
 
 #ifdef HAVE_LIBCURL
 #include <curl/curl.h>
@@ -929,6 +932,8 @@ typedef struct janus_streaming_rtp_source {
 	char *rtsp_url;
 	char *rtsp_username, *rtsp_password;
 	int ka_timeout;
+	char *rtsp_ahost, *rtsp_vhost;
+	int rtsp_asport, rtsp_vsport;
 	gboolean reconnecting;
 	gint64 reconnect_timer;
 	janus_mutex rtsp_mutex;
@@ -945,6 +950,8 @@ typedef struct janus_streaming_rtp_source {
 	janus_network_address data_iface;
 	/* Only needed for SRTP forwarders */
 	gboolean is_srtp;
+	int srtpsuite;
+	char *srtpcrypto;
 	srtp_t srtp_ctx;
 	srtp_policy_t srtp_policy;
 } janus_streaming_rtp_source;
@@ -2537,6 +2544,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(diface)
 						janus_config_add_item(config, mp->name, "dataiface", json_string_value(diface));
 				}
+				if(source->srtpsuite > 0 && source->srtpcrypto) {
+					g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
+					janus_config_add_item(config, mp->name, "srtpsuite", value);
+					janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
+				}
 			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
 				janus_streaming_file_source *source = mp->source;
 				janus_config_add_item(config, mp->name, "filename", source->filename);
@@ -2593,19 +2605,19 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(!strcasecmp(type_text, "rtp")) {
 			janus_streaming_rtp_source *source = mp->source;
 			if (source->audio_fd != -1) {
-				json_object_set_new(ml, "audio_port", json_integer(janus_streaming_get_fd_port(source->audio_fd)));
+				json_object_set_new(ml, "audio_port", json_integer(source->audio_port));
 			}
 			if (source->video_fd[0] != -1) {
-				json_object_set_new(ml, "video_port", json_integer(janus_streaming_get_fd_port(source->video_fd[0])));
+				json_object_set_new(ml, "video_port", json_integer(source->video_port[0]));
 			}
 			if (source->video_fd[1] != -1) {
-				json_object_set_new(ml, "video_port_2", json_integer(janus_streaming_get_fd_port(source->video_fd[1])));
+				json_object_set_new(ml, "video_port_2", json_integer(source->video_port[1]));
 			}
 			if (source->video_fd[2] != -1) {
-				json_object_set_new(ml, "video_port_3", json_integer(janus_streaming_get_fd_port(source->video_fd[2])));
+				json_object_set_new(ml, "video_port_3", json_integer(source->video_port[2]));
 			}
 			if (source->data_fd != -1) {
-				json_object_set_new(ml, "data_port", json_integer(janus_streaming_get_fd_port(source->data_fd)));
+				json_object_set_new(ml, "data_port", json_integer(source->data_port));
 			}
 		}
 		json_object_set_new(response, "stream", ml);
@@ -2806,6 +2818,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						json_t *diface = json_object_get(root, "dataiface");
 						if(diface)
 							janus_config_add_item(config, mp->name, "dataiface", json_string_value(diface));
+					}
+					if(source->srtpsuite > 0 && source->srtpcrypto) {
+						g_snprintf(value, BUFSIZ, "%d", source->srtpsuite);
+						janus_config_add_item(config, mp->name, "srtpsuite", value);
+						janus_config_add_item(config, mp->name, "srtpcrypto", source->srtpcrypto);
 					}
 				}
 			} else {
@@ -3362,20 +3379,14 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	}
 	session->substream = -1;
-	session->substream_target = 0;
+	session->substream_target = 2;
 	session->templayer = -1;
-	session->templayer_target = 0;
+	session->templayer_target = 2;
 	session->last_relayed = 0;
 	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	session->stopping = TRUE;
 	session->started = FALSE;
 	session->paused = FALSE;
-	session->substream = -1;
-	session->substream_target = 0;
-	session->templayer = -1;
-	session->templayer_target = 0;
-	session->last_relayed = 0;
-	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	janus_streaming_mountpoint *mp = session->mountpoint;
 	if(mp) {
 		janus_mutex_lock(&mp->mutex);
@@ -3660,7 +3671,6 @@ done:
 				g_strlcat(sdptemp, buffer, 2048);
 			}
 #endif
-			janus_mutex_unlock(&mp->mutex);
 			sdp = g_strdup(sdptemp);
 			JANUS_LOG(LOG_VERB, "Going to %s this SDP:\n%s\n", sdp_type, sdp);
 			result = json_object();
@@ -3730,12 +3740,6 @@ done:
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
 				if(source && source->simulcast) {
-					/* This mountpoint is simulcasting, let's aim high by default */
-					session->substream = -1;
-					session->substream_target = 2;
-					session->templayer = -1;
-					session->templayer_target = 2;
-					janus_vp8_simulcast_context_reset(&session->simulcast_context);
 					/* Unless the request contains a target */
 					json_t *substream = json_object_get(root, "substream");
 					if(substream) {
@@ -4036,13 +4040,10 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 		close(source->video_rtcp_fd);
 	}
 #endif
-	if(source->data_fd > 0) {
-		close(source->data_fd);
-	}
-	if(source->pipefd[0] > 0) {
+	if(source->pipefd[0] > -1) {
 		close(source->pipefd[0]);
 	}
-	if(source->pipefd[1] > 0) {
+	if(source->pipefd[1] > -1) {
 		close(source->pipefd[1]);
 	}
 	janus_mutex_lock(&source->keyframe.mutex);
@@ -4075,6 +4076,7 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	}
 	janus_mutex_unlock(&source->buffermsg_mutex);
 	if(source->is_srtp) {
+		g_free(source->srtpcrypto);
 		srtp_dealloc(source->srtp_ctx);
 		g_free(source->srtp_policy.key);
 	}
@@ -4097,6 +4099,8 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	g_free(source->rtsp_url);
 	g_free(source->rtsp_username);
 	g_free(source->rtsp_password);
+	g_free(source->rtsp_ahost);
+	g_free(source->rtsp_vhost);
 	janus_mutex_unlock(&source->rtsp_mutex);
 #endif
 	g_free(source);
@@ -4161,6 +4165,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		aport = janus_streaming_get_fd_port(audio_fd);
 	}
 	int video_fd[3] = {-1, -1, -1};
 	if(dovideo) {
@@ -4173,6 +4178,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		vport = janus_streaming_get_fd_port(video_fd[0]);
 		if(simulcast) {
 			if(vport2 > 0) {
 				video_fd[1] = janus_streaming_create_fd(vport2, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
@@ -4186,6 +4192,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
 				}
+				vport2 = janus_streaming_get_fd_port(video_fd[1]);
 			}
 			if(vport3 > 0) {
 				video_fd[2] = janus_streaming_create_fd(vport3, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
@@ -4201,6 +4208,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
 				}
+				vport3 = janus_streaming_get_fd_port(video_fd[2]);
 			}
 		}
 	}
@@ -4222,6 +4230,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
 		}
+		dport = janus_streaming_get_fd_port(data_fd);
 #else
 		JANUS_LOG(LOG_WARN, "Mountpoint wants to do datachannel relaying, but datachannels support was not compiled...\n");
 		dodata = FALSE;
@@ -4308,6 +4317,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			return NULL;
 		}
 		live_rtp_source->is_srtp = TRUE;
+		live_rtp_source->srtpsuite = srtpsuite;
+		live_rtp_source->srtpcrypto = g_strdup(srtpcrypto);
 	}
 	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_iface = doaudio && !janus_network_address_is_null(aiface) ? *aiface : nil;
@@ -4333,6 +4344,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->video_fd[0] = video_fd[0];
 	live_rtp_source->video_fd[1] = video_fd[1];
 	live_rtp_source->video_fd[2] = video_fd[2];
+#ifdef HAVE_LIBCURL
+	live_rtp_source->audio_rtcp_fd = -1;
+	live_rtp_source->video_rtcp_fd = -1;
+#endif
 	live_rtp_source->data_fd = data_fd;
 	pipe(live_rtp_source->pipefd);
 	live_rtp_source->last_received_audio = janus_get_monotonic_time();
@@ -4490,7 +4505,7 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 }
 
 static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
-		char *transport, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
+		char *transport, char *host, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m = strstr(buffer, pattern);
@@ -4514,10 +4529,18 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		sscanf(f, "a=fmtp:%*d %2047[^\r\n]s", fmtp);
 	}
 	char *c = strstr(m, "c=IN IP4");
+	if(c == NULL) {
+		/* No m-line c= attribute? try in the whole SDP */
+		c = strstr(buffer, "c=IN IP4");
+	}
 	char ip[256];
 	in_addr_t mcast = INADDR_ANY;
 	if(c != NULL) {
 		if(sscanf(c, "c=IN IP4 %[^/]", ip) != 0) {
+			memcpy(host, ip, sizeof(ip));
+			c = strstr(host, "\r\n");
+			if(c)
+				*c = '\0';
 			mcast = inet_addr(ip);
 		}
 	}
@@ -4632,6 +4655,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char vcontrol[2048];
 	char uri[1024];
 	char vtransport[1024];
+	char vhost[256];
+	int vsport = 0;
 	multiple_fds video_fds = {-1, -1};
 
 	int apt = -1;
@@ -4639,16 +4664,18 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char afmtp[2048];
 	char acontrol[2048];
 	char atransport[1024];
+	char ahost[256];
+	int asport = 0;
 	multiple_fds audio_fds = {-1, -1};
 
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult;
 	vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
-		vtransport, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
+		vtransport, vhost, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
 
 	int aresult;
 	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
-		atransport, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+		atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
 
 	if(vresult != -1) {
 		/* Send an RTSP SETUP for video */
@@ -4681,6 +4708,12 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			ka_timeout = atoi(timeout+strlen(";timeout="));
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
+		/* Get the RTP server port, which we'll need for the latching packet */
+		const char *transport = strstr(curldata->buffer, ";server_port=");
+		if(transport) {
+			vsport = atoi(transport+strlen(";server_port="));
+			JANUS_LOG(LOG_VERB, "  -- RTSP server_port (video): %d\n", vsport);
+		}
 	}
 
 	if(aresult != -1) {
@@ -4710,6 +4743,12 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			if(temp_timeout > 0 && temp_timeout < ka_timeout)
 				ka_timeout = temp_timeout;
 		}
+		/* Get the RTP server port, which we'll need for the latching packet */
+		const char *transport = strstr(curldata->buffer, ";server_port=");
+		if(transport) {
+			asport = atoi(transport+strlen(";server_port="));
+			JANUS_LOG(LOG_VERB, "  -- RTSP server_port (audio): %d\n", asport);
+		}
 	}
 
 	/* Update the source (but check if rtpmap/fmtp need to be overridden) */
@@ -4725,12 +4764,19 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		mp->codecs.video_fmtp = dovideo ? g_strdup(vfmtp) : NULL;
 	source->audio_fd = audio_fds.fd;
 	source->audio_rtcp_fd = audio_fds.rtcp_fd;
+	source->rtsp_asport = asport;
+	g_free(source->rtsp_ahost);
+	if(asport > 0)
+		source->rtsp_ahost = g_strdup(ahost);
 	source->video_fd[0] = video_fds.fd;
 	source->video_rtcp_fd = video_fds.rtcp_fd;
+	source->rtsp_vsport = vsport;
+	g_free(source->rtsp_vhost);
+	if(vsport > 0)
+		source->rtsp_vhost = g_strdup(vhost);
 	source->curl = curl;
 	source->curldata = curldata;
-	if(ka_timeout > 0)
-		source->ka_timeout = ka_timeout;
+	source->ka_timeout = ka_timeout;
 	return 0;
 }
 
@@ -4738,6 +4784,67 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	if(source == NULL || source->curldata == NULL)
 		return -1;
+	/* First of all, send a latching packet to the RTSP server port(s) */
+	if(source->rtsp_asport > 0 && source->audio_fd >= 0) {
+		JANUS_LOG(LOG_VERB, "RTSP audio latching: %s:%u\n", source->rtsp_ahost, source->rtsp_asport);
+		/* Resolve address to get an IP */
+		struct addrinfo *res = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(getaddrinfo(source->rtsp_ahost, NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", source->rtsp_ahost);
+			if(res)
+				freeaddrinfo(res);
+		} else {
+			freeaddrinfo(res);
+			/* Prepare the recipient */
+			struct sockaddr_in remote;
+			memset(&remote, 0, sizeof(remote));
+			remote.sin_family = AF_INET;
+			remote.sin_port = htons(source->rtsp_asport);
+			memcpy(&remote.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+			socklen_t addrlen = sizeof(remote);
+			/* Prepare an empty RTP packet */
+			janus_rtp_header rtp;
+			memset(&rtp, 0, sizeof(rtp));
+			rtp.version = 2;
+			/* Send a couple of latching packets */
+			(void)sendto(source->audio_fd, &rtp, 12, 0, &remote, addrlen);
+			(void)sendto(source->audio_fd, &rtp, 12, 0, &remote, addrlen);
+		}
+	}
+	if(source->rtsp_vsport > 0 && source->video_fd[0] >= 0) {
+		JANUS_LOG(LOG_VERB, "RTSP video latching: %s:%u\n", source->rtsp_vhost, source->rtsp_vsport);
+		/* Resolve address to get an IP */
+		struct addrinfo *res = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(getaddrinfo(source->rtsp_vhost, NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", source->rtsp_vhost);
+			if(res)
+				freeaddrinfo(res);
+		} else {
+			freeaddrinfo(res);
+			/* Prepare the recipient */
+			struct sockaddr_in remote;
+			memset(&remote, 0, sizeof(remote));
+			remote.sin_family = AF_INET;
+			remote.sin_port = htons(source->rtsp_vsport);
+			memcpy(&remote.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+			socklen_t addrlen = sizeof(remote);
+			/* Prepare an empty RTP packet */
+			janus_rtp_header rtp;
+			memset(&rtp, 0, sizeof(rtp));
+			rtp.version = 2;
+			/* Send a couple of latching packets */
+			(void)sendto(source->video_fd[0], &rtp, 12, 0, &remote, addrlen);
+			(void)sendto(source->video_fd[0], &rtp, 12, 0, &remote, addrlen);
+		}
+	}
 	/* Send an RTSP PLAY */
 	janus_mutex_lock(&source->rtsp_mutex);
 	g_free(source->curldata->buffer);

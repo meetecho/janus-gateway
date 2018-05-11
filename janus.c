@@ -2400,6 +2400,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
+		const char *srtp_profile = janus_get_dtls_srtp_profile(dtls->srtp_profile);
+		json_object_set_new(d, "srtp-profile", json_string(srtp_profile ? srtp_profile : "none"));
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_started > 0)
 			json_object_set_new(d, "handshake-started", json_integer(dtls->dtls_started));
@@ -2813,6 +2815,38 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
+			if(offer && ice_handle->stream) {
+				/* We might need some new properties set as well */
+				janus_ice_stream *stream = ice_handle->stream;
+				if(audio) {
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+						janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+						stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+						if(stream->audio_rtcp_ctx == NULL) {
+							stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+							stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+						}
+					}
+					if(ice_handle->audio_mid == NULL)
+						ice_handle->audio_mid = g_strdup("audio");
+				}
+				if(video) {
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+						janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+						stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+						if(stream->video_rtcp_ctx[0] == NULL) {
+							stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
+							stream->video_rtcp_ctx[0]->tb = 48000;	/* May change later */
+						}
+					}
+					if(ice_handle->video_mid == NULL)
+						ice_handle->video_mid = g_strdup("video");
+				}
+				if(data) {
+					if(ice_handle->data_mid == NULL)
+						ice_handle->data_mid = g_strdup("data");
+				}
+			}
 		}
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
@@ -3029,6 +3063,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 	/* Destroy the handle */
 	janus_session_handles_remove(session, ice_handle);
 
+	janus_refcount_decrease(&plugin_session->ref);
 	return G_SOURCE_REMOVE;
 }
 
@@ -3036,6 +3071,7 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle: enqueue it as a timed source */
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return;
+	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
 	g_source_set_callback(timeout_source, janus_plugin_end_session_internal, plugin_session, NULL);
 	g_source_attach(timeout_source, sessions_watchdog_context);

@@ -1740,7 +1740,8 @@ int janus_http_notifier(janus_transport_session *ts, janus_http_session *session
 				break;
 			} else {
 				/* The application is willing to receive more events at the same time, anything to report? */
-				list = json_array();
+				if(list == NULL)
+					list = json_array();
 				json_array_append_new(list, event);
 				int events = 1;
 				while(events < max_events) {
