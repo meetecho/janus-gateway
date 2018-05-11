@@ -73,7 +73,12 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
 		} else if(type == JANUS_EVENT_TYPE_CORE) {
-			/* Core events also allocate a json_t object for its data, unref it */
+			/* Core events also allocate a json_t object for their data, unref it */
+			json_t *body = va_arg(args, json_t *);
+			json_decref(body);
+		} else if(type == JANUS_EVENT_TYPE_EXTERNAL) {
+			/* Admin API originated external events also allocate a json_t object for their data, unref it */
+			va_arg(args, char *);
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
 		} else if(type == JANUS_EVENT_TYPE_SESSION) {
@@ -106,7 +111,8 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 		json_object_set_new(event, "emitter", json_string(server));
 	json_object_set_new(event, "type", json_integer(type));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
-	if(type != JANUS_EVENT_TYPE_CORE) {			/* Core events don't have a session ID */
+	if(type != JANUS_EVENT_TYPE_CORE && type != JANUS_EVENT_TYPE_EXTERNAL) {
+		/* Core and Admin API originated events don't have a session ID */
 		if(session_id == 0 && (type == JANUS_EVENT_TYPE_PLUGIN || type == JANUS_EVENT_TYPE_TRANSPORT)) {
 			/* ... but plugin/transport events may not have one either */
 		} else {
@@ -208,6 +214,13 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			body = va_arg(args, json_t *);
 			break;
 		}
+		case JANUS_EVENT_TYPE_EXTERNAL: {
+			char *schema = va_arg(args, char *);
+			json_object_set_new(body, "schema", json_string(schema));
+			json_t *data = va_arg(args, json_t *);
+			json_object_set(body, "data", data);
+			break;
+		}
 		default:
 			JANUS_LOG(LOG_WARN, "Unknown event type '%d'\n", type);
 			json_decref(event);
@@ -218,6 +231,10 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
+	if(!eventsenabled) {
+		json_decref(event);
+		return;
+	}
 	/* Enqueue the event */
 	g_async_queue_push(events, event);
 }
@@ -252,6 +269,12 @@ void *janus_events_thread(void *data) {
 
 		/* Unref the final event reference, interested handlers will have their own reference */
 		json_decref(event);
+	}
+
+	/* Cleanup pending events */
+	while((event = g_async_queue_try_pop(events)) != NULL) {
+		if(event != &exit_event)
+			json_decref(event);
 	}
 
 	JANUS_LOG(LOG_VERB, "Leaving EchoTest handler thread\n");
