@@ -26,24 +26,29 @@ static GThread *events_thread;
 void *janus_events_thread(void *data);
 
 int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers) {
-	/* We setup a thread for passing events to the handlers */
-	GError *error = NULL;
-	events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
-	if(server_name != NULL)
-		server = g_strdup(server_name);
-	events = g_async_queue_new();
-	eventhandlers = handlers;
 	eventsenabled = enabled;
+	if(eventsenabled) {
+		events = g_async_queue_new();
+		if(server_name != NULL)
+			server = g_strdup(server_name);
+		eventhandlers = handlers;
+		/* We setup a thread for passing events to the handlers */
+		GError *error = NULL;
+		events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
+		if(error != NULL) {
+			eventsenabled = FALSE;
+			g_free(server);
+			g_async_queue_unref(events);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
+	}
 	return 0;
 }
 
 void janus_events_deinit(void) {
 	eventsenabled = FALSE;
-	if (events != NULL) {
+	if(events != NULL) {
 		g_async_queue_push(events, &exit_event);
 	}
 	if(events_thread != NULL) {
@@ -277,6 +282,6 @@ void *janus_events_thread(void *data) {
 			json_decref(event);
 	}
 
-	JANUS_LOG(LOG_VERB, "Leaving EchoTest handler thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving Events handler thread\n");
 	return NULL;
 }
