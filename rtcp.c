@@ -196,17 +196,17 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		uint32_t s = tv.tv_sec + 2208988800u;
 		uint32_t u = tv.tv_usec;
 		uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-		uint32_t ntp_ts_msw = htonl(s);
-		uint32_t ntp_ts_lsw = htonl(f);
-		uint64_t temp = ntohl(ntp_ts_msw);
-		temp = (temp << 32) | ntohl(ntp_ts_lsw);
+		uint32_t ntp_ts_msw = s;
+		uint32_t ntp_ts_lsw = f;
+		uint64_t temp = ((uint64_t)ntp_ts_msw << 32 ) | ntp_ts_lsw;
 		uint32_t a = (uint32_t)(temp >> 16);
 		uint32_t rtt = a - lsr - dlsr;
 		uint32_t rtt_msw = (rtt & 0xFFFF0000) >> 16;
-		uint32_t rtt_lsw = (rtt & 0x0000FFFF) << 16;
+		uint32_t rtt_lsw = rtt & 0x0000FFFF;
 		tv.tv_sec = rtt_msw;
-		tv.tv_usec = ((rtt_lsw << 6) / 3650) - (rtt_lsw >> 12) - (rtt_lsw >> 8);
-		ctx->rtt = tv.tv_sec + tv.tv_usec / 1000;	/* We need milliseconds */
+		tv.tv_usec = (rtt_lsw * 15625) >> 10;
+		ctx->rtt = tv.tv_sec*1000 + tv.tv_usec/1000;	/* We need milliseconds */
+		JANUS_LOG(LOG_HUGE, "rtt=%"SCNu32"\n", ctx->rtt);
 	}
 }
 

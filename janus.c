@@ -197,6 +197,9 @@ static json_t *janus_create_message(const char *status, uint64_t session_id, con
 #define DEFAULT_SESSION_TIMEOUT		60
 static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
 
+#define DEFAULT_RECLAIM_SESSION_TIMEOUT		0
+static uint reclaim_session_timeout = DEFAULT_RECLAIM_SESSION_TIMEOUT;
+
 
 /* Information */
 static json_t *janus_info(const char *transaction) {
@@ -218,6 +221,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "data_channels", json_false());
 #endif
 	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
+	json_object_set_new(info, "reclaim-session-timeout", json_integer(reclaim_session_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
@@ -461,8 +465,10 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
-					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) {
+			if ((now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) ||
+					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
+							!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1))) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 				/* Mark the session as over, we'll deal with it later */
 				janus_session_handles_clear(session);
@@ -471,7 +477,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					json_t *event = janus_create_message("timeout", session->session_id, NULL);
 					/* Send this to the transport client and notify the session's over */
 					session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
-					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
+					session->source->transport->session_over(session->source->instance, session->session_id, TRUE, FALSE);
 				}
 				/* Notify event handlers as well */
 				if(janus_events_is_enabled())
@@ -529,6 +535,7 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->source = NULL;
 	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->timeout, 0);
+	g_atomic_int_set(&session->transport_gone, 0);
 	session->last_activity = janus_get_monotonic_time();
 	session->ice_handles = NULL;
 	janus_mutex_init(&session->mutex);
@@ -969,7 +976,7 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
 		if(session->source && session->source->transport) {
-			session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
 		}
 		/* Schedule the session for deletion */
 		janus_session_destroy(session);
@@ -1015,6 +1022,27 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_ice_webrtc_hangup(handle, "Janus API");
 		/* Prepare JSON reply */
 		json_t *reply = janus_create_message("success", session_id, transaction_text);
+		/* Send the success reply */
+		ret = janus_process_success(request, reply);
+	} else if(!strcasecmp(message_text, "claim")) {
+		janus_mutex_lock(&session->mutex);
+		if(session->source != NULL) {
+			/* Notify the old transport that this session is over for them, but has been reclaimed */
+			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, TRUE);
+			janus_request_destroy(session->source);
+			session->source = NULL;
+		}
+		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+		/* Notify the new transport that it has claimed a session */
+		session->source->transport->session_claimed(session->source->instance, session->session_id);
+		/* Previous transport may be gone, clear flag. */
+		g_atomic_int_set(&session->transport_gone, 0);
+		janus_mutex_unlock(&session->mutex);
+		/* Prepare JSON reply */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "message")) {
@@ -1618,6 +1646,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
+			json_object_set_new(status, "reclaim_session_timeout", json_integer(reclaim_session_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
@@ -2361,6 +2390,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
+		const char *srtp_profile = janus_get_dtls_srtp_profile(dtls->srtp_profile);
+		json_object_set_new(d, "srtp-profile", json_string(srtp_profile ? srtp_profile : "none"));
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_started > 0)
 			json_object_set_new(d, "handshake-started", json_integer(dtls->dtls_started));
@@ -2459,10 +2490,16 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 			if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->timeout) || session->last_activity == 0)
 				continue;
 			if(session->source && session->source->instance == transport) {
+				JANUS_LOG(LOG_VERB, "  -- Session %"SCNu64" will be over if not reclaimed\n", session->session_id);
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
-				/* Mark the session as destroyed */
-				janus_session_destroy(session);
-				g_hash_table_iter_remove(&iter);
+				if(reclaim_session_timeout < 1) { /* Reclaim session timeouts are disabled */
+					/* Mark the session as destroyed */
+					janus_session_destroy(session);
+					g_hash_table_iter_remove(&iter);
+				} else {
+					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed*/
+					g_atomic_int_set(&session->transport_gone, 1);
+				}
 			}
 		}
 	}
@@ -2768,6 +2805,38 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
+			if(offer && ice_handle->stream) {
+				/* We might need some new properties set as well */
+				janus_ice_stream *stream = ice_handle->stream;
+				if(audio) {
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+						janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+						stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+						if(stream->audio_rtcp_ctx == NULL) {
+							stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+							stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+						}
+					}
+					if(ice_handle->audio_mid == NULL)
+						ice_handle->audio_mid = g_strdup("audio");
+				}
+				if(video) {
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+						janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+						stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+						if(stream->video_rtcp_ctx[0] == NULL) {
+							stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
+							stream->video_rtcp_ctx[0]->tb = 48000;	/* May change later */
+						}
+					}
+					if(ice_handle->video_mid == NULL)
+						ice_handle->video_mid = g_strdup("video");
+				}
+				if(data) {
+					if(ice_handle->data_mid == NULL)
+						ice_handle->data_mid = g_strdup("data");
+				}
+			}
 		}
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
@@ -2984,6 +3053,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 	/* Destroy the handle */
 	janus_session_handles_remove(session, ice_handle);
 
+	janus_refcount_decrease(&plugin_session->ref);
 	return G_SOURCE_REMOVE;
 }
 
@@ -2991,6 +3061,7 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle: enqueue it as a timed source */
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
 		return;
+	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
 	g_source_set_callback(timeout_source, janus_plugin_end_session_internal, plugin_session, NULL);
 	g_source_attach(timeout_source, sessions_watchdog_context);
@@ -3272,6 +3343,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(st, 20, "%d", args_info.session_timeout_arg);
 		janus_config_add_item(config, "general", "session_timeout", st);
 	}
+	if(args_info.reclaim_session_timeout_given) {
+		char st[20];
+		g_snprintf(st, 20, "%d", args_info.reclaim_session_timeout_arg);
+		janus_config_add_item(config, "general", "reclaim_session_timeout", st);
+	}
  	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -3452,6 +3528,20 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
 			}
 			session_timeout = st;
+		}
+	}
+
+	/* Check if a custom reclaim session timeout value was specified */
+	item = janus_config_get_item_drilldown(config, "general", "reclaim_session_timeout");
+	if(item && item->value) {
+		int rst = atoi(item->value);
+		if(rst < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring reclaim_session_timeout value as it's not a positive integer\n");
+		} else {
+			if(rst == 0) {
+				JANUS_LOG(LOG_WARN, "Reclaim session timeouts have been disabled, will cleanup immediately\n");
+			}
+			reclaim_session_timeout = rst;
 		}
 	}
 
@@ -4081,7 +4171,8 @@ gint main(int argc, char *argv[])
 					!janus_transport->is_janus_api_enabled ||
 					!janus_transport->is_admin_api_enabled ||
 					!janus_transport->session_created ||
-					!janus_transport->session_over) {
+					!janus_transport->session_over ||
+					!janus_transport->session_claimed) {
 				JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this transport plugin...\n");
 				continue;
 			}

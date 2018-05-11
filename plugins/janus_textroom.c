@@ -42,8 +42,390 @@
  * include the correct \c admin_key value in an "admin_key" property
  * will succeed, and will be rejected otherwise.
  *
+ * Rooms to make available at startup are listed in the plugin configuration file.
+ * A pre-filled configuration file is provided in \c conf/janus.plugin.textroom.cfg
+ * and includes a demo room for testing.
+ *
+ * To add more static rooms or modify the existing one, you can use the following
+ * syntax:
+ * 
+ * \verbatim
+[<unique room ID>]
+description = This is my awesome room
+is_private = yes|no (whether this room should be in the public list, default=yes)
+secret = <optional password needed for manipulating (e.g. destroying) the room>
+pin = <optional password needed for joining the room>
+post = <optional backend to contact via HTTP post for all incoming messages>
+\endverbatim
+ *
+ * As explained in the next section, you can also create rooms programmatically.
+ *
  * \section textroomapi Text Room API
- * TBD.
+ *
+ * All TextRoom API requests are addressed by a \c textroom named property,
+ * and must contain a \c transaction string property as well, which will
+ * be returned in the response. Notice that, for the sake of brevity, the
+ * \c transaction property will not be displayed in the documentation,
+ * although, as explained, it MUST be present, and WILL be included in
+ * all responses (but not in the unsolicited events, like join/leave
+ * or incoming messages).
+ *
+ * To get a list of the available rooms (excluded those configured or
+ * created as private rooms) you can make use of the \c list request,
+ * which has to be formatted as follows:
+ * 
+\verbatim
+{
+	"textroom" : "list",
+}
+\endverbatim
+ *
+ * A successful request will produce a list of rooms in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "success",
+	"rooms" : [		// Array of room objects
+		{	// Room #1
+			"room" : <unique numeric ID>,
+			"description" : "<Name of the room>",
+			"pin_required" : <true|false, depending on whether the room is PIN-protected>,
+			"num_participants" : <count of the participants>
+		},
+		// Other rooms
+	]
+}
+\endverbatim
+ *
+ * To create new TextRoom rooms you can use the \c create request. The API
+ * room creation supports the same fields as creation via configuration files,
+ * which means the request must be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "create",
+	"room" : <unique numeric room ID to assign; optional, chosen by plugin if missing>,
+	"admin_key" : "<plugin administrator key; mandatory if configured>",
+	"description" : "<description of room; optional>",
+	"secret" : "<secret to query/edit the room later; optional>",
+	"pin" : "<PIN required for participants to join room; optional>",
+	"is_private" : <true|false, whether the room should be listable; optional, true by default>,
+	"post" : "<backend to contact via HTTP post for all incoming messages; optional>",
+	"permanent" : <true|false, whether the mountpoint should be saved to configuration file or not; false by default>
+}
+\endverbatim
+ *
+ * A successful creation procedure will result in a \c success response:
+ * 
+\verbatim
+{
+	"textroom" : "success",
+	"room" : <unique numeric ID>,
+	"permanent" : <true if saved to config file, false if not>
+}
+\endverbatim
+ *
+ * If you requested a permanent room but a \c false value is returned
+ * instead, good chances are that there are permission problems.
+ *
+ * An error instead (and the same applies to all other requests, so this
+ * won't be repeated) would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"textroom" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ *
+ * Once a room has been created, you can still edit some (but not all)
+ * of its properties using the \c edit request. This allows you to modify
+ * the room description, secret, pin, whether it's private or not and
+ * the backend to forward incoming messages to: you won't be able to modify
+ * other more static properties, though, like the room ID for instance.
+ * If you're interested in changing the ACL, instead, check the \c allowed
+ * message. An \c edit request has to be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "edit",
+	"room" : <unique numeric ID of the room to edit; mandatory>,
+	"secret" : "<room secret; mandatory if configured>",
+	"new_description" : "<new pretty name of the room; optional>",
+	"new_secret" : "<new password required to edit/destroy the room; optional>",
+	"new_pin" : "<new password required to join the room; optional>",
+	"new_is_private" : <true|false, whether the room should appear in a list request; optional>,
+	"permanent" : <true|false, whether the room should be also removed from the config file; default false>
+}
+\endverbatim
+ *
+ * A successful edit procedure will result in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "edited",
+	"room" : <unique numeric ID>,
+	"permanent" : <true if changes were saved to config file, false if not>
+}
+\endverbatim
+ *
+ * On the other hand, \c destroy can be used to destroy an existing text
+ * room, whether created dynamically or statically, and has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "destroy",
+	"room" : <unique numeric ID of the room to destroy; mandatory>,
+	"secret" : "<room secret; mandatory if configured>",
+	"permanent" : <true|false, whether the room should be also removed from the config file; default false>
+}
+\endverbatim
+ *
+ * A successful destruction procedure will result in a \c destroyed response:
+ *
+\verbatim
+{
+	"textroom" : "destroyed",
+	"room" : <unique numeric ID>,
+	"permanent" : <true if the room was removed from config file too, false if not>
+}
+\endverbatim
+ *
+ * This will also result in a \c destroyed event being sent to all the
+ * participants in the room, which will look like this:
+ *
+\verbatim
+{
+	"textroom" : "destroyed",
+	"room" : <unique numeric ID of the destroyed room>
+}
+\endverbatim
+ *
+ * You can check whether a room exists using the \c exists request,
+ * which has to be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "exists",
+	"room" : <unique numeric ID of the room to check; mandatory>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "success",
+	"room" : <unique numeric ID>,
+	"exists" : <true|false>
+}
+\endverbatim
+ *
+ * You can configure whether to check tokens or add/remove people who can join
+ * a room using the \c allowed request, which has to be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "allowed",
+	"secret" : "<room secret; mandatory if configured>",
+	"action" : "enable|disable|add|remove",
+	"room" : <unique numeric ID of the room to update; mandatory>,
+	"allowed" : [
+		// Array of strings (tokens users might pass in "join", only for add|remove)
+	]
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "success",
+	"room" : <unique numeric ID>,
+	"allowed" : [
+		// Updated, complete, list of allowed tokens (only for enable|add|remove)
+	]
+}
+\endverbatim
+ *
+ * If you're the administrator of a room (that is, you created it and have access
+ * to the secret) you can kick participants using the \c kick request. Notice
+ * that this only kicks the user out of the room, but does not prevent them from
+ * re-joining: to ban them, you need to first remove them from the list of
+ * authorized users (see \c allowed request) and then \c kick them. The \c kick
+ * request has to be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "kick",
+	"secret" : "<room secret; mandatory if configured>",
+	"room" : <unique numeric ID of the room; mandatory>,
+	"username" : "<unique username of the participant to kick; mandatory>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "success",
+}
+\endverbatim
+ *
+ * This will also result in a \c kicked event being sent to all the other
+ * participants in the room, which will look like this:
+ *
+\verbatim
+{
+	"textroom" : "kicked",
+	"room" : <unique numeric ID of the room>,
+	"username" : "<unique username of the kicked participant>"
+}
+\endverbatim
+ *
+ * For what concerns room participation, you can join a room using the
+ * \c join request, send messages (public and private) using the
+ * \c message request, and leave a room with \c leave instead.
+ *
+ * A \c join request must be formatted as follows:
+ *
+\verbatim
+{
+	"textroom" : "join",
+	"room" : <unique numeric ID of the room to join>,
+	"pin" : "<pin to join the room; mandatory if configured>",
+	"username" : "<unique username to have in the room; mandatory>",
+	"display" : "<display name to use in the room; optional>"
+}
+\endverbatim
+ *
+ * A successful join will result in a \c success response, which will
+ * include a list of all the other participants currently in the room:
+ *
+\verbatim
+{
+	"textroom" : "success",
+	"participants" : [
+		{
+			"username" : "<username of participant #1>",
+			"display" : "<display name of participant #1, if any>"
+		},
+		// Other participants
+	]
+}
+\endverbatim
+ *
+ * As explained previously, there's no hardcoded limit in how many rooms
+ * you can join with the same participant and on the same PeerConnection.
+ *
+ * Notice that a successful \c join request will also result in a
+ * \c join event being sent to all the other participants, so that
+ * they're notified about the new participant getting in the room:
+ *
+\verbatim
+{
+	"textroom" : "join",
+	"room" : <room ID>,
+	"username" : "<username of new participant>",
+	"display" : "<display name of new participant, if any>"
+}
+\endverbatim
+ *
+ * To leave a previously joined room, instead, the \c leave request can
+ * be used, which must be formatted like this:
+ *
+\verbatim
+{
+	"textroom" : "leave",
+	"room" : <unique numeric ID of the room to leave>
+}
+\endverbatim
+ *
+ * A successful leave will result in a \c success response:
+ *
+\verbatim
+{
+	"textroom" : "success"
+}
+\endverbatim
+ *
+ * Notice that a successful \c leave request will also result in a
+ * \c leave event being sent to all the other participants, so that
+ * they're notified about the participant that just left the room:
+ *
+\verbatim
+{
+	"textroom" : "leave",
+	"room" : <room ID>,
+	"username" : "<username of gone participant>"
+}
+\endverbatim
+ *
+ * Finally, the \c message request allows you to send public and private
+ * messages within the context of a room. It must be formatted like this:
+ *
+\verbatim
+{
+	"textroom" : "message",
+	"room" : <unique numeric ID of the room this message will refer to>,
+	"to" : "<username to send the message to; optional, only needed in case of private messages>",
+	"tos" : "<array of usernames to send the message to; optional, only needed in case of private messages>",
+	"text" : "<content of the message to send, as a string>",
+	"ack" : <true|false, whether the sender wants an ack for the sent message(s); optional, true by default>
+}
+\endverbatim
+ *
+ * A \c message with no \c to and no \c tos is considered a public message,
+ * and so will be sent to all the participants in the room. In case either
+ * \c to or \c tos is specified, instead, this is considered to be a whisper,
+ * that is a private message only meant for the specified recipients. Notice
+ * that \c to and \c tos are mutually exclusive, and you cannot specify both.
+ *
+ * \c text must be a string, but apart from that there's no limit on what
+ * you can put in there. It could be, for instance, a serialized JSON string,
+ * or a stringified XML document, or whatever makes sense to the application.
+ *
+ * A successful message delivery will result in a \c success response, but
+ * only if \c ack was \c true in the \c message request. This was done by
+ * design, to allow users to disable explicit acks for every outgoing message,
+ * especially in case of verbose communications. In case an ack is required,
+ * the response will look like this:
+ *
+\verbatim
+{
+	"textroom" : "success"
+}
+\endverbatim
+ *
+ * Incoming messages can come either as \c message or \c whisper events.
+ * \c message will notify the user about an incoming public message, that
+ * is a message that was sent to the whole room:
+ *
+\verbatim
+{
+	"textroom" : "message",
+	"room" : <room ID the message was sent to>,
+	"from" : "<username of participant who sent the public message>",
+	"date" : "<date/time of when the message was sent>",
+	"text" : "<content of the message>"
+}
+\endverbatim
+ *
+ * \c whisper messages, instead, will notify the user about an incoming
+ * \b private message from another participant in the room:
+ *
+\verbatim
+{
+	"textroom" : "whisper",
+	"room" : <room ID the message was sent to>,
+	"from" : "<username of participant who sent the private message>",
+	"date" : "<date/time of when the message was sent>",
+	"text" : "<content of the message>"
+}
+\endverbatim
  *
  * \ingroup plugins
  * \ref plugins
@@ -148,15 +530,22 @@ static struct janus_json_parameter create_parameters[] = {
 	{"pin", JSON_STRING, 0},
 	{"post", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"allowed", JSON_ARRAY, 0}
+	{"allowed", JSON_ARRAY, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter destroy_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"description", JSON_STRING, 0},
 	{"secret", JSON_STRING, 0},
-	{"pin", JSON_STRING, 0},
-	{"post", JSON_STRING, 0},
-	{"is_private", JANUS_JSON_BOOL, 0}
+	{"new_description", JSON_STRING, 0},
+	{"new_secret", JSON_STRING, 0},
+	{"new_pin", JSON_STRING, 0},
+	{"new_post", JSON_STRING, 0},
+	{"new_is_private", JANUS_JSON_BOOL, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -172,6 +561,7 @@ static struct janus_json_parameter kick_parameters[] = {
 static struct janus_json_parameter join_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"pin", JSON_STRING, 0},
 	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter message_parameters[] = {
@@ -1710,7 +2100,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 	} else if(!strcasecmp(request_text, "destroy")) {
-		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)

@@ -64,7 +64,8 @@ gboolean janus_websockets_is_janus_api_enabled(void);
 gboolean janus_websockets_is_admin_api_enabled(void);
 int janus_websockets_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_websockets_session_created(janus_transport_session *transport, guint64 session_id);
-void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -87,6 +88,7 @@ static janus_transport janus_websockets_transport =
 		.send_message = janus_websockets_send_message,
 		.session_created = janus_websockets_session_created,
 		.session_over = janus_websockets_session_over,
+		.session_claimed = janus_websockets_session_claimed,
 	);
 
 /* Transport creator */
@@ -819,9 +821,10 @@ void janus_websockets_session_created(janus_transport_session *transport, guint6
 	/* We don't care */
 }
 
-void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
-	if(!timeout || transport == NULL || g_atomic_int_get(&transport->destroyed))
+void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
+	if(!timeout || claimed || transport == NULL || g_atomic_int_get(&transport->destroyed))
 		return;
+	/* Claimed sessions return -- is there any extra logic necessary for a claimed session when using websockets? */
 	janus_mutex_lock(&transport->mutex);
 	/* We only care if it's a timeout: if so, close the connection */
 	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
@@ -832,6 +835,11 @@ void janus_websockets_session_over(janus_transport_session *transport, guint64 s
 	g_atomic_int_set(&client->session_timeout, 1);
 	lws_callback_on_writable(client->wsi);
 	janus_mutex_unlock(&transport->mutex);
+}
+
+void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
+	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
 

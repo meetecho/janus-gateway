@@ -9,12 +9,12 @@
  * protocol) to interact with the applications, whether they're web based
  * or not. The core also takes care of bridging peers and plugins
  * accordingly, in terms of both messaging and real-time media transfer
- * via WebRTC. 
- * 
+ * via WebRTC.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_GATEWAY_H
 #define _JANUS_GATEWAY_H
 
@@ -40,7 +40,7 @@
 
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
 typedef struct janus_request janus_request;
- 
+
 /*! \brief Gateway-Client session */
 typedef struct janus_session {
 	/*! \brief Janus Gateway-Client session ID */
@@ -53,6 +53,8 @@ typedef struct janus_session {
 	janus_request *source;
 	/*! \brief Flag to notify there's been a session timeout */
 	volatile gint timeout;
+	/*! \brief Flag to notify that transport is gone */
+	volatile gint transport_gone;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

@@ -33,20 +33,29 @@
 	"video" : true|false,
 	"bitrate" : <numeric bitrate value>,
 	"record" : true|false,
-	"filename" : <base path/filename to use for the recording>
+	"filename" : <base path/filename to use for the recording>,
+	"substream" : <substream to receive (0-2), in case simulcasting is enabled>,
+	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>
 }
 \endverbatim
  *
  * \c audio instructs the plugin to do or do not bounce back audio
  * frames; \c video does the same for video; \c bitrate caps the
  * bandwidth to force on the browser encoding side (e.g., 128000 for
- * 128kbps).
+ * 128kbps); \c record enables or disables the recording of this peer;
+ * in case recording is enabled, \c filename allows to specify a base
+ * path/filename to use for the files (-audio.mjr, -video.mjr and -data.mjr
+ * are automatically appended); finally, in case the session uses
+ * simulcasting, \c substream and \c temporal can be used to manually
+ * pick which substream and/or temporal layer should be received back.
  * 
- * The first request must be sent together with a JSEP offer to
- * negotiate a PeerConnection: a JSEP answer will be provided with
- * the asynchronous response notification. Subsequent requests (e.g., to
- * dynamically manipulate the bitrate while testing) have to be sent
- * without any JSEP payload attached.
+ * A JSEP offer can be sent along any request to negotiate a PeerConnection:
+ * in that case, a JSEP answer will be provided with the asynchronous
+ * response notification. Other requests (e.g., to dynamically manipulate
+ * the bitrate while testing) have to be sent without any JSEP payload
+ * attached, unless you want to renegotiate a session (e.g., to add/remove
+ * a media stream, or force an ICE restart): in case of renegotiations,
+ * the same rules as the first JSEP offer apply.
  * 
  * A successful request will result in an \c ok event:
  * 

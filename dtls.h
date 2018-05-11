@@ -73,6 +73,8 @@ typedef struct janus_dtls_srtp {
 	BIO *filter_bio;
 	/*! \brief Whether SRTP has been correctly set up for this component or not */
 	gint srtp_valid;
+	/*! \brief The SRTP profile currently in use */
+	gint srtp_profile;
 	/*! \brief libsrtp context for incoming SRTP packets */
 	srtp_t srtp_in;
 	/*! \brief libsrtp context for outgoing SRTP packets */
@@ -81,8 +83,6 @@ typedef struct janus_dtls_srtp {
 	srtp_policy_t remote_policy;
 	/*! \brief libsrtp policy for outgoing SRTP packets */
 	srtp_policy_t local_policy;
-	/*! \brief Mutex to lock/unlock this libsrtp context */
-	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
 	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
@@ -179,5 +179,9 @@ const gchar *janus_get_dtls_srtp_state(janus_dtls_state state);
  * @returns A string representation of the role */
 const gchar *janus_get_dtls_srtp_role(janus_dtls_role role);
 
+/*! \brief Helper method to get a string representation of an SRTP profile
+ * @param[in] profile The SRTP profile as exported by a DTLS-SRTP handshake
+ * @returns A string representation of the profile */
+const gchar *janus_get_dtls_srtp_profile(int profile);
 
 #endif

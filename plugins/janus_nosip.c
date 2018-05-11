@@ -42,8 +42,106 @@
  * plugin, though, will generate and expect plain SDP, so you'll need to
  * take care of any adaptation that may be needed to make this work with
  * the signalling protocol of your choice.
- * 
- * Actual API docs: TBD.
+ *
+ * \section nosipapi NoSIP Plugin API
+ *
+ * The plugin mainly supports two requests, \c generate and \c process,
+ * which are both asynchronous. The \c generate request take a JSEP offer
+ * or answer, and generates a barebone SDP the "legacy" application can
+ * use; the \c process request, on the other hand, processes a remote
+ * barebone SDP, and matches it to the plugin may have generated before,
+ * in order to then return a JSEP offer or answer that can be used to
+ * setup a PeerConnection. 
+ *
+ * The \c generate request must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "generate",
+	"info" : "<opaque string that the user can provide for context; optional>",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>"
+}
+\endverbatim
+ *
+ * As anticipated, this requires a JSEP offer or answer passed via Janus
+ * API as part of a WebRTC PeerConnection negotiation. If the conversion
+ * of the WebRTC JSEP SDP to barebone SDP is successful, a \c generated
+ * event is sent back to the user:
+ *
+\verbatim
+{
+	"event" : "generated",
+	"type" : "<offer|answer, depending on the nature of the provided JSEP>",
+	"sdp" : "<barebone SDP content>"
+}
+\endverbatim
+ *
+ * The \c process request, instead, must be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "process",
+	"type" : "<offer|answer, depending on the nature of the provided SDP>",
+	"sdp" : "<barebone SDP to convert>"
+	"info" : "<opaque string that the user can provide for context; optional>",
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>"
+}
+\endverbatim
+ *
+ * As anticipated, this requires a "legacy" SDP offer or answer passed via
+ * NoSIP plugin messaging, which is why the caller must specify if it's an
+ * offer or answer. If the request is successful, a \c processed event is
+ * sent back to the user, along to the JSEP offer or answer that Janus
+ * generated out of the barebone SDP:
+ *
+\verbatim
+{
+	"event" : "processed",
+	"srtp" : "<whether the barebone SDP mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>"
+}
+\endverbatim
+ *
+ * To close a session you can use the \c hangup request, which needs no
+ * additional arguments, as the whole context can be extracted from the
+ * current state of the session in the plugin:
+ *
+\verbatim
+{
+	"request" : "hangup"
+}
+\endverbatim
+ *
+ * An \c hangingup event will be sent back, as this is an asynchronous request.
+ *
+ * Finally, just as in the SIP and SIPre plugins, the multimedia session
+ * can be recorded. Considering the NoSIP plugin also assumes two peers
+ * are in a call with each other (although it makes no assumptions on
+ * the signalling that ties them together), it works exactly the same
+ * way as the SIP and SIPre plugin do when it comes to recording.
+ * Specifically, you make use of the \c recording request to either start
+ * or stop a recording, using the following syntax:
+ *
+\verbatim
+{
+	"request" : "recording",
+	"action" : "<start|stop, depending on whether you want to start or stop recording something>"
+	"audio" : <true|false; whether or not our audio should be recorded>,
+	"video" : <true|false; whether or not our video should be recorded>,
+	"peer_audio" : <true|false; whether or not our peer's audio should be recorded>,
+	"peer_video" : <true|false; whether or not our peer's video should be recorded>,
+	"filename" : "<base path/filename to use for all the recordings>"
+}
+\endverbatim
+ *
+ * As you can see, this means that the two sides of conversation are recorded
+ * separately, and so are the audio and video streams if available. You can
+ * choose which ones to record, in case you're interested in just a subset.
+ * The \c filename part is just a prefix, and dictates the actual filenames
+ * that will be used for the up-to-four recordings that may need to be enabled.
+ *
+ * A \c recordingupdated event is sent back in case the request is successful.
  *
  * \ingroup plugins
  * \ref plugins

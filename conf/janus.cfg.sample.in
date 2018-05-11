@@ -50,6 +50,16 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							risk having orphaned sessions (sessions not
 ;							controlled by any transport and never freed).
 ;							To avoid timeouts, keep-alives can be used.
+;
+;reclaim_session_timeout = 0		; How long (in seconds) we should wait for a
+;							janus session to be reclaimed after the transport
+;							is gone. After the transport is gone, a session 
+;							times out when no request is received for 
+;							reclaim_session_timeout seconds (default=0s).
+;							Setting this to 0 will disable the timeout
+;							mechanism, and sessions will be destroyed immediately
+;							if the transport is gone.
+;
 ;recordings_tmp_ext = tmp	; The extension for recordings, in Janus, is
 ;							.mjr, a custom format we devised ourselves.
 ;							By default, we save to .mjr directly. If you'd
@@ -74,7 +84,7 @@ cert_key = @certdir@/mycert.key
 ; support should be negotiated or not (off by default), the maximum size
 ; of the NACK queue (in milliseconds, defaults to 500ms) for retransmissions, the
 ; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
-; starting MTU for DTLS (1472 by default, it adapts automatically), and
+; starting MTU for DTLS (1200 by default, it adapts automatically), and
 ; finally how much time, in seconds, should pass with no media (audio or
 ; video) being received before Janus notifies you about this (default=1s,
 ; 0 disables these events entirely).
