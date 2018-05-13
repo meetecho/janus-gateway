@@ -158,6 +158,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 #include <errno.h>
 #include <sys/poll.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #ifdef HAVE_LIBCURL
 #include <curl/curl.h>
@@ -203,6 +204,22 @@ void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
 static int janus_streaming_get_fd_port(int fd);
+void *janus_reconnect_rtsp_source(void *);
+struct  janus_rtsp_source_args {
+	uint64_t id;
+	char *name;
+	char *desc;
+	char *url;
+	char *username;
+	char *password;
+	gboolean doaudio;
+	char *artpmap;
+	char *afmtp;
+	gboolean dovideo;
+	char *vrtpmap;
+	char *vfmtp;
+	const janus_network_address *iface;
+};
 
 /* Plugin setup */
 static janus_plugin janus_streaming_plugin =
@@ -670,6 +687,37 @@ static void *janus_streaming_watchdog(void *data) {
 	return NULL;
 }
 
+_Noreturn void *janus_reconnect_rtsp_source(void *rtsp_args) {
+	int i=0;
+	struct janus_rtsp_source_args *args = rtsp_args;
+	while(1) {
+		sleep(10);
+		i++;
+		JANUS_LOG(LOG_INFO, "['%s'] retrying connection.. count=%d\n", args->name, i);
+		janus_streaming_mountpoint *mp = NULL;
+		if((mp = janus_streaming_create_rtsp_source(
+							args->id,
+							args->name,
+							args->desc,
+							args->url,
+							args->username,
+							args->password,
+							args->doaudio,
+							args->artpmap,
+							args->afmtp,
+							args->dovideo,
+							args->vrtpmap,
+							args->vfmtp,
+							args->iface)) == NULL) {
+			JANUS_LOG(LOG_ERR, "\n['%s'] Error creating 'rtsp' stream... Will retry again in 10s..\n", args->name);
+		} else {
+			JANUS_LOG(LOG_INFO, "\n['%s'] Successfully connected...", args->name);
+			break;
+		}
+	}
+	pthread_exit(NULL);
+}
+
 /* Plugin implementation */
 int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 #ifdef HAVE_LIBCURL
@@ -1098,6 +1146,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
+
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_rtsp_source(
 						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
@@ -1114,6 +1163,29 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vfmtp ? (char *)vfmtp->value : NULL,
 						iface && iface->value ? &iface_value : NULL)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
+					JANUS_LOG(LOG_INFO, "Starting a thread in backgroung to retry connecting '%s'...\n", cat->name);
+
+					// Creating new thread for each rtsp souce which will run in background and
+					// try for connecting the source if it is not available at startup
+					pthread_t pt;
+					struct janus_rtsp_source_args *rtsp_args = malloc(sizeof(struct janus_rtsp_source_args));
+
+					rtsp_args->id =	(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0;
+					rtsp_args->name =	(char *)cat->name;
+					rtsp_args->desc =	desc ? (char *)desc->value : NULL;
+					rtsp_args->url =	(char *)file->value;
+					rtsp_args->username =	username ? (char *)username->value : NULL;
+					rtsp_args->password =	password ? (char *)password->value : NULL;
+					rtsp_args->doaudio =	doaudio;
+					rtsp_args->artpmap =	artpmap ? (char *)artpmap->value : NULL;
+					rtsp_args->afmtp =	afmtp ? (char *)afmtp->value : NULL;
+					rtsp_args->dovideo =	dovideo;
+					rtsp_args->vrtpmap =	vrtpmap ? (char *)vrtpmap->value : NULL;
+					rtsp_args->vfmtp =	vfmtp ? (char *)vfmtp->value : NULL;
+					rtsp_args->iface = iface && iface->value ? &iface_value : NULL;
+
+					pthread_create(&pt, NULL, janus_reconnect_rtsp_source, (void *)rtsp_args);
+
 					cl = cl->next;
 					continue;
 				}
