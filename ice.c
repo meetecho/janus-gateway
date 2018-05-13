@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <stun/usages/bind.h>
 #include <nice/debug.h>
+#include <pthread.h>
 
 #include "janus.h"
 #include "debug.h"
@@ -95,6 +96,24 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+/* To connect to configured STUN server in a background thread with retry attempts in case of failures */
+void *janus_connect_to_stun_with_retries(void *);
+
+struct janus_stun_connect_args {
+	gchar *stun_server;
+	uint16_t stun_port;
+};
+
+/* To connect to configured TURN server in a background thread with retry attempts in case of failures */
+void *janus_connect_to_turn_with_retries(void *);
+
+struct janus_turn_connect_args {
+	gchar *turn_server;
+	uint16_t turn_port;
+	gchar *turn_type;
+	gchar *turn_user;
+	gchar *turn_pwd;
+};
 
 /* libnice debugging */
 static gboolean janus_ice_debugging_enabled;
@@ -736,199 +755,240 @@ void janus_ice_deinit(void) {
 #endif
 }
 
+_Noreturn void * janus_connect_to_stun_with_retries(void *stun_connect_args) {
+	struct janus_stun_connect_args *args = stun_connect_args;
+	gchar *stun_server = args->stun_server;
+	uint16_t stun_port = args->stun_port;
+	while(1) {
+		sleep(5);
+		JANUS_LOG(LOG_INFO, "Trying to connect to STUN Server: %s:%u\n", stun_server, stun_port);
+		if(stun_server == NULL)
+			break;	/* No initialization needed */
+		if(stun_port == 0)
+			stun_port = 3478;
+		/* Resolve address to get an IP */
+		struct addrinfo *res = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(getaddrinfo(stun_server, NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
+			if(res)
+				freeaddrinfo(res);
+			continue;
+		}
+		freeaddrinfo(res);
+		janus_stun_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
+		if(janus_stun_server == NULL) {
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
+			continue;
+		}
+		janus_stun_port = stun_port;
+		JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
+		/* Test the STUN server */
+		StunAgent stun;
+		stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
+		StunMessage msg;
+		uint8_t buf[1500];
+		size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
+		JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
+		/* Use the janus_network_address info to drive the socket creation */
+		int fd = socket(addr.family, SOCK_DGRAM, 0);
+		if(fd < 0) {
+			JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
+			continue;
+		}
+		struct sockaddr *address = NULL, *remote = NULL;
+		struct sockaddr_in address4, remote4;
+		struct sockaddr_in6 address6, remote6;
+		socklen_t addrlen = 0;
+		if(addr.family == AF_INET) {
+			memset(&address4, 0, sizeof(address4));
+			address4.sin_family = AF_INET;
+			address4.sin_port = 0;
+			address4.sin_addr.s_addr = INADDR_ANY;
+			memset(&remote4, 0, sizeof(remote4));
+			remote4.sin_family = AF_INET;
+			remote4.sin_port = htons(janus_stun_port);
+			memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+			address = (struct sockaddr *)(&address4);
+			remote = (struct sockaddr *)(&remote4);
+			addrlen = sizeof(remote4);
+		} else if(addr.family == AF_INET6) {
+			memset(&address6, 0, sizeof(address6));
+			address6.sin6_family = AF_INET6;
+			address6.sin6_port = 0;
+			address6.sin6_addr = in6addr_any;
+			memset(&remote6, 0, sizeof(remote6));
+			remote6.sin6_family = AF_INET6;
+			remote6.sin6_port = htons(janus_stun_port);
+			memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
+			remote6.sin6_addr = addr.ipv6;
+			address = (struct sockaddr *)(&address6);
+			remote = (struct sockaddr *)(&remote6);
+			addrlen = sizeof(remote6);
+		}
+		if(bind(fd, address, addrlen) < 0) {
+			JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+			close(fd);
+			continue;
+		}
+		int bytes = sendto(fd, buf, len, 0, remote, addrlen);
+		if(bytes < 0) {
+			JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
+			close(fd);
+			continue;
+		}
+		JANUS_LOG(LOG_VERB, "  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
+		struct timeval timeout;
+		fd_set readfds;
+		FD_ZERO(&readfds);
+		FD_SET(fd, &readfds);
+		timeout.tv_sec = 5;	/* FIXME Don't wait forever */
+		timeout.tv_usec = 0;
+		int err = select(fd+1, &readfds, NULL, NULL, &timeout);
+		if(err < 0) {
+			JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+			close(fd);
+			continue;
+		}
+		if(!FD_ISSET(fd, &readfds)) {
+			JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
+			close(fd);
+			continue;
+		}
+		bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
+		JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
+		if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
+			JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
+			close(fd);
+			continue;
+		}
+		StunClass class = stun_message_get_class(&msg);
+		StunMethod method = stun_message_get_method(&msg);
+		if(class != STUN_RESPONSE || method != STUN_BINDING) {
+			JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
+			close(fd);
+			continue;
+		}
+		StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
+		JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
+		if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+			if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
+			} else {
+				const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+				JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+				janus_set_public_ip(public_ip);
+				close(fd);
+			}
+			break;
+		}
+		ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
+		JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
+		if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+			if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
+			} else {
+				const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+				JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+				janus_set_public_ip(public_ip);
+				close(fd);
+			}
+			break;
+		}
+		close(fd);
+		continue;
+	}
+	pthread_exit(0);
+}
+
 int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
-	if(stun_server == NULL)
-		return 0;	/* No initialization needed */
-	if(stun_port == 0)
-		stun_port = 3478;
-	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
-	/* Resolve address to get an IP */
-	struct addrinfo *res = NULL;
-	janus_network_address addr;
-	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
-		if(res)
-			freeaddrinfo(res);
-		return -1;
-	}
-	freeaddrinfo(res);
-	janus_stun_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
-	if(janus_stun_server == NULL) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
-		return -1;
-	}
-	janus_stun_port = stun_port;
-	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
-	/* Test the STUN server */
-	StunAgent stun;
-	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
-	StunMessage msg;
-	uint8_t buf[1500];
-	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
-	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
-	/* Use the janus_network_address info to drive the socket creation */
-	int fd = socket(addr.family, SOCK_DGRAM, 0);
-	if(fd < 0) {
-		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
-		return -1;
-	}
-	struct sockaddr *address = NULL, *remote = NULL;
-	struct sockaddr_in address4, remote4;
-	struct sockaddr_in6 address6, remote6;
-	socklen_t addrlen = 0;
-	if(addr.family == AF_INET) {
-		memset(&address4, 0, sizeof(address4));
-		address4.sin_family = AF_INET;
-		address4.sin_port = 0;
-		address4.sin_addr.s_addr = INADDR_ANY;
-		memset(&remote4, 0, sizeof(remote4));
-		remote4.sin_family = AF_INET;
-		remote4.sin_port = htons(janus_stun_port);
-		memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
-		address = (struct sockaddr *)(&address4);
-		remote = (struct sockaddr *)(&remote4);
-		addrlen = sizeof(remote4);
-	} else if(addr.family == AF_INET6) {
-		memset(&address6, 0, sizeof(address6));
-		address6.sin6_family = AF_INET6;
-		address6.sin6_port = 0;
-		address6.sin6_addr = in6addr_any;
-		memset(&remote6, 0, sizeof(remote6));
-		remote6.sin6_family = AF_INET6;
-		remote6.sin6_port = htons(janus_stun_port);
-		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
-		remote6.sin6_addr = addr.ipv6;
-		address = (struct sockaddr *)(&address6);
-		remote = (struct sockaddr *)(&remote6);
-		addrlen = sizeof(remote6);
-	}
-	if(bind(fd, address, addrlen) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
-		close(fd);
-		return -1;
-	}
-	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
-	if(bytes < 0) {
-		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
-		close(fd);
-		return -1;
-	}
-	JANUS_LOG(LOG_VERB, "  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
-	struct timeval timeout;
-	fd_set readfds;
-	FD_ZERO(&readfds);
-	FD_SET(fd, &readfds);
-	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
-	timeout.tv_usec = 0;
-	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
-	if(err < 0) {
-		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
-		close(fd);
-		return -1;
-	}
-	if(!FD_ISSET(fd, &readfds)) {
-		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
-		close(fd);
-		return -1;
-	}
-	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
-	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
-		close(fd);
-		return -1;
-	}
-	StunClass class = stun_message_get_class(&msg);
-	StunMethod method = stun_message_get_method(&msg);
-	if(class != STUN_RESPONSE || method != STUN_BINDING) {
-		JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
-		close(fd);
-		return -1;
-	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
-	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
-				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
+	pthread_t pt;
+	struct janus_stun_connect_args *stun_connect_args = malloc(sizeof(struct janus_stun_connect_args));
+
+	stun_connect_args->stun_server = stun_server;
+	stun_connect_args->stun_port = stun_port;
+	return pthread_create(&pt, NULL, janus_connect_to_stun_with_retries, (void *)stun_connect_args);
+}
+
+_Noreturn void * janus_connect_to_turn_with_retries(void *turn_connect_args) {
+	struct janus_turn_connect_args *args = turn_connect_args;
+
+	gchar *turn_server = args->turn_server;
+	uint16_t turn_port = args->turn_port;
+	gchar *turn_type = args->turn_type;
+	gchar *turn_user = args->turn_user;
+	gchar *turn_pwd = args->turn_pwd;
+
+	while(1) {
+		sleep(5);
+		JANUS_LOG(LOG_INFO, "Trying to connect to TURN Server: %s:%u (%s)\n", turn_server, turn_port, turn_type);
+		if(turn_server == NULL)
+			break;	/* No initialization needed */
+		if(turn_type == NULL)
+			turn_type = (char *)"udp";
+		if(turn_port == 0)
+			turn_port = 3478;
+		if(!strcasecmp(turn_type, "udp")) {
+			janus_turn_type = NICE_RELAY_TYPE_TURN_UDP;
+		} else if(!strcasecmp(turn_type, "tcp")) {
+			janus_turn_type = NICE_RELAY_TYPE_TURN_TCP;
+		} else if(!strcasecmp(turn_type, "tls")) {
+			janus_turn_type = NICE_RELAY_TYPE_TURN_TLS;
 		} else {
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
-			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-			janus_set_public_ip(public_ip);
-			close(fd);
+			JANUS_LOG(LOG_ERR, "Unsupported relay type '%s'...\n", turn_type);
+			continue;
 		}
-		return 0;
-	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
-	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
+		/* Resolve address to get an IP */
+		struct addrinfo *res = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(getaddrinfo(turn_server, NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
-		} else {
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
-			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-			janus_set_public_ip(public_ip);
-			close(fd);
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+			if(res)
+				freeaddrinfo(res);
+			continue;
 		}
-		return 0;
+		freeaddrinfo(res);
+		janus_turn_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
+		if(janus_turn_server == NULL) {
+			JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+			continue;
+		}
+		janus_turn_port = turn_port;
+		JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_turn_server, janus_turn_port);
+		if(janus_turn_user != NULL)
+			g_free(janus_turn_user);
+		janus_turn_user = NULL;
+		if(turn_user)
+			janus_turn_user = g_strdup(turn_user);
+		if(janus_turn_pwd != NULL)
+			g_free(janus_turn_pwd);
+		janus_turn_pwd = NULL;
+		if(turn_pwd)
+			janus_turn_pwd = g_strdup(turn_pwd);
+		break;
 	}
-	close(fd);
-	return -1;
+	pthread_exit(0);
 }
 
 int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd) {
-	if(turn_server == NULL)
-		return 0;	/* No initialization needed */
-	if(turn_type == NULL)
-		turn_type = (char *)"udp";
-	if(turn_port == 0)
-		turn_port = 3478;
-	JANUS_LOG(LOG_INFO, "TURN server to use: %s:%u (%s)\n", turn_server, turn_port, turn_type);
-	if(!strcasecmp(turn_type, "udp")) {
-		janus_turn_type = NICE_RELAY_TYPE_TURN_UDP;
-	} else if(!strcasecmp(turn_type, "tcp")) {
-		janus_turn_type = NICE_RELAY_TYPE_TURN_TCP;
-	} else if(!strcasecmp(turn_type, "tls")) {
-		janus_turn_type = NICE_RELAY_TYPE_TURN_TLS;
-	} else {
-		JANUS_LOG(LOG_ERR, "Unsupported relay type '%s'...\n", turn_type);
-		return -1;
-	}
-	/* Resolve address to get an IP */
-	struct addrinfo *res = NULL;
-	janus_network_address addr;
-	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
-		if(res)
-			freeaddrinfo(res);
-		return -1;
-	}
-	freeaddrinfo(res);
-	janus_turn_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
-	if(janus_turn_server == NULL) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
-		return -1;
-	}
-	janus_turn_port = turn_port;
-	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_turn_server, janus_turn_port);
-	if(janus_turn_user != NULL)
-		g_free(janus_turn_user);
-	janus_turn_user = NULL;
-	if(turn_user)
-		janus_turn_user = g_strdup(turn_user);
-	if(janus_turn_pwd != NULL)
-		g_free(janus_turn_pwd);
-	janus_turn_pwd = NULL;
-	if(turn_pwd)
-		janus_turn_pwd = g_strdup(turn_pwd);
-	return 0;
+	pthread_t pt;
+	struct janus_turn_connect_args *turn_connect_args = malloc(sizeof(struct janus_turn_connect_args));
+
+	turn_connect_args->turn_server = turn_server;
+	turn_connect_args->turn_port = turn_port;
+	turn_connect_args->turn_type = turn_type;
+	turn_connect_args->turn_user = turn_user;
+	turn_connect_args->turn_pwd = turn_pwd;
+
+	return pthread_create(&pt, NULL, janus_connect_to_turn_with_retries, (void *)turn_connect_args);
 }
 
 int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method) {
