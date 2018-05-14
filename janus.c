@@ -2852,7 +2852,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 						if(stream->video_rtcp_ctx[0] == NULL) {
 							stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
-							stream->video_rtcp_ctx[0]->tb = 48000;	/* May change later */
+							stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 						}
 					}
 					if(ice_handle->video_mid == NULL)
