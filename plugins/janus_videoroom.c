@@ -4052,9 +4052,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		uint32_t ssrc = ntohl(rtp->ssrc);
 
 		/* Skew Compensation */
+		gint64 now = janus_get_monotonic_time();
 		if (videoroom->askew && !video) {
 			janus_rtp_header_update(rtp, &participant->context[0], FALSE, 0);
-			int ret = janus_rtp_skew_compensate_audio(rtp, &participant->context[0], janus_get_real_time());
+			int ret = janus_rtp_skew_compensate_audio(rtp, &participant->context[0], now);
 			if (ret < 0) {
 				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Dropping %d packets, audio source clock is too fast (id=%"SCNu64", ssrc=%u)\n", participant->room_id, -ret, participant->user_id, ssrc);
 				return;
@@ -4063,7 +4064,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			}
 		} else if (videoroom->vskew && video && participant->ssrc[0] == 0) {
 			janus_rtp_header_update(rtp, &participant->context[1], TRUE, 0);
-			int ret = janus_rtp_skew_compensate_video(rtp, &participant->context[1], janus_get_real_time());
+			int ret = janus_rtp_skew_compensate_video(rtp, &participant->context[1], now);
 			if (ret < 0) {
 				JANUS_LOG(LOG_WARN, "[videoroom-%"SCNu64"] Dropping %d packets, video source clock is too fast (id=%"SCNu64", ssrc=%u)\n", participant->room_id, -ret, participant->user_id, ssrc);
 				return;
