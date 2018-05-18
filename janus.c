@@ -135,6 +135,10 @@ static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
+static struct janus_json_parameter customevent_parameters[] = {
+	{"schema", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter text2pcap_parameters[] = {
 	{"folder", JSON_STRING, 0},
 	{"filename", JSON_STRING, 0},
@@ -1874,6 +1878,28 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "custom_event")) {
+			/* Enqueue a custom "external" event to notify via event handlers */
+			JANUS_VALIDATE_JSON_OBJECT(root, customevent_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *schema = json_object_get(root, "schema");
+			const char *schema_value = json_string_value(schema);
+			json_t *data = json_object_get(root, "data");
+			if(janus_events_is_enabled()) {
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_EXTERNAL, 0, schema_value, data);
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		} else if(!strcasecmp(message_text, "list_sessions")) {
 			/* List sessions */
 			session_id = 0;
@@ -2826,7 +2852,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 						if(stream->video_rtcp_ctx[0] == NULL) {
 							stream->video_rtcp_ctx[0] = g_malloc0(sizeof(rtcp_context));
-							stream->video_rtcp_ctx[0]->tb = 48000;	/* May change later */
+							stream->video_rtcp_ctx[0]->tb = 90000;	/* May change later */
 						}
 					}
 					if(ice_handle->video_mid == NULL)

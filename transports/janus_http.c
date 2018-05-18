@@ -281,7 +281,7 @@ static void janus_http_random_string(int length, char *buffer) {
 /* Helper to create a MHD daemon */
 static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		const char *interface, const char *ip, int port, gint64 threads,
-		const char *server_pem, const char *server_key, const char *password) {
+		const char *server_pem, const char *server_key, const char *password, const char *ciphers) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
 	/* Any interface or IP address we need to limit ourselves to?
@@ -495,6 +495,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -518,6 +519,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -542,6 +544,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -562,6 +565,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -774,7 +778,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get(config, config_general, janus_config_type_item, "ip");
 			if(item && item->value)
 				ip = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -794,6 +799,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 		if(item && item->value)
 			password = (char *)item->value;
+		const char *ciphers = "NORMAL";
+		item = janus_config_get_item_drilldown(config, "certificates", "ciphers");
+		if(item && item->value)
+			ciphers = item->value;
 		if(server_key)
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get(config, config_general, janus_config_type_item, "https");
@@ -815,7 +824,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get(config, config_general, janus_config_type_item, "secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -857,7 +867,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ip");
 			if(item && item->value)
 				ip = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -884,7 +895,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {

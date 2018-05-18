@@ -131,6 +131,8 @@ static janus_eventhandler janus_fake_eventhandler handler plugin =
 #define JANUS_EVENT_TYPE_SESSION		(1 << 0)
 /*! \brief Handle related events (e.g., handle attached/detached, etc.) */
 #define JANUS_EVENT_TYPE_HANDLE			(1 << 1)
+/*! \brief External events originated via Admin API (e.g., custom events coming from external scripts) */
+#define JANUS_EVENT_TYPE_EXTERNAL		(1 << 2)
 /*! \brief JSEP related events (e.g., got/sent offer/answer) */
 #define JANUS_EVENT_TYPE_JSEP			(1 << 3)
 /*! \brief WebRTC related events (e.g., PeerConnection up/down, ICE updates, DTLS updates, etc.) */
