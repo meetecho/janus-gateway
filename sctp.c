@@ -261,7 +261,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
 	void *component = ((janus_dtls_srtp *)dtls)->component;
 	if (component) {
-		janus_refcount_increase(&((janus_ice_component*)component)->ref);
+		janus_refcount_increase(&((janus_ice_component *)component)->ref);
 	}
 	janus_refcount_increase(&sctp->ref);
 	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
@@ -270,7 +270,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		janus_mutex_unlock(&sctp->mutex);
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
 		if (component) {
-			janus_refcount_decrease(&((janus_ice_component*)component)->ref);
+			janus_refcount_decrease(&((janus_ice_component *)component)->ref);
 		}
 		janus_refcount_decrease(&sctp->ref);	/* This is for the failed thread */
 		janus_refcount_decrease(&sctp->ref);
@@ -1288,7 +1288,7 @@ void *janus_sctp_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)sctp->dtls;
-	janus_ice_component *component = dtls ? (janus_ice_component*)dtls->component : NULL;
+	janus_ice_component *component = dtls ? (janus_ice_component *)dtls->component : NULL;
 	gboolean sent_data = FALSE;
 	while(!g_atomic_int_get(&sctp->destroyed) && sctp_running) {
 		/* Anything to do at all? */
