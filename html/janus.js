@@ -52,7 +52,7 @@ Janus.useDefaultDependencies = function (deps) {
 		newWebSocket: function(server, proto) { return new socketCls(server, proto); },
 		isArray: function(arr) { return Array.isArray(arr); },
 		checkJanusExtension: function() { return document.querySelector('#janus-extension-installed') !== null; },
-		webRTCAdapter: (deps && deps.adapter) || adapter,
+		webRTCAdapter: (deps && deps.webRTCAdapter) || adapter,
 		httpAPICall: function(url, options) {
 			var fetchOptions = {
 				method: options.verb,
@@ -121,7 +121,7 @@ Janus.useOldDependencies = function (deps) {
 		newWebSocket: function(server, proto) { return new socketCls(server, proto); },
 		isArray: function(arr) { return jq.isArray(arr); },
 		checkJanusExtension: function() { return jq('#janus-extension-installed').length > 0; },
-		webRTCAdapter: (deps && deps.adapter) || adapter,
+		webRTCAdapter: (deps && deps.webRTCAdapter) || adapter,
 		httpAPICall: function(url, options) {
 			var payload = options.body !== undefined ? {
 				contentType: 'application/json',
@@ -208,7 +208,16 @@ Janus.init = function(options) {
 		}
 		Janus.log("Initializing library");
 
-		var usedDependencies = options.dependencies || Janus.useDefaultDependencies();
+		var usedDependencies = null;
+		if(options && options.dependencies && (!options.dependencies.isArray ||
+				!options.dependencies.webRTCAdapter || !options.dependencies.httpAPICall ||
+				!options.dependencies.checkJanusExtension || options.dependencies.newWebSocket)) {
+			// Not all dependencies have been overridden: use the default ones as a basis
+			usedDependencies = Janus.useDefaultDependencies(options.dependencies);
+		} else {
+			// This is a complete replacement of the dependencies
+			usedDependencies = options.dependencies;
+		}
 		Janus.isArray = usedDependencies.isArray;
 		Janus.webRTCAdapter = usedDependencies.webRTCAdapter;
 		Janus.httpAPICall = usedDependencies.httpAPICall;
