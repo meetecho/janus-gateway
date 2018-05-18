@@ -4019,7 +4019,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
+		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
@@ -4057,7 +4064,14 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
+		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 	if(rtcp_buf != buf) {
 		/* We filtered the original packet, deallocate it */
 		g_free(rtcp_buf);
@@ -4081,7 +4095,14 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
+		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 #endif
 
