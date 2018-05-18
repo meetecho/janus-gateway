@@ -5473,7 +5473,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
-					gint64 real_time = janus_get_real_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
@@ -5559,7 +5558,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
-					gint64 real_time = janus_get_real_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
