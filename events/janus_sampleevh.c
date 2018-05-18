@@ -159,6 +159,8 @@ static void janus_sampleevh_edit_events_mask(const char *list) {
 							janus_flags_set(&mask, JANUS_EVENT_TYPE_TRANSPORT);
 						} else if(!strcasecmp(index, "core")) {
 							janus_flags_set(&mask, JANUS_EVENT_TYPE_CORE);
+						} else if(!strcasecmp(index, "external")) {
+							janus_flags_set(&mask, JANUS_EVENT_TYPE_EXTERNAL);
 						} else {
 							JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
 						}
@@ -657,6 +659,26 @@ static void *janus_sampleevh_handler(void *data) {
 							   "timestamp": 28381185382,
 							   "event": {
 								  "status": "started"
+							   }
+							}
+						*/
+					case JANUS_EVENT_TYPE_EXTERNAL:
+						/* This is an external event, not originated by Janus itself
+						 * or any of its plugins, but from an ad-hoc Admin API request
+						 * instead. As such, the content of the event is not bound to
+						 * any rules (apart from the fact that it needs to be a JSON
+						 * object), but can be whatever the external source thought
+						 * appropriate. In order to facilitare life to recipients, all
+						 * external events must contain a "schema" property, which anyway
+						 * is not bound to any rules either. As an example:
+							{
+							   "type": 4,
+							   "timestamp": 28381185382,
+							   "event": {
+								  "schema": "my.custom.source",
+								  "data": {
+								     "whatever": "youwant"
+								  }
 							   }
 							}
 						*/

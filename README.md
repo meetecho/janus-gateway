@@ -1,17 +1,19 @@
-Janus WebRTC Gateway
-====================
+Janus WebRTC Server
+===================
 
-Janus is an open source, general purpose, WebRTC gateway designed and
+Janus is an open source, general purpose, WebRTC server designed and
 developed by [Meetecho](http://www.meetecho.com). This version
-of the gateway can only be installed on Linux systems: next versions
-will take into account cross compilation on different environments.
+of the server is tailored for Linux systems, although it can be compiled
+for, and installed on, MacOS machines as well. Windows is not supported,
+but if that's a requirement, Janus is known to work in the "Windows
+Subsystem for Linux" on Windows 10.
 
 For some online demos and documentations, make sure you pay the
-[project website](http://janus.conf.meetecho.com/) a visit!
+[project website](https://janus.conf.meetecho.com/) a visit!
 
 To discuss Janus with us and other users, there's a Google Group called
-[meetecho-janus](http://groups.google.com/d/forum/meetecho-janus) that
-you can use. If you encounter issues, though, please submit an issue
+[meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus)
+that you can use. If you encounter bugs, though, please submit an issue
 on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 
 
@@ -87,7 +89,7 @@ you'll need to install the development version of libcurl as well (usually
 `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
 
 If your distro ships a pre-1.5 version of libsrtp, you'll have to
-uninstall that version and [install 1.5 or 2.0.0 manually](https://github.com/cisco/libsrtp/releases).
+uninstall that version and [install 1.5.x, 1.6.x or 2.x manually](https://github.com/cisco/libsrtp/releases).
 In fact, 1.4.x is known to cause several issues with WebRTC. Installation
 of version 1.5.4 is quite straightforward:
 
@@ -97,7 +99,9 @@ of version 1.5.4 is quite straightforward:
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
-The instructions for version 2.0.0 is practically the same:
+The instructions for version 2.x are practically the same. Notice that
+the following steps are for version 2.0.0, but there may be more recent
+versions available:
 
 	wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
 	tar xfv v2.0.0.tar.gz
@@ -106,8 +110,8 @@ The instructions for version 2.0.0 is practically the same:
 	make shared_library && sudo make install
 
 The Janus configure script autodetects which one you have installed and
-links to the correct library automatically, choosing v2.0.0 if both are
-installed. If you want v1.5.4 to be picked, pass `--disable-libsrtp2`
+links to the correct library automatically, choosing 2.x if both are
+installed. If you want 1.5 or 1.6 to be picked, pass `--disable-libsrtp2`
 when configuring Janus to force it to use the older version instead.
 
 * *Note:* when installing libsrtp, no matter which version, you may need to pass
@@ -254,15 +258,15 @@ Remember to only do this once, or otherwise a subsequent `make configs`
 will overwrite any configuration file you may have modified in the
 meanwhile.
 
-If you're installed the above libraries but are not interested in Data
-Channels, WebSockets, MQTT and/or RabbitMQ (or you don't care about any
-of them), you can disable them when configuring:
+If you've installed the above libraries but are not interested, for
+instance, in Data Channels, WebSockets, MQTT and/or RabbitMQ, you can
+disable them when configuring:
 
 	./configure --disable-websockets --disable-data-channels --disable-rabbitmq --disable-mqtt
 
-If the libraries are not installed, instead, no need to manually disable
-them, as the configure script will skip them automatically and disable
-the related features by itself. A summary of what's going to be built
+There are configuration flags for pretty much all external modules and
+many of the features, so you may want to issue a `./configure --help`
+to dig through the available options. A summary of what's going to be built
 will always appear after you do a configure, allowing you to double
 check if what you need and don't need is there.
 
@@ -285,7 +289,9 @@ MacOS as well, there are a few aspects to highlight when doing that.
 
 First of all, you can use `brew` to install most of the dependencies:
 
-	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
+		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl \
+		glib pkg-config gengetopt autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version
 is higher than `2.4.1`, or you might encounter the problems described in
@@ -388,32 +394,32 @@ specified in the configuration file. To start the gateway, simply run:
 
 This will start the gateway, and have it look at the configuration file.
 
-As far as transports are concerned (that is, with respect to how you can
-interact with your Janus instance), using the default configuration files
-provided after issuing a `make configs` will result in Janus only
-enabling an HTTP webserver (port 8088) and a plain WebSocket server (8188),
-assuming the related transport modules have been compiled, of course.
-To enable HTTPS or Secure WebSockets support, edit the related transport
-configuration file accordingly. You can also change the base path that
-the webserver uses: by default this is `/janus`, but you can change
-it to anything you want and with any nesting you want (e.g., `/mypath`,
-`/my/path`, or `/my/really/nested/path`). This is done to allow
-you to more easily customize rules in any frontend you may have (e.g.,
-Apache in front of your services). Please notice that the path configuration
-is not provided for WebSockets, instead, as it is not needed there. The
-RabbitMQ module, if compiled, is disabled by default, so you'll have
-to enable it manually if interested in it.
+Make sure you have a look at all of the configuration files, to tailor
+Janus to your specific needs: each configuration file is documented, so
+it shouldn't be hard to make changes according to your requirements. The
+repo comes with some defaults (assuming you issues `make configs` after
+installing the server) that tend to make sense for generic deployments,
+and also includes some sample configurations for all the plugins (e.g.,
+web servers to listen on, conference rooms to create, streaming mountpoints
+to make available at startup, etc.).
 
 To test whether it's working correctly, you can use the demos provided
 with this package in the `html` folder: these are exactly the same demos
 available online on the [project website](http://janus.conf.meetecho.com/).
 Just copy the file it contains in a webserver, or use a userspace webserver
 to serve the files in the `html` folder (e.g., with php or python),
-and open the index.html page in either Chrome or Firefox. A list of demo
+and open the `index.html` page in either Chrome or Firefox. A list of demo
 pages exploiting the different plugins will be available. Remember to
 edit the transport/port details in the demo JavaScript files if you
-changed any transport-related configuration from its defaults.
+changed any transport-related configuration from its defaults. Besides,
+the demos refer to the pre-configured plugin resources, so if you add
+some new resources (e.g., a new videoconference) you may have to tweak
+the demo pages to actually use them.
 
+## Documentation
+Janus is thoroughly documented. You can find the current documentation,
+automatically generated with Doxygen, on the
+[project website](http://janus.conf.meetecho.com/docs/).
 
 ## Help us!
 Any thought, feedback or (hopefully not!) insult is welcome!
