@@ -5478,7 +5478,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
-					gint64 real_time = janus_get_real_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
@@ -5531,7 +5530,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Is there a recorder? */
 					janus_rtp_header_update(packet.data, &source->context[0], FALSE, 0);
 					if (source->askew) {
-						int ret = janus_rtp_skew_compensate_audio(packet.data, &source->context[0], real_time);
+						int ret = janus_rtp_skew_compensate_audio(packet.data, &source->context[0], now);
 						if (ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, audio source clock is too fast (ssrc=%u)\n", name, -ret, a_last_ssrc);
 							continue;
@@ -5564,7 +5563,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
-					gint64 real_time = janus_get_real_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
@@ -5703,7 +5701,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Is there a recorder? (FIXME notice we only record the first substream, if simulcasting) */
 					janus_rtp_header_update(packet.data, &source->context[index], TRUE, 0);
 					if (source->vskew) {
-						int ret = janus_rtp_skew_compensate_video(packet.data, &source->context[index], real_time);
+						int ret = janus_rtp_skew_compensate_video(packet.data, &source->context[index], now);
 						if (ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, video source clock is too fast (ssrc=%u, index %d)\n", name, -ret, v_last_ssrc[index], index);
 							continue;
