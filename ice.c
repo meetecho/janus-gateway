@@ -4016,7 +4016,7 @@ void *janus_ice_send_thread(void *data) {
 }
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	if((!video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
 			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
@@ -4030,12 +4030,18 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* We use this internal method to check whether we need to filter RTCP (e.g., to make
 	 * sure we don't just forward any SR/RR from peers/plugins, but use our own) or it has
@@ -4069,8 +4075,14 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 	if(rtcp_buf != buf) {
 		/* We filtered the original packet, deallocate it */
 		g_free(rtcp_buf);
@@ -4083,7 +4095,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 
 #ifdef HAVE_SCTP
 void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
@@ -4094,8 +4106,14 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 #endif
 
