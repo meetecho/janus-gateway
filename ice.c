@@ -1225,6 +1225,7 @@ void janus_ice_component_destroy(janus_ice_component *component) {
 		janus_refcount_decrease(&stream->ref);
 		component->stream = NULL;
 	}
+	janus_dtls_srtp_destroy(component->dtls);
 	janus_refcount_decrease(&component->ref);
 }
 
