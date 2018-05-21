@@ -4185,23 +4185,26 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant) {
 	if(participant->arc) {
-		janus_recorder_close(participant->arc);
-		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		janus_recorder_destroy(participant->arc);
+		janus_recorder *rc = participant->arc;
+		participant->arc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->arc = NULL;
 	if(participant->vrc) {
-		janus_recorder_close(participant->vrc);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-		janus_recorder_destroy(participant->vrc);
+		janus_recorder *rc = participant->vrc;
+		participant->vrc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->vrc = NULL;
 	if(participant->drc) {
-		janus_recorder_close(participant->drc);
-		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", participant->drc->filename ? participant->drc->filename : "??");
-		janus_recorder_destroy(participant->drc);
+		janus_recorder *rc = participant->drc;
+		participant->drc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->drc = NULL;
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
