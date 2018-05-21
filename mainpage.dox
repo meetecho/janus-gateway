@@ -647,6 +647,18 @@ janus.attach(
  * but want to keep the audio as it is, passing \c audio:false to the new
  * createOffer will potentially disable audio.
  *
+ * It's important to point out that, as for negotiations that result in
+ * the creation of a new PeerConnection in the first place, how to perform
+ * a renegotiation in practice will typically vary depending on the plugin
+ * that you're trying to do it for. Some plugins may allow you to offer
+ * a renegotiation, others may require you to send a different request
+ * instead in order to trigger a renegotiation from the plugin. As it
+ * will be clearer later, this is especially true for ICE restarts. As
+ * such, apart from the generic and core-related definitions introduced
+ * in this section, please refer to the documentation for each individual
+ * plugin for more information about how to perform renegotiations in
+ * specific use cases.
+ *
  * Here's a simple example of how you can use \c removeVideo to remove
  * the local video capture in a session, e.g., in the EchoTest demo:
  *
@@ -752,6 +764,9 @@ echotest.createOffer({
  * You can learn more about this on a plugin level basis
  * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/753">here</a> and
  * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/1099">here</a>.
+ * Besides, make sure you read the documentation for each of the plugins
+ * you're interested in using ICE restarts for, as the details for how
+ * to perform it properly are typically provided there.
  *
  * <hr>
  *
