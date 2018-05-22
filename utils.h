@@ -82,7 +82,7 @@ guint64 *janus_uint64_dup(guint64 num);
  */
 ///@{
 /*! \brief Janus flags container */
-typedef uint32_t janus_flags;
+typedef gsize janus_flags;
 
 /*! \brief Janus flags reset method
  * \param[in] flags The janus_flags instance to reset */
@@ -91,18 +91,18 @@ void janus_flags_reset(janus_flags *flags);
 /*! \brief Janus flags set method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to set */
-void janus_flags_set(janus_flags *flags, uint32_t flag);
+void janus_flags_set(janus_flags *flags, gsize flag);
 
 /*! \brief Janus flags clear method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to clear */
-void janus_flags_clear(janus_flags *flags, uint32_t flag);
+void janus_flags_clear(janus_flags *flags, gsize flag);
 
 /*! \brief Janus flags check method
  * \param[in] flags The janus_flags instance to check
  * \param[in] flag The flag to check
  * \returns true if the flag is set, false otherwise */
-gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
+gboolean janus_flags_is_set(janus_flags *flags, gsize flag);
 ///@}
 
 /*! \brief Helper to create a new directory, and recursively create parent directories if needed
