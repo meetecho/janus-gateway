@@ -1025,21 +1025,24 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 		const char *type = lua_tostring(s, i);
 		if(!strcasecmp(type, "audio")) {
 			if(session->arc != NULL) {
-				janus_recorder_close(session->arc);
-				janus_recorder_destroy(session->arc);
+				janus_recorder *rc = session->arc;
 				session->arc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		} else if(!strcasecmp(type, "video")) {
 			if(session->vrc != NULL) {
-				janus_recorder_close(session->vrc);
-				janus_recorder_destroy(session->vrc);
+				janus_recorder *rc = session->vrc;
 				session->vrc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		} else if(!strcasecmp(type, "data")) {
 			if(session->drc != NULL) {
-				janus_recorder_close(session->drc);
-				janus_recorder_destroy(session->drc);
+				janus_recorder *rc = session->drc;
 				session->drc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		}
 	}

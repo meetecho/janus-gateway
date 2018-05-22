@@ -2121,13 +2121,6 @@ static void janus_videoroom_participant_joining(janus_videoroom_publisher *p) {
 	/* we need to check if the room still exists, may have been destroyed already */
 	if(p->room == NULL)
 		return;
-	janus_mutex_lock(&rooms_mutex);
-	if (!g_hash_table_lookup(rooms, &p->room_id)) {
-		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", p->room_id);
-		janus_mutex_unlock(&rooms_mutex);
-		return;
-	}
-	janus_mutex_unlock(&rooms_mutex);
 	if(!g_atomic_int_get(&p->room->destroyed) && p->room->notify_joining) {
 		json_t *event = json_object();
 		json_t *user = json_object();
@@ -4217,23 +4210,26 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant) {
 	if(participant->arc) {
-		janus_recorder_close(participant->arc);
-		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		janus_recorder_destroy(participant->arc);
+		janus_recorder *rc = participant->arc;
+		participant->arc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->arc = NULL;
 	if(participant->vrc) {
-		janus_recorder_close(participant->vrc);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-		janus_recorder_destroy(participant->vrc);
+		janus_recorder *rc = participant->vrc;
+		participant->vrc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->vrc = NULL;
 	if(participant->drc) {
-		janus_recorder_close(participant->drc);
-		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", participant->drc->filename ? participant->drc->filename : "??");
-		janus_recorder_destroy(participant->drc);
+		janus_recorder *rc = participant->drc;
+		participant->drc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
-	participant->drc = NULL;
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
@@ -4414,10 +4410,13 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			janus_mutex_lock(&rooms_mutex);
 			error_code = janus_videoroom_access_room(root, FALSE, TRUE, &videoroom, error_cause, sizeof(error_cause));
-			janus_mutex_unlock(&rooms_mutex);
-			if(error_code != 0)
+			if(error_code != 0) {
+				janus_mutex_unlock(&rooms_mutex);
 				goto error;
+			}
 			janus_refcount_increase(&videoroom->ref);
+			janus_mutex_lock(&videoroom->mutex);
+			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
@@ -4426,6 +4425,7 @@ static void *janus_videoroom_handler(void *data) {
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
@@ -4434,6 +4434,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_t *token = json_object_get(root, "token");
 					const char *token_text = token ? json_string_value(token) : NULL;
 					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
+						janus_mutex_unlock(&videoroom->mutex);
 						janus_refcount_decrease(&videoroom->ref);
 						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
@@ -4445,7 +4446,6 @@ static void *janus_videoroom_handler(void *data) {
 				const char *display_text = display ? json_string_value(display) : NULL;
 				guint64 user_id = 0;
 				json_t *id = json_object_get(root, "id");
-				janus_mutex_lock(&videoroom->mutex);
 				if(id) {
 					user_id = json_integer_value(id);
 					if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
