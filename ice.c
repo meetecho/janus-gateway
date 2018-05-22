@@ -323,6 +323,23 @@ gboolean janus_is_rfc4588_enabled(void) {
 	return rfc4588_enabled;
 }
 
+static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
+	if(pkt == NULL) {
+		return;
+	}
+
+	g_free(pkt->data);
+	g_free(pkt);
+}
+
+static inline void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
+	if(pkt == NULL || pkt == &janus_ice_dtls_alert || pkt == &janus_ice_dtls_alert) {
+		return;
+	}
+
+	g_free(pkt->data);
+	g_free(pkt);
+}
 
 /* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=500ms) */
 #define DEFAULT_MAX_NACK_QUEUE	500
@@ -354,9 +371,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboo
 				guint16 seq = ntohs(header->seq_number);
 				g_hash_table_remove(component->audio_retransmit_seqs, GUINT_TO_POINTER(seq));
 				/* Free the packet */
-				g_free(p->data);
-				p->data = NULL;
-				g_free(p);
+				janus_ice_free_rtp_packet(p);
 				p = (janus_rtp_packet *)g_queue_peek_head(component->audio_retransmit_buffer);
 			}
 		}
@@ -370,9 +385,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboo
 				guint16 seq = ntohs(header->seq_number);
 				g_hash_table_remove(component->video_retransmit_seqs, GUINT_TO_POINTER(seq));
 				/* Free the packet */
-				g_free(p->data);
-				p->data = NULL;
-				g_free(p);
+				janus_ice_free_rtp_packet(p);
 				p = (janus_rtp_packet *)g_queue_peek_head(component->video_retransmit_buffer);
 			}
 		}
@@ -457,10 +470,7 @@ static void janus_ice_clear_queued_packets(janus_ice_handle *handle) {
 	janus_ice_queued_packet *pkt = NULL;
 	while(g_async_queue_length(handle->queued_packets) > 0) {
 		pkt = g_async_queue_try_pop(handle->queued_packets);
-		if(pkt != NULL && pkt != &janus_ice_dtls_handshake && pkt != &janus_ice_dtls_alert) {
-			g_free(pkt->data);
-			g_free(pkt);
-		}
+		janus_ice_free_queued_packet(pkt);
 	}
 }
 
@@ -1308,9 +1318,7 @@ void janus_ice_component_free(const janus_refcount *component_ref) {
 			guint16 seq = ntohs(header->seq_number);
 			g_hash_table_remove(component->audio_retransmit_seqs, GUINT_TO_POINTER(seq));
 			/* Free the packet */
-			g_free(p->data);
-			p->data = NULL;
-			g_free(p);
+			janus_ice_free_rtp_packet(p);
 		}
 		g_queue_free(component->audio_retransmit_buffer);
 		g_hash_table_destroy(component->audio_retransmit_seqs);
@@ -1323,9 +1331,7 @@ void janus_ice_component_free(const janus_refcount *component_ref) {
 			guint16 seq = ntohs(header->seq_number);
 			g_hash_table_remove(component->video_retransmit_seqs, GUINT_TO_POINTER(seq));
 			/* Free the packet */
-			g_free(p->data);
-			p->data = NULL;
-			g_free(p);
+			janus_ice_free_rtp_packet(p);
 		}
 		g_queue_free(component->video_retransmit_buffer);
 		g_hash_table_destroy(component->video_retransmit_seqs);
@@ -3584,16 +3590,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		return G_SOURCE_REMOVE;
 	}
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
-		if(pkt)
-			g_free(pkt->data);
-		g_free(pkt);
+		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
 	/* Now let's get on with the packet */
 	if(pkt == NULL)
 		return G_SOURCE_CONTINUE;
 	if(pkt->data == NULL) {
-		g_free(pkt);
+		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
 	if(!stream->cdone) {
@@ -3601,8 +3605,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No candidates not gathered yet for stream??\n", handle->handle_id);
 			stream->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 		}
-		g_free(pkt->data);
-		g_free(pkt);
+		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
 	if(pkt->control) {
@@ -3615,8 +3618,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					handle->handle_id, video ? "video" : "audio", stream->stream_id);
 				component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 			}
-			g_free(pkt->data);
-			g_free(pkt);
+			janus_ice_free_queued_packet(pkt);
 			return G_SOURCE_CONTINUE;
 		}
 		component->noerrorlog = FALSE;
@@ -3681,16 +3683,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				}
 			}
 		}
-		g_free(pkt->data);
-		g_free(pkt);
+		janus_ice_free_queued_packet(pkt);
 	} else {
 		/* RTP or data */
 		if(pkt->type == JANUS_ICE_PACKET_AUDIO || pkt->type == JANUS_ICE_PACKET_VIDEO) {
 			/* RTP */
 			int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
 			if((!video && !stream->audio_send) || (video && !stream->video_send)) {
-				g_free(pkt->data);
-				g_free(pkt);
+				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
 			if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
@@ -3699,8 +3699,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						handle->handle_id, video ? "video" : "audio");
 					component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 				}
-				g_free(pkt->data);
-				g_free(pkt);
+				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
 			component->noerrorlog = FALSE;
@@ -3796,10 +3795,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
-					if(p != NULL) {
-						g_free(p->data);
-						g_free(p);
-					}
+					janus_ice_free_rtp_packet(p);
 				} else {
 					/* Shoot! */
 					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, pkt->data);
@@ -3868,8 +3864,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						if((pkt->type == JANUS_ICE_PACKET_AUDIO && !component->do_audio_nacks) ||
 								(pkt->type == JANUS_ICE_PACKET_VIDEO && !component->do_video_nacks)) {
 							/* ... unless NACKs are disabled for this medium */
-							g_free(pkt->data);
-							g_free(pkt);
+							janus_ice_free_queued_packet(pkt);
 							return G_SOURCE_CONTINUE;
 						}
 						if(p == NULL) {
@@ -3901,18 +3896,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							g_hash_table_insert(component->video_retransmit_seqs, GUINT_TO_POINTER(seq), p);
 						}
 					} else {
-						if(p != NULL) {
-							g_free(p->data);
-							g_free(p);
-						}
+						janus_ice_free_rtp_packet(p);
 					}
 				}
 			}
 		} else {
 			/* Data */
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
-				g_free(pkt->data);
-				g_free(pkt);
+				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
 #ifdef HAVE_SCTP
@@ -3921,18 +3912,27 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] SCTP stream component has no valid DTLS session (yet?)\n", handle->handle_id);
 					component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 				}
-				g_free(pkt->data);
-				g_free(pkt);
+				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
 			component->noerrorlog = FALSE;
 			janus_dtls_wrap_sctp_data(component->dtls, pkt->data, pkt->length);
 #endif
 		}
-		g_free(pkt->data);
-		g_free(pkt);
+		janus_ice_free_queued_packet(pkt);
 	}
 	return G_SOURCE_CONTINUE;
+}
+
+static void janus_ice_queue_packet(janus_ice_handle *handle, janus_ice_queued_packet *pkt) {
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
+		g_async_queue_push(handle->queued_packets, pkt);
+		g_main_context_wakeup(handle->icectx);
+	} else {
+		janus_ice_free_queued_packet(pkt);
+	}
 }
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
@@ -3950,15 +3950,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	/* TODO: There is a potential race condition where the "queued_packets"
-	 * could get released between the condition and pushing the packet. */
-	if(handle->queued_packets != NULL) {
-		g_async_queue_push(handle->queued_packets, pkt);
-		g_main_context_wakeup(handle->icectx);
-	} else {
-		g_free(pkt->data);
-		g_free(pkt);
-	}
+	janus_ice_queue_packet(handle, pkt);
 }
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
@@ -3996,15 +3988,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	/* TODO: There is a potential race condition where the "queued_packets"
-	 * could get released between the condition and pushing the packet. */
-	if(handle->queued_packets != NULL) {
-		g_async_queue_push(handle->queued_packets, pkt);
-		g_main_context_wakeup(handle->icectx);
-	} else {
-		g_free(pkt->data);
-		g_free(pkt);
-	}
+	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != buf) {
 		/* We filtered the original packet, deallocate it */
 		g_free(rtcp_buf);
@@ -4028,15 +4012,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	/* TODO: There is a potential race condition where the "queued_packets"
-	 * could get released between the condition and pushing the packet. */
-	if(handle->queued_packets != NULL) {
-		g_async_queue_push(handle->queued_packets, pkt);
-		g_main_context_wakeup(handle->icectx);
-	} else {
-		g_free(pkt->data);
-		g_free(pkt);
-	}
+	janus_ice_queue_packet(handle, pkt);
 }
 #endif
 
