@@ -951,6 +951,18 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * -# You can combine both to implement a robust defence against <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)">CSRF</a>
  * -# You can reroute the control flow entirely, and e.g. use \c httpAPICall as an action creator in your
  * <a href="http://redux.js.org/">Redux</a> application.
+ *
+ * \section js-extension Custom Screensharing Extension for Chrome
+ * To use a different extension for screensharing permissions in Chrome you can pass a \c extension object
+ * to \c Janus.useDefaultDependencies and \c Janus.useOldDependencies.
+ * The object should provide the following methods:
+ *
+ * -# \c init(): Do any setup work here. Will be called once when the dependencies are loaded.
+ * -# \c isInstalled(): should return a boolean indicating whether the Extension was detected and is ready to use.
+ * -# \c getScreen(callback): make a call to the extension to get a \c streamId here. The streamId can be obtained
+ *    from chrome using <a href="https://developer.chrome.com/extensions/desktopCapture">chrome.desktopCapture.chooseDesktopMedia()</a>.
+ *    When the request is successful pass the \c streamId back using <tt>callback(null, streamId)</tt>,
+ *    otherwise pass an \c Error object like \c callback(error)
  */
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT and UnixSockets API
