@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus TextRoom plugin
- * \details This is a plugin implementing a DataChannel only text room.
+ * \details Check the \ref textroom for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page textroom Janus TextRoom documentation
+ * This is a plugin implementing a DataChannel only text room.
  * As such, it does NOT support or negotiate audio or video, but only
  * data channels, in order to provide text broadcasting features. The
  * plugin allows users to join multiple text-only rooms via a single
@@ -426,9 +432,6 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"text" : "<content of the message>"
 }
 \endverbatim
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"
