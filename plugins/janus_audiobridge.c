@@ -2902,6 +2902,16 @@ void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, ch
 	/* FIXME Should we care? */
 }
 
+static void janus_audiobridge_recorder_close(janus_audiobridge_participant *participant) {
+	if(participant->arc) {
+		janus_recorder *rc = participant->arc;
+		participant->arc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
+	}
+}
+
 void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_AUDIOBRIDGE_PACKAGE, handle);
 	janus_mutex_lock(&sessions_mutex);
@@ -2963,12 +2973,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&participant->rec_mutex);
-	if(participant->arc) {
-		janus_recorder_close(participant->arc);
-		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		janus_recorder_destroy(participant->arc);
-	}
-	participant->arc = NULL;
+	janus_audiobridge_recorder_close(participant);
 	janus_mutex_unlock(&participant->rec_mutex);
 	/* Free the participant resources */
 	janus_mutex_lock(&participant->qmutex);
@@ -3465,12 +3470,7 @@ static void *janus_audiobridge_handler(void *data) {
 					}
 				} else {
 					/* Stop recording (ignore if not recording) */
-					if(participant->arc) {
-						janus_recorder_close(participant->arc);
-						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-						janus_recorder_destroy(participant->arc);
-					}
-					participant->arc = NULL;
+					janus_audiobridge_recorder_close(participant);
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
 			}
@@ -3700,12 +3700,7 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&old_audiobridge->mutex);
 			/* Stop recording, if we were (since this is a new room, a new recording would be required, so a new configure) */
 			janus_mutex_lock(&participant->rec_mutex);
-			if(participant->arc) {
-				janus_recorder_close(participant->arc);
-				JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-				janus_recorder_destroy(participant->arc);
-			}
-			participant->arc = NULL;
+			janus_audiobridge_recorder_close(participant);
 			janus_mutex_unlock(&participant->rec_mutex);
 			janus_refcount_decrease(&old_audiobridge->ref);
 			/* Done, join the new one */
@@ -3839,12 +3834,7 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&participant->qmutex);
 			/* Stop recording, if we were */
 			janus_mutex_lock(&participant->rec_mutex);
-			if(participant->arc) {
-				janus_recorder_close(participant->arc);
-				JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-				janus_recorder_destroy(participant->arc);
-			}
-			participant->arc = NULL;
+			janus_audiobridge_recorder_close(participant);
 			janus_mutex_unlock(&participant->rec_mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
