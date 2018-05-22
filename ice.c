@@ -404,6 +404,22 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 }
 
 
+static void janus_ice_clear_queued_packets(janus_ice_handle *handle) {
+	if(handle == NULL || handle->queued_packets == NULL) {
+		return;
+	}
+
+	janus_ice_queued_packet *pkt = NULL;
+	while(g_async_queue_length(handle->queued_packets) > 0) {
+		pkt = g_async_queue_try_pop(handle->queued_packets);
+		if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
+			g_free(pkt->data);
+			g_free(pkt);
+		}
+	}
+}
+
+
 static void janus_ice_notify_trickle(janus_ice_handle *handle, char *buffer) {
 	if(handle == NULL)
 		return;
@@ -1019,8 +1035,10 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
 	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
-	if(handle->queued_packets != NULL)
+	if(handle->queued_packets != NULL) {
+		janus_ice_clear_queued_packets(handle);
 		g_async_queue_unref(handle->queued_packets);
+	}
 	if(handle->app_handle != NULL)
 		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
@@ -1225,6 +1243,7 @@ void janus_ice_component_destroy(janus_ice_component *component) {
 		janus_refcount_decrease(&stream->ref);
 		component->stream = NULL;
 	}
+	janus_dtls_srtp_destroy(component->dtls);
 	janus_refcount_decrease(&component->ref);
 }
 
@@ -3218,15 +3237,7 @@ void *janus_ice_send_thread(void *data) {
 				janus_dtls_srtp_send_alert(handle->stream->component->dtls);
 				alert_sent = TRUE;
 			}
-			while(g_async_queue_length(handle->queued_packets) > 0) {
-				pkt = g_async_queue_try_pop(handle->queued_packets);
-				if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
-					g_free(pkt->data);
-					pkt->data = NULL;
-					g_free(pkt);
-					pkt = NULL;
-				}
-			}
+			janus_ice_clear_queued_packets(handle);
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
 				if (handle->icectx != NULL) {
@@ -4005,7 +4016,7 @@ void *janus_ice_send_thread(void *data) {
 }
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	if((!video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
 			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
@@ -4019,12 +4030,18 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* We use this internal method to check whether we need to filter RTCP (e.g., to make
 	 * sure we don't just forward any SR/RR from peers/plugins, but use our own) or it has
@@ -4058,8 +4075,14 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 	if(rtcp_buf != buf) {
 		/* We filtered the original packet, deallocate it */
 		g_free(rtcp_buf);
@@ -4072,7 +4095,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 
 #ifdef HAVE_SCTP
 void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
-	if(!handle || buf == NULL || len < 1)
+	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
@@ -4083,8 +4106,14 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	if(handle->queued_packets != NULL)
+	/* TODO: There is a potential race condition where the "queued_packets"
+	 * could get released between the condition and pushing the packet. */
+	if(handle->queued_packets != NULL) {
 		g_async_queue_push(handle->queued_packets, pkt);
+	} else {
+		g_free(pkt->data);
+		g_free(pkt);
+	}
 }
 #endif
 
@@ -4104,14 +4133,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 		}
 	}
 	/* Clear the queue before we wake the send thread */
-	janus_ice_queued_packet *pkt = NULL;
-	while(g_async_queue_length(handle->queued_packets) > 0) {
-		pkt = g_async_queue_try_pop(handle->queued_packets);
-		if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
-			g_free(pkt->data);
-			g_free(pkt);
-		}
-	}
+	janus_ice_clear_queued_packets(handle);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		/* Already notified */
 		janus_mutex_unlock(&handle->mutex);

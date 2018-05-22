@@ -195,4 +195,27 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
  * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
+typedef enum janus_audiocodec {
+	JANUS_AUDIOCODEC_NONE,
+	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_PCMU,
+	JANUS_AUDIOCODEC_PCMA,
+	JANUS_AUDIOCODEC_G722,
+	JANUS_AUDIOCODEC_ISAC_32K,
+	JANUS_AUDIOCODEC_ISAC_16K
+} janus_audiocodec;
+const char *janus_audiocodec_name(janus_audiocodec acodec);
+janus_audiocodec janus_audiocodec_from_name(const char *name);
+int janus_audiocodec_pt(janus_audiocodec acodec);
+
+typedef enum janus_videocodec {
+	JANUS_VIDEOCODEC_NONE,
+	JANUS_VIDEOCODEC_VP8,
+	JANUS_VIDEOCODEC_VP9,
+	JANUS_VIDEOCODEC_H264
+} janus_videocodec;
+const char *janus_videocodec_name(janus_videocodec vcodec);
+janus_videocodec janus_videocodec_from_name(const char *name);
+int janus_videocodec_pt(janus_videocodec vcodec);
+
 #endif

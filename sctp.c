@@ -123,7 +123,6 @@ static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	if(sctp->messages)
 		g_async_queue_unref(sctp->messages);
 	sctp->messages = NULL;
-	sctp->thread = NULL;
 #ifdef DEBUG_SCTP
 	if(sctp->debug_dump != NULL)
 		fclose(sctp->debug_dump);
@@ -259,12 +258,19 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
+	void *component = ((janus_dtls_srtp *)dtls)->component;
+	if (component) {
+		janus_refcount_increase(&((janus_ice_component *)component)->ref);
+	}
 	janus_refcount_increase(&sctp->ref);
 	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		janus_mutex_unlock(&sctp->mutex);
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
+		if (component) {
+			janus_refcount_decrease(&((janus_ice_component *)component)->ref);
+		}
 		janus_refcount_decrease(&sctp->ref);	/* This is for the failed thread */
 		janus_refcount_decrease(&sctp->ref);
 		return NULL;
@@ -304,10 +310,18 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	if(sctp == NULL || !g_atomic_int_compare_and_exchange(&sctp->destroyed, 0, 1))
 		return;
+	g_async_queue_push(sctp->messages, &exit_message);
+	if(sctp->thread) {
+		if (sctp->thread == g_thread_self()) {
+			g_thread_unref(sctp->thread);
+		} else {
+			g_thread_join(sctp->thread);
+		}
+		sctp->thread = NULL;
+	}
 	usrsctp_deregister_address(sctp);
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);
-	g_async_queue_push(sctp->messages, &exit_message);
 	janus_refcount_decrease(&sctp->ref);
 }
 
@@ -1275,11 +1289,12 @@ void *janus_sctp_thread(void *data) {
 	janus_sctp_association *sctp = (janus_sctp_association *)data;
 	if(sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid SCTP association, closing thread\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
+	janus_dtls_srtp *dtls = (janus_dtls_srtp *)sctp->dtls;
+	janus_ice_component *component = dtls ? (janus_ice_component *)dtls->component : NULL;
 	gboolean sent_data = FALSE;
 	while(!g_atomic_int_get(&sctp->destroyed) && sctp_running) {
 		/* Anything to do at all? */
@@ -1338,7 +1353,9 @@ void *janus_sctp_thread(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
 	janus_refcount_decrease(&sctp->ref);
-	g_thread_unref(g_thread_self());
+	if (component) {
+		janus_refcount_decrease(&component->ref);
+	}
 	return NULL;
 }
 
