@@ -612,11 +612,12 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	}
 	janus_refcount_increase(&session->ref);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
+	janus_videocall_session *peer = session->peer;
 	json_t *info = json_object();
 	json_object_set_new(info, "state", json_string(session->peer ? "incall" : "idle"));
 	json_object_set_new(info, "username", session->username ? json_string(session->username) : NULL);
-	if(session->peer) {
-		json_object_set_new(info, "peer", session->peer->username ? json_string(session->peer->username) : NULL);
+	if(peer) {
+		json_object_set_new(info, "peer", peer->username ? json_string(peer->username) : NULL);
 		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 		if(session->acodec)
@@ -630,7 +631,7 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	if(session->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast", json_true());
 	}
-	if(session->peer && session->peer->ssrc[0] != 0) {
+	if(peer && peer->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast-peer", json_true());
 		json_object_set_new(info, "substream", json_integer(session->substream));
 		json_object_set_new(info, "substream-target", json_integer(session->substream_target));
@@ -700,11 +701,12 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!session->peer) {
+		janus_videocall_session *peer = session->peer;
+		if(!peer) {
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(g_atomic_int_get(&session->destroyed) || session->peer->destroyed)
+		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&peer->destroyed))
 			return;
 		if(video && session->video_active && session->rtpmapid_extmap_id != -1) {
 			/* FIXME Just a way to debug Firefox simulcasting */
@@ -730,25 +732,25 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			if(payload == NULL)
 				return;
 			gboolean switched = FALSE;
-			if(session->peer->substream != session->peer->substream_target) {
+			if(peer->substream != peer->substream_target) {
 				/* There has been a change: let's wait for a keyframe on the target */
-				int step = (session->peer->substream < 1 && session->peer->substream_target == 2);
-				if((ssrc == session->ssrc[session->peer->substream_target]) || (step && ssrc == session->ssrc[step])) {
+				int step = (peer->substream < 1 && peer->substream_target == 2);
+				if((ssrc == session->ssrc[peer->substream_target]) || (step && ssrc == session->ssrc[step])) {
 					//~ if(janus_vp8_is_keyframe(payload, plen)) {
 						uint32_t ssrc_old = 0;
-						if(session->peer->substream != -1)
-							ssrc_old = session->ssrc[session->peer->substream];
+						if(peer->substream != -1)
+							ssrc_old = session->ssrc[peer->substream];
 						JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
-						session->peer->substream = (ssrc == session->ssrc[session->peer->substream_target] ? session->peer->substream_target : step);
+						peer->substream = (ssrc == session->ssrc[peer->substream_target] ? peer->substream_target : step);
 						switched = TRUE;
 						/* Notify the peer */
 						json_t *event = json_object();
 						json_object_set_new(event, "videocall", json_string("event"));
 						json_t *result = json_object();
 						json_object_set_new(result, "event", json_string("simulcast"));
-						json_object_set_new(result, "substream", json_integer(session->peer->substream));
+						json_object_set_new(result, "substream", json_integer(peer->substream));
 						json_object_set_new(event, "result", result);
-						gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, event, NULL);
+						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 						json_decref(event);
 					//~ } else {
 						//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
@@ -764,13 +766,13 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				gint64 now = janus_get_monotonic_time();
 				if(now-session->last_relayed >= 250000) {
 					session->last_relayed = now;
-					int substream = session->peer->substream-1;
+					int substream = peer->substream-1;
 					if(substream < 0)
 						substream = 0;
-					if(session->peer->substream != substream) {
+					if(peer->substream != substream) {
 						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-							session->peer->substream, substream);
-						session->peer->substream = substream;
+							peer->substream, substream);
+						peer->substream = substream;
 						/* Send a PLI to the user */
 						JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
 						char rtcpbuf[12];
@@ -782,17 +784,17 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 						json_object_set_new(event, "videocall", json_string("event"));
 						json_t *result = json_object();
 						json_object_set_new(result, "event", json_string("simulcast"));
-						json_object_set_new(result, "substream", json_integer(session->peer->substream));
+						json_object_set_new(result, "substream", json_integer(peer->substream));
 						json_object_set_new(event, "result", result);
-						gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, event, NULL);
+						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 						json_decref(event);
 					}
 				}
 			}
 			/* Do we need to drop this? */
-			if(ssrc != session->ssrc[session->peer->substream]) {
+			if(ssrc != session->ssrc[peer->substream]) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying to the peer the SSRC %"SCNu32" now\n",
-					ssrc, session->ssrc[session->peer->substream]);
+					ssrc, session->ssrc[peer->substream]);
 				return;
 			}
 			session->last_relayed = janus_get_monotonic_time();
@@ -804,34 +806,34 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			uint8_t keyidx = 0;
 			if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 				//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-				if(session->peer->templayer != session->peer->templayer_target) {
+				if(peer->templayer != peer->templayer_target) {
 					/* FIXME We should be smarter in deciding when to switch */
-					session->peer->templayer = session->peer->templayer_target;
+					peer->templayer = peer->templayer_target;
 					/* Notify the peer */
 					json_t *event = json_object();
 						json_object_set_new(event, "videocall", json_string("event"));
 						json_t *result = json_object();
 						json_object_set_new(result, "event", json_string("simulcast"));
-						json_object_set_new(result, "temporal", json_integer(session->peer->templayer));
+						json_object_set_new(result, "temporal", json_integer(peer->templayer));
 						json_object_set_new(event, "result", result);
-					gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, event, NULL);
+					gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 					json_decref(event);
 				}
-				if(tid > session->peer->templayer) {
+				if(tid > peer->templayer) {
 					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-						tid, session->peer->templayer);
+						tid, peer->templayer);
 					/* We increase the base sequence number, or there will be gaps when delivering later */
-					session->peer->context.v_base_seq++;
+					peer->context.v_base_seq++;
 					return;
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(header, &session->peer->context, TRUE, 4500);
-			janus_vp8_simulcast_descriptor_update(payload, plen, &session->peer->simulcast_context, switched);
+			janus_rtp_header_update(header, &peer->context, TRUE, 4500);
+			janus_vp8_simulcast_descriptor_update(payload, plen, &peer->simulcast_context, switched);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
-			gateway->relay_rtp(session->peer->handle, video, buf, len);
+			gateway->relay_rtp(peer->handle, video, buf, len);
 			/* Restore header or core statistics will be messed up */
 			header->timestamp = htonl(timestamp);
 			header->seq_number = htons(seq_number);
@@ -840,7 +842,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 				/* Forward the packet to the peer */
-				gateway->relay_rtp(session->peer->handle, video, buf, len);
+				gateway->relay_rtp(peer->handle, video, buf, len);
 			}
 		}
 	}
@@ -855,21 +857,22 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!session->peer) {
+		janus_videocall_session *peer = session->peer;
+		if(!peer) {
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(g_atomic_int_get(&session->destroyed) || session->peer->destroyed)
+		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&peer->destroyed))
 			return;
 		guint32 bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			if(session->bitrate > 0)
 				janus_rtcp_cap_remb(buf, len, session->bitrate);
-			gateway->relay_rtcp(session->peer->handle, 1, buf, len);
+			gateway->relay_rtcp(peer->handle, 1, buf, len);
 			return;
 		}
-		gateway->relay_rtcp(session->peer->handle, video, buf, len);
+		gateway->relay_rtcp(peer->handle, video, buf, len);
 	}
 }
 
@@ -882,11 +885,12 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(!session->peer) {
+		janus_videocall_session *peer = session->peer;
+		if(!peer) {
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(g_atomic_int_get(&session->destroyed) || session->peer->destroyed)
+		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&peer->destroyed))
 			return;
 		if(buf == NULL || len <= 0)
 			return;
@@ -897,7 +901,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, buf, len);
 		/* Forward the packet to the peer */
-		gateway->relay_data(session->peer->handle, text, strlen(text));
+		gateway->relay_data(peer->handle, text, strlen(text));
 		g_free(text);
 	}
 }
@@ -924,6 +928,7 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
 		if(video) {
 			/* Halve the bitrate, but don't go too low... */
+			janus_videocall_session *peer = session->peer;
 			if(!uplink) {
 				/* Downlink issue, user has trouble sending, halve this user's bitrate cap */
 				session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
@@ -932,29 +937,53 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 					session->bitrate = 64*1024;
 			} else {
 				/* Uplink issue, user has trouble receiving, halve this user's peer's bitrate cap */
-				if(session->peer == NULL || session->peer->handle == NULL)
+				if(peer == NULL || peer->handle == NULL)
 					return;	/* Nothing to do */
-				session->peer->bitrate = session->peer->bitrate > 0 ? session->peer->bitrate : 512*1024;
-				session->peer->bitrate = session->peer->bitrate/2;
-				if(session->peer->bitrate < 64*1024)
-					session->peer->bitrate = 64*1024;
+				peer->bitrate = peer->bitrate > 0 ? peer->bitrate : 512*1024;
+				peer->bitrate = peer->bitrate/2;
+				if(peer->bitrate < 64*1024)
+					peer->bitrate = 64*1024;
 			}
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
-				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
+				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
 			char rtcpbuf[24];
-			janus_rtcp_remb((char *)(&rtcpbuf), 24, uplink ? session->peer->bitrate : session->bitrate);
-			gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, 24);
+			janus_rtcp_remb((char *)(&rtcpbuf), 24, uplink ? peer->bitrate : session->bitrate);
+			gateway->relay_rtcp(uplink ? peer->handle : handle, 1, rtcpbuf, 24);
 			/* As a last thing, notify the affected user about this */
 			json_t *event = json_object();
 			json_object_set_new(event, "videocall", json_string("event"));
 			json_t *result = json_object();
 			json_object_set_new(result, "status", json_string("slow_link"));
-			json_object_set_new(result, "bitrate", json_integer(uplink ? session->peer->bitrate : session->bitrate));
+			json_object_set_new(result, "bitrate", json_integer(uplink ? peer->bitrate : session->bitrate));
 			json_object_set_new(event, "result", result);
-			gateway->push_event(uplink ? session->peer->handle : handle, &janus_videocall_plugin, NULL, event, NULL);
+			gateway->push_event(uplink ? peer->handle : handle, &janus_videocall_plugin, NULL, event, NULL);
 			json_decref(event);
 		}
+	}
+}
+
+static void janus_videocall_recorder_close(janus_videocall_session *session) {
+	if(session->arc) {
+		janus_recorder *rc = session->arc;
+		session->arc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
+	}
+	if(session->vrc) {
+		janus_recorder *rc = session->vrc;
+		session->vrc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
+	}
+	if(session->drc) {
+		janus_recorder *rc = session->drc;
+		session->drc = NULL;
+		janus_recorder_close(rc);
+		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", rc->filename ? rc->filename : "??");
+		janus_recorder_destroy(rc);
 	}
 }
 
@@ -973,26 +1002,11 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		return;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
-	if(session->arc) {
-		janus_recorder_close(session->arc);
-		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_destroy(session->arc);
-	}
-	session->arc = NULL;
-	if(session->vrc) {
-		janus_recorder_close(session->vrc);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_destroy(session->vrc);
-	}
-	session->vrc = NULL;
-	if(session->drc) {
-		janus_recorder_close(session->drc);
-		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
-		janus_recorder_destroy(session->drc);
-	}
-	session->drc = NULL;
+	janus_videocall_recorder_close(session);
 	janus_mutex_unlock(&session->rec_mutex);
-	if(session->peer) {
+	janus_videocall_session *peer = session->peer;
+	session->peer = NULL;
+	if(peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
 		json_object_set_new(call, "videocall", json_string("event"));
@@ -1001,8 +1015,8 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		json_object_set_new(calling, "username", json_string(session->username));
 		json_object_set_new(calling, "reason", json_string("Remote WebRTC hangup"));
 		json_object_set_new(call, "result", calling);
-		gateway->close_pc(session->peer->handle);
-		int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call, NULL);
+		gateway->close_pc(peer->handle);
+		int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(call);
 		/* Also notify event handlers */
@@ -1010,10 +1024,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("hangup"));
 			json_object_set_new(info, "reason", json_string("Remote WebRTC hangup"));
-			gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+			gateway->notify_event(&janus_videocall_plugin, peer->handle, info);
 		}
 	}
-	session->peer = NULL;
 	/* Reset controls */
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -1187,7 +1200,7 @@ static void *janus_videocall_handler(void *data) {
 			}
 			janus_mutex_lock(&sessions_mutex);
 			janus_videocall_session *peer = g_hash_table_lookup(sessions, username_text);
-			if(peer == NULL || peer->destroyed) {
+			if(peer == NULL || g_atomic_int_get(&peer->destroyed)) {
 				g_atomic_int_set(&session->incall, 0);
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Username '%s' doesn't exist\n", username_text);
@@ -1246,7 +1259,7 @@ static void *janus_videocall_handler(void *data) {
 				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 				janus_mutex_unlock(&sessions_mutex);
-				JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->username, session->peer->username);
+				JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->username, peer->username);
 				JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 				/* Check if this user will simulcast */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
@@ -1281,16 +1294,17 @@ static void *janus_videocall_handler(void *data) {
 			}
 		} else if(!strcasecmp(request_text, "accept")) {
 			/* Accept a call from another peer */
-			if(session->peer == NULL || !g_atomic_int_get(&session->incall) || !g_atomic_int_get(&session->peer->incall)) {
+			janus_videocall_session *peer = session->peer;
+			if(peer == NULL || !g_atomic_int_get(&session->incall) || !g_atomic_int_get(&peer->incall)) {
 				JANUS_LOG(LOG_ERR, "No incoming call to accept\n");
 				error_code = JANUS_VIDEOCALL_ERROR_NO_CALL;
 				g_snprintf(error_cause, 512, "No incoming call to accept");
 				goto error;
 			}
-			janus_refcount_increase(&session->peer->ref);
+			janus_refcount_increase(&peer->ref);
 			/* Any SDP to handle? if not, something's wrong */
 			if(!msg_sdp) {
-				janus_refcount_decrease(&session->peer->ref);
+				janus_refcount_decrease(&peer->ref);
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
@@ -1304,7 +1318,7 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing answer: %s", error_str);
 				goto error;
 			}
-			JANUS_LOG(LOG_VERB, "%s is accepting a call from %s\n", session->username, session->peer->username);
+			JANUS_LOG(LOG_VERB, "%s is accepting a call from %s\n", session->username, peer->username);
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
 			session->has_video = (strstr(msg_sdp, "m=video") != NULL);
@@ -1320,27 +1334,27 @@ static void *janus_videocall_handler(void *data) {
 				session->ssrc[0] = 0;
 				session->ssrc[1] = 0;
 				session->ssrc[2] = 0;
-				if(session->peer) {
-					session->peer->ssrc[0] = 0;
-					session->peer->ssrc[1] = 0;
-					session->peer->ssrc[2] = 0;
+				if(peer) {
+					peer->ssrc[0] = 0;
+					peer->ssrc[1] = 0;
+					peer->ssrc[2] = 0;
 				}
 			}
 			/* Check which codecs we ended up using */
 			janus_sdp_find_first_codecs(answer, &session->acodec, &session->vcodec);
 			if(session->acodec == NULL) {
 				session->has_audio = FALSE;
-				if(session->peer)
-					session->peer->has_audio = FALSE;
-			} else if(session->peer) {
-				session->peer->acodec = session->acodec;
+				if(peer)
+					peer->has_audio = FALSE;
+			} else if(peer) {
+				peer->acodec = session->acodec;
 			}
 			if(session->vcodec == NULL) {
 				session->has_video = FALSE;
-				if(session->peer)
-					session->peer->has_video = FALSE;
-			} else if(session->peer) {
-				session->peer->vcodec = session->vcodec;
+				if(peer)
+					peer->has_video = FALSE;
+			} else if(peer) {
+				peer->vcodec = session->vcodec;
 			}
 			janus_sdp_destroy(answer);
 			/* Send SDP to our peer */
@@ -1352,7 +1366,7 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(calling, "username", json_string(session->username));
 			json_object_set_new(call, "result", calling);
 			g_atomic_int_set(&session->hangingup, 0);
-			int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call, jsep);
+			int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(call);
 			json_decref(jsep);
@@ -1367,10 +1381,10 @@ static void *janus_videocall_handler(void *data) {
 			}
 			/* Is simulcasting involved on either side? */
 			if(session->ssrc[0] && session->ssrc[1]) {
-				session->peer->substream_target = 2;	/* Let's aim for the highest quality */
-				session->peer->templayer_target = 2;	/* Let's aim for all temporal layers */
+				peer->substream_target = 2;	/* Let's aim for the highest quality */
+				peer->templayer_target = 2;	/* Let's aim for all temporal layers */
 			}
-			if(session->peer->ssrc[0] && session->peer->ssrc[1]) {
+			if(peer->ssrc[0] && peer->ssrc[1]) {
 				session->substream_target = 2;	/* Let's aim for the highest quality */
 				session->templayer_target = 2;	/* Let's aim for all temporal layers */
 			}
@@ -1428,6 +1442,7 @@ static void *janus_videocall_handler(void *data) {
 					/* FIXME How should we handle a subsequent "no limit" bitrate? */
 				}
 			}
+			janus_videocall_session *peer = session->peer;
 			if(substream) {
 				session->substream_target = json_integer_value(substream);
 				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
@@ -1445,7 +1460,7 @@ static void *janus_videocall_handler(void *data) {
 					char buf[12];
 					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
-					if(session->peer && session->peer->handle)
+					if(peer && peer->handle)
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
 			}
@@ -1466,7 +1481,7 @@ static void *janus_videocall_handler(void *data) {
 					char buf[12];
 					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
-					if(session->peer && session->peer->handle)
+					if(peer && peer->handle)
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
 			}
@@ -1482,24 +1497,7 @@ static void *janus_videocall_handler(void *data) {
 				janus_mutex_lock(&session->rec_mutex);
 				if(!recording) {
 					/* Not recording (anymore?) */
-					if(session->arc) {
-						janus_recorder_close(session->arc);
-						JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_destroy(session->arc);
-					}
-					session->arc = NULL;
-					if(session->vrc) {
-						janus_recorder_close(session->vrc);
-						JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_destroy(session->vrc);
-					}
-					session->vrc = NULL;
-					if(session->drc) {
-						janus_recorder_close(session->drc);
-						JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
-						janus_recorder_destroy(session->drc);
-					}
-					session->drc = NULL;
+					janus_videocall_recorder_close(session);
 				} else {
 					/* We've started recording, send a PLI and go on */
 					char filename[255];
@@ -1519,7 +1517,7 @@ static void *janus_videocall_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videocall-%s-%s-%"SCNi64"-audio",
 								session->username ? session->username : "unknown",
-								(session->peer && session->peer->username) ? session->peer->username : "unknown",
+								(peer && peer->username) ? peer->username : "unknown",
 								now);
 							session->arc = janus_recorder_create(NULL, session->acodec, filename);
 							if(session->arc == NULL) {
@@ -1543,7 +1541,7 @@ static void *janus_videocall_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videocall-%s-%s-%"SCNi64"-video",
 								session->username ? session->username : "unknown",
-								(session->peer && session->peer->username) ? session->peer->username : "unknown",
+								(peer && peer->username) ? peer->username : "unknown",
 								now);
 							session->vrc = janus_recorder_create(NULL, session->vcodec, filename);
 							if(session->vrc == NULL) {
@@ -1571,7 +1569,7 @@ static void *janus_videocall_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videocall-%s-%s-%"SCNi64"-data",
 								session->username ? session->username : "unknown",
-								(session->peer && session->peer->username) ? session->peer->username : "unknown",
+								(peer && peer->username) ? peer->username : "unknown",
 								now);
 							session->drc = janus_recorder_create(NULL, "text", filename);
 							if(session->drc == NULL) {
@@ -1610,7 +1608,7 @@ static void *janus_videocall_handler(void *data) {
 			if(do_restart && !sdp_update) {
 				JANUS_LOG(LOG_WARN, "Got a 'restart' request, but no SDP update? Ignoring...\n");
 			}
-			if(sdp_update && session->peer != NULL) {
+			if(sdp_update && peer != NULL) {
 				/* Forward new SDP to the peer */
 				json_t *event = json_object();
 				json_object_set_new(event, "videocall", json_string("event"));
@@ -1618,7 +1616,7 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(update, "event", json_string("update"));
 				json_object_set_new(event, "result", update);
 				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
-				int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, event, jsep);
+				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(event);
 				json_decref(jsep);
