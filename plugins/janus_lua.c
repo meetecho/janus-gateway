@@ -2,7 +2,15 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus Lua plugin
- * \details  This is a plugin that implements a simple bridge to Lua
+ * \details Check the \ref lua for more details.
+ *
+ * \ingroup plugins
+ * \ingroup luapapi
+ * \ref plugins
+ * \ref luapapi
+ *
+ * \page lua Lua plugin documentation
+ * This is a plugin that implements a simple bridge to Lua
  * scripts. While the plugin implements low level stuff like media
  * manipulation, routing, recording, etc., all the logic is demanded
  * to an external Lua script. This means that the C code exposes functions
@@ -166,10 +174,8 @@ timeCallback("resumeScheduler", nil, 0)
  * compact and less verbose, and as such is preferred in cases where
  * timing and opaque arguments are not needed.
  *
- * \ingroup plugins
- * \ingroup luapapi
- * \ref plugins
- * \ref luapapi
+ * Refer to the \ref luapapi section for more information on how you
+ * can register your own C functions.
  */
 
 #include <jansson.h>
