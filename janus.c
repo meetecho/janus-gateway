@@ -1204,7 +1204,11 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
-					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
+					if(do_trickle) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
+					} else {	
+						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
+					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
 				} else {
 					/* Check if transport wide CC is supported */
