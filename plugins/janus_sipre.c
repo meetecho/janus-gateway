@@ -2,13 +2,20 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus SIPre plugin (libre)
- * \details  This is basically a clone of the SIPre plugin, with the key
+ * \details Check the \ref sipre for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page sipre SIPre plugin documentation
+ * This is basically a clone of the SIPre plugin, with the key
  * difference being that it uses \c libre (http://creytiv.com/re.html)
  * instead of Sofia SIP for its internal stack. As such, it provides an
  * alternative for those who don't want to, or can't, use the Sofia-based
  * SIP plugin. The API it exposes is exactly the same, meaning it should
  * be pretty straightforward to switch from one plugin to another on the
  * client side. The configuration file looks exactly the same as well.
+ * As such, you can mostly refer to the \ref sip for both.
  *
  * \section sipapi SIPre Plugin API
  *
@@ -37,9 +44,6 @@
  * documentation, as while some of the features listed there may not be
  * available in the SIPre plugin as of now, all of the messages are supposed
  * to be formatted exactly the same way.
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

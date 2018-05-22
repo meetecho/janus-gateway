@@ -2,7 +2,12 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus NoSIP plugin
- * \details  
+ * \details Check the \ref nosip for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page nosip NoSIP plugin documentation
  *
  * This is quite a basic plugin, as it only takes care of acting as an
  * RTP bridge. It is named "NoSIP" since, as the name suggests, signalling
@@ -142,9 +147,6 @@
  * that will be used for the up-to-four recordings that may need to be enabled.
  *
  * A \c recordingupdated event is sent back in case the request is successful.
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

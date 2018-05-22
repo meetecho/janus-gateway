@@ -30,8 +30,8 @@
  * \par Architecture and APIs
  * The core of the gateway is specified in the \ref core section. The protocols
  * implemented in the gateway are listed in the \ref protocols group
- * instead. A list of plugins made available out of the box by Meetecho
- * are available in the \ref plugins group: these plugins can be changed
+ * instead. A list of plugins provided out of the box by Meetecho are
+ * documented in the \ref pluginslist page: these plugins can be changed
  * or extended to match your requirements, or just used as a simple
  * reference should you be interested in writing a new plugin from
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
@@ -2926,6 +2926,29 @@ ldd janus | grep asan
  * <a href="http://pastebin.com/">Pastebin</a> and pass the generated
  * link instead.
  *
+ */
+
+/*! \page pluginslist Plugins documentation
+ * Out of the box, Janus comes with a set of different and heterogeneous
+ * media manipulation plugins. These can be used individually or composed
+ * together at an application level for building complex WebRTC-based
+ * media applications.
+ *
+ * The list of plugins currently available is the following. Since new
+ * plugins may become available available in the future, make sure you
+ * come back to this page for more information.
+ *
+ * - \ref echotest
+ * - \ref streaming
+ * - \ref videocall
+ * - \ref sip
+ * - \ref sipre
+ * - \ref nosip
+ * - \ref audiobridge
+ * - \ref videoroom
+ * - \ref textroom
+ * - \ref recordplay
+ * - \ref voicemail
  */
 
 /*! \page resources Resources

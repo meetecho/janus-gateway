@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus SIP plugin
- * \details  This is a simple SIP plugin for Janus, allowing WebRTC peers
+ * \details Check the \ref sip for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page sip SIP plugin documentation
+ * This is a simple SIP plugin for Janus, allowing WebRTC peers
  * to register at a SIP server (e.g., Asterisk) and call SIP user agents
  * through the gateway. Specifically, when attaching to the plugin peers
  * are requested to provide their SIP server credentials, i.e., the address

@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus VideoRoom plugin
- * \details  This is a plugin implementing a videoconferencing SFU
+ * \details Check the \ref videoroom for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page videoroom VideoRoom plugin documentation
+ * This is a plugin implementing a videoconferencing SFU
  * (Selective Forwarding Unit) for Janus, that is an audio/video router.
  * This means that the plugin implements a virtual conferencing room peers
  * can join and leave at any time. This room is based on a Publish/Subscribe
@@ -989,14 +995,6 @@ room-<unique room ID>: {
 	"left" : "ok",
 }
 \endverbatim
- *
- *
- *
- *
- *
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"
