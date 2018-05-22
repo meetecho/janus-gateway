@@ -351,7 +351,8 @@ rtspiface = network interface IP address or device name to listen on when receiv
 \endverbatim
  *
  * Notice that destroying a mountpoint while viewers are still subscribed
- * to it will result in all viewers being kicked.
+ * to it will result in all viewers being removed, and their PeerConnection
+ * closed as a consequence.
  *
  * You can also dynamically enable and disable mountpoints via API. A
  * disabled mountpoint is a mountpoint that exists, and still works as
