@@ -800,7 +800,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(item && item->value)
 			password = (char *)item->value;
 		const char *ciphers = "NORMAL";
-		item = janus_config_get_item_drilldown(config, "certificates", "ciphers");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
 		if(item && item->value)
 			ciphers = item->value;
 		if(server_key)
