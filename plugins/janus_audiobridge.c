@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus AudioBridge plugin
- * \details  This is a plugin implementing an audio conference bridge for
+ * \details Check the \ref audiobridge for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page audiobridge AudioBridge plugin documentation
+ * This is a plugin implementing an audio conference bridge for
  * Janus, specifically mixing Opus streams. This means that it replies
  * by providing in the SDP only support for Opus, and disabling video.
  * Opus encoding and decoding is implemented using libopus (http://opus.codec.org).
@@ -606,9 +612,6 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
  * offer together with a \c configure request: this request doesn't need
  * to contain any directive at all, and can be empty. A JSEP answer will
  * be sent back along the result of the request, if successful.
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

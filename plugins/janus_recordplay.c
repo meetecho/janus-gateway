@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus Record&Play plugin
- * \details  This is a simple application that implements two different
+ * \details Check the \ref recordplay for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page recordplay Record&Play plugin documentation
+ * This is a simple application that implements two different
  * features: it allows you to record a message you send with WebRTC in
  * the format defined in recorded.c (MJR recording) and subsequently
  * replay this recording (or other previously recorded) through WebRTC
@@ -244,9 +250,6 @@
 	"result": "done"
 }
 \endverbatim
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

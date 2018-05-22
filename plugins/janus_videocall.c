@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus VideoCall plugin
- * \details  This is a simple video call plugin for Janus, allowing two
+ * \details Check the \ref videocall for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page videocall VideoCall plugin documentation
+ * This is a simple video call plugin for Janus, allowing two
  * WebRTC peers to call each other through the gateway. The idea is to
  * provide a similar service as the well known AppRTC demo (https://apprtc.appspot.com),
  * but with the media flowing through the gateway rather than being peer-to-peer.
@@ -243,9 +249,6 @@
 	}
 }
 \endverbatim
- * 
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

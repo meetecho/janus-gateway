@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus EchoTest plugin
- * \details  This is a trivial EchoTest plugin for Janus, just used to
+ * \details Check the \ref echotest for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page echotest EchoTest plugin documentation
+ * This is a trivial EchoTest plugin for Janus, just used to
  * showcase the plugin interface. A peer attaching to this plugin will
  * receive back the same RTP packets and RTCP messages he sends: the
  * RTCP messages, of course, would be modified on the way by the gateway
@@ -87,9 +93,6 @@
 	"result": "done"
 }
 \endverbatim
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

@@ -2,7 +2,13 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus VoiceMail plugin
- * \details  This is a plugin implementing a very simple VoiceMail service
+ * \details Check the \ref voicemail for more details.
+ *
+ * \ingroup plugins
+ * \ref plugins
+ *
+ * \page voicemail VoiceMail plugin documentation
+ * This is a plugin implementing a very simple VoiceMail service
  * for Janus, specifically recording Opus streams. This means that it replies
  * by providing in the SDP only support for Opus, and disabling video.
  * When a peer contacts the plugin, the plugin starts recording the audio
@@ -90,9 +96,6 @@
 	"recording : "<path to the .opus file>"
 }
 \endverbatim
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"
