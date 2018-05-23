@@ -74,6 +74,7 @@ void janus_sctp_deinit(void);
 #define DATA_CHANNEL_FLAGS_SEND_RSP 0x00000002
 #define DATA_CHANNEL_FLAGS_SEND_ACK 0x00000004
 
+struct janus_dtls_srtp;
 struct janus_ice_handle;
 
 typedef struct janus_sctp_channel {
@@ -94,9 +95,10 @@ typedef struct janus_sctp_channel {
 } janus_sctp_channel;
 
 typedef struct janus_sctp_association {
-	/*! \brief Opaque pointer to the DTLS instance related to this SCTP association */
-	void *dtls;
-	struct janus_ice_handle* ice;
+	/*! \brief Pointer to the DTLS instance related to this SCTP association */
+	struct janus_dtls_srtp *dtls;
+	/*! \brief Pointer to the ICE handle related to this SCTP association */
+	struct janus_ice_handle *handle;
 	/*! \brief Identifier of the handle owning this SCTP association (for debugging purposes only) */
 	uint64_t handle_id;
 	/*! \brief Array of SCTP channels */
@@ -179,16 +181,12 @@ typedef struct janus_datachannel_ack {
 
 
 
-/*! \brief Create a new SCTP association
- * \param[in] dtls Opaque pointer to the DTLS instance that will encapsulate SCTP messages
- * \param[in] ice Pointer to the ICE handle that will send out SCTP messages.
+/*! \brief Create and setup a new SCTP association
+ * \param[in] dtls Pointer to the DTLS instance that will encapsulate SCTP messages
+ * \param[in] handle Pointer to the ICE handle that will send out SCTP messages.
  * \param[in] udp_port The port as negotiated in the sctpmap attribute (http://tools.ietf.org/html/draft-ietf-mmusic-sctp-sdp-06)
  * \returns A janus_sctp_association instance if successful, NULL otherwise */
-janus_sctp_association *janus_sctp_association_create(void *dtls, struct janus_ice_handle* ice, uint16_t udp_port);
-
-/*! \brief Setup (connect) an existing SCTP association
- * \param[in] sctp The SCTP association to setup */
-int janus_sctp_association_setup(janus_sctp_association *sctp);
+janus_sctp_association *janus_sctp_association_create(struct janus_dtls_srtp *dtls, struct janus_ice_handle *handle, uint16_t udp_port);
 
 /*! \brief Destroy an existing SCTP association
  * \param[in] sctp The SCTP association to get rid of */

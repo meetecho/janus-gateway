@@ -110,12 +110,8 @@ void janus_sctp_deinit(void) {
 static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	janus_sctp_association *sctp = janus_refcount_containerof(sctp_ref, janus_sctp_association, ref);
 	/* This association can be destroyed, free all the resources */
-	janus_refcount_decrease(&sctp->ice->ref);
-	if(sctp->dtls != NULL) {
-		janus_dtls_srtp *dtls = (janus_dtls_srtp *)sctp->dtls;
-		janus_refcount_decrease(&dtls->ref);
-	}
-	sctp->dtls = NULL;
+	janus_refcount_decrease(&sctp->handle->ref);
+	janus_refcount_decrease(&sctp->dtls->ref);
 #ifdef DEBUG_SCTP
 	if(sctp->debug_dump != NULL)
 		fclose(sctp->debug_dump);
@@ -126,8 +122,8 @@ static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	sctp = NULL;
 }
 
-janus_sctp_association *janus_sctp_association_create(void *dtls, struct janus_ice_handle* ice, uint16_t udp_port) {
-	if(dtls == NULL || ice == NULL || udp_port == 0)
+janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, janus_ice_handle *handle, uint16_t udp_port) {
+	if(dtls == NULL || handle == NULL || udp_port == 0)
 		return NULL;
 	
 	/* usrsctp provides UDP encapsulation of SCTP, but we need these messages to
@@ -138,12 +134,18 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, struct janus_i
 	janus_refcount_init(&sctp->ref, janus_sctp_association_free);
 	g_atomic_int_set(&sctp->destroyed, 0);
 	sctp->dtls = dtls;
-	janus_refcount_increase(&((janus_dtls_srtp *)dtls)->ref);
-	sctp->ice = ice;
-	janus_refcount_increase(&ice->ref);
-	sctp->handle_id = ice->handle_id;
+	janus_refcount_increase(&dtls->ref);
+	sctp->handle = handle;
+	janus_refcount_increase(&handle->ref);
+	sctp->handle_id = handle->handle_id;
 	sctp->local_port = 5000;	/* FIXME We always use this one */
 	sctp->remote_port = udp_port;
+	sctp->buffer = NULL;
+	sctp->buflen = 0;
+	sctp->offset = 0;
+#ifdef DEBUG_SCTP
+	sctp->debug_dump = NULL;
+#endif
 
 	struct socket *sock = NULL;
 	unsigned int i = 0;
@@ -248,36 +250,25 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, struct janus_i
 	sctp->debug_dump = fopen(debug_file, "wt");
 #endif
 
-	/* We're done for now, the setup is done elsewhere */
-	sctp->sock = sock;
-	sctp->buffer = NULL;
-	sctp->buflen = 0;
-	sctp->offset = 0;
-	return sctp;
-}
-
-int janus_sctp_association_setup(janus_sctp_association *sctp) {
-	if(sctp == NULL)
-		return -1;
-
-	struct sockaddr_conn sconn;
-
 	/* Operating as client */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Connecting the SCTP association\n", sctp->handle_id);
-	memset(&sconn, 0, sizeof(struct sockaddr_conn));
-	sconn.sconn_family = AF_CONN;
-	sconn.sconn_port = htons(sctp->remote_port);
-	sconn.sconn_addr = (void *)sctp;
+	struct sockaddr_conn rconn;
+	memset(&rconn, 0, sizeof(struct sockaddr_conn));
+	rconn.sconn_family = AF_CONN;
+	rconn.sconn_port = htons(sctp->remote_port);
+	rconn.sconn_addr = (void *)sctp;
 #ifdef HAVE_SCONN_LEN
-	sconn.sconn_len = sizeof(struct sockaddr_conn);
+	rconn.sconn_len = sizeof(struct sockaddr_conn);
 #endif
-	int res = usrsctp_connect(sctp->sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn));
+	int res = usrsctp_connect(sock, (struct sockaddr *)&rconn, sizeof(struct sockaddr_conn));
 	if(res < 0 && errno != EINPROGRESS) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16" (%d)\n", sctp->handle_id, sctp->remote_port, errno);
-		return -1;
+		janus_refcount_decrease(&sctp->ref);
+		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Connected to the DataChannel peer\n", sctp->handle_id);
-	return 0;
+	sctp->sock = sock;
+	return sctp;
 }
 
 void janus_sctp_association_destroy(janus_sctp_association *sctp) {
@@ -291,7 +282,7 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 }
 
 void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len) {
-	if(sctp == NULL || sctp->ice == NULL || buf == NULL || len <= 0)
+	if(sctp == NULL || sctp->handle == NULL || buf == NULL || len <= 0)
 		return;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
 #ifdef DEBUG_SCTP
@@ -310,7 +301,7 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 
 int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t tos, uint8_t set_df) {
 	janus_sctp_association *sctp = (janus_sctp_association *)instance;
-	if(sctp == NULL || sctp->ice == NULL)
+	if(sctp == NULL || sctp->handle == NULL)
 		return -1;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
 #ifdef DEBUG_SCTP
@@ -324,7 +315,7 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 		}
 	}
 #endif
-	janus_ice_relay_sctp(sctp->ice, buffer, length);
+	janus_ice_relay_sctp(sctp->handle, buffer, length);
 	return 0;
 }
 
@@ -924,7 +915,7 @@ void janus_sctp_handle_data_message(janus_sctp_association *sctp, char *buffer, 
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming SCTP contents: %.*s\n",
 		       sctp->handle_id, (int)length, buffer);
 		/* FIXME: notify this to the core */
-		janus_dtls_notify_data((janus_dtls_srtp *)sctp->dtls, buffer, (int)length);
+		janus_dtls_notify_data(sctp->dtls, buffer, (int)length);
 	}
 	return;
 }

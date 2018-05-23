@@ -597,7 +597,7 @@ int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating SCTP association...\n", handle->handle_id);
 		return -6;
 	}
-	return janus_sctp_association_setup(dtls->sctp);
+	return 0;
 #else
 	/* Support for datachannels hasn't been built in */
 	return -1;
