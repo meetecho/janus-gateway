@@ -688,6 +688,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 void janus_streaming_setup_media(janus_plugin_session *handle);
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+
+void janus_streaming_incoming_data(janus_plugin_session *handle, char *buf, int len);
+
 void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
@@ -712,6 +715,7 @@ static janus_plugin janus_streaming_plugin =
 		.setup_media = janus_streaming_setup_media,
 		.incoming_rtp = janus_streaming_incoming_rtp,
 		.incoming_rtcp = janus_streaming_incoming_rtcp,
+		.incoming_data = janus_streaming_incoming_data,
 		.hangup_media = janus_streaming_hangup_media,
 		.destroy_session = janus_streaming_destroy_session,
 		.query_session = janus_streaming_query_session,
@@ -929,6 +933,7 @@ typedef struct janus_streaming_rtp_source {
 	gint64 last_received_audio;
 	gint64 last_received_video;
 	gint64 last_received_data;
+	struct sockaddr_in remote_data; /*address from which most recent datachannel packet was received (to enable bi-directional data)*/
 #ifdef HAVE_LIBCURL
 	gboolean rtsp;
 	CURL *curl;
@@ -3361,6 +3366,17 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 	/* FIXME Maybe we should care about RTCP, but not now */
 }
 
+void janus_streaming_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_streaming_session * jss = handle->plugin_handle;
+	janus_streaming_rtp_source *src = (janus_streaming_rtp_source *) jss->mountpoint->source;
+	int fd = src->data_fd;
+	
+	sendto(fd, buf,len, 0, (struct sockaddr*) &src->remote_data, sizeof(src->remote_data)); /*relay the data back to the address where it was initially received from*/
+	/* FIXME should we care if the channel has not been initialized from the client first?*/
+}
+
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_STREAMING_PACKAGE, handle);
 	janus_mutex_lock(&sessions_mutex);
@@ -5731,6 +5747,8 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(data_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					/*bytes = recvfrom(data_fd, buffer, 1500, 0, (struct sockaddr*)&source->remote_data, &addrlen);*/
+					source->remote_data = remote;
 					if(bytes < 0) {
 						/* Failed to read? */
 						continue;
