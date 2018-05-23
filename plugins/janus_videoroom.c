@@ -4588,8 +4588,10 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
+				}
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = json_integer_value(feed);
 				json_t *pvt = json_object_get(root, "private_id");
@@ -4741,6 +4743,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&publisher->subscribers_mutex);
 				}
 			} else {
+				janus_mutex_unlock(&videoroom->mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (ptype)");
