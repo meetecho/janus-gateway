@@ -280,20 +280,13 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 			return "unknown";
 	}
 }
+typedef struct janus_sipre_session janus_sipre_session;
 typedef struct janus_sipre_mqueue_payload {
-	void *session;				/* The session this event refers to */
-	const struct sip_msg *msg;	/* The SIP message this refers to, if any */
-	int rcode;					/* The error code to send back, if any */
-	void *data;					/* Payload specific data */
+	janus_sipre_session *session;	/* The session this event refers to */
+	const struct sip_msg *msg;		/* The SIP message this refers to, if any */
+	int rcode;						/* The error code to send back, if any */
+	void *data;						/* Payload specific data */
 } janus_sipre_mqueue_payload;
-static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode, void *data) {
-	janus_sipre_mqueue_payload *payload = g_malloc(sizeof(janus_sipre_mqueue_payload));
-	payload->session = session;
-	payload->msg = msg;
-	payload->rcode = rcode;
-	payload->data = data;
-	return payload;
-}
 
 /* Helper to quickly get the reason associated to response codes */
 static const char *janus_sipre_error_reason(int rcode) {
@@ -497,7 +490,7 @@ typedef struct janus_sipre_media {
 	gboolean updated;
 } janus_sipre_media;
 
-typedef struct janus_sipre_session {
+struct janus_sipre_session {
 	janus_plugin_session *handle;
 	janus_sipre_stack stack;
 	janus_sipre_account account;
@@ -517,11 +510,29 @@ typedef struct janus_sipre_session {
 	volatile gint destroyed;
 	janus_refcount ref;
 	janus_mutex mutex;
-} janus_sipre_session;
+};
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+
+static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(janus_sipre_session *session, const struct sip_msg *msg, int rcode, void *data) {
+	janus_sipre_mqueue_payload *payload = g_malloc(sizeof(janus_sipre_mqueue_payload));
+	if(session)
+		janus_refcount_increase(&session->ref);
+	payload->session = session;
+	payload->msg = msg;
+	payload->rcode = rcode;
+	payload->data = data;
+	return payload;
+}
+static void janus_sipre_mqueue_payload_free(janus_sipre_mqueue_payload *payload) {
+	if(payload == NULL)
+		return;
+	if(payload->session)
+		janus_refcount_decrease(&payload->session->ref);
+	g_free(payload);
+}
 
 static void janus_sipre_srtp_cleanup(janus_sipre_session *session);
 
@@ -4014,13 +4025,13 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			int err = dns_srv_get(NULL, 0, nsv, &nsn);
 			if(err) {
 				JANUS_LOG(LOG_ERR, "Failed to get the DNS servers list for the SIP stack: %d (%s)\n", err, strerror(err));
-				g_free(payload);
+				janus_sipre_mqueue_payload_free(payload);
 				return;
 			}
 			err = dnsc_alloc(&session->stack.dns_client, NULL, nsv, nsn);
 			if(err) {
 				JANUS_LOG(LOG_ERR, "Failed to initialize the DNS client for the SIP stack: %d (%s)\n", err, strerror(err));
-				g_free(payload);
+				janus_sipre_mqueue_payload_free(payload);
 				return;
 			}
 			/* Let's allocate the stack now */
@@ -4030,7 +4041,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
 				mem_deref(session->stack.dns_client);
 				session->stack.dns_client = NULL;
-				g_free(payload);
+				janus_sipre_mqueue_payload_free(payload);
 				return;
 			}
 			JANUS_LOG(LOG_INFO, "Initializing SIP transports\n");
@@ -4042,7 +4053,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			err |= sip_transp_add(session->stack.sipstack, SIP_TRANSP_TCP, &laddr);
 			if(err) {
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP transports: %d (%s)\n", err, strerror(err));
-				g_free(payload);
+				janus_sipre_mqueue_payload_free(payload);
 				return;
 			}
 			err = tls_alloc(&session->stack.tls, TLS_METHOD_SSLV23, NULL, NULL);
@@ -4054,7 +4065,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				mem_deref(session->stack.tls);
 				session->stack.tls = NULL;
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIPS transports: %d (%s)\n", err, strerror(err));
-				g_free(payload);
+				janus_sipre_mqueue_payload_free(payload);
 				return;
 			}
 #ifdef HAVE_LIBRE_SIPTRACE
@@ -4065,7 +4076,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 #endif
 			mem_deref(session->stack.tls);
 			session->stack.tls = NULL;
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_register:
@@ -4099,6 +4110,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 						json_object_set_new(info, "proxy", json_string(session->account.proxy));
 					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 				}
+				janus_sipre_mqueue_payload_free(payload);
 				break;
 			}
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
@@ -4145,7 +4157,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 				}
 			}
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_call: {
@@ -4201,7 +4213,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(mb);
 			g_free(session->temp_sdp);
 			session->temp_sdp = NULL;
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_accept: {
@@ -4241,7 +4253,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(mb);
 			g_free(session->temp_sdp);
 			session->temp_sdp = NULL;
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_rcode: {
@@ -4305,7 +4317,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				session->stack.sess = NULL;
 			}
 			mem_deref((void *)payload->msg);
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_update: {
@@ -4324,7 +4336,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(mb);
 			g_free(session->temp_sdp);
 			session->temp_sdp = NULL;
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_info: {
@@ -4353,7 +4365,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			}
 			mem_deref(mb);
 			json_decref(info);
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_message: {
@@ -4374,7 +4386,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			json_object_set_new(result, "reason", json_string("SIP MESSAGE currently unsupported"));
 			json_object_set_new(event, "result", result);
 			mem_deref(mb);
-			g_free(payload);
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_bye: {
@@ -4386,7 +4398,6 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			session->stack.sess = NULL;
 			g_free(session->callee);
 			session->callee = NULL;
-			g_free(payload);
 			/* Tell the browser... */
 			json_t *event = json_object();
 			json_object_set_new(event, "sip", json_string("event"));
@@ -4413,6 +4424,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_idle;
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_close: {
@@ -4426,6 +4438,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			session->stack.sess = NULL;
 			mem_deref(session->stack.dns_client);
 			session->stack.dns_client = NULL;
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_destroy: {
@@ -4436,6 +4449,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			sipsess_close_all(session->stack.sess_sock);
 			sip_close(session->stack.sipstack, FALSE);
 			session->stack.sipstack = NULL;
+			janus_sipre_mqueue_payload_free(payload);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
