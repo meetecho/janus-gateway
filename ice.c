@@ -2516,7 +2516,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							retransmits_cnt++;
 							/* Enqueue it */
 							janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-							pkt->data = g_malloc(p->length+SRTP_MAX_TRAILER_LEN);
+							pkt->data = g_malloc(p->length+SRTP_MAX_TAG_LEN);
 							memcpy(pkt->data, p->data, p->length);
 							pkt->length = p->length;
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3632,7 +3632,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			if(bitrate > 0) {
 				/* There's a REMB, prepend a RR as it won't work otherwise */
 				int rrlen = 32;
-				char *rtcpbuf = g_malloc0(rrlen+pkt->length+SRTP_MAX_TRAILER_LEN+4);
+				char *rtcpbuf = g_malloc0(rrlen+pkt->length+SRTP_MAX_TAG_LEN+4);
 				rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 				rr->header.version = 2;
 				rr->header.type = RTCP_RR;
@@ -3943,7 +3943,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(len+SRTP_MAX_TRAILER_LEN);
+	pkt->data = g_malloc(len+SRTP_MAX_TAG_LEN);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3989,7 +3989,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	}
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TRAILER_LEN+4);
+	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
