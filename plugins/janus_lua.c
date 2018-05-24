@@ -2,7 +2,15 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus Lua plugin
- * \details  This is a plugin that implements a simple bridge to Lua
+ * \details Check the \ref lua for more details.
+ *
+ * \ingroup plugins
+ * \ingroup luapapi
+ * \ref plugins
+ * \ref luapapi
+ *
+ * \page lua Lua plugin documentation
+ * This is a plugin that implements a simple bridge to Lua
  * scripts. While the plugin implements low level stuff like media
  * manipulation, routing, recording, etc., all the logic is demanded
  * to an external Lua script. This means that the C code exposes functions
@@ -166,10 +174,8 @@ timeCallback("resumeScheduler", nil, 0)
  * compact and less verbose, and as such is preferred in cases where
  * timing and opaque arguments are not needed.
  *
- * \ingroup plugins
- * \ingroup luapapi
- * \ref plugins
- * \ref luapapi
+ * Refer to the \ref luapapi section for more information on how you
+ * can register your own C functions.
  */
 
 #include <jansson.h>
@@ -1025,21 +1031,24 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 		const char *type = lua_tostring(s, i);
 		if(!strcasecmp(type, "audio")) {
 			if(session->arc != NULL) {
-				janus_recorder_close(session->arc);
-				janus_recorder_destroy(session->arc);
+				janus_recorder *rc = session->arc;
 				session->arc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		} else if(!strcasecmp(type, "video")) {
 			if(session->vrc != NULL) {
-				janus_recorder_close(session->vrc);
-				janus_recorder_destroy(session->vrc);
+				janus_recorder *rc = session->vrc;
 				session->vrc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		} else if(!strcasecmp(type, "data")) {
 			if(session->drc != NULL) {
-				janus_recorder_close(session->drc);
-				janus_recorder_destroy(session->drc);
+				janus_recorder *rc = session->drc;
 				session->drc = NULL;
+				janus_recorder_close(rc);
+				janus_recorder_destroy(rc);
 			}
 		}
 	}
