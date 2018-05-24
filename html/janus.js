@@ -250,7 +250,7 @@ Janus.init = function(options) {
 		var usedDependencies = null;
 		if(!options.dependencies || !options.dependencies.isArray ||
 				!options.dependencies.webRTCAdapter || !options.dependencies.httpAPICall ||
-				!options.dependencies.extension || options.dependencies.newWebSocket) {
+				!options.dependencies.extension || !options.dependencies.newWebSocket) {
 			// Not all dependencies have been overridden: use the default ones as a basis
 			usedDependencies = Janus.useDefaultDependencies(options.dependencies);
 		} else {
