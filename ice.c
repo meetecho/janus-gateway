@@ -3926,6 +3926,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			janus_dtls_wrap_sctp_data(component->dtls, pkt->data, pkt->length);
 #endif
 		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
+			/* SCTP data to push */
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+				janus_ice_free_queued_packet(pkt);
+				return G_SOURCE_CONTINUE;
+			}
+#ifdef HAVE_SCTP
 			/* Encapsulate this data in DTLS and send it */
 			if(!component->dtls) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
@@ -3937,6 +3943,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			}
 			component->noerrorlog = FALSE;
 			janus_dtls_send_sctp_data(component->dtls, pkt->data, pkt->length);
+#endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported packet type %d\n", handle->handle_id, pkt->type);
 		}
