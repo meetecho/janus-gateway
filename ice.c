@@ -3589,6 +3589,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			g_source_unref(handle->rtp_source);
 			handle->rtp_source = NULL;
 		}
+		/* If event handlers are active, send stats one last time */
+		if(janus_events_is_enabled()) {
+			handle->last_event_stats = janus_ice_event_stats_period;
+			(void)janus_ice_outgoing_stats_handle(handle);
+		}
 		return G_SOURCE_REMOVE;
 	}
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
