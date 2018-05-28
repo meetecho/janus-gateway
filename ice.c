@@ -221,6 +221,7 @@ static gboolean janus_is_rtcp(gchar *buf) {
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
 #define JANUS_ICE_PACKET_DATA	2
+#define JANUS_ICE_PACKET_SCTP	3
 /* Janus enqueued (S)RTP/(S)RTCP packet to send */
 typedef struct janus_ice_queued_packet {
 	char *data;
@@ -3900,7 +3901,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					}
 				}
 			}
-		} else {
+		} else if(pkt->type == JANUS_ICE_PACKET_DATA) {
 			/* Data */
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
 				janus_ice_free_queued_packet(pkt);
@@ -3918,6 +3919,20 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			component->noerrorlog = FALSE;
 			janus_dtls_wrap_sctp_data(component->dtls, pkt->data, pkt->length);
 #endif
+		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
+			/* Encapsulate this data in DTLS and send it */
+			if(!component->dtls) {
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] SCTP stream component has no valid DTLS session (yet?)\n", handle->handle_id);
+					component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
+				}
+				janus_ice_free_queued_packet(pkt);
+				return G_SOURCE_CONTINUE;
+			}
+			component->noerrorlog = FALSE;
+			janus_dtls_send_sctp_data(component->dtls, pkt->data, pkt->length);
+		} else {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported packet type %d\n", handle->handle_id, pkt->type);
 		}
 		janus_ice_free_queued_packet(pkt);
 	}
@@ -4015,6 +4030,23 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	janus_ice_queue_packet(handle, pkt);
 }
 #endif
+
+void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
+#ifdef HAVE_SCTP
+	if(!handle || handle->queued_packets == NULL || buffer == NULL || length < 1)
+		return;
+	/* Queue this packet */
+	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc(length);
+	memcpy(pkt->data, buffer, length);
+	pkt->length = length;
+	pkt->type = JANUS_ICE_PACKET_SCTP;
+	pkt->control = FALSE;
+	pkt->encrypted = FALSE;
+	pkt->retransmission = FALSE;
+	janus_ice_queue_packet(handle, pkt);
+#endif
+}
 
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component) {
 	if(!handle || !component)
