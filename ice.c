@@ -1027,6 +1027,9 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
+	/* First of all, hangup the PeerConnection, if any */
+	janus_ice_webrtc_hangup(handle, "Detach");
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 	/* Remove the session from active sessions map */
 	janus_mutex_lock(&plugin_sessions_mutex);
 	gboolean found = g_hash_table_remove(plugin_sessions, handle->app_handle);
@@ -1065,8 +1068,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_text2pcap_close(handle->text2pcap);
 		g_clear_pointer(&handle->text2pcap, janus_text2pcap_free);
 	}
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	janus_ice_webrtc_hangup(handle, "Detach");
 
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
