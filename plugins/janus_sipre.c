@@ -4069,7 +4069,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				return;
 			}
 #ifdef HAVE_LIBRE_SIPTRACE
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				/* Trace incoming/outgoing SIP messages */
 				sip_set_trace(session->stack.sipstack, janus_sipre_msg_logger);
 			}

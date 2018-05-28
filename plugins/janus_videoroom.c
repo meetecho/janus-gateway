@@ -4261,7 +4261,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		janus_mutex_unlock(&participant->subscribers_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		/* Also notify event handlers */
-		if(participant->room && gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("unpublished"));
 			json_object_set_new(info, "room", json_integer(participant->room_id));
