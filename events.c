@@ -136,7 +136,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_object_set_new(body, "name", json_string(name));
 			json_t *transport = va_arg(args, json_t *);
 			if(transport != NULL)
-				json_object_set(body, "transport", transport);
+				json_object_set_new(body, "transport", transport);
 			break;
 		}
 		case JANUS_EVENT_TYPE_HANDLE: {
@@ -199,7 +199,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "plugin", json_string(name));
 			json_t *data = va_arg(args, json_t *);
-			json_object_set(body, "data", data);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		case JANUS_EVENT_TYPE_TRANSPORT: {
@@ -211,7 +211,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			g_snprintf(id, sizeof(id), "%p", instance);
 			json_object_set_new(body, "id", json_string(id));
 			json_t *data = va_arg(args, json_t *);
-			json_object_set(body, "data", data);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		case JANUS_EVENT_TYPE_CORE: {
@@ -223,7 +223,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			char *schema = va_arg(args, char *);
 			json_object_set_new(body, "schema", json_string(schema));
 			json_t *data = va_arg(args, json_t *);
-			json_object_set(body, "data", data);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		default:

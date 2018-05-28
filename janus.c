@@ -1898,6 +1898,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			const char *schema_value = json_string_value(schema);
 			json_t *data = json_object_get(root, "data");
 			if(janus_events_is_enabled()) {
+				json_incref(data);
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_EXTERNAL, 0, schema_value, data);
 			}
 			/* Prepare JSON reply */
