@@ -701,9 +701,8 @@ static int janus_request_check_secret(janus_request *request, guint64 session_id
 			}
 		}
 		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-		if(!secret_authorized && !token_authorized) {
-			return janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-		}
+		if(!secret_authorized && !token_authorized)
+			return JANUS_ERROR_UNAUTHORIZED;
 	}
 	return 0;
 }
@@ -820,8 +819,10 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		/* Any secret/token to check? */
 		ret = janus_request_check_secret(request, session_id, transaction_text);
-		if(ret != 0)
+		if(ret != 0) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
+		}
 		session_id = 0;
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
@@ -880,8 +881,10 @@ int janus_process_incoming_request(janus_request *request) {
 
 	/* Go on with the processing */
 	ret = janus_request_check_secret(request, session_id, transaction_text);
-	if(ret != 0)
+	if(ret != 0) {
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 		goto jsondone;
+	}
 
 	/* If we got here, make sure we have a session (and/or a handle) */
 	session = janus_session_find(session_id);
