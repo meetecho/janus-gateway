@@ -702,9 +702,8 @@ static int janus_request_check_secret(janus_request *request, guint64 session_id
 			}
 		}
 		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-		if(!secret_authorized && !token_authorized) {
-			return janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-		}
+		if(!secret_authorized && !token_authorized)
+			return JANUS_ERROR_UNAUTHORIZED;
 	}
 	return 0;
 }
@@ -821,8 +820,10 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		/* Any secret/token to check? */
 		ret = janus_request_check_secret(request, session_id, transaction_text);
-		if(ret != 0)
+		if(ret != 0) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
+		}
 		session_id = 0;
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
@@ -881,8 +882,10 @@ int janus_process_incoming_request(janus_request *request) {
 
 	/* Go on with the processing */
 	ret = janus_request_check_secret(request, session_id, transaction_text);
-	if(ret != 0)
+	if(ret != 0) {
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 		goto jsondone;
+	}
 
 	/* If we got here, make sure we have a session (and/or a handle) */
 	session = janus_session_find(session_id);
@@ -1904,6 +1907,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			const char *schema_value = json_string_value(schema);
 			json_t *data = json_object_get(root, "data");
 			if(janus_events_is_enabled()) {
+				json_incref(data);
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_EXTERNAL, 0, schema_value, data);
 			}
 			/* Prepare JSON reply */
@@ -3114,7 +3118,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	guint64 session_id = 0, handle_id = 0;
 	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
-		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
+		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped)) {
 			json_decref(event);
 			return;
 		}

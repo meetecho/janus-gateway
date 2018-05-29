@@ -574,6 +574,11 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Gateway SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buffer The message data (buffer)
+ * @param[in] length The buffer lenght */
+void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
