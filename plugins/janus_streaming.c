@@ -2724,9 +2724,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				janus_config_add_item(config, mp->name, "is_private", "yes");
 			/* Per type values */
 			if(mp->streaming_source == janus_streaming_source_rtp) {
-				janus_streaming_rtp_source *source = mp->source;
 				gboolean rtsp = FALSE;
 #ifdef HAVE_LIBCURL
+				janus_streaming_rtp_source *source = mp->source;
 				if(source->rtsp)
 						rtsp = TRUE;
 #endif
