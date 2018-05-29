@@ -1313,7 +1313,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Setup sofia */
 	su_init();
-	if(callback->events_is_enabled()) {
+	if(notify_events && callback->events_is_enabled()) {
 		/* Enable the transport logging, as we want to have access to the SIP messages */
 		setenv("TPORT_LOG", "1", 1);
 		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
@@ -3236,7 +3236,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 	ssip_t *ssip = session->stack;
 
 	/* Notify event handlers about the content of the whole incoming SIP message, if any */
-	if(gateway->events_is_enabled() && ssip) {
+	if(notify_events && gateway->events_is_enabled() && ssip) {
 		/* Print the incoming message */
 		size_t msg_size = 0;
 		msg_t* msg = nua_current_request(nua);
