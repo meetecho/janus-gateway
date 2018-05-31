@@ -2948,6 +2948,7 @@ ldd janus | grep asan
  * - \ref textroom
  * - \ref recordplay
  * - \ref voicemail
+ * - \ref lua
  */
 
 /*! \page resources Resources
@@ -3766,7 +3767,7 @@ ldd janus | grep asan
  * \details The Janus Lua plugin allows you to write your application
  * logic in Lua, instead of creating a new plugin in C: check the
  * documentation in janus_lua.c for info on the APIs. Some additional
- * hooks in C may be required, which is what the janus_lua_data.c and
+ * hooks in C may be required, which is what the janus_lua_data.h and
  * janus_lua_extra.c code is for.
  * \ingroup plugins
  */
