@@ -268,6 +268,8 @@ struct janus_ice_handle {
 	GMainLoop *iceloop;
 	/*! \brief GLib thread for libnice */
 	GThread *icethread;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
+	GSource *rtp_source, *rtcp_source, *stats_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -298,14 +300,12 @@ struct janus_ice_handle {
 	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */
 	GAsyncQueue *queued_packets;
-	/*! \brief GLib thread for sending outgoing packets */
-	GThread *send_thread;
-	/*! \brief Atomic flag to make sure we only create the thread once */
-	volatile gint send_thread_created;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
 	guint srtp_errors_count;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
-	gint last_srtp_error;
+	gint last_srtp_error, last_srtp_summary;
+	/*! \brief Count of how many seconds passed since the last stats passed to event handlers */
+	gint last_event_stats;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
@@ -573,16 +573,17 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Gateway SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buffer The message data (buffer)
+ * @param[in] length The buffer lenght */
+void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
 /** @name Janus ICE handle helpers
  */
 ///@{
-/*! \brief Janus ICE handle thread */
-void *janus_ice_thread(void *data);
-/*! \brief Janus ICE thread for sending outgoing packets */
-void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER

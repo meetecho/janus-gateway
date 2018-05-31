@@ -701,9 +701,8 @@ static int janus_request_check_secret(janus_request *request, guint64 session_id
 			}
 		}
 		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
-		if(!secret_authorized && !token_authorized) {
-			return janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-		}
+		if(!secret_authorized && !token_authorized)
+			return JANUS_ERROR_UNAUTHORIZED;
 	}
 	return 0;
 }
@@ -820,8 +819,10 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		/* Any secret/token to check? */
 		ret = janus_request_check_secret(request, session_id, transaction_text);
-		if(ret != 0)
+		if(ret != 0) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
+		}
 		session_id = 0;
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
@@ -880,8 +881,10 @@ int janus_process_incoming_request(janus_request *request) {
 
 	/* Go on with the processing */
 	ret = janus_request_check_secret(request, session_id, transaction_text);
-	if(ret != 0)
+	if(ret != 0) {
+		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 		goto jsondone;
+	}
 
 	/* If we got here, make sure we have a session (and/or a handle) */
 	session = janus_session_find(session_id);
@@ -1377,7 +1380,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
 			goto jsondone;
 		}
-		if(janus_flags_is_set(&handle->webrtc_flags,JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Received a trickle, but still cleaning a previous session\n", handle->handle_id);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
 			goto jsondone;
@@ -1895,6 +1898,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			const char *schema_value = json_string_value(schema);
 			json_t *data = json_object_get(root, "data");
 			if(janus_events_is_enabled()) {
+				json_incref(data);
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_EXTERNAL, 0, schema_value, data);
 			}
 			/* Prepare JSON reply */
@@ -2125,7 +2129,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
-		json_object_set_new(info, "send_thread_created", g_atomic_int_get(&handle->send_thread_created) ? json_true() : json_false());
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
@@ -3105,7 +3108,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	guint64 session_id = 0, handle_id = 0;
 	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
-		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
+		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped)) {
 			json_decref(event);
 			return;
 		}
