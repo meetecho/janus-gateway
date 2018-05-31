@@ -4278,7 +4278,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			if(publisher != NULL) {
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
-				if(subscriber->pvt_id > 0) {
+				if(subscriber->pvt_id > 0 && publisher->room != NULL) {
 					janus_videoroom_publisher *owner = g_hash_table_lookup(publisher->room->private_ids, GUINT_TO_POINTER(subscriber->pvt_id));
 					if(owner != NULL) {
 						/* Note: we should refcount these subscription-publisher mappings as well */
