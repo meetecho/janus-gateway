@@ -1145,6 +1145,9 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		if(handle->stream_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
+		if(handle->rtp_source == NULL) {
+			g_main_loop_quit(handle->iceloop);
+		}
 	}
 }
 
