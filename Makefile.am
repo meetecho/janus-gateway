@@ -67,6 +67,9 @@ recordings_DATA = $(NULL)
 luadir = $(datadir)/janus/lua
 lua_DATA = $(NULL)
 
+duktapedir = $(datadir)/janus/duktape
+duktape_DATA = $(NULL)
+
 demosdir = $(datadir)/janus/demos
 demos_DATA = $(NULL)
 
@@ -84,7 +87,8 @@ jsmodules_DATA = html/janus.js
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|; \
-	    s|[@]luadir[@]|$(luadir)|" \
+	    s|[@]luadir[@]|$(luadir)|; \
+	    s|[@]duktapedir[@]|$(duktapedir)|" \
 	$< > $@ || rm $@
 
 EXTRA_DIST += conf/janus.cfg.sample.in
@@ -449,6 +453,23 @@ lua_DATA += \
 	plugins/lua/janus-logger.lua \
 	plugins/lua/janus-sdp.lua
 EXTRA_DIST += conf/janus.plugin.lua.cfg.sample.in
+endif
+
+if ENABLE_PLUGIN_DUKTAPE
+plugin_LTLIBRARIES += plugins/libjanus_duktape.la
+plugins_libjanus_duktape_la_SOURCES = plugins/janus_duktape.c \
+	plugins/janus_duktape_data.h plugins/janus_duktape_extra.c plugins/janus_duktape_extra.h \
+	plugins/duktape-deps/duktape.c plugins/duktape-deps/duk_config.h plugins/duktape-deps/duktape.h \
+	plugins/duktape-deps/duk_module_duktape.c plugins/duktape-deps/duk_module_duktape.h \
+	plugins/duktape-deps/duk_console.c plugins/duktape-deps/duk_console.h
+plugins_libjanus_duktape_la_CFLAGS = $(plugins_cflags) $(DUKTAPE_CFLAGS)
+plugins_libjanus_duktape_la_LDFLAGS = $(plugins_ldflags) $(DUKTAPE_LDFLAGS) $(DUKTAPE_LIBS)
+plugins_libjanus_duktape_la_LIBADD = $(plugins_libadd) $(DUKTAPE_LIBADD)
+conf_DATA += conf/janus.plugin.duktape.cfg.sample
+duktape_DATA += \
+	plugins/duktape/echotest.js \
+	plugins/duktape/janus-sdp.js
+EXTRA_DIST += conf/janus.plugin.duktape.cfg.sample.in
 endif
 
 

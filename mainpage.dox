@@ -2948,6 +2948,8 @@ ldd janus | grep asan
  * - \ref textroom
  * - \ref recordplay
  * - \ref voicemail
+ * - \ref lua
+ * - \ref duktape
  */
 
 /*! \page resources Resources
@@ -3766,8 +3768,18 @@ ldd janus | grep asan
  * \details The Janus Lua plugin allows you to write your application
  * logic in Lua, instead of creating a new plugin in C: check the
  * documentation in janus_lua.c for info on the APIs. Some additional
- * hooks in C may be required, which is what the janus_lua_data.c and
+ * hooks in C may be required, which is what the janus_lua_data.h and
  * janus_lua_extra.c code is for.
+ * \ingroup plugins
+ */
+
+/*! \defgroup jspapi Duktape plugin API
+ * \brief Duktape plugin (aka, how to write your own plugin in JavaScript)
+ * \details The Janus Duktape plugin allows you to write your application
+ * logic in JavaScript, instead of creating a new plugin in C: check the
+ * documentation in janus_duktape.c for info on the APIs. Some additional
+ * hooks in C may be required, which is what the janus_duktape_data.h and
+ * janus_duktape_extra.c code is for.
  * \ingroup plugins
  */
 

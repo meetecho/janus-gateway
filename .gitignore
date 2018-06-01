@@ -33,6 +33,8 @@ Makefile.in
 /plugins/*.lo
 /plugins/*.la
 /plugins/.libs
+/plugins/duktape-deps/*.lo
+/plugins/duktape-deps/.libs
 /transports/*.o
 /transports/*.lo
 /transports/*.la
@@ -44,6 +46,7 @@ Makefile.in
 /postprocessing/*.o
 
 /conf/janus.cfg.sample
+/conf/janus.plugin.duktape.cfg.sample
 /conf/janus.plugin.lua.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
