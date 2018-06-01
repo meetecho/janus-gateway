@@ -1795,6 +1795,8 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	}
 	if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
+	/* Are we recording? */
+	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
 	if(has_incoming_data) {
 		/* Yep, pass the data to the Lua script and return */
@@ -1812,8 +1814,6 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	/* Is this session allowed to send data? */
 	if(!session->send_data)
 		return;
-	/* Are we recording? */
-	janus_recorder_save_frame(session->drc, buf, len);
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
 	if(text == NULL) {
