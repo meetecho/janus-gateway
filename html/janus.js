@@ -691,7 +691,7 @@ function Janus(gatewayCallbacks) {
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
 			return;
-		wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+		wsKeepaliveTimeoutId = setTimeout(keepAlive, 25000);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
@@ -766,7 +766,7 @@ function Janus(gatewayCallbacks) {
 							callbacks.error(json["error"].reason);
 							return;
 						}
-						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+						wsKeepaliveTimeoutId = setTimeout(keepAlive, 25000);
 						connected = true;
 						sessionId = json["session_id"] ? json["session_id"] : json.data["id"];
 						if(callbacks["reconnect"]) {
