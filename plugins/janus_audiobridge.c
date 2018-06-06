@@ -919,15 +919,6 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		GList *first = g_list_first(participant->inbuf);
 		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
 		participant->inbuf = g_list_remove_link(participant->inbuf, first);
-		if(pkt == NULL)
-			continue;
-		g_free(pkt->data);
-		g_free(pkt);
-	}
-	while(participant->inbuf) {
-		GList *first = g_list_first(participant->inbuf);
-		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-		participant->inbuf = g_list_remove_link(participant->inbuf, first);
 		if(pkt)
 			g_free(pkt->data);
 		g_free(pkt);
