@@ -4255,6 +4255,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 					g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference);
 				if(s->room)
 					g_clear_pointer(&s->room, janus_videoroom_room_dereference);
+				if(s->session && s->close_pc)
+					gateway->close_pc(s->session->handle);
 				janus_refcount_decrease(&s->ref);
 			}
 		}
