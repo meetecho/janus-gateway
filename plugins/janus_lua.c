@@ -407,7 +407,7 @@ static int janus_lua_method_timecallback(lua_State *s) {
 	cb->source = g_timeout_source_new(ms);
 	g_source_set_callback(cb->source, janus_lua_timer_cb, cb, NULL);
 	cb->id = g_source_attach(cb->source, timer_context);
-	JANUS_LOG(LOG_WARN, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	/* Done */
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1989,7 +1989,7 @@ static gboolean janus_lua_timer_cb(void *data) {
 	if(cb == NULL)
 		return FALSE;
 	/* Invoke the callback with the provided argument, if available */
-	JANUS_LOG(LOG_WARN, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, cb->function);
