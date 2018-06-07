@@ -458,6 +458,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", admin ? ctx->admin.publish.topic : ctx->publish.topic, rc);
 	}
+	free(payload);
 
 	return 0;
 }
