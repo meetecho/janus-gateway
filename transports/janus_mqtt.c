@@ -380,6 +380,9 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		goto error;
 	}
 
+	g_free((char *)url);
+	g_free((char *)client_id);
+	janus_config_destroy(config);
 	return 0;
 
 error:
@@ -388,7 +391,7 @@ error:
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
 	g_free((char *)client_id);
-	g_free(config);
+	janus_config_destroy(config);
 
 	return -1;
 }
