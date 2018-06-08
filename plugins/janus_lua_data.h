@@ -65,6 +65,7 @@ typedef struct janus_lua_session {
 	uint16_t pli_freq;					/* Regular PLI frequency (0=disabled) */
 	gint64 pli_latest;					/* Time of latest sent PLI (to avoid flooding) */
 	GSList *recipients;					/* Sessions that should receive media from this session */
+	struct janus_lua_session *sender;	/* Other session this session is receiving media from */
 	janus_mutex recipients_mutex;		/* Mutex to lock the recipients list */
 	janus_recorder *arc;				/* The Janus recorder instance for audio, if enabled */
 	janus_recorder *vrc;				/* The Janus recorder instance for video, if enabled */

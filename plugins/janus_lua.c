@@ -672,6 +672,7 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 		janus_refcount_increase(&session->ref);
 		janus_refcount_increase(&recipient->ref);
 		session->recipients = g_slist_append(session->recipients, recipient);
+		recipient->sender = session;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
 	/* Done */
@@ -715,6 +716,7 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 	gboolean unref = FALSE;
 	if(g_slist_find(session->recipients, recipient) != NULL) {
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		unref = TRUE;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
@@ -1539,6 +1541,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_refcount_decrease(&recipient->ref);
 		}
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
 
@@ -1781,7 +1784,19 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		} else {
 			janus_core->relay_rtcp(handle, 1, buf, len);
 		}
-		return;
+	}
+	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
+	if(janus_rtcp_has_pli(buf, len)) {
+		if(session->sender != NULL) {
+			janus_mutex_lock_nodebug(&session->sender->recipients_mutex);
+			/* Send a PLI */
+			session->sender->pli_latest = janus_get_monotonic_time();
+			char rtcpbuf[12];
+			janus_rtcp_pli((char *)&rtcpbuf, 12);
+			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
+			janus_core->relay_rtcp(session->sender->handle, 1, rtcpbuf, 12);
+			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
+		}
 	}
 }
 
@@ -1886,6 +1901,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	while(session->recipients) {
 		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&recipient->ref);
 	}
