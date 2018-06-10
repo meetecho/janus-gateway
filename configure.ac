@@ -481,7 +481,20 @@ AC_TRY_COMPILE([
                ])
 AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 
+PKG_CHECK_MODULES([LIBSYSTEMD],
+                  [libsystemd],
+                  [
+                    AS_IF(
+                      [test "x$enable_unix_sockets" != "xno"],
+                      [
+                        AC_DEFINE(HAVE_LIBSYSTEMD)
+                        JANUS_MANUAL_LIBS+=" -lsystemd"
+                        enable_unix_sockets=yes
+                      ])
+                  ],
+                  [AC_MSG_NOTICE([systemd unix domain socket service not supported])])
 
+ 
 ##
 # Plugins
 ##

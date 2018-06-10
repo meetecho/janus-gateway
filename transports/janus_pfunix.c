@@ -32,6 +32,10 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/un.h>
+ 
+#ifdef  HAVE_LIBSYSTEMD
+#include "systemd/sd-daemon.h"
+#endif /* HAVE_LIBSYSTEMD */
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -119,6 +123,9 @@ void *janus_pfunix_thread(void *data);
 /* Unix Sockets servers (and whether they should be SOCK_SEQPACKET or SOCK_DGRAM) */
 static int pfd = -1, admin_pfd = -1;
 static gboolean dgram = FALSE, admin_dgram = FALSE;
+#ifdef HAVE_LIBSYSTEMD
+static gboolean sd_socket = FALSE, admin_sd_socket = FALSE;
+#endif /* HAVE_LIBSYSTEMD */
 /* Socket pair to notify about the need for outgoing data */
 static int write_fd[2];
 
@@ -268,6 +275,12 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Janus API)\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
+#ifdef HAVE_LIBSYSTEMD
+				if (sd_listen_fds(0) > 0) {
+					pfd = SD_LISTEN_FDS_START + 0;
+					sd_socket = TRUE;
+				} else
+#endif /* HAVE_LIBSYSTEMD */
 				pfd = janus_pfunix_create_socket(pfname, dgram);
 			}
 		}
@@ -292,6 +305,12 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Admin API)\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
+#ifdef HAVE_LIBSYSTEMD
+				if (sd_listen_fds(0) > 1) {
+					admin_pfd = SD_LISTEN_FDS_START + 1;
+					admin_sd_socket = TRUE;
+				} else
+#endif /* HAVE_LIBSYSTEMD */
 				admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
 			}
 		}
@@ -769,7 +788,11 @@ void *janus_pfunix_thread(void *data) {
 	void *addr = g_malloc(addrlen+1);
 	if(pfd > -1) {
 		/* Unlink the path name first */
+#ifdef HAVE_LIBSYSTEMD
+		if((getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == sd_socket)) {
+#else
 		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+#endif
 			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
 			unlink(((struct sockaddr_un *)addr)->sun_path);
 		}
@@ -779,7 +802,11 @@ void *janus_pfunix_thread(void *data) {
 	pfd = -1;
 	if(admin_pfd > -1) {
 		/* Unlink the path name first */
+#ifdef HAVE_LIBSYSTEMD
+		if((getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == admin_sd_socket)) {
+#else
 		if(getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+#endif
 			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
 			unlink(((struct sockaddr_un *)addr)->sun_path);
 		}
