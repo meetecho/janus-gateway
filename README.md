@@ -36,6 +36,8 @@ WebSockets and/or BoringSSL support, as they make use of it)
 you are interested in RabbitMQ support for the Janus API)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
 you are interested in MQTT support for the Janus API)
+* [nanomsg](https://nanomsg.org/) (only needed if
+you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
 interested in the TURN REST API support)
 
@@ -195,6 +197,13 @@ following steps:
 
 * *Note:* you may want to set up a different install path for the library,
 to achieve that, replace the last command by 'sudo prefix=/usr make install'.
+
+In case you're interested in Nanomsg support, you'll need to install the
+related C library. It is usually available as an easily installable
+package in pretty much all repositories. The following is an example on
+how to install it on Ubuntu:
+
+	aptitude install libnanomsg-dev
 
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
