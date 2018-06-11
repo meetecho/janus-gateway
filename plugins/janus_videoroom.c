@@ -4255,6 +4255,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 					g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference);
 				if(s->room)
 					g_clear_pointer(&s->room, janus_videoroom_room_dereference);
+				if(s->session && s->close_pc)
+					gateway->close_pc(s->session->handle);
 				janus_refcount_decrease(&s->ref);
 			}
 		}
@@ -4278,7 +4280,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			if(publisher != NULL) {
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
-				if(subscriber->pvt_id > 0) {
+				if(subscriber->pvt_id > 0 && publisher->room != NULL) {
 					janus_videoroom_publisher *owner = g_hash_table_lookup(publisher->room->private_ids, GUINT_TO_POINTER(subscriber->pvt_id));
 					if(owner != NULL) {
 						/* Note: we should refcount these subscription-publisher mappings as well */
@@ -4630,6 +4632,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_videoroom_subscriber *subscriber = g_malloc0(sizeof(janus_videoroom_subscriber));
 					subscriber->session = session;
+					subscriber->room_id = videoroom->room_id;
 					subscriber->room = videoroom;
 					videoroom = NULL;
 					subscriber->feed = publisher;
@@ -4690,7 +4693,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					event = json_object();
 					json_object_set_new(event, "videoroom", json_string("attached"));
-					json_object_set_new(event, "room", json_integer(subscriber->room->room_id));
+					json_object_set_new(event, "room", json_integer(subscriber->room_id));
 					json_object_set_new(event, "id", json_integer(feed_id));
 					if(publisher->display)
 						json_object_set_new(event, "display", json_string(publisher->display));
@@ -4733,7 +4736,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(notify_events && gateway->events_is_enabled()) {
 							json_t *info = json_object();
 							json_object_set_new(info, "event", json_string("subscribing"));
-							json_object_set_new(info, "room", json_integer(subscriber->room->room_id));
+							json_object_set_new(info, "room", json_integer(subscriber->room_id));
 							json_object_set_new(info, "feed", json_integer(feed_id));
 							json_object_set_new(info, "private_id", json_integer(pvt_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
@@ -5361,7 +5364,7 @@ static void *janus_videoroom_handler(void *data) {
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 			} else if(!strcasecmp(request_text, "leave")) {
-				guint64 room_id = subscriber && subscriber->room ? subscriber->room->room_id : 0;
+				guint64 room_id = subscriber ? subscriber->room_id : 0;
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 				janus_videoroom_hangup_media(session->handle);
 				gateway->close_pc(session->handle);
