@@ -37,4 +37,22 @@ gboolean janus_events_is_enabled(void);
  * @param[in] session_id Janus session identifier this event refers to */
 void janus_events_notify_handlers(int type, guint64 session_id, ...);
 
+/*! \brief Convert event type to text label.
+	Labels are lower case and useful for protocol handling.
+	For pretty printing, use the names.
+	 * @param[in] type Type of the event to notify
+ */
+const char *event_type_to_label(int event_type);
+
+/*! \brief Convert event type to text name.
+	Names may contain spaces, emojis and other stuff
+	not suitable for protocol data.
+	 * @param[in] type Type of the event to notify
+ */
+const char *event_type_to_name(int event_type);
+
+/*! \brief Convert event label to flag
+ */
+int event_label_to_flag(const char *label);
+
 #endif
