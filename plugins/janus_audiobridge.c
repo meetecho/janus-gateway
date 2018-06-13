@@ -830,7 +830,6 @@ typedef struct janus_audiobridge_room {
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
-static gboolean use_fec = FALSE;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
@@ -872,6 +871,7 @@ typedef struct janus_audiobridge_participant {
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
+	gboolean fec;				/* Opus FEC status */
 	uint16_t expected_seq;		/* Expected sequence number */
 	uint16_t probation; 		/* Used to determine new ssrc validity */
 	uint32_t last_timestamp;	/* Last in seq timestamp */
@@ -1327,10 +1327,6 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_AUDIOBRIDGE_NAME);
 		}
-		janus_config_item *fec = janus_config_get_item_drilldown(config, "general", "use_fec");
-		use_fec = fec && fec->value && janus_is_true(fec->value);
-		JANUS_LOG(LOG_VERB, "FEC: %s\n", use_fec ? "enable" : "disable");
-
 		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
@@ -2883,11 +2879,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		} else if(pkt->seq_number > participant->expected_seq) {
 			/* Sequence(s) losts */
 			uint16_t gap = pkt->seq_number - participant->expected_seq;
-			JANUS_LOG(LOG_VERB, "%"SCNu16" sequence(s) lost, sequence = %"SCNu16",  expected seq = %"SCNu16" \n", gap, pkt->seq_number, participant->expected_seq);
+			JANUS_LOG(LOG_HUGE, "%"SCNu16" sequence(s) lost, sequence = %"SCNu16",  expected seq = %"SCNu16" \n", gap, pkt->seq_number, participant->expected_seq);
 
 			/* Use FEC if sequence lost < DEFAULT_PREBUFFERING */
 			uint16_t start_lost_seq = participant->expected_seq;
-			if(use_fec && gap < DEFAULT_PREBUFFERING) {
+			
+			if(participant->fec && gap < DEFAULT_PREBUFFERING) {
 				for(uint8_t i = 1; i <= gap ; i++) {
 					int32_t output_samples;
 					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
@@ -2898,15 +2895,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 					lost_pkt->silence = FALSE;
 					lost_pkt->length = 0;
 
-					JANUS_LOG(LOG_VERB, "Prepare lost packet with seq = %"SCNu16", timestamp = %"SCNu32" \n", lost_pkt->seq_number, lost_pkt->timestamp);
 					if(i == gap) {
 						/* attempt to decode with in-band FEC from next packet */
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
-						JANUS_LOG(LOG_VERB, "FEC(1) output_samples =  %"SCNu32" \n", output_samples);
 						lost_pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)lost_pkt->data, output_samples, 1);
 					} else {
 						opus_decoder_ctl(participant->decoder, OPUS_GET_LAST_PACKET_DURATION(&output_samples));
-						JANUS_LOG(LOG_VERB, "FEC(NULL) output_samples =  %"SCNu32" \n", output_samples);
 						lost_pkt->length = opus_decode(participant->decoder, NULL, plen, (opus_int16 *)lost_pkt->data, output_samples, 1);
 					}
 
@@ -2932,7 +2926,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			/* In late sequence or sequence wrapped */
 			/* Check first if sequence wrapped */
 			if((participant->expected_seq - pkt->seq_number) > MAX_MISORDER){
-				JANUS_LOG(LOG_VERB, "SN WRAPPED seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", pkt->seq_number, participant->expected_seq);
+				JANUS_LOG(LOG_HUGE, "SN WRAPPED seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", pkt->seq_number, participant->expected_seq);
 				participant->expected_seq = pkt->seq_number + 1;
 			} else {
 				JANUS_LOG(LOG_WARN, "IN LATE SN seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", pkt->seq_number, participant->expected_seq);
@@ -3256,6 +3250,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->encoder = NULL;
 				participant->decoder = NULL;
 				participant->reset = FALSE;
+				participant->fec = FALSE;
 				participant->expected_seq = 0;
 				participant->probation = MIN_SEQUENTIAL;
 				participant->last_timestamp = 0;
@@ -3312,7 +3307,7 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(participant->encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				/* FIXME This settings should be configurable */
-				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(use_fec));
+				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 			}
 			opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 			if(participant->decoder == NULL) {
@@ -3729,7 +3724,7 @@ static void *janus_audiobridge_handler(void *data) {
 					opus_encoder_ctl(new_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
 				/* FIXME This settings should be configurable */
-				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(use_fec));
+				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				opus_encoder_ctl(new_encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 				/* Opus decoder */
 				error = 0;
@@ -4004,6 +3999,9 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant->opus_pt < 0) {
 				/* TODO Handle this case */
 				JANUS_LOG(LOG_ERR, "Offer doesn't contain Opus..?\n");
+			} else {
+				participant->fec = janus_sdp_attribute_fec_enable(offer, participant->opus_pt);
+				JANUS_LOG(LOG_VERB, "Opus fec %s\n", participant->fec ? "enabled" : "disabled");
 			}
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
 			/* Check if the audio level extension was offered */
@@ -4039,8 +4037,8 @@ static void *janus_audiobridge_handler(void *data) {
 			answer->s_name = g_strdup(s_name);
 			/* Add a fmtp attribute */
 			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp",
-				"%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=%s\r\n",
-					participant->opus_pt, participant->room->sampling_rate, use_fec ? "1" : "0");
+				"%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=%d\r\n",
+					participant->opus_pt, participant->room->sampling_rate, participant->fec ? 1 : 0);
 			janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 			/* Is the audio level extension negotiated? */
 			participant->extmap_id = 0;
