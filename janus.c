@@ -3368,6 +3368,9 @@ gint main(int argc, char *argv[])
 	if(args_info.disable_colors_given) {
 		janus_config_add_item(config, "general", "debug_colors", "no");
 	}
+	if(args_info.debug_locks_given) {
+		janus_config_add_item(config, "general", "debug_locks", "yes");
+	}
 	if(args_info.server_name_given) {
 		janus_config_add_item(config, "general", "server_name", args_info.server_name_arg);
 	}
@@ -3476,6 +3479,12 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_log_colors = janus_is_true(item->value);
 	JANUS_PRINT("Debug/log colors are %s\n", janus_log_colors ? "enabled" : "disabled");
+	item = janus_config_get_item_drilldown(config, "general", "debug_locks");
+	if(item && item->value)
+		lock_debug = janus_is_true(item->value);
+	if(lock_debug) {
+		JANUS_PRINT("Lock/mutex debugging is enabled\n");
+	}
 
 	/* Any IP/interface to enforce/ignore? */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_enforce_list");
