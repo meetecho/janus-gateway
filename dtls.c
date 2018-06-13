@@ -55,6 +55,24 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
+const gchar *janus_get_dtls_srtp_profile(int profile) {
+	switch(profile) {
+		case SRTP_AES128_CM_SHA1_80:
+			return "SRTP_AES128_CM_SHA1_80";
+		case SRTP_AES128_CM_SHA1_32:
+			return "SRTP_AES128_CM_SHA1_32";
+#ifdef HAVE_SRTP_AESGCM
+		case SRTP_AEAD_AES_256_GCM:
+			return "SRTP_AEAD_AES_256_GCM";
+		case SRTP_AEAD_AES_128_GCM:
+			return "SRTP_AEAD_AES_128_GCM";
+#endif
+		default:
+			return NULL;
+	}
+	return NULL;
+}
+
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	if(!janus_events_is_enabled())
@@ -96,12 +114,6 @@ static gchar local_fingerprint[160];
 gchar *janus_dtls_get_local_fingerprint(void) {
 	return (gchar *)local_fingerprint;
 }
-
-
-#ifdef HAVE_SCTP
-/* Helper thread to create a SCTP association that will use this DTLS stack */
-void *janus_dtls_sctp_setup_thread(void *data);
-#endif
 
 
 #if JANUS_USE_OPENSSL_PRE_1_1_API
@@ -539,7 +551,6 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
 #endif
-	janus_mutex_init(&dtls->srtp_mutex);
 	/* Done */
 	dtls->dtls_connected = 0;
 	dtls->component = component;
@@ -581,24 +592,10 @@ int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
 		return -4;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return -5;
-	dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
+	dtls->sctp = janus_sctp_association_create(dtls, handle, 5000);
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating SCTP association...\n", handle->handle_id);
 		return -6;
-	}
-	/* We need to start it in a thread, since it has blocking accept/connect stuff */
-	janus_refcount_increase(&dtls->ref);
-	janus_refcount_increase(&dtls->sctp->ref);
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
-	g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
-	if(error != NULL) {
-		/* Something went wrong... */
-		janus_refcount_decrease(&dtls->ref);
-		janus_refcount_decrease(&dtls->sctp->ref);
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-		return -7;
 	}
 	return 0;
 #else
@@ -732,6 +729,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
 				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				if(srtp_profile == NULL) {
+					/* Should never happen, but just in case... */
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No SRTP profile selected...\n", handle->handle_id);
+					dtls->dtls_state = JANUS_DTLS_STATE_FAILED;
+					/* Notify event handlers */
+					janus_dtls_notify_state_change(dtls);
+					goto done;
+				}
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %s\n", handle->handle_id, srtp_profile->name);
 				int key_length = 0, salt_length = 0, master_length = 0;
 				switch(srtp_profile->id) {
@@ -869,6 +874,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
 					goto done;
 				}
+				dtls->srtp_profile = srtp_profile->id;
 				dtls->srtp_valid = 1;
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 #ifdef HAVE_SCTP
@@ -911,7 +917,6 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
 		janus_sctp_association_destroy(dtls->sctp);
-		janus_refcount_decrease(&dtls->sctp->ref);
 		dtls->sctp = NULL;
 	}
 #endif
@@ -1093,29 +1098,3 @@ stoptimer:
 	}
 	return FALSE;
 }
-
-
-#ifdef HAVE_SCTP
-/* Helper thread to create a SCTP association that will use this DTLS stack */
-void *janus_dtls_sctp_setup_thread(void *data) {
-	if(data == NULL) {
-		JANUS_LOG(LOG_ERR, "No DTLS stack??\n");
-		g_thread_unref(g_thread_self());
-		return NULL;
-	}
-	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
-	if(dtls->sctp == NULL) {
-		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
-		janus_refcount_decrease(&dtls->ref);
-		g_thread_unref(g_thread_self());
-		return NULL;
-	}
-	janus_sctp_association *sctp = (janus_sctp_association *)dtls->sctp;
-	/* Do the accept/connect stuff now */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
-	janus_sctp_association_setup(sctp);
-	janus_refcount_decrease(&dtls->ref);
-	g_thread_unref(g_thread_self());
-	return NULL;
-}
-#endif

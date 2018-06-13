@@ -30,8 +30,8 @@
  * \par Architecture and APIs
  * The core of the gateway is specified in the \ref core section. The protocols
  * implemented in the gateway are listed in the \ref protocols group
- * instead. A list of plugins made available out of the box by Meetecho
- * are available in the \ref plugins group: these plugins can be changed
+ * instead. A list of plugins provided out of the box by Meetecho are
+ * documented in the \ref pluginslist page: these plugins can be changed
  * or extended to match your requirements, or just used as a simple
  * reference should you be interested in writing a new plugin from
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
@@ -647,6 +647,18 @@ janus.attach(
  * but want to keep the audio as it is, passing \c audio:false to the new
  * createOffer will potentially disable audio.
  *
+ * It's important to point out that, as for negotiations that result in
+ * the creation of a new PeerConnection in the first place, how to perform
+ * a renegotiation in practice will typically vary depending on the plugin
+ * that you're trying to do it for. Some plugins may allow you to offer
+ * a renegotiation, others may require you to send a different request
+ * instead in order to trigger a renegotiation from the plugin. As it
+ * will be clearer later, this is especially true for ICE restarts. As
+ * such, apart from the generic and core-related definitions introduced
+ * in this section, please refer to the documentation for each individual
+ * plugin for more information about how to perform renegotiations in
+ * specific use cases.
+ *
  * Here's a simple example of how you can use \c removeVideo to remove
  * the local video capture in a session, e.g., in the EchoTest demo:
  *
@@ -752,6 +764,9 @@ echotest.createOffer({
  * You can learn more about this on a plugin level basis
  * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/753">here</a> and
  * <a target="_blank" href="https://github.com/meetecho/janus-gateway/pull/1099">here</a>.
+ * Besides, make sure you read the documentation for each of the plugins
+ * you're interested in using ICE restarts for, as the details for how
+ * to perform it properly are typically provided there.
  *
  * <hr>
  *
@@ -936,6 +951,18 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * -# You can combine both to implement a robust defence against <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)">CSRF</a>
  * -# You can reroute the control flow entirely, and e.g. use \c httpAPICall as an action creator in your
  * <a href="http://redux.js.org/">Redux</a> application.
+ *
+ * \section js-extension Custom Screensharing Extension for Chrome
+ * To use a different extension for screensharing permissions in Chrome you can pass a \c extension object
+ * to \c Janus.useDefaultDependencies and \c Janus.useOldDependencies.
+ * The object should provide the following methods:
+ *
+ * -# \c init(): Do any setup work here. Will be called once when the dependencies are loaded.
+ * -# \c isInstalled(): should return a boolean indicating whether the Extension was detected and is ready to use.
+ * -# \c getScreen(callback): make a call to the extension to get a \c streamId here. The streamId can be obtained
+ *    from chrome using <a href="https://developer.chrome.com/extensions/desktopCapture">chrome.desktopCapture.chooseDesktopMedia()</a>.
+ *    When the request is successful pass the \c streamId back using <tt>callback(null, streamId)</tt>,
+ *    otherwise pass an \c Error object like \c callback(error)
  */
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT and UnixSockets API
@@ -2900,6 +2927,30 @@ ldd janus | grep asan
  *
  */
 
+/*! \page pluginslist Plugins documentation
+ * Out of the box, Janus comes with a set of different and heterogeneous
+ * media manipulation plugins. These can be used individually or composed
+ * together at an application level for building complex WebRTC-based
+ * media applications.
+ *
+ * The list of plugins currently available is the following. Since new
+ * plugins may become available available in the future, make sure you
+ * come back to this page for more information.
+ *
+ * - \ref echotest
+ * - \ref streaming
+ * - \ref videocall
+ * - \ref sip
+ * - \ref sipre
+ * - \ref nosip
+ * - \ref audiobridge
+ * - \ref videoroom
+ * - \ref textroom
+ * - \ref recordplay
+ * - \ref voicemail
+ * - \ref lua
+ */
+
 /*! \page resources Resources
  * This page contains pointers to some third-party resources, in particular
  * distro repos for an easier installation of Janus, where available,
@@ -3716,7 +3767,7 @@ ldd janus | grep asan
  * \details The Janus Lua plugin allows you to write your application
  * logic in Lua, instead of creating a new plugin in C: check the
  * documentation in janus_lua.c for info on the APIs. Some additional
- * hooks in C may be required, which is what the janus_lua_data.c and
+ * hooks in C may be required, which is what the janus_lua_data.h and
  * janus_lua_extra.c code is for.
  * \ingroup plugins
  */
