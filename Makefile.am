@@ -258,7 +258,7 @@ if ENABLE_PFUNIX
 transport_LTLIBRARIES += transports/libjanus_pfunix.la
 transports_libjanus_pfunix_la_SOURCES = transports/janus_pfunix.c
 transports_libjanus_pfunix_la_CFLAGS = $(transports_cflags)
-transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags)
+transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags) $(LIBSYSTEMD_LIBS)
 transports_libjanus_pfunix_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.pfunix.cfg.sample
 EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
