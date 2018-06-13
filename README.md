@@ -380,6 +380,8 @@ or on the command line:
                                   7=maximum debug level; default=4)
 	-D, --debug-timestamps        Enable debug/logging timestamps  (default=off)
 	-o, --disable-colors          Disable color in the logging  (default=off)
+	-M, --debug-locks             Enable debugging of locks/mutexes (very
+                                  verbose!)  (default=off)
 	-a, --apisecret=randomstring  API secret all requests need to pass in order
                                   to be accepted by Janus (useful when wrapping
                                   Janus API requests in a server, none by

@@ -388,6 +388,9 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		goto error;
 	}
 
+	g_free((char *)url);
+	g_free((char *)client_id);
+	janus_config_destroy(config);
 	return 0;
 
 error:
@@ -396,7 +399,7 @@ error:
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
 	g_free((char *)client_id);
-	g_free(config);
+	janus_config_destroy(config);
 
 	return -1;
 }
@@ -463,6 +466,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", admin ? ctx->admin.publish.topic : ctx->publish.topic, rc);
 	}
+	free(payload);
 
 	return 0;
 }

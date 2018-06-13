@@ -1380,7 +1380,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
 			goto jsondone;
 		}
-		if(janus_flags_is_set(&handle->webrtc_flags,JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Received a trickle, but still cleaning a previous session\n", handle->handle_id);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
 			goto jsondone;
@@ -3384,6 +3384,9 @@ gint main(int argc, char *argv[])
 	if(args_info.disable_colors_given) {
 		janus_config_add(config, config_general, janus_config_item_create("debug_colors", "no"));
 	}
+	if(args_info.debug_locks_given) {
+		janus_config_add(config, config_general, janus_config_item_create("debug_locks", "yes"));
+	}
 	if(args_info.server_name_given) {
 		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
 	}
@@ -3492,6 +3495,12 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_log_colors = janus_is_true(item->value);
 	JANUS_PRINT("Debug/log colors are %s\n", janus_log_colors ? "enabled" : "disabled");
+	item = janus_config_get(config, config_general, janus_config_type_item, "debug_locks");
+	if(item && item->value)
+		lock_debug = janus_is_true(item->value);
+	if(lock_debug) {
+		JANUS_PRINT("Lock/mutex debugging is enabled\n");
+	}
 
 	/* Any IP/interface to enforce/ignore? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "ice_enforce_list");

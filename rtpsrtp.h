@@ -17,6 +17,7 @@
 #include <srtp2/srtp.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 #include <openssl/srtp.h>
 int srtp_crypto_get_random(uint8_t *key, int len);
 #else
