@@ -228,6 +228,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen);
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt);
 
+/*! \brief Helper method to check from attribute status of FEC associate to  specific codec
+ * @param[in] sdp The janus_sdp object to parse
+ * @param[in] codec_pt The payload type to check
+ * @returns true in case of fec enable, false otherwise */
+gboolean janus_sdp_attribute_fec_enable(janus_sdp *sdp, const int codec_pt);
+
 /*! \brief Method to serialize a janus_sdp object to an SDP string
  * @param[in] sdp The janus_sdp object to serialize
  * @returns A pointer to a string with the serialized SDP, if successful, NULL otherwise */

@@ -2846,6 +2846,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			g_free(pkt);
 			return;
 		}
+<<<<<<< HEAD
 		pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
 		g_atomic_int_set(&participant->decoding, 0);
 		if(pkt->length < 0) {
