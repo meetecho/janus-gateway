@@ -5030,6 +5030,11 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
+				if(subscriber->paused && msg->jsep == NULL) {
+					/* This is just resuming a paused stream, reset the RTP sequence numbers */
+					subscriber->context.a_seq_reset = TRUE;
+					subscriber->context.v_seq_reset = TRUE;
+				}
 				subscriber->paused = FALSE;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
@@ -5071,10 +5076,23 @@ static void *janus_videoroom_handler(void *data) {
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;
 				if(publisher) {
-					if(audio && publisher->audio && subscriber->audio_offered)
-						subscriber->audio = json_is_true(audio);
+					if(audio && publisher->audio && subscriber->audio_offered) {
+						gboolean oldaudio = subscriber->audio;
+						gboolean newaudio = json_is_true(audio);
+						if(!oldaudio && newaudio) {
+							/* Audio just resumed, reset the RTP sequence numbers */
+							subscriber->context.a_seq_reset = TRUE;
+						}
+						subscriber->audio = newaudio;
+					}
 					if(video && publisher->video && subscriber->video_offered) {
-						subscriber->video = json_is_true(video);
+						gboolean oldvideo = subscriber->video;
+						gboolean newvideo = json_is_true(video);
+						if(!oldvideo && newvideo) {
+							/* Video just resumed, reset the RTP sequence numbers */
+							subscriber->context.v_seq_reset = TRUE;
+						}
+						subscriber->video = newvideo;
 						if(subscriber->video) {
 							/* Send a FIR */
 							janus_videoroom_reqfir(publisher, "Restoring video for subscriber");
