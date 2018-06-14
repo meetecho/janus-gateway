@@ -4254,7 +4254,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		}
 	}
 	int video_fd[3] = {-1, -1, -1};
- 	int video_rtcp_fd = -1;
+	int video_rtcp_fd = -1;
 	if(dovideo) {
 		video_fd[0] = janus_streaming_create_fd(vport, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
 			"Video", "video", name ? name : tempname);
