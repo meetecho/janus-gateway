@@ -201,6 +201,12 @@ AC_ARG_ENABLE([rabbitmq-event-handler],
                      [enable_rabbitmq_event_handler=no])],
               [enable_rabbitmq_event_handler=maybe])
 
+AC_ARG_ENABLE([systemd-sockets],
+              [AS_HELP_STRING([--enable-systemd-sockets],
+                              [Enable Systemd Unix Sockets management])],
+              [],
+              [enable_systemd_sockets=no])
+
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
@@ -481,7 +487,16 @@ AC_TRY_COMPILE([
                ])
 AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 
+AS_IF([test "x$enable_systemd_sockets" = "xyes"],
+      [PKG_CHECK_MODULES([LIBSYSTEMD],
+                          [libsystemd],
+                          [
+                            AC_DEFINE(HAVE_LIBSYSTEMD)
+                          ],
+                          [AC_MSG_ERROR([libsystemd not found. systemd unix domain socket service not supported])])
+      ])
 
+ 
 ##
 # Plugins
 ##
