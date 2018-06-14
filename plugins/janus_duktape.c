@@ -66,7 +66,7 @@
  * Most of the times, JavaScript scripts will not need to override this information,
  * unless they really want to register their own name spaces and versioning.
  *
- * \section capi C interfaces
+ * \section dtcapi C interfaces
  *
  * Just as the JavaScript script needs to expose callbacks that the C code can
  * invoke, the C code exposes methods as JavaScript functions accessible from
@@ -470,7 +470,7 @@ static duk_ret_t janus_duktape_method_timecallback(duk_context *ctx) {
 	cb->source = g_timeout_source_new(ms);
 	g_source_set_callback(cb->source, janus_duktape_timer_cb, cb, NULL);
 	cb->id = g_source_attach(cb->source, timer_context);
-	JANUS_LOG(LOG_WARN, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	/* Done */
 	duk_push_int(ctx, 0);
 	return 1;
@@ -761,6 +761,7 @@ static duk_ret_t janus_duktape_method_addrecipient(duk_context *ctx) {
 		janus_refcount_increase(&session->ref);
 		janus_refcount_increase(&recipient->ref);
 		session->recipients = g_slist_append(session->recipients, recipient);
+		recipient->sender = session;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
 	/* Done */
@@ -807,6 +808,7 @@ static duk_ret_t janus_duktape_method_removerecipient(duk_context *ctx) {
 	gboolean unref = FALSE;
 	if(g_slist_find(session->recipients, recipient) != NULL) {
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		unref = TRUE;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
@@ -1768,6 +1770,7 @@ void janus_duktape_destroy_session(janus_plugin_session *handle, int *error) {
 	while(session->recipients != NULL) {
 		janus_duktape_session *recipient = (janus_duktape_session *)session->recipients->data;
 		if(recipient != NULL) {
+			recipient->sender = NULL;
 			janus_refcount_decrease(&session->ref);
 			janus_refcount_decrease(&recipient->ref);
 		}
@@ -2045,7 +2048,19 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *
 		} else {
 			janus_core->relay_rtcp(handle, 1, buf, len);
 		}
-		return;
+	}
+	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
+	if(janus_rtcp_has_pli(buf, len)) {
+		if(session->sender != NULL) {
+			janus_mutex_lock_nodebug(&session->sender->recipients_mutex);
+			/* Send a PLI */
+			session->sender->pli_latest = janus_get_monotonic_time();
+			char rtcpbuf[12];
+			janus_rtcp_pli((char *)&rtcpbuf, 12);
+			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
+			janus_core->relay_rtcp(session->sender->handle, 1, rtcpbuf, 12);
+			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
+		}
 	}
 }
 
@@ -2155,6 +2170,7 @@ void janus_duktape_hangup_media(janus_plugin_session *handle) {
 	while(session->recipients) {
 		janus_duktape_session *recipient = (janus_duktape_session *)session->recipients->data;
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&recipient->ref);
 	}
@@ -2267,7 +2283,7 @@ static gboolean janus_duktape_timer_cb(void *data) {
 	if(cb == NULL)
 		return FALSE;
 	/* Invoke the callback with the provided argument, if available */
-	JANUS_LOG(LOG_WARN, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	janus_mutex_lock(&duktape_mutex);
 	duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 	duk_context *t = duk_get_context(duktape_ctx, thr_idx);
