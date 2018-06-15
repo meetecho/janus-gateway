@@ -72,7 +72,7 @@ video = yes|no (do/don't stream video)
    The following options are only valid for the 'rtp' type:
 data = yes|no (do/don't stream text via datachannels)
 audioport = local port for receiving audio frames
-audiortcpport = remote port for sending audio rtcp feedback
+audiortcpport = remote port for sending audio RTCP feedback
 audiomcast = multicast group port for receiving audio frames, if any
 audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 audiopt = <audio RTP payload type> (e.g., 111)
@@ -81,7 +81,7 @@ audiofmtp = Codec specific parameters, if any
 audioskew = yes|no (whether the plugin should perform skew
 	analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
 videoport = local port for receiving video frames (only for rtp)
-videortcpport = remote port for sending video rtcp feedback
+videortcpport = remote port for sending video RTCP feedback
 videomcast = multicast group port for receiving video frames, if any
 videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 videopt = <video RTP payload type> (e.g., 100)
@@ -973,7 +973,7 @@ typedef struct janus_streaming_file_source {
 	char *filename;
 } janus_streaming_file_source;
 
-/* used for audio/video fd and rtcp fd */
+/* used for audio/video fd and RTCP fd */
 typedef struct multiple_fds {
 	int fd;
 	int rtcp_fd;
