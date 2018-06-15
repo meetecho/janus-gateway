@@ -145,7 +145,7 @@ typedef struct janus_sdp_mline {
 	/*! \brief Media b= type */
 	char *b_name;
 	/*! \brief Media b= value */
-	int b_value;
+	uint32_t b_value;
 	/*! \brief Media direction */
 	janus_sdp_mdirection direction;
 	/*! \brief List of m-line attributes */
