@@ -2166,7 +2166,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				doaskew = askew ? json_is_true(askew) : FALSE;
 			}
 			uint16_t vport = 0, vport2 = 0, vport3 = 0;
-			uint16_t vrtcpport = -1;
+			uint16_t vrtcpport = 0;
 			uint8_t vcodec = 0;
 			char *vrtpmap = NULL, *vfmtp = NULL, *vmcast = NULL;
 			gboolean bufferkf = FALSE, simulcast = FALSE;
@@ -4242,7 +4242,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		}
 		aport = janus_streaming_get_fd_port(audio_fd);
 		if(artcpport > 0) {
-			audio_rtcp_fd = janus_streaming_create_fd(aport+1, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
+			audio_rtcp_fd = janus_streaming_create_fd(artcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
 				"Audio", "audio", name ? name : tempname);
 			if(audio_rtcp_fd < 0) {
 				JANUS_LOG(LOG_ERR, "Can't bind to port %d for audio rtcp...\n", aport+1);
@@ -4269,7 +4269,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		}
 		vport = janus_streaming_get_fd_port(video_fd[0]);
 		if(vrtcpport > 0) {
-			video_rtcp_fd = janus_streaming_create_fd(vport+1, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
+			video_rtcp_fd = janus_streaming_create_fd(vrtcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
 				"Video", "video", name ? name : tempname);
 			if(video_rtcp_fd < 0) {
 				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video rtcp...\n", vport+1);
