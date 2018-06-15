@@ -3274,7 +3274,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->reset = FALSE;
 				participant->fec = FALSE;
 				participant->expected_seq = 0;
-				participant->probation = MIN_SEQUENTIAL;
+				participant->probation = 0;
 				participant->last_timestamp = 0;
 				janus_mutex_init(&participant->qmutex);
 				participant->arc = NULL;
@@ -3329,7 +3329,6 @@ static void *janus_audiobridge_handler(void *data) {
 					audiobridge->sampling_rate = 16000;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
-				/* FIXME This settings should be configurable */
 				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 			}
 			opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
@@ -3742,7 +3741,6 @@ static void *janus_audiobridge_handler(void *data) {
 					audiobridge->sampling_rate = 16000;
 					opus_encoder_ctl(new_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 				}
-				/* FIXME This settings should be configurable */
 				opus_encoder_ctl(new_encoder, OPUS_SET_INBAND_FEC(participant->fec));
 				opus_encoder_ctl(new_encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 				/* Opus decoder */
@@ -4008,11 +4006,13 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant->opus_pt < 0) {
 				/* TODO Handle this case */
 				JANUS_LOG(LOG_ERR, "Offer doesn't contain Opus..?\n");
-			} else {
-				participant->fec = janus_sdp_attribute_fec_enable(offer, participant->opus_pt);
-				JANUS_LOG(LOG_VERB, "Opus fec %s\n", participant->fec ? "enabled" : "disabled");
+			} else if(strstr(msg_sdp, "useinbandfec=1")){
+				/* Opus codec, inband FEC setted */
+				participant->fec = TRUE;
+				participant->probation = MIN_SEQUENTIAL;
+				opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
 			}
-			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
+			JANUS_LOG(LOG_VERB, "Opus payload type is %d, FEC %s\n", participant->opus_pt, participant->fec ? "enabled" : "disabled");
 			/* Check if the audio level extension was offered */
 			int extmap_id = -1;
 			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;

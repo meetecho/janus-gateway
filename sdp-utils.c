@@ -641,38 +641,6 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 	return -1;
 }
 
-gboolean janus_sdp_attribute_fec_enable(janus_sdp *sdp, const int codec_pt) {
-	if(sdp == NULL)
-		return FALSE;
-	/* Check all m->lines */
-	GList *ml = sdp->m_lines;
-	while(ml) {
-		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		if(m->type != JANUS_SDP_AUDIO) {
-			ml = ml->next;
-			continue;
-		}
-		/* Look in all rtpmap attributes */
-		GList *ma = m->attributes;
-		while(ma) {
-			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
-				if(codec_pt == atoi(a->value)){
-					char *inband = strstr(a->value, "useinbandfec=");
-					if(inband){
-						if(*(inband+13) == '1')
-							return TRUE;
-					}
-					return FALSE;
-				}
-			}
-			ma = ma->next;
-		}
-		ml = ml->next;
-	}
-	return FALSE;
-}
-
 const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 	if(sdp == NULL || pt < 0)
 		return NULL;
