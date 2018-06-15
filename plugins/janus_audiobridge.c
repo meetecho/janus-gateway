@@ -1644,6 +1644,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "audio-level-dBov", json_integer(participant->dBov_level));
 			json_object_set_new(info, "talking", participant->talking ? json_true() : json_false());
 		}
+		json_object_set_new(info, "fec", participant->fec ? json_true() : json_false());
 	}
 	json_object_set_new(info, "started", g_atomic_int_get(&session->started) ? json_true() : json_false());
 	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
@@ -2914,6 +2915,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 					}
 
 					if(lost_pkt->length < 0) {
+						g_atomic_int_set(&participant->decoding, 0);
 						JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", lost_pkt->length, opus_strerror(lost_pkt->length));
 						g_free(lost_pkt->data);
 						g_free(lost_pkt);
@@ -2934,6 +2936,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		} else {
 			/* In late sequence or sequence wrapped */
 			/* Check first if sequence wrapped */
+			g_atomic_int_set(&participant->decoding, 0);
 			if((participant->expected_seq - pkt->seq_number) > MAX_MISORDER){
 				JANUS_LOG(LOG_HUGE, "SN WRAPPED seq =  %"SCNu16", expected_seq =  %"SCNu16" \n", pkt->seq_number, participant->expected_seq);
 				participant->expected_seq = pkt->seq_number + 1;
@@ -2944,7 +2947,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			g_free(pkt);
 			return;
 		}
-		participant->working = FALSE;
+		g_atomic_int_set(&participant->decoding, 0);
 		if(pkt->length < 0) {
 			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", pkt->length, opus_strerror(pkt->length));
 			g_free(pkt->data);
