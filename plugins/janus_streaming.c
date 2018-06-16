@@ -2515,6 +2515,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(mp->codecs.audio_pt >= 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->audio_port);
 					janus_config_add_item(config, mp->name, "audioport", value);
+					if(source->audio_rtcp_port > 0) {
+						g_snprintf(value, BUFSIZ, "%d", source->audio_rtcp_port);
+						janus_config_add_item(config, mp->name, "audiortcpport", value);
+					}
 					json_t *audiomcast = json_object_get(root, "audiomcast");
 					if(audiomcast)
 						janus_config_add_item(config, mp->name, "audiomcast", json_string_value(audiomcast));
@@ -2533,6 +2537,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(mp->codecs.video_pt >= 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
 					janus_config_add_item(config, mp->name, "videoport", value);
+					if(source->video_rtcp_port > 0) {
+						g_snprintf(value, BUFSIZ, "%d", source->video_rtcp_port);
+						janus_config_add_item(config, mp->name, "videortcpport", value);
+					}
 					json_t *videomcast = json_object_get(root, "videomcast");
 					if(videomcast)
 						janus_config_add_item(config, mp->name, "videomcast", json_string_value(videomcast));
@@ -2790,6 +2798,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(mp->codecs.audio_pt >= 0) {
 						g_snprintf(value, BUFSIZ, "%d", source->audio_port);
 						janus_config_add_item(config, mp->name, "audioport", value);
+						if(source->audio_rtcp_port > 0) {
+							g_snprintf(value, BUFSIZ, "%d", source->audio_rtcp_port);
+							janus_config_add_item(config, mp->name, "audiortcpport", value);
+						}
 						json_t *audiomcast = json_object_get(root, "audiomcast");
 						if(audiomcast)
 							janus_config_add_item(config, mp->name, "audiomcast", json_string_value(audiomcast));
@@ -2808,6 +2820,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(mp->codecs.video_pt >= 0) {
 						g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
 						janus_config_add_item(config, mp->name, "videoport", value);
+						if(source->video_rtcp_port > 0) {
+							g_snprintf(value, BUFSIZ, "%d", source->video_rtcp_port);
+							janus_config_add_item(config, mp->name, "videortcpport", value);
+						}
 						json_t *videomcast = json_object_get(root, "videomcast");
 						if(videomcast)
 							janus_config_add_item(config, mp->name, "videomcast", json_string_value(videomcast));
