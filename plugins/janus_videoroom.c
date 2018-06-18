@@ -4122,7 +4122,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 static void janus_videoroom_recorder_create(janus_videoroom_publisher *participant, gboolean audio, gboolean video, gboolean data) {
 	char filename[255];
 	gint64 now = janus_get_real_time();
-	if(audio) {
+	if(audio && participant->arc == NULL) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
@@ -4143,7 +4143,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 			}
 		}
 	}
-	if(video) {
+	if(video && participant->vrc == NULL) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
@@ -4164,7 +4164,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 			}
 		}
 	}
-	if(data) {
+	if(data && participant->drc == NULL) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
@@ -5737,15 +5737,15 @@ static void *janus_videoroom_handler(void *data) {
 						janus_sdp_attribute_add_to_mline(m, a);
 					}
 				}
-				/* DO not send transport wide CC to subscribers */
+				/* Is this room recorded, or are we recording this publisher already? */
+				janus_mutex_lock(&participant->rec_mutex);
+				if(videoroom->record || participant->recording_active) {
+					janus_videoroom_recorder_create(participant, participant->audio, participant->video, participant->data);
+				}
+				janus_mutex_unlock(&participant->rec_mutex);
 				/* Generate an SDP string we can offer subscribers later on */
 				char *offer_sdp = janus_sdp_write(offer);
 				if(!sdp_update) {
-					/* Is this room recorded? */
-					janus_mutex_lock(&participant->rec_mutex);
-					if(videoroom->record || participant->recording_active) {
-						janus_videoroom_recorder_create(participant, participant->audio, participant->video, participant->data);
-					}
 					/* Is simulcasting involved */
 					if(msg_simulcast && participant->vcodec == JANUS_VIDEOCODEC_VP8) {
 						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
@@ -5758,7 +5758,6 @@ static void *janus_videoroom_handler(void *data) {
 						participant->ssrc[1] = 0;
 						participant->ssrc[2] = 0;
 					}
-					janus_mutex_unlock(&participant->rec_mutex);
 				}
 				janus_sdp_destroy(offer);
 				janus_sdp_destroy(answer);
