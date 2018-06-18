@@ -1,4 +1,4 @@
-/*! \file   event.h
+/*! \file   eventhandler.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Modular Janus event handlers (headers)

@@ -276,7 +276,8 @@ static gboolean janus_ice_outgoing_traffic_dispatch(GSource *source, GSourceFunc
 }
 static void janus_ice_outgoing_traffic_finalize(GSource *source) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
-	g_main_loop_quit(t->handle->iceloop);
+	if (g_main_loop_is_running(t->handle->iceloop))
+		g_main_loop_quit(t->handle->iceloop);
 	janus_refcount_decrease(&t->handle->ref);
 }
 static GSourceFuncs janus_ice_outgoing_traffic_funcs = {
@@ -1144,6 +1145,9 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle->iceloop != NULL) {
 		if(handle->stream_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+		}
+		if(handle->rtp_source == NULL && g_main_loop_is_running(handle->iceloop)) {
+			g_main_loop_quit(handle->iceloop);
 		}
 	}
 }

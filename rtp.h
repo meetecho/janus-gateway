@@ -146,7 +146,7 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
- * @param[out] transport wide sequence number
+ * @param[out] transSeqNum transport wide sequence number
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
 	uint16_t *transSeqNum);
