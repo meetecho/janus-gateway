@@ -2892,7 +2892,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			/* Use FEC if sequence lost < DEFAULT_PREBUFFERING */
 			uint16_t start_lost_seq = participant->expected_seq;
 			if(participant->fec && gap < DEFAULT_PREBUFFERING) {
-				for(uint8_t i = 1; i <= gap ; i++) {
+				uint8_t i=0;
+				for(i=1; i<=gap ; i++) {
 					int32_t output_samples;
 					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 					lost_pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
