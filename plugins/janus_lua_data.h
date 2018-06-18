@@ -16,8 +16,6 @@
  * hashtable) is done in the core of the Lua plugin: here we only
  * define them, so that they can be accessed/used by the extra code too.
  *
-\endverbatim
- *
  * \ingroup luapapi
  * \ref luapapi
  */

@@ -16,8 +16,6 @@
  * hashtable) is done in the core of the JavaScript plugin: here we only
  * define them, so that they can be accessed/used by the extra code too.
  *
-\endverbatim
- *
  * \ingroup jspapi
  * \ref jspapi
  */

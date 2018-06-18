@@ -17,8 +17,6 @@
  * is adding new \c duk_push_c_function calls to register their own functions
  * there, and they'll be added to the stack.
  *
-\endverbatim
- *
  * \ingroup jspapi
  * \ref jspapi
  */
@@ -29,7 +27,7 @@
 #include "duktape-deps/duktape.h"
 
 /*! \brief Method to register extra JavaScript functions in the C code
- * @param[in] state The Duktape context to register the functions on */
+ * @param[in] ctx The Duktape context to register the functions on */
 void janus_duktape_register_extra_functions(duk_context *ctx);
 
 #endif

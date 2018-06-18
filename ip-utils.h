@@ -107,7 +107,7 @@ int janus_network_prepare_device_query_default(const char *user_value, janus_net
  * simply pass the `ifa_next` of the returned device in a subsequent call to this function to find more matches.
  * \param ifas The first node of the list of network interfaces to search through. This should be obtained (indirectly) from
  * \c getifaddrs().
- * \param query A description of the criteria to look for when deteremining whether or not a network interface is a match.
+ * \param query A description of the criteria to look for when determining whether or not a network interface is a match.
  * \return a pointer to a node describing the matching network interface or `NULL` if no (further) match was found.
  * \see man 3 getifaddrs
  */
@@ -116,6 +116,7 @@ const struct ifaddrs *janus_network_query_devices(const struct ifaddrs *ifas, co
 /*!
  * \brief Copies the IPv4 address from a network inteface description to the given result structure.
  * \param ifa The network interface description to grab the IPv4 address from. It should be obtained with `janus_network_query_devices()`.
+ * \param query A description of the criteria to look for when determining whether or not a network interface is a match
  * \param result Pointer to a structure to populate with the IPv4 address of the given network interface
  * \return 0 on success, -EINVAL if any argument is NULL or the network interface description or the network device query do not correspond to an IPv4 configuration.
  * \see man 7 ip
@@ -126,6 +127,7 @@ int janus_network_get_devices_ipv4(const struct ifaddrs *ifa, const janus_networ
 /*!
  * \brief Copies the IPv6 address from a network inteface description to the given result structure.
  * \param ifa The network interface description to grab the IPv6 address from. It should be obtained with `janus_network_query_devices()`.
+ * \param query A description of the criteria to look for when determining whether or not a network interface is a match
  * \param result Pointer to a structure to populate with the IPv6 address of the given network interface
  * \return 0 on success, -EINVAL if any argument is NULL or the network interface description or the network device query do not correspond to an IPv6 configuration.
  * \see man 7 ipv6
@@ -200,7 +202,7 @@ const char *janus_network_address_string_from_buffer(const janus_network_address
 
 /*!
  * \brief Test if a given IP address string is a valid address of the specified type
- * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \param user_value The IP address string to check
  * \return A positive integer if the given string is a valid address, 0 otherwise.
@@ -209,7 +211,7 @@ int janus_network_string_is_valid_address(janus_network_query_options addr_type,
 
 /*!
  * \brief Convert an IP address string to a janus_network_address instance
- * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \param user_value The IP address string to check
  * \param result Pointer to a valid janus_network_address instance that will contain the result
@@ -228,7 +230,7 @@ int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface
 
 /*!
  * \brief Helper method to find a valid local IP address, that is an address that can be used to communicate
- * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \param result Pointer to a valid janus_network_address instance that will contain the result
  * \return 0 in case of success, -EINVAL otherwise otherwise
@@ -238,7 +240,7 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
 /*!
  * \brief Wrapper to janus_network_detect_local_ip that returns a string instead
  * \note The string is allocated with g_strdup and so needs to be freed by the caller
- * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * \param addr_type The type of address you're interested in (janus_network_query_options_ipv4,
  * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
  * \return 0 in case of success, -EINVAL otherwise otherwise
  */

@@ -17,8 +17,6 @@
  * is adding new \c duk_push_c_function calls to register their own functions
  * there, and they'll be added to the stack.
  *
-\endverbatim
- *
  * \ingroup jspapi
  * \ref jspapi
  */
