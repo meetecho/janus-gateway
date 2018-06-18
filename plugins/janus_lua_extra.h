@@ -17,8 +17,6 @@
  * is adding new \c lua_register calls to register their own functions
  * there, and they'll be added to the stack.
  *
-\endverbatim
- *
  * \ingroup luapapi
  * \ref luapapi
  */
