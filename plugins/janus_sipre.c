@@ -17,7 +17,7 @@
  * client side. The configuration file looks exactly the same as well.
  * As such, you can mostly refer to the \ref sip for both.
  *
- * \section sipapi SIPre Plugin API
+ * \section sipreapi SIPre Plugin API
  *
  * All requests you can send in the SIPre Plugin API are asynchronous,
  * which means all responses (successes and errors) will be delivered

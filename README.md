@@ -36,6 +36,8 @@ WebSockets and/or BoringSSL support, as they make use of it)
 you are interested in RabbitMQ support for the Janus API)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
 you are interested in MQTT support for the Janus API)
+* [nanomsg](https://nanomsg.org/) (only needed if
+you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
 interested in the TURN REST API support)
 
@@ -196,6 +198,13 @@ following steps:
 * *Note:* you may want to set up a different install path for the library,
 to achieve that, replace the last command by 'sudo prefix=/usr make install'.
 
+In case you're interested in Nanomsg support, you'll need to install the
+related C library. It is usually available as an easily installable
+package in pretty much all repositories. The following is an example on
+how to install it on Ubuntu:
+
+	aptitude install libnanomsg-dev
+
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
 of the library can be found, and the versions usually available in most
@@ -316,7 +325,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.4.2
+	janus 0.4.3
 
 	Usage: janus [OPTIONS]...
 
@@ -379,6 +388,8 @@ or on the command line:
                                   7=maximum debug level; default=4)
 	-D, --debug-timestamps        Enable debug/logging timestamps  (default=off)
 	-o, --disable-colors          Disable color in the logging  (default=off)
+	-M, --debug-locks             Enable debugging of locks/mutexes (very
+                                  verbose!)  (default=off)
 	-a, --apisecret=randomstring  API secret all requests need to pass in order
                                   to be accepted by Janus (useful when wrapping
                                   Janus API requests in a server, none by
