@@ -129,6 +129,8 @@ AC_ARG_ENABLE([all-transports],
                      [enable_mqtt=no])
                AS_IF([test "x$enable_unix_sockets" != "xyes"],
                      [enable_unix_sockets=no])
+               AS_IF([test "x$enable_nanomsg" != "xyes"],
+                     [enable_nanomsg=no])
               ],
               [])
 
@@ -188,6 +190,13 @@ AC_ARG_ENABLE([unix-sockets],
               [AS_IF([test "x$enable_unix_sockets" != "xyes"],
                      [enable_unix_sockets=no])],
               [enable_unix_sockets=maybe])
+
+AC_ARG_ENABLE([nanomsg],
+              [AS_HELP_STRING([--disable-nanomsg],
+                              [Disable Nanomsg integration])],
+              [AS_IF([test "x$enable_nanomsg" != "xyes"],
+                     [enable_nanomsg=no])],
+              [enable_nanomsg=maybe])
 
 AC_ARG_ENABLE([sample-event-handler],
               [AS_HELP_STRING([--disable-sample-event-handler],
@@ -462,9 +471,23 @@ AC_CHECK_LIB([paho-mqtt3a],
                AS_IF([test "x$enable_mqtt" = "xyes"],
                      [AC_MSG_ERROR([paho c client not found. See README.md for installation instructions or use --disable-mqtt])])
              ])
+AC_CHECK_LIB([nanomsg],
+             [nn_socket],
+             [
+               AS_IF([test "x$enable_nanomsg" != "xno"],
+               [
+                  AC_DEFINE(HAVE_NANOMSG)
+                  enable_nanomsg=yes
+               ])
+             ],
+             [
+               AS_IF([test "x$enable_nanomsg" = "xyes"],
+                     [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg])])
+             ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
+AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -854,6 +877,9 @@ AM_COND_IF([ENABLE_MQTT],
 AM_COND_IF([ENABLE_PFUNIX],
 	[echo "    Unix Sockets:          yes"],
 	[echo "    Unix Sockets:          no"])
+AM_COND_IF([ENABLE_NANOMSG],
+	[echo "    Nanomsg:               yes"],
+	[echo "    Nanomsg:               no"])
 echo "Plugins:"
 AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
 	[echo "    Echo Test:             yes"],

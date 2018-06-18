@@ -268,6 +268,16 @@ conf_DATA += conf/janus.transport.pfunix.cfg.sample
 EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
 endif
 
+if ENABLE_NANOMSG
+transport_LTLIBRARIES += transports/libjanus_nanomsg.la
+transports_libjanus_nanomsg_la_SOURCES = transports/janus_nanomsg.c
+transports_libjanus_nanomsg_la_CFLAGS = $(transports_cflags)
+transports_libjanus_nanomsg_la_LDFLAGS = $(transports_ldflags) -lnanomsg
+transports_libjanus_nanomsg_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.nanomsg.cfg.sample
+EXTRA_DIST += conf/janus.transport.nanomsg.cfg.sample
+endif
+
 ##
 # Event handlers
 ##
