@@ -1,5 +1,5 @@
--- Set of utilities for parsing, processing and managing JANUSSDPs in Lua,
--- as the C JANUSSDP utils that Janus provides are unavailable otherwise
+-- Set of utilities for parsing, processing and managing Janus SDPs in Lua,
+-- as the C Janus SDP utils that Janus provides are unavailable otherwise
 
 local JANUSSDP = {}
 
@@ -322,7 +322,7 @@ function JANUSSDP.generateAnswer(offer, options)
 					videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec)
 				end
 				if videoPt < 0 then
-					audio = audio+1
+					video = video+1
 				end
 				if video > 1 then
 					reject = true

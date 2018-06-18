@@ -421,6 +421,17 @@ function Janus(gatewayCallbacks) {
 	this.destroyOnUnload = true;
 	if(gatewayCallbacks.destroyOnUnload !== undefined && gatewayCallbacks.destroyOnUnload !== null)
 		this.destroyOnUnload = (gatewayCallbacks.destroyOnUnload === true);
+	// Some timeout-related values
+	var keepAlivePeriod = 25000;
+	if(gatewayCallbacks.keepAlivePeriod !== undefined && gatewayCallbacks.keepAlivePeriod !== null)
+		keepAlivePeriod = gatewayCallbacks.keepAlivePeriod;
+	if(isNaN(keepAlivePeriod))
+		keepAlivePeriod = 25000;
+	var longPollTimeout = 60000;
+	if(gatewayCallbacks.longPollTimeout !== undefined && gatewayCallbacks.longPollTimeout !== null)
+		longPollTimeout = gatewayCallbacks.longPollTimeout;
+	if(isNaN(longPollTimeout))
+		longPollTimeout = 60000;
 
 	var connected = false;
 	var sessionId = null;
@@ -463,7 +474,7 @@ function Janus(gatewayCallbacks) {
 			verb: 'GET',
 			withCredentials: withCredentials,
 			success: handleEvent,
-			timeout: 60000,	// FIXME
+			timeout: longPollTimeout,
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);
 				retries++;
@@ -691,7 +702,7 @@ function Janus(gatewayCallbacks) {
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
 			return;
-		wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+		wsKeepaliveTimeoutId = setTimeout(keepAlive, keepAlivePeriod);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
@@ -766,7 +777,7 @@ function Janus(gatewayCallbacks) {
 							callbacks.error(json["error"].reason);
 							return;
 						}
-						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+						wsKeepaliveTimeoutId = setTimeout(keepAlive, keepAlivePeriod);
 						connected = true;
 						sessionId = json["session_id"] ? json["session_id"] : json.data["id"];
 						if(callbacks["reconnect"]) {
@@ -1540,8 +1551,6 @@ function Janus(gatewayCallbacks) {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
 			};
 			if(ipv6Support === true) {
-				// FIXME This is only supported in Chrome right now
-				// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 				pc_constraints.optional.push({"googIPv6":true});
 			}
 			// Any custom constraint to add?

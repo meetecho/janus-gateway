@@ -145,7 +145,7 @@ typedef struct janus_sdp_mline {
 	/*! \brief Media b= type */
 	char *b_name;
 	/*! \brief Media b= value */
-	int b_value;
+	uint32_t b_value;
 	/*! \brief Media direction */
 	janus_sdp_mdirection direction;
 	/*! \brief List of m-line attributes */
@@ -162,7 +162,7 @@ typedef struct janus_sdp_mline {
  * @param[in] type Type of the media (audio/video/application) as a janus_sdp_mtype
  * @param[in] port Port to advertise
  * @param[in] proto Profile to advertise
- * @param[in] type Direction of the media as a janus_sdp_direction
+ * @param[in] direction Direction of the media as a janus_sdp_direction
  * @returns A pointer to a valid janus_sdp_mline instance, if successfull, NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction);
 /*! \brief Helper method to free a janus_sdp_mline instance

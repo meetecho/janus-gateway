@@ -474,7 +474,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						}
 						*semicolon = '\0';
 						mline->b_name = g_strdup(line);
-						mline->b_value = atoi(semicolon+1);
+						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
 						break;
 					}
@@ -800,7 +800,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		if(m->port > 0) {
 			/* b= */
 			if(m->b_name != NULL) {
-				g_snprintf(buffer, sizeof(buffer), "b=%s:%d\r\n", m->b_name, m->b_value);
+				g_snprintf(buffer, sizeof(buffer), "b=%s:%"SCNu32"\r\n", m->b_name, m->b_value);
 				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			}
 		}

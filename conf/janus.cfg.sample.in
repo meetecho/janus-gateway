@@ -19,6 +19,7 @@ events_folder = @eventdir@			; Event handlers folder
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;debug_timestamps = yes		; Whether to show a timestamp for each log line
 ;debug_colors = no			; Whether colors should be disabled in the log
+;debug_locks = yes			; Whether to enable debugging of locks (very verbose!)
 ;api_secret = janusrocks		; String that all Janus requests must contain
 ;							to be accepted/authorized by the Janus core.
 ;							Useful if you're wrapping all Janus API requests
