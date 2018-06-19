@@ -270,7 +270,7 @@ struct janus_ice_handle {
 	GThread *icethread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
 	GSource *rtp_source, *rtcp_source, *stats_source;
-	/*! \brief Atomic flag to check if thisthe ICE loop is still running */
+	/*! \brief Atomic flag to check if the ICE loop is still running */
 	volatile gint looprunning;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
