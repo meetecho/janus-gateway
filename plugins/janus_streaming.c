@@ -5965,8 +5965,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					JANUS_LOG(LOG_VERB, "Outgoing Audio RTCP SSRC %u\n",
-						janus_rtcp_get_sender_ssrc(buffer, bytes));
+					JANUS_LOG(LOG_VERB, "[%s] Outgoing Audio RTCP SSRC %u\n",
+						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 
 					packet.is_video = FALSE;
 					packet.data = buffer;
@@ -5982,8 +5982,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
-					JANUS_LOG(LOG_VERB, "Outgoing Video RTCP SSRC %u\n",
-						janus_rtcp_get_sender_ssrc(buffer, bytes));
+					JANUS_LOG(LOG_VERB, "[%s] Outgoing Video RTCP SSRC %u\n",
+						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 
 					packet.is_video = TRUE;
 					packet.data = buffer;
