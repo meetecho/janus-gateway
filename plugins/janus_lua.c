@@ -1537,11 +1537,11 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	while(session->recipients != NULL) {
 		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
 		if(recipient != NULL) {
+			recipient->sender = NULL;
 			janus_refcount_decrease(&session->ref);
 			janus_refcount_decrease(&recipient->ref);
 		}
 		session->recipients = g_slist_remove(session->recipients, recipient);
-		recipient->sender = NULL;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
 

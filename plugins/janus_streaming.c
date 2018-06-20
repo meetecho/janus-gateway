@@ -4493,6 +4493,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->video_rtcp_fd = -1;
 #endif
 	live_rtp_source->data_fd = data_fd;
+	live_rtp_source->pipefd[0] = -1;
+	live_rtp_source->pipefd[1] = -1;
 	pipe(live_rtp_source->pipefd);
 	live_rtp_source->last_received_audio = janus_get_monotonic_time();
 	live_rtp_source->last_received_video = janus_get_monotonic_time();
@@ -5111,6 +5113,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->video_rtcp_fd = -1;
 	live_rtsp_source->video_iface = iface ? *iface : nil;
 	live_rtsp_source->data_fd = -1;
+	live_rtsp_source->pipefd[0] = -1;
+	live_rtsp_source->pipefd[1] = -1;
+	pipe(live_rtsp_source->pipefd);
 	live_rtsp_source->data_iface = nil;
 	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);

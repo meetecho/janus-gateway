@@ -8,6 +8,8 @@
 ; publishers = <max number of concurrent senders> (e.g., 6 for a video
 ;              conference or 1 for a webinar)
 ; bitrate = <max video bitrate for senders> (e.g., 128000)
+; bitrate_cap = yes|no (whether the above cap should act as a hard limit to
+;			dynamic bitrate changes by publishers; default=no, publishers can go beyond that)
 ; fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 ; audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec(s) to force on publishers, default=opus
 ;			can be a comma separated list in order of preference, e.g., opus,pcmu)

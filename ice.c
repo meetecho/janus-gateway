@@ -276,7 +276,8 @@ static gboolean janus_ice_outgoing_traffic_dispatch(GSource *source, GSourceFunc
 }
 static void janus_ice_outgoing_traffic_finalize(GSource *source) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
-	g_main_loop_quit(t->handle->iceloop);
+	if(g_main_loop_is_running(t->handle->iceloop) && g_atomic_int_compare_and_exchange(&t->handle->looprunning, 1, 0))
+		g_main_loop_quit(t->handle->iceloop);
 	janus_refcount_decrease(&t->handle->ref);
 }
 static GSourceFuncs janus_ice_outgoing_traffic_funcs = {
@@ -1048,7 +1049,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->stream_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop) &&
+					g_atomic_int_compare_and_exchange(&handle->looprunning, 1, 0)) {
 				g_main_loop_quit(handle->iceloop);
 			}
 		}
@@ -1145,7 +1147,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		if(handle->stream_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		if(handle->rtp_source == NULL) {
+		if(handle->rtp_source == NULL && g_main_loop_is_running(handle->iceloop) &&
+				g_atomic_int_compare_and_exchange(&handle->looprunning, 1, 0)) {
 			g_main_loop_quit(handle->iceloop);
 		}
 	}
@@ -2945,6 +2948,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
 
 	handle->icectx = g_main_context_new();
+	g_atomic_int_set(&handle->looprunning, 1);
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;

@@ -126,7 +126,6 @@ typedef struct janus_websockets_client {
 	int buflen;								/* Length of the buffer (may be resized after re-allocations) */
 	int bufpending;							/* Data an interrupted previous write couldn't send */
 	int bufoffset;							/* Offset from where the interrupted previous write should resume */
-	volatile gint session_timeout;			/* Whether a Janus session timeout occurred in the core */
 	volatile gint destroyed;				/* Whether this libwebsockets client instance has been closed */
 	janus_transport_session *ts;			/* Janus core-transport session */
 } janus_websockets_client;
@@ -822,19 +821,7 @@ void janus_websockets_session_created(janus_transport_session *transport, guint6
 }
 
 void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
-	if(!timeout || claimed || transport == NULL || g_atomic_int_get(&transport->destroyed))
-		return;
-	/* Claimed sessions return -- is there any extra logic necessary for a claimed session when using websockets? */
-	janus_mutex_lock(&transport->mutex);
-	/* We only care if it's a timeout: if so, close the connection */
-	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
-	if(!client) {
-		janus_mutex_unlock(&transport->mutex);
-		return;
-	}
-	g_atomic_int_set(&client->session_timeout, 1);
-	lws_callback_on_writable(client->wsi);
-	janus_mutex_unlock(&transport->mutex);
+	/* We don't care either: transport timeouts can be detected using the ping/pong mechanism */
 }
 
 void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id) {
@@ -940,7 +927,6 @@ static int janus_websockets_common_callback(
 			ws_client->buflen = 0;
 			ws_client->bufpending = 0;
 			ws_client->bufoffset = 0;
-			g_atomic_int_set(&ws_client->session_timeout, 0);
 			g_atomic_int_set(&ws_client->destroyed, 0);
 			ws_client->ts = janus_transport_session_create(ws_client, NULL);
 			/* Let us know when the WebSocket channel becomes writeable */
@@ -1054,8 +1040,6 @@ static int janus_websockets_common_callback(
 				}
 				janus_mutex_unlock(&ws_client->ts->mutex);
 			}
-			if(g_atomic_int_get(&ws_client->session_timeout))
-				return -1;
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {

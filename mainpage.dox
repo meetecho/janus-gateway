@@ -90,6 +90,7 @@
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
@@ -102,10 +103,10 @@
 
 /*! \page JS JavaScript API
  * The gateway exposes, assuming the HTTP transport has been compiled, a
- * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/MQTT/UnixSockets
+ * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/MQTT/Nanomsg/UnixSockets
  * interfaces as well, all of which based on JSON messages. These
  * interfaces are described in more detail in the \ref plainhttp \ref WS
- * \ref rabbit \ref mqtt and \ref unix documentation respectively, and all allow clients to
+ * \ref rabbit \ref apimqtt \ref apinanomsg and \ref unix documentation respectively, and all allow clients to
  * take advantage of the features provided by Janus and the functionality
  * made available by its plugins. Considering most clients will be web browsers,
  * a common choice will be to rely on either the REST or the WebSockets
@@ -965,14 +966,14 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  *    otherwise pass an \c Error object like \c callback(error)
  */
 
-/*! \page rest RESTful, WebSockets, RabbitMQ, MQTT and UnixSockets API
+/*! \page rest RESTful, WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets API
  *
  * Since version \c 0.0.6, there are three different ways to interact with a
- * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref mqtt
+ * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref apimqtt, \ref apinanomsg
  * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
  * and notifications), so almost all the concepts described in the
- * \ref plainhttp section apply to the WebSocket/RabbitMQ/MQTT/UnixSockets interfaces as well.
+ * \ref plainhttp section apply to the WebSocket/RabbitMQ/MQTT/Nanomsg/UnixSockets interfaces as well.
  * Besides, since version \c 0.1.0 the transport mechanism for the Janus API
  * has been made modular, which means other protocols for transporting
  * Janus API messages might become available in the future: considering the
@@ -980,10 +981,10 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * transported on, the concepts explained in the following sections should
  * apply to those as well.
  *
- * As it will be explained later in the \ref WS, \ref rabbit and \ref unix sections
+ * As it will be explained later in the \ref WS, \ref rabbit, \ref apimqtt, \ref apinanomsg and \ref unix sections
  * below, the only differences come when addressing specific sessions/handles
  * and in part in how you handle notifications using something different than
- * the REST interface: in fact, since with WebSockets, RabbitMQ, MQTT and UnixSockets
+ * the REST interface: in fact, since with WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets
  * (and, as anticipated, with other protocols that may be added in the future too)
  * there's no REST-based path involved, you'll need a couple of additional
  * identifiers to bridge the gap.
@@ -1498,7 +1499,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * As anticipated in the previous sections, Janus can send events and
  * notifications at any time through the long poll channel (or, as it
  * will be explained later, through the related push mechanisms made
- * available by the \ref WS, \ref rabbit and \ref unix ). While this channel is
+ * available by other transport protocols ). While this channel is
  * mostly used to convey asynchronous notifications originated by
  * plugins as part of the messaging they may have with the application
  * using it, the same channel is actually used by Janus to trigger
@@ -1780,7 +1781,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * implemented to do so, by looking at the Janus-level \c transaction
  * identifier.
  *
- * \section mqtt MQTT interface
+ * \section apimqtt MQTT interface
  * The semantics of how the requests have to be built, when compared to
  * the usage of plain HTTP, is exactly the same as for WebSockets, so
  * refer to the \ref WS documentation for details about that.
@@ -1800,10 +1801,20 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * The proper usage of these queues will allow you to implement the kind
  * of bidirectional channel Janus needs.
  *
- * \section unix UnixSockets interface
+ * \section apinanomsg Nanomsg interface
  * The semantics of how the requests have to be built, when compared to
  * the usage of plain HTTP, is exactly the same as for WebSockets, RabbitMQ
  * and MQTT, so refer to the \ref WS documentation for details about that.
+ *
+ * Apart from that, the only configuration needed is related to the Nanomsg
+ * address to use, and whether it should be used to bind locally or to
+ * connect to a remote endpoint. Notice that only the \c NN_PAIR pattern
+ * is supported by the plugin, so no Pub/Sub or other variations.
+ *
+ * \section unix UnixSockets interface
+ * The semantics of how the requests have to be built, when compared to
+ * the usage of plain HTTP, is exactly the same as for WebSockets, RabbitMQ
+ * MQTT and Nanomsg, so refer to the \ref WS documentation for details about that.
  *
  * Apart from that, the only configuration needed is related to the path
  * the client and server will be sharing, and the socket type. Notice that only the
@@ -2949,6 +2960,7 @@ ldd janus | grep asan
  * - \ref recordplay
  * - \ref voicemail
  * - \ref lua
+ * - \ref duktape
  */
 
 /*! \page resources Resources
@@ -3137,7 +3149,7 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
- * \section monitoring Event Handlers (monitoring/troubleshooting)
+ * \section evhandlers Event Handlers (monitoring/troubleshooting)
  *
  * <table class="table table-striped">
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
@@ -3260,6 +3272,7 @@ ldd janus | grep asan
  * -# <a href="#rabbitmq">Can I use RabbitMQ instead of HTTP/WebSockets to interact with Janus?</a>\n
  * -# <a href="#unixsockets">Can I use Unix Sockets instead of HTTP/WebSockets/RabbitMQ to interact with Janus?</a>\n
  * -# <a href="#mqtt">Can I use MQTT instead of HTTP/WebSockets/RabbitMQ/Unix Sockets to interact with Janus?</a>\n
+ * -# <a href="#nanomsg">Can I use Nanomsg instead of HTTP/WebSockets/RabbitMQ/MQTT/Unix Sockets to interact with Janus?</a>\n
  * -# <a href="#transports">What about \<my favourite control protocol\> instead?</a>\n
  * -# <a href="#demos">I've launched Janus, how do I try the demos?</a>\n
  * -# <a href="#certificates">I'm trying the demos, but I get "Janus down" or certificate errors!</a>\n
@@ -3322,9 +3335,9 @@ ldd janus | grep asan
  *    what Janus can do and how to use it.\n\n
  *    There are several videos available that you can find online, here
  *    are some of them as quick pointers:
- *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">#vuc485</a>,
- *    <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">#vuc584</a>
- *    and <a href="https://www.youtube.com/watch?v=XnQ7ECOpRIU">#vuc640</a> (last one more focused on IETF remote participation);
+ *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">vuc485</a>,
+ *    <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">vuc584</a>
+ *    and <a href="https://www.youtube.com/watch?v=XnQ7ECOpRIU">vuc640</a> (last one more focused on IETF remote participation);
  *    - Presentation at <a href="https://www.youtube.com/watch?v=SFeWYewoL7Q">OpenSIPS summit 2016</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=yvt-vMHW83c">Kamailio World 2016</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>;
@@ -3351,7 +3364,7 @@ ldd janus | grep asan
  *    awesome and mythology rules... ;-)  
  *    \n\n
  *    .
- * \anchor license
+ * \anchor januslicense
  * -# <b>Is the license AGPLv3 or GPLv3? Do you provide alternative license mechanisms as well?</b>\n
  *    .
  *    Janus is licensend under the GPLv3 licence. At the very beginning
@@ -3517,7 +3530,12 @@ ldd janus | grep asan
  *    .
  *    Since version \c 0.2.1, you can! This was a very welcome contribution by
  *    a Janus user, as it makes it even easier to have Janus interact with IoT deployments.
- *    For more information, check the \ref mqtt page. \n\n
+ *    For more information, check the \ref apimqtt page. \n\n
+ *    .
+ * \anchor nanomsg
+ * -# <b>Can I use Nanomsg instead of HTTP/WebSockets/RabbitMQ/MQTT/Unix Sockets to interact with Janus?</b>\n
+ *    .
+ *    Since version \c 0.4.2, you can! For more information, check the \ref apinanomsg page. \n\n
  *    .
  * \anchor transports
  * -# <b>What about \<my favourite control protocol\> instead?</b>\n
@@ -3769,6 +3787,16 @@ ldd janus | grep asan
  * documentation in janus_lua.c for info on the APIs. Some additional
  * hooks in C may be required, which is what the janus_lua_data.h and
  * janus_lua_extra.c code is for.
+ * \ingroup plugins
+ */
+
+/*! \defgroup jspapi Duktape plugin API
+ * \brief Duktape plugin (aka, how to write your own plugin in JavaScript)
+ * \details The Janus Duktape plugin allows you to write your application
+ * logic in JavaScript, instead of creating a new plugin in C: check the
+ * documentation in janus_duktape.c for info on the APIs. Some additional
+ * hooks in C may be required, which is what the janus_duktape_data.h and
+ * janus_duktape_extra.c code is for.
  * \ingroup plugins
  */
 

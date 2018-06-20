@@ -132,7 +132,7 @@ void janus_set_rfc4588_enabled(gboolean enabled);
  * @returns TRUE if it's enabled, FALSE otherwise */
 gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
- * @param[in] timer The new timer value, in seconds */
+ * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
@@ -270,6 +270,8 @@ struct janus_ice_handle {
 	GThread *icethread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
 	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief Atomic flag to check if the ICE loop is still running */
+	volatile gint looprunning;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -495,7 +497,6 @@ struct janus_ice_trickle {
  */
 ///@{
 /*! \brief Helper method to allocate a janus_ice_trickle instance
- * @param[in] handle The Janus ICE handle this trickle candidate belongs to
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
@@ -523,13 +524,13 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
  * @param[in] core_session The core/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID
+ * @param[in] handle The Janus ICE handle
  * @param[in] plugin The plugin the ICE handle needs to be attached to
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
 /*! \brief Method to destroy a Janus ICE handle
  * @param[in] core_session The core/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID to destroy
+ * @param[in] handle The Janus ICE handle to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
