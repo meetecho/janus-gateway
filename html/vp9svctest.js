@@ -606,7 +606,7 @@ function addSvcButtons(feed) {
 		'	</div>' +
 		'</div>'
 	);
-	// Enable the VP8 simulcast selection buttons
+	// Enable the VP9 SVC selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});

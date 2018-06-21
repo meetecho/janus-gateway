@@ -857,7 +857,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
-	/* For VP8 simulcast */
+	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
@@ -970,14 +970,11 @@ typedef struct multiple_fds {
 	int rtcp_fd;
 } multiple_fds;
 
-#define JANUS_STREAMING_VP8		0
-#define JANUS_STREAMING_H264	1
-#define JANUS_STREAMING_VP9		2
 typedef struct janus_streaming_codecs {
 	gint audio_pt;
 	char *audio_rtpmap;
 	char *audio_fmtp;
-	gint video_codec;
+	janus_videocodec video_codec;
 	gint video_pt;
 	char *video_rtpmap;
 	char *video_fmtp;
@@ -1154,7 +1151,8 @@ typedef struct janus_streaming_rtp_relay_packet {
 	gboolean is_video;
 	gboolean is_keyframe;
 	gboolean simulcast;
-	int codec, substream;
+	janus_videocodec codec;
+	int substream;
 	uint32_t timestamp;
 	uint16_t seq_number;
 } janus_streaming_rtp_relay_packet;
@@ -3766,7 +3764,7 @@ done:
 						session->templayer_target = json_integer_value(temporal);
 						JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 							session->templayer_target, session->templayer);
-						if(session->templayer_target == session->templayer) {
+						if(mp->codecs.video_codec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
 							/* No need to do anything, we're already getting the right temporal layer, so notify the viewer */
 							json_t *event = json_object();
 							json_object_set_new(event, "streaming", json_string("event"));
@@ -4368,14 +4366,14 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	live_rtp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
-	live_rtp->codecs.video_codec = -1;
+	live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_NONE;
 	if(dovideo) {
 		if(strstr(vrtpmap, "vp8") || strstr(vrtpmap, "VP8"))
-			live_rtp->codecs.video_codec = JANUS_STREAMING_VP8;
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_VP8;
 		else if(strstr(vrtpmap, "vp9") || strstr(vrtpmap, "VP9"))
-			live_rtp->codecs.video_codec = JANUS_STREAMING_VP9;
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
 		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
-			live_rtp->codecs.video_codec = JANUS_STREAMING_H264;
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
 	}
 	live_rtp->codecs.video_pt = dovideo ? vcodec : -1;
 	live_rtp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
@@ -5648,13 +5646,13 @@ static void *janus_streaming_relay_thread(void *data) {
 							char *payload = janus_rtp_payload(buffer, bytes, &plen);
 							if(payload) {
 								switch(mountpoint->codecs.video_codec) {
-									case JANUS_STREAMING_VP8:
+									case JANUS_VIDEOCODEC_VP8:
 										kf = janus_vp8_is_keyframe(payload, plen);
 										break;
-									case JANUS_STREAMING_VP9:
+									case JANUS_VIDEOCODEC_VP9:
 										kf = janus_vp9_is_keyframe(payload, plen);
 										break;
-									case JANUS_STREAMING_H264:
+									case JANUS_VIDEOCODEC_H264:
 										kf = janus_h264_is_keyframe(payload, plen);
 										break;
 									default:
@@ -5890,7 +5888,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				}
 				session->last_relayed = janus_get_monotonic_time();
 				char vp8pd[6];
-				if(packet->codec == JANUS_STREAMING_VP8) {
+				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
 					/* Check if there's any temporal scalability to take into account */
 					uint16_t picid = 0;
 					uint8_t tlzi = 0;
@@ -5930,7 +5928,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Restore the timestamp and sequence number to what the publisher set them to */
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
-				if(packet->codec == JANUS_STREAMING_VP8) {
+				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
 					/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 					memcpy(payload, vp8pd, sizeof(vp8pd));
 				}
