@@ -1246,7 +1246,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							codec = "pcma";
 							if(janus_sdp_get_codec_pt(offer, codec) < 0) {
 								/* a-law not found, maybe G.722? */
-								codec = "722";
+								codec = "g722";
 								if(janus_sdp_get_codec_pt(offer, codec) < 0) {
 									/* G.722 not found, maybe isac32? */
 									codec = "isac32";
