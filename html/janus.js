@@ -1269,7 +1269,6 @@ function Janus(gatewayCallbacks) {
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
-			callbacks.error("Invalid handle");
 			return;
 		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": Janus.randomString(12) };
