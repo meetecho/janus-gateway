@@ -2041,7 +2041,7 @@ function Janus(gatewayCallbacks) {
 										]
 									}
 								};
-								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
+								constraints.video.mandatory.chromeMediaSourceId = sourceId;
 								getScreenMedia(constraints, callbackUserMedia, isAudioSendEnabled(media));
 							});
 						}
