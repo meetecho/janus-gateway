@@ -75,8 +75,7 @@ videoorient_ext = yes|no (whether the video-orientation RTP extension must be
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 transport_wide_cc_ext = yes|no (whether the transport wide CC RTP extension must be
-	negotiated/used or not for new publishers, default=no note that this currently
-	doesn't work correctly when the publisher is doing simulcasting)
+	negotiated/used or not for new publishers, default=no)
 record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 notify_joining = true|false (optional, whether to notify all participants when a new
@@ -601,6 +600,7 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"video" : <true|false, depending on whether or not video should be relayed; true by default>,
 	"data" : <true|false, depending on whether or not data should be relayed; true by default>,
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present (unless bitrate_cap is set)>,
+	"keyframe" : <true|false, whether we should send this publisher a keyframe request>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 	"display" : "<new display name to use in the room; optional>"
@@ -1160,6 +1160,7 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"videocodec", JSON_STRING, 0},
 	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"keyframe", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
@@ -5002,6 +5003,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *videocodec = json_object_get(root, "videocodec");
 				json_t *data = json_object_get(root, "data");
 				json_t *bitrate = json_object_get(root, "bitrate");
+				json_t *keyframe = json_object_get(root, "keyframe");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
@@ -5090,6 +5092,10 @@ static void *janus_videoroom_handler(void *data) {
 					char rtcpbuf[24];
 					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate);
 					gateway->relay_rtcp(msg->handle, 1, rtcpbuf, 24);
+				}
+				if(keyframe && json_is_true(keyframe)) {
+					/* Send a FIR */
+					janus_videoroom_reqfir(participant, "Keyframe request");
 				}
 				janus_mutex_lock(&participant->rec_mutex);
 				gboolean prev_recording_active = participant->recording_active;
