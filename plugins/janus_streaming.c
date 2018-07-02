@@ -80,11 +80,8 @@ audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 audiofmtp = Codec specific parameters, if any
 audioskew = yes|no (whether the plugin should perform skew
 	analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
-minaudiorrinterval = minimum interval in ms between forwarding RTCP RR to audiortcpport 
 videoport = local port for receiving video frames (only for rtp)
 videortcpport = remote port for sending video RTCP feedback
-minpliinterval = minimum interval in ms between forwarding RTCP PLI to videortcpport 
-minvideorrinterval = minimum interval in ms between forwarding RTCP RR to videortcpport 
 videomcast = multicast group port for receiving video frames, if any
 videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 videopt = <video RTP payload type> (e.g., 100)
@@ -120,9 +117,6 @@ rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
 rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
-minaudiorrinterval = minimum interval in ms between forwarding RTCP RR to audiortcpport 
-minpliinterval = minimum interval in ms between forwarding RTCP PLI to videortcpport 
-minvideorrinterval = minimum interval in ms between forwarding RTCP RR to videortcpport 
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -809,10 +803,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"videortpmap", JSON_STRING, 0},
 	{"videofmtp", JSON_STRING, 0},
 	{"rtspiface", JSON_STRING, 0},
-	{"rtsp_failcheck", JANUS_JSON_BOOL, 0},
-	{"minaudiorrinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"minpliinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"minvideorrinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
 #endif
 static struct janus_json_parameter rtp_audio_parameters[] = {
@@ -824,14 +815,11 @@ static struct janus_json_parameter rtp_audio_parameters[] = {
 	{"audiofmtp", JSON_STRING, 0},
 	{"audioiface", JSON_STRING, 0},
 	{"audioskew", JANUS_JSON_BOOL, 0},
-	{"minaudiorrinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videomcast", JSON_STRING, 0},
 	{"videoport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"videortcpport", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"minpliinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"minvideorrinterval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"videortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"videofmtp", JSON_STRING, 0},
@@ -945,12 +933,6 @@ typedef struct janus_streaming_rtp_source {
 	int pipefd[2];			/* Just needed to quickly interrupt the poll when it's time to wrap up */
 	int audio_rtcp_fd;
 	int video_rtcp_fd;
-	gint64 last_audio_rr_sent;	/* when the last audio RR was sent to source */
-	gint64 last_video_rr_sent;	/* when the last video RR was sent to source */
-	gint64 last_pli_sent;	/* when the last PLI was sent to source */
-	uint32_t min_pli_interval;	/* wait this many ms between sending PLI to source */
-	uint32_t min_video_rr_interval;	/* wait this many ms between sending video RR to source */
-	uint32_t min_audio_rr_interval;	/* wait this many ms between sending audio RR to source */
 	gboolean simulcast;
 	gboolean askew, vskew;
 	gint64 last_received_audio;
@@ -1039,9 +1021,9 @@ static char *admin_key = NULL;
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		int srtpsuite, char *srtpcrypto,
-		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew, uint32_t min_audio_rr_interval,
+		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
 		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-			gboolean simulcast, uint32_t min_pli_interval, uint32_t min_video_rr_interval, uint16_t vport2, uint16_t vport3, gboolean dovskew, int rtp_collision,
+			gboolean simulcast, uint16_t vport2, uint16_t vport3, gboolean dovskew, int rtp_collision,
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean buffermsg);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
@@ -1054,10 +1036,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		gboolean doaudio, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
-		gboolean error_on_failure,
-		uint32_t min_audio_rr_interval,
-		uint32_t min_video_rr_interval,
-		uint32_t min_pli_interval);
+		gboolean error_on_failure);
 
 
 typedef struct janus_streaming_message {
@@ -1084,11 +1063,6 @@ typedef struct janus_streaming_session {
 	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
 	janus_vp8_simulcast_context simulcast_context;
-	gint64 last_audio_rr_received;	/* when audio RTCP RR was last received */
-	guint8 audio_rr_fraction_lost;	/* packet loss fraction, per RTCP RR */
-	gint64 last_video_rr_received;	/* when video RTCP RR was last received */
-	guint8 video_rr_fraction_lost;	/* packet loss fraction, per RTCP RR */
-	uint32_t video_remb;	/* last video bandwidth estimate, per RTCP REMB */
 	gboolean stopping;
 	volatile gint hangingup;
 	volatile gint destroyed;
@@ -1294,9 +1268,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *viface = janus_config_get_item(cat, "videoiface");
 				janus_config_item *vport = janus_config_get_item(cat, "videoport");
 				janus_config_item *vrtcpport = janus_config_get_item(cat, "videortcpport");
-				janus_config_item *minpliinterval = janus_config_get_item(cat, "minpliinterval");
-				janus_config_item *minvideorrinterval = janus_config_get_item(cat, "minvideorrinterval");
-				janus_config_item *minaudiorrinterval = janus_config_get_item(cat, "minaudiorrinterval");
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
@@ -1430,7 +1401,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
 						doaskew,
-						(minaudiorrinterval && minaudiorrinterval->value) ? atoi(minaudiorrinterval->value) : 5000,
 						dovideo,
 						vmcast ? (char *)vmcast->value : NULL,
 						dovideo && viface && viface->value ? &video_iface : NULL,
@@ -1441,8 +1411,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vfmtp ? (char *)vfmtp->value : NULL,
 						bufferkf,
 						simulcast,
-						(minpliinterval && minpliinterval->value) ? atoi(minpliinterval->value) : 0,
-						(minvideorrinterval && minvideorrinterval->value) ? atoi(minvideorrinterval->value) : 5000,
 						(vport2 && vport2->value) ? atoi(vport2->value) : 0,
 						(vport3 && vport3->value) ? atoi(vport3->value) : 0,
 						dovskew,
@@ -1612,9 +1580,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
 				janus_config_item *iface = janus_config_get_item(cat, "rtspiface");
 				janus_config_item *failerr = janus_config_get_item(cat, "rtsp_failcheck");
-				janus_config_item *minaudiorrinterval = janus_config_get_item(cat, "minaudiorrinterval");
-				janus_config_item *minvideorrinterval = janus_config_get_item(cat, "minvideorrinterval");
-				janus_config_item *minpliinterval = janus_config_get_item(cat, "minpliinterval");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
@@ -1669,11 +1634,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
 						iface && iface->value ? &iface_value : NULL,
-						error_on_failure,
-						(minaudiorrinterval && minaudiorrinterval->value) ? atoi(minaudiorrinterval->value) : 5000,
-						(minvideorrinterval && minvideorrinterval->value) ? atoi(minvideorrinterval->value) : 5000,
-						(minpliinterval && minpliinterval->value) ? atoi(minpliinterval->value) : 0)) == NULL) {
-
+						error_on_failure)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -2056,17 +2017,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					json_object_set_new(ml, "audioport", json_integer(source->audio_port));
 					if(source->audio_rtcp_port > -1)
 						json_object_set_new(ml, "audiortcpport", json_integer(source->audio_rtcp_port));
-					if(source->min_audio_rr_interval > 0)
-						json_object_set_new(ml, "minaudiorrinterval", json_integer(source->min_audio_rr_interval));
 				}
 				if(mp->video) {
 					json_object_set_new(ml, "videoport", json_integer(source->video_port[0]));
 					if(source->video_rtcp_port > -1)
 						json_object_set_new(ml, "videortcpport", json_integer(source->video_rtcp_port));
-					if(source->min_pli_interval > 0)
-						json_object_set_new(ml, "minpliinterval", json_integer(source->min_pli_interval));
-					if(source->min_video_rr_interval > 0)
-						json_object_set_new(ml, "minvideorrinterval", json_integer(source->min_video_rr_interval));
 					if(source->video_port[1] > -1)
 						json_object_set_new(ml, "videoport2", json_integer(source->video_port[1]));
 					if(source->video_port[2] > -1)
@@ -2176,7 +2131,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			uint16_t artcpport = 0;
 			uint8_t acodec = 0;
 			char *artpmap = NULL, *afmtp = NULL, *amcast = NULL;
-			uint32_t min_audio_rr_interval = 0;
 			if(doaudio) {
 				JANUS_VALIDATE_JSON_OBJECT(root, rtp_audio_parameters,
 					error_code, error_cause, TRUE,
@@ -2210,19 +2164,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				}
 				json_t *askew = json_object_get(root, "audioskew");
 				doaskew = askew ? json_is_true(askew) : FALSE;
-				json_t *minaudiorrinterval = json_object_get(root, "minaudiorrinterval");
-				if (minaudiorrinterval) {
-					if (artcpport) {
-						min_audio_rr_interval = json_integer_value(minaudiorrinterval);
-					} else {
-						JANUS_LOG(LOG_WARN, "Minimum audio RR interval does nothing without a Audio RTCP port\n");
-					}
-				}
 			}
 			uint16_t vport = 0, vport2 = 0, vport3 = 0;
 			uint16_t vrtcpport = 0;
-			uint32_t min_pli_interval = 0;
-			uint32_t min_video_rr_interval = 0;
 			uint8_t vcodec = 0;
 			char *vrtpmap = NULL, *vfmtp = NULL, *vmcast = NULL;
 			gboolean bufferkf = FALSE, simulcast = FALSE;
@@ -2239,22 +2183,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_t *videortcpport = json_object_get(root, "videortcpport");
 				if (videortcpport)
 					vrtcpport = json_integer_value(videortcpport);
-				json_t *minpliinterval = json_object_get(root, "minpliinterval");
-				if (minpliinterval) {
-					if (vrtcpport) {
-						min_pli_interval = json_integer_value(minpliinterval);
-					} else {
-						JANUS_LOG(LOG_WARN, "Minimum PLI interval does nothing without a Video RTCP port\n");
-					}
-				}
-				json_t *minvideorrinterval = json_object_get(root, "minvideorrinterval");
-				if (minvideorrinterval) {
-					if (vrtcpport) {
-						min_video_rr_interval = json_integer_value(minvideorrinterval);
-					} else {
-						JANUS_LOG(LOG_WARN, "Minimum video RR interval does nothing without a Video RTCP port\n");
-					}
-				}
 				json_t *videopt = json_object_get(root, "videopt");
 				vcodec = json_integer_value(videopt);
 				json_t *videortpmap = json_object_get(root, "videortpmap");
@@ -2342,9 +2270,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					desc ? (char *)json_string_value(desc) : NULL,
 					ssuite ? json_integer_value(ssuite) : 0,
 					scrypto ? (char *)json_string_value(scrypto) : NULL,
-					doaudio, amcast, &audio_iface, aport, artcpport, acodec, artpmap, afmtp, doaskew, min_audio_rr_interval,
+					doaudio, amcast, &audio_iface, aport, artcpport, acodec, artpmap, afmtp, doaskew,
 					dovideo, vmcast, &video_iface, vport, vrtcpport, vcodec, vrtpmap, vfmtp, bufferkf,
-					simulcast, min_pli_interval, min_video_rr_interval, vport2, vport3, dovskew,
+					simulcast, vport2, vport3, dovskew,
 					rtpcollision ? json_integer_value(rtpcollision) : 0,
 					dodata, &data_iface, dport, buffermsg);
 			if(mp == NULL) {
@@ -2513,9 +2441,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *password = json_object_get(root, "rtsp_pwd");
 			json_t *iface = json_object_get(root, "rtspiface");
 			json_t *failerr = json_object_get(root, "rtsp_check");
-			json_t *minpliinterval = json_object_get(root, "minpliinterval");
-			json_t *minvideorrinterval = json_object_get(root, "minvideorrinterval");
-			json_t *minaudiorrinterval = json_object_get(root, "minaudiorrinterval");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
@@ -2547,11 +2472,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					doaudio, (char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
 					dovideo, (char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
 					&multicast_iface,
-					error_on_failure,
-					(minaudiorrinterval && json_integer_value(minaudiorrinterval)) ? json_integer_value(minaudiorrinterval) : 5000,
-					(minvideorrinterval && json_integer_value(minvideorrinterval)) ? json_integer_value(minvideorrinterval) : 5000,
-					(minpliinterval && json_integer_value(minpliinterval)) ? json_integer_value(minpliinterval) : 0);
-
+					error_on_failure);
 			if(mp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -2611,10 +2532,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						janus_config_add_item(config, mp->name, "audioiface", json_string_value(aiface));
 					if(source->askew)
 						janus_config_add_item(config, mp->name, "askew", "yes");
-					if(source->min_audio_rr_interval > 0) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_audio_rr_interval);
-						janus_config_add_item(config, mp->name, "minaudiorrinterval", value);
-					}
 				}
 				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt >= 0? "yes" : "no");
 				if(mp->codecs.video_pt >= 0) {
@@ -2623,14 +2540,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(source->video_rtcp_port > 0) {
 						g_snprintf(value, BUFSIZ, "%d", source->video_rtcp_port);
 						janus_config_add_item(config, mp->name, "videortcpport", value);
-					}
-					if(source->min_pli_interval > 0) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_pli_interval);
-						janus_config_add_item(config, mp->name, "minpliinterval", value);
-					}
-					if(source->min_video_rr_interval > 0) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_video_rr_interval);
-						janus_config_add_item(config, mp->name, "minvideorrinterval", value);
 					}
 					json_t *videomcast = json_object_get(root, "videomcast");
 					if(videomcast)
@@ -2699,10 +2608,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
 					if(mp->codecs.audio_fmtp)
 						janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
-					if(source->min_audio_rr_interval) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_audio_rr_interval);
-						janus_config_add_item(config, mp->name, "minaudiorrinterval", value);
-					}
 				}
 				if(mp->codecs.video_pt >= 0) {
 					janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
@@ -2710,14 +2615,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
 					if(mp->codecs.video_fmtp)
 						janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
-					if(source->min_video_rr_interval) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_video_rr_interval);
-						janus_config_add_item(config, mp->name, "minvideorrinterval", value);
-					}
-					if(source->min_pli_interval) {
-						g_snprintf(value, BUFSIZ, "%d", source->min_pli_interval);
-						janus_config_add_item(config, mp->name, "minpliinterval", value);
-					}
 				}
 				json_t *iface = json_object_get(root, "rtspiface");
 				if(iface)
@@ -2883,10 +2780,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 							janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
 						if(mp->codecs.audio_fmtp)
 							janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
-						if(source->min_audio_rr_interval) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_audio_rr_interval);
-							janus_config_add_item(config, mp->name, "minaudiorrinterval", value);
-						}
 					}
 					if(mp->codecs.video_pt >= 0) {
 						janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
@@ -2894,14 +2787,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 							janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
 						if(mp->codecs.video_fmtp)
 							janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
-						if(source->min_video_rr_interval) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_video_rr_interval);
-							janus_config_add_item(config, mp->name, "minvideorrinterval", value);
-						}
-						if(source->min_pli_interval) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_pli_interval);
-							janus_config_add_item(config, mp->name, "minpliinterval", value);
-						}
 					}
 					json_t *iface = json_object_get(root, "rtspiface");
 					if(iface)
@@ -2930,10 +2815,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 							janus_config_add_item(config, mp->name, "audioiface", json_string_value(aiface));
 						if(source->askew)
 							janus_config_add_item(config, mp->name, "askew", "yes");
-						if(source->min_audio_rr_interval > 0) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_audio_rr_interval);
-							janus_config_add_item(config, mp->name, "minaudiorrinterval", value);
-						}
 					}
 					janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt >= 0? "yes" : "no");
 					if(mp->codecs.video_pt >= 0) {
@@ -2942,14 +2823,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						if(source->video_rtcp_port > 0) {
 							g_snprintf(value, BUFSIZ, "%d", source->video_rtcp_port);
 							janus_config_add_item(config, mp->name, "videortcpport", value);
-						}
-						if(source->min_pli_interval > 0) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_pli_interval);
-							janus_config_add_item(config, mp->name, "minpliinterval", value);
-						}
-						if(source->min_video_rr_interval > 0) {
-							g_snprintf(value, BUFSIZ, "%d", source->min_video_rr_interval);
-							janus_config_add_item(config, mp->name, "minvideorrinterval", value);
 						}
 						json_t *videomcast = json_object_get(root, "videomcast");
 						if(videomcast)
@@ -3521,6 +3394,12 @@ void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char 
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
+	/* We might interested in the available bandwidth that the user advertizes */
+	uint64_t bw = janus_rtcp_get_remb(buf, len);
+	if(bw > 0) {
+		JANUS_LOG(LOG_HUGE, "REMB for this PeerConnection: %"SCNu64"\n", bw);
+		/* TODO Use this somehow (e.g., notification towards application?) */
+	}
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
 	if(!session || session->destroyed || session->stopping || !session->started || session->paused)
 		return;
@@ -3528,11 +3407,8 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 	if(mp->streaming_source != janus_streaming_source_rtp)
 		return;
 	janus_streaming_rtp_source *ss = (janus_streaming_rtp_source *)mp->source;
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)buf;
-	if(rtcp->version != 2)
-			return;
 
-	if((video == 0) && (ss->audio_rtcp_fd > -1)) {
+	if ((video == 0) && (ss->audio_rtcp_fd > -1)) {
 		JANUS_LOG(LOG_VERB, "Got Audio RTCP SSRC %u\n",
 			janus_rtcp_get_sender_ssrc(buf, len));
 
@@ -3540,112 +3416,21 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 			janus_rtcp_get_sender_ssrc(buf, len),
 			ss->audio_ssrc);
 
-		char *filtered = NULL;
-		int newlen = 0;
-		int total = len, length = 0, bytes = 0;
-		/* Iterate on the compound packets */
-		gboolean keep = FALSE;
-		while(rtcp) {
-			keep = FALSE;
-			length = ntohs(rtcp->length);
-			if(length == 0)
-				break;
-			bytes = length*4+4;
-			switch(rtcp->type) {
-				case RTCP_RR:
-						/* incoming RR
-						 * check if one has been sent in the last minimum RR interval.
-						 * if not, update it with the worst packet loss fraction from the
-						 * last RR interval and send it along
-						 */
-					{
-						janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
-						if(rr->header.rc > 0) {
-							gint64 now = janus_get_monotonic_time();
+		struct sockaddr_in dest_rtcp;
+		dest_rtcp.sin_family = AF_INET;
+		dest_rtcp.sin_port = htons(ss->audio_rtcp_port);
+		dest_rtcp.sin_addr.s_addr = ss->audio_mcast;
+		int sent = 0;
 
-							session->audio_rr_fraction_lost = ntohl(rr->rb[0].flcnpl) >> 24;
-							session->last_audio_rr_received = now;
-
-							if(ss->last_audio_rr_sent + (ss->min_audio_rr_interval * 1000) < now) {
-								/* iterate through listeners and find the largest loss fraction
-								 * that happened within the last min_audio_rr_interval.
-								 */
-								GList *this_listener = NULL;
-								janus_streaming_session* this_session = NULL;
-								uint8_t max_fraction_lost = session->audio_rr_fraction_lost;
-
-								janus_mutex_lock(&mp->mutex);
-								this_listener = mp->listeners;
-								while(this_listener) {
-									this_session = (janus_streaming_session *)this_listener->data;
-
-									if(this_session &&
-										!this_session->destroyed &&
-										!this_session->stopping &&
-										this_session->started &&
-										!this_session->paused &&
-										(this_session->last_audio_rr_received > ss->last_audio_rr_sent) &&
-										(this_session->audio_rr_fraction_lost > max_fraction_lost))
-										max_fraction_lost = this_session->audio_rr_fraction_lost;
-									this_listener = g_list_next(this_listener);
-								}
-								janus_mutex_unlock(&mp->mutex);
-
-								/* update this RR message */
-								rr->rb[0].flcnpl = htonl(((uint32_t)max_fraction_lost << 24) | (ntohl(rr->rb[0].flcnpl) & 0xffffff));
-
-								/* send it */
-								ss->last_audio_rr_sent = now;
-								keep = TRUE;
-							}
-						}
-					}
-					break;
-				case RTCP_PSFB:
-				case RTCP_SR:
-				case RTCP_SDES:
-				case RTCP_BYE:
-				case RTCP_APP:
-				case RTCP_RTPFB:
-				case RTCP_XR:
-				case RTCP_FIR:
-					break;
-				default:
-					JANUS_LOG(LOG_ERR, "Unknown RTCP PT %d\n", rtcp->type);
-					/* FIXME Should we allow this to go through instead? */
-					break;
-			}
-			if(keep) {
-				/* Keep this packet */
-				if(filtered == NULL)
-					filtered = g_malloc0(total);
-				memcpy(filtered+newlen, (char *)rtcp, bytes);
-				newlen += bytes;
-			}
-			total -= bytes;
-			if(total <= 0)
-				break;
-			rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
-		}
-
-
-		if(filtered) {
-			struct sockaddr_in dest_rtcp;
-			dest_rtcp.sin_family = AF_INET;
-			dest_rtcp.sin_port = htons(ss->audio_rtcp_port);
-			dest_rtcp.sin_addr.s_addr = ss->audio_mcast;
-			int sent = 0;
-
-			if (0 > (sent = sendto(ss->audio_rtcp_fd, buf, len, 0, &dest_rtcp, sizeof(dest_rtcp)))) {
-				JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
-					ss->audio_rtcp_port, errno, strerror(errno));
-			} else {
-				JANUS_LOG(LOG_HUGE, "sent %d/%d bytes to %d\n",
-					sent, len, ss->audio_rtcp_port);
-			}
+		if (0 > (sent = sendto(ss->audio_rtcp_fd, buf, len, 0, &dest_rtcp, sizeof(dest_rtcp)))) {
+			JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
+				ss->audio_rtcp_port, errno, strerror(errno));
+		} else {
+			JANUS_LOG(LOG_HUGE, "sent %d/%d bytes to %d\n",
+				sent, len, ss->audio_rtcp_port);
 		}
 	} else
-	if((video != 0) && (ss->video_rtcp_fd > -1)) {
+	if ((video != 0) && (ss->video_rtcp_fd > -1)) {
 		JANUS_LOG(LOG_VERB, "Got Video RTCP SSRC %u\n",
 			janus_rtcp_get_sender_ssrc(buf, len));
 
@@ -3653,157 +3438,18 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 			janus_rtcp_get_sender_ssrc(buf, len),
 			ss->video_ssrc);
 
-		char *filtered = NULL;
-		int newlen = 0;
-		int total = len, length = 0, bytes = 0;
-		/* Iterate on the compound packets */
-		gboolean keep = FALSE;
-		while(rtcp) {
-			keep = FALSE;
-			length = ntohs(rtcp->length);
-			if(length == 0)
-				break;
-			bytes = length*4+4;
-			switch(rtcp->type) {
-				case RTCP_PSFB:
-					/* incoming PLI or REMB */
-					if(15 == rtcp->rc) {
-						/* possibly REMB */
-						uint32_t this_remb = janus_rtcp_get_remb((char*)rtcp, length);
-						if(this_remb > 0) {
-							JANUS_LOG(LOG_HUGE, "REMB for this PeerConnection: %u\n",
-								this_remb);
-							session->video_remb = this_remb;
+		struct sockaddr_in dest_rtcp;
+		dest_rtcp.sin_family = AF_INET;
+		dest_rtcp.sin_port = htons(ss->video_rtcp_port);
+		dest_rtcp.sin_addr.s_addr = ss->video_mcast;
+		int sent = 0;
 
-							/* iterate through listeners and compare against last REMB
-							 * if this is a new minimum bandwidth, send it along
-							 */
-							GList *this_listener = NULL;
-							janus_streaming_session* this_session = NULL;
-							uint32_t min_remb = this_remb;
-
-							janus_mutex_lock(&mp->mutex);
-							this_listener = mp->listeners;
-							while(this_listener) {
-								this_session = (janus_streaming_session *)this_listener->data;
-
-								if(this_session &&
-									!this_session->destroyed &&
-									!this_session->stopping &&
-									this_session->started &&
-									!this_session->paused &&
-									this_session->video_remb &&
-									(this_session->video_remb < min_remb))
-									min_remb = this_session->video_remb;
-								this_listener = g_list_next(this_listener);
-							}
-							janus_mutex_unlock(&mp->mutex);
-							keep = (min_remb == this_remb);
-						}
-					} else
-					if(1 == rtcp->rc) {
-						/* incoming PSFB PLI 
-						 * check if one has been sent in the last PLI throttling interval.
-						 * if not, update the last PLI time and send it along
-						 */
-						gint64 now = janus_get_monotonic_time();
-						if(ss->last_pli_sent + (ss->min_pli_interval * 1000) < now) {
-							ss->last_pli_sent = now;
-							/* send it */
-							keep = TRUE;
-						}
-					}
-					break;
-				case RTCP_RR:
-						/* incoming RR
-						 * check if one has been sent in the last minimum RR interval.
-						 * if not, update it with the worst packet loss fraction from the
-						 * last RR interval and send it along
-						 */
-					{
-						janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
-						if(rr->header.rc > 0) {
-							gint64 now = janus_get_monotonic_time();
-
-							session->video_rr_fraction_lost = ntohl(rr->rb[0].flcnpl) >> 24;
-							session->last_video_rr_received = now;
-
-							if(ss->last_video_rr_sent + (ss->min_video_rr_interval * 1000) < now) {
-								/* iterate through listeners and find the largest loss fraction
-								 * that happened within the last min_video_rr_interval.
-								 */
-								GList *this_listener = NULL;
-								janus_streaming_session* this_session = NULL;
-								uint8_t max_fraction_lost = session->video_rr_fraction_lost;
-
-								janus_mutex_lock(&mp->mutex);
-								this_listener = mp->listeners;
-								while(this_listener) {
-									this_session = (janus_streaming_session *)this_listener->data;
-
-									if(this_session &&
-										!this_session->destroyed &&
-										!this_session->stopping &&
-										this_session->started &&
-										!this_session->paused &&
-										(this_session->last_video_rr_received > ss->last_video_rr_sent) &&
-										(this_session->video_rr_fraction_lost > max_fraction_lost))
-										max_fraction_lost = this_session->video_rr_fraction_lost;
-									this_listener = g_list_next(this_listener);
-								}
-								janus_mutex_unlock(&mp->mutex);
-
-								/* update this RR message */
-								rr->rb[0].flcnpl = htonl(((uint32_t)max_fraction_lost << 24) | (ntohl(rr->rb[0].flcnpl) & 0xffffff));
-
-								/* send it */
-								ss->last_video_rr_sent = now;
-								keep = TRUE;
-							}
-						}
-					}
-					break;
-				case RTCP_SR:
-				case RTCP_SDES:
-				case RTCP_BYE:
-				case RTCP_APP:
-				case RTCP_RTPFB:
-				case RTCP_XR:
-				case RTCP_FIR:
-					break;
-				default:
-					JANUS_LOG(LOG_ERR, "Unknown RTCP PT %d\n", rtcp->type);
-					/* FIXME Should we allow this to go through instead? */
-					break;
-			}
-			if(keep) {
-				/* Keep this packet */
-				if(filtered == NULL)
-					filtered = g_malloc0(total);
-				memcpy(filtered+newlen, (char *)rtcp, bytes);
-				newlen += bytes;
-			}
-			total -= bytes;
-			if(total <= 0)
-				break;
-			rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
-		}
-
-		if(filtered) {
-			struct sockaddr_in dest_rtcp;
-			dest_rtcp.sin_family = AF_INET;
-			dest_rtcp.sin_port = htons(ss->video_rtcp_port);
-			dest_rtcp.sin_addr.s_addr = ss->video_mcast;
-			int sent = 0;
-
-			if (0 > (sent = sendto(ss->video_rtcp_fd, filtered, newlen, 0, &dest_rtcp, sizeof(dest_rtcp)))) {
-				JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
-					ss->video_rtcp_port, errno, strerror(errno));
-			} else {
-				JANUS_LOG(LOG_HUGE, "sent %d/%d bytes to %d\n",
-					sent, newlen, ss->video_rtcp_port);
-			}
-			g_free(filtered);
+		if (0 > (sent = sendto(ss->video_rtcp_fd, buf, len, 0, &dest_rtcp, sizeof(dest_rtcp)))) {
+			JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
+				ss->video_rtcp_port, errno, strerror(errno));
+		} else {
+			JANUS_LOG(LOG_HUGE, "sent %d/%d bytes to %d\n",
+				sent, len, ss->video_rtcp_port);
 		}
 	} /* if */
 }
@@ -4559,9 +4205,9 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		int srtpsuite, char *srtpcrypto,
-		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew, uint32_t min_audio_rr_interval,
+		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
 		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-			gboolean simulcast, uint32_t min_pli_interval, uint32_t min_video_rr_interval, uint16_t vport2, uint16_t vport3, gboolean dovskew, int rtp_collision,
+			gboolean simulcast, uint16_t vport2, uint16_t vport3, gboolean dovskew, int rtp_collision,
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean buffermsg) {
 	janus_mutex_lock(&mountpoints_mutex);
 	if(id == 0) {
@@ -4827,11 +4473,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->video_port[2] = live_rtp_source->simulcast ? vport3 : -1;
 	live_rtp_source->video_iface = dovideo && !janus_network_address_is_null(viface) ? *viface : nil;
 	live_rtp_source->vskew = dovskew;
-	live_rtp_source->min_pli_interval = min_pli_interval;
-	live_rtp_source->min_video_rr_interval = min_video_rr_interval;
-	live_rtp_source->min_audio_rr_interval = min_audio_rr_interval;
-	live_rtp_source->last_video_rr_sent = live_rtp_source->last_audio_rr_sent = 
-		live_rtp_source->last_pli_sent = janus_get_monotonic_time();
 	live_rtp_source->data_port = dodata ? dport : -1;
 	live_rtp_source->data_iface = dodata && !janus_network_address_is_null(diface) ? *diface : nil;
 	live_rtp_source->arc = NULL;
@@ -5407,10 +5048,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		gboolean doaudio, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
-		gboolean error_on_failure,
-		uint32_t min_audio_rr_interval,
-		uint32_t min_video_rr_interval,
-		uint32_t min_pli_interval) {
+		gboolean error_on_failure) {
 	if(url == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
 		return NULL;
@@ -5480,11 +5118,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	pipe(live_rtsp_source->pipefd);
 	live_rtsp_source->data_iface = nil;
 	live_rtsp_source->reconnect_timer = 0;
-	live_rtsp_source->min_audio_rr_interval = min_audio_rr_interval;
-	live_rtsp_source->min_video_rr_interval = min_video_rr_interval;
-	live_rtsp_source->min_pli_interval = min_pli_interval;
-	live_rtsp_source->last_video_rr_sent = live_rtsp_source->last_audio_rr_sent = 
-		live_rtsp_source->last_pli_sent = janus_get_monotonic_time();
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
 	live_rtsp->source = live_rtsp_source;
 	live_rtsp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
