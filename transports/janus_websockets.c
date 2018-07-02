@@ -133,8 +133,10 @@ static const char *janus_websockets_get_level_str(int level) {
 			return "CLIENT";
 		case LLL_LATENCY:
 			return "LATENCY";
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 		case LLL_USER:
 			return "USER";
+#endif
 		case LLL_COUNT:
 			return "COUNT";
 		default:
@@ -401,7 +403,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Enable all libwebsockets logging */
 				ws_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
 					LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 					LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
+#else
+					LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
+#endif
 			} else {
 				/* Only enable some of the properties */
 				if(strstr(item->value, "err"))
@@ -424,8 +430,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 					ws_log_level |= LLL_CLIENT;
 				if(strstr(item->value, "latency"))
 					ws_log_level |= LLL_LATENCY;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 				if(strstr(item->value, "user"))
 					ws_log_level |= LLL_USER;
+#endif
 				if(strstr(item->value, "count"))
 					ws_log_level |= LLL_COUNT;
 			}
