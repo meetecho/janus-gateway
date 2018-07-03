@@ -1216,10 +1216,14 @@ static void *janus_videocall_handler(void *data) {
 				gateway->close_pc(session->handle);
 				goto error;
 			}
-			janus_refcount_increase(&peer->ref);	/* If the call attempt proceeds we keep the reference */
+			/* If the call attempt proceeds we keep the references */
+			janus_refcount_increase(&session->ref);
+			janus_refcount_increase(&peer->ref);
 			if(g_atomic_int_get(&peer->incall) || peer->peer != NULL) {
-				g_atomic_int_set(&session->incall, 0);
-				janus_refcount_decrease(&peer->ref);
+				if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_decrease(&peer->ref);
+				}
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_VERB, "%s is busy\n", username_text);
 				result = json_object();
@@ -1238,8 +1242,10 @@ static void *janus_videocall_handler(void *data) {
 			} else {
 				/* Any SDP to handle? if not, something's wrong */
 				if(!msg_sdp) {
-					g_atomic_int_set(&session->incall, 0);
-					janus_refcount_decrease(&peer->ref);
+					if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+						janus_refcount_decrease(&session->ref);
+						janus_refcount_decrease(&peer->ref);
+					}
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Missing SDP\n");
 					error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
@@ -1249,8 +1255,10 @@ static void *janus_videocall_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
-					g_atomic_int_set(&session->incall, 0);
-					janus_refcount_decrease(&peer->ref);
+					if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+						janus_refcount_decrease(&session->ref);
+						janus_refcount_decrease(&peer->ref);
+					}
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
 					error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
@@ -1319,6 +1327,7 @@ static void *janus_videocall_handler(void *data) {
 			char error_str[512];
 			janus_sdp *answer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 			if(answer == NULL) {
+				janus_refcount_decrease(&peer->ref);
 				JANUS_LOG(LOG_ERR, "Error parsing answer: %s\n", error_str);
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
 				g_snprintf(error_cause, 512, "Error parsing answer: %s", error_str);
@@ -1394,6 +1403,8 @@ static void *janus_videocall_handler(void *data) {
 				session->substream_target = 2;	/* Let's aim for the highest quality */
 				session->templayer_target = 2;	/* Let's aim for all temporal layers */
 			}
+			/* We don't need this reference anymore, it was already increased by the peer calling us */
+			janus_refcount_decrease(&peer->ref);
 		} else if(!strcasecmp(request_text, "set")) {
 			/* Update the local configuration (audio/video mute/unmute, bitrate cap or recording) */
 			JANUS_VALIDATE_JSON_OBJECT(root, set_parameters,
