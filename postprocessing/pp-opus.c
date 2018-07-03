@@ -84,6 +84,10 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silences (count=%d)\n", pos, silence_count);
 			int i=0;
 			for(i=0; i<silence_count; i++) {
+        if (silence_count > TWO_HOUR_LIMIT) {
+          JANUS_LOG(LOG_ERR, "Silence_count exceeds the upper limit: silence_count=%d, ts=%lu, prev_ts=%lu\n", silence_count, tmp->ts, tmp->prev->ts);
+          break;
+        }
 				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
 				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 				ogg_stream_packetin(stream, op);
