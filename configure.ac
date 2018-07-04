@@ -218,6 +218,7 @@ AC_ARG_ENABLE([systemd-sockets],
               [],
               [enable_systemd_sockets=no])
 
+
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
@@ -743,6 +744,21 @@ PKG_CHECK_MODULES([EVENTS],
                   ])
 
 
+PKG_CHECK_MODULES([GLIB], [glib-2.0 >= 2.50.3])
+
+PKG_CHECK_MODULES([CHECK], [
+  glib-2.0 >= $glib_version
+  check >= 0.9.6
+  libmicrohttpd
+])
+
+
+
+AC_HEADER_STDC
+AC_CHECK_HEADERS([stdlib.h])
+AC_FUNC_MALLOC
+
+
 ##
 # JavaScript modules
 ##
@@ -825,6 +841,7 @@ AC_CONFIG_FILES([
   Makefile
   html/Makefile
   docs/Makefile
+  tests/Makefile
 ])
 
 JANUS_MANUAL_LIBS+=" -pthread"

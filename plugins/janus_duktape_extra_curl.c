@@ -1,7 +1,7 @@
-/*! \file   janus_duktape_extra.c
+/*! \file   janus_duktape_extra.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief  Janus Duktape plugin extra hooks
+ * \brief  Janus Duktape plugin extra hooks (headers)
  * \details  The Janus Duktape plugin implements all the mandatory hooks to
  * allow the C code to interact with a custom JavaScript script, and viceversa.
  * Anyway, JavaScript developers may want to have the C code do more than what
@@ -21,30 +21,15 @@
  * \ref jspapi
  */
 
-#include "janus_duktape_data.h"
-#include "janus_duktape_extra.h"
-#include "janus_duktape_extra_curl.h"
+#include "duktape-deps/duktape.h"
+#include "duktape-deps/duk_console.h"
+#include "duktape-deps/duk_module_duktape.h"
+#include "duktape-deps/dukcurl/dukcurl.h"
 
-
-/* Sample extra function we can register */
-static duk_ret_t janus_duktape_extra_sample(duk_context *ctx) {
-	/* Let's do nothing, and return 1234 */
-	duk_push_int(ctx, 1234);
-	return 1;
+/*! \brief Method to register extra JavaScript functions in the C code
+ * @param[in] ctx The Duktape context to register the functions on */
+void janus_duktape_register_extra_curl(duk_context *ctx)
+{
+  puts("\n\nRegistered CURL\n\n");
+  dukopen_curl(ctx);
 }
-
-/* This is where you can add your custom extra functions */
-
-
-/* Public method to register all custom extra functions */
-void janus_duktape_register_extra_functions(duk_context *ctx) {
-	if(ctx == NULL)
-		return;
-	JANUS_LOG(LOG_VERB, "Registering extra Duktape functions\n");
-	/* Register all extra functions here */
-	duk_push_c_function(ctx, janus_duktape_extra_sample, 0);
-	duk_put_global_string(ctx, "testExtraFunction");
-
-  janus_duktape_register_extra_curl(ctx);
-}
-
