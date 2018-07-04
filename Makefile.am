@@ -581,3 +581,9 @@ configs:
 
 clean-local:
 	-rm -f docs/doxygen_sqlite3.db
+
+
+SUBDIRS += tests
+
+check_duktape_extra_curl:
+	$(MAKE) -C tests check_duktape_extra_curl
