@@ -990,7 +990,11 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 			/* FIXME Just a warning for now, this will need to be solved with proper fragmentation */
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] The DTLS stack is trying to send a packet of %d bytes, this may be larger than the MTU and get dropped!\n", handle->handle_id, out);
 		}
-		int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
+		int bytes = 0;
+		if(!janus_ice_is_jice_enabled())
+			bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
+		else
+			bytes = janus_jice_agent_send(handle->agent, outgoing, out);
 		if(bytes < out) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, component->component_id, stream->stream_id, bytes);
 		} else {

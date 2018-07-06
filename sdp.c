@@ -553,6 +553,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 		stream->video_ssrc_rtx = 0;
 	}
+	if(janus_ice_is_jice_enabled() && ruser && rpass) {
+		janus_jice_agent_set_remote_credentials(handle->agent, ruser, rpass);
+	}
 	/* Cleanup */
 	g_free(ruser);
 	g_free(rpass);
@@ -607,12 +610,19 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			component->component_id = rcomponent;
 			component->stream_id = stream->stream_id;
 			NiceCandidate *c = NULL;
+			janus_jice_candidate *jc = NULL;
 			if(!strcasecmp(rtype, "host")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:host %s:%d\n",
 					handle->handle_id, rcomponent, stream->stream_id, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(!strcasecmp(rtransport, "udp")) {
-					c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+					if(!janus_ice_is_jice_enabled()) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+					} else {
+						jc = janus_jice_candidate_new_full(JANUS_JICE_HOST, JANUS_JICE_UDP,
+							rpriority, rfoundation, rip, rport, NULL, 0);
+						jc->agent = handle->agent;
+					}
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
@@ -625,7 +635,13 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					handle->handle_id, rcomponent, stream->stream_id,  rrelip, rrelport, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(!strcasecmp(rtransport, "udp")) {
-					c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
+					if(!janus_ice_is_jice_enabled()) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
+					} else {
+						jc = janus_jice_candidate_new_full(JANUS_JICE_SRFLX, JANUS_JICE_UDP,
+							rpriority, rfoundation, rip, rport, rrelip, rrelport);
+						jc->agent = handle->agent;
+					}
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
@@ -638,7 +654,13 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					handle->handle_id, rcomponent, stream->stream_id, rrelip, rrelport, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(!strcasecmp(rtransport, "udp")) {
-					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
+					if(!janus_ice_is_jice_enabled()) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
+					} else {
+						jc = janus_jice_candidate_new_full(JANUS_JICE_PRFLX, JANUS_JICE_UDP,
+							rpriority, rfoundation, rip, rport, rrelip, rrelport);
+						jc->agent = handle->agent;
+					}
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
@@ -653,58 +675,72 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 				if(strcasecmp(rtransport, "udp") && strcasecmp(rtransport, "tcp") && strcasecmp(rtransport, "tls")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
 				} else {
-					c = nice_candidate_new(NICE_CANDIDATE_TYPE_RELAYED);
+					if(!janus_ice_is_jice_enabled()) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_RELAYED);
+					} else {
+						int transport = JANUS_JICE_TURN_UDP;
+						if(!strcasecmp(rtransport, "tcp"))
+							transport = JANUS_JICE_TURN_TCP;
+						else if(!strcasecmp(rtransport, "tls"))
+							transport = JANUS_JICE_TURN_TLS;
+						jc = janus_jice_candidate_new_full(JANUS_JICE_RELAY, transport,
+							rpriority, rfoundation, rip, rport, rrelip, rrelport);
+						jc->agent = handle->agent;
+					}
 				}
 			} else {
 				/* FIXME What now? */
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Unknown remote candidate type:%s for component:%d stream:%d!\n",
 					handle->handle_id, rtype, rcomponent, stream->stream_id);
 			}
-			if(c != NULL) {
-				c->component_id = rcomponent;
-				c->stream_id = stream->stream_id;
+			if(c != NULL || jc != NULL) {
+				if(!janus_ice_is_jice_enabled()) {
+					/* For libnice, this is where we complete the setup of the candidate */
+					c->component_id = rcomponent;
+					c->stream_id = stream->stream_id;
 #ifndef HAVE_LIBNICE_TCP
-				c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
-#else
-				if(!strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: UDP\n", handle->handle_id);
 					c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
-				} else {
-					/* Check the type (https://tools.ietf.org/html/rfc6544#section-4.5) */
-					const char *type = NULL;
-					int ctype = 0;
-					if(strstr(candidate, "tcptype active")) {
-						type = "active";
-						ctype = NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE;
-					} else if(strstr(candidate, "tcptype passive")) {
-						type = "passive";
-						ctype = NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE;
-					} else if(strstr(candidate, "tcptype so")) {
-						type = "so";
-						ctype = NICE_CANDIDATE_TRANSPORT_TCP_SO;
+#else
+					if(!strcasecmp(rtransport, "udp")) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: UDP\n", handle->handle_id);
+						c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
 					} else {
-						/* TODO: We should actually stop here... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Missing tcptype info for the TCP candidate!\n", handle->handle_id);
+						/* Check the type (https://tools.ietf.org/html/rfc6544#section-4.5) */
+						const char *type = NULL;
+						int ctype = 0;
+						if(strstr(candidate, "tcptype active")) {
+							type = "active";
+							ctype = NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE;
+						} else if(strstr(candidate, "tcptype passive")) {
+							type = "passive";
+							ctype = NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE;
+						} else if(strstr(candidate, "tcptype so")) {
+							type = "so";
+							ctype = NICE_CANDIDATE_TRANSPORT_TCP_SO;
+						} else {
+							/* TODO: We should actually stop here... */
+							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Missing tcptype info for the TCP candidate!\n", handle->handle_id);
+						}
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: TCP (%s)\n", handle->handle_id, type);
+						c->transport = ctype;
 					}
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: TCP (%s)\n", handle->handle_id, type);
-					c->transport = ctype;
-				}
 #endif
-				strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
-				c->priority = rpriority;
-				nice_address_set_from_string(&c->addr, rip);
-				nice_address_set_port(&c->addr, rport);
-				c->username = g_strdup(stream->ruser);
-				c->password = g_strdup(stream->rpass);
-				if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE || c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
-					nice_address_set_from_string(&c->base_addr, rrelip);
-					nice_address_set_port(&c->base_addr, rrelport);
-				} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
-					/* FIXME Do we really need the base address for TURN? */
-					nice_address_set_from_string(&c->base_addr, rrelip);
-					nice_address_set_port(&c->base_addr, rrelport);
+					strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
+					c->priority = rpriority;
+					nice_address_set_from_string(&c->addr, rip);
+					nice_address_set_port(&c->addr, rport);
+					c->username = g_strdup(stream->ruser);
+					c->password = g_strdup(stream->rpass);
+					if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE || c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+						nice_address_set_from_string(&c->base_addr, rrelip);
+						nice_address_set_port(&c->base_addr, rrelport);
+					} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
+						/* FIXME Do we really need the base address for TURN? */
+						nice_address_set_from_string(&c->base_addr, rrelip);
+						nice_address_set_port(&c->base_addr, rrelport);
+					}
 				}
-				component->candidates = g_slist_append(component->candidates, c);
+				component->candidates = g_slist_append(component->candidates, janus_ice_is_jice_enabled() ? (void *)jc : (void *)c);
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
@@ -727,14 +763,21 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE already started for this component, setting candidates we have up to now\n", handle->handle_id);
 							janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 						} else {
-							GSList *candidates = NULL;
-							candidates = g_slist_append(candidates, c);
-							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
+							int added = 0;
+							if(!janus_ice_is_jice_enabled()) {
+								GSList *candidates = NULL;
+								candidates = g_slist_append(candidates, c);
+								added = nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, component->candidates);
+								g_slist_free(candidates);
+							} else {
+								if(janus_jice_agent_add_remote_candidate(handle->agent, jc) == 0)
+									added++;
+							}
+							if(added < 1) {
 								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 							} else {
 								JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
 							}
-							g_slist_free(candidates);
 						}
 					} else {
 						/* ICE hasn't started yet: to make sure we're not stuck, also check if we stopped processing the SDP */
@@ -746,14 +789,21 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 								JANUS_LOG(LOG_VERB, "[%"SCNu64"] SDP processed but ICE not started yet for this component, setting candidates we have up to now\n", handle->handle_id);
 								janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 							} else {
-								GSList *candidates = NULL;
-								candidates = g_slist_append(candidates, c);
-								if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
+								int added = 0;
+								if(!janus_ice_is_jice_enabled()) {
+									GSList *candidates = NULL;
+									candidates = g_slist_append(candidates, c);
+									added = nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, component->candidates);
+									g_slist_free(candidates);
+								} else {
+									if(janus_jice_agent_add_remote_candidate(handle->agent, jc) == 0)
+										added++;
+								}
+								if(added < 1) {
 									JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 								} else {
 									JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
 								}
-								g_slist_free(candidates);
 							}
 						} else {
 							/* Still processing the offer/answer: queue the trickle candidate for now, we'll process it later */
@@ -1267,7 +1317,12 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* ICE ufrag and pwd, DTLS fingerprint setup and connection a= */
 		gchar *ufrag = NULL;
 		gchar *password = NULL;
-		nice_agent_get_local_credentials(handle->agent, stream->stream_id, &ufrag, &password);
+		if(!janus_ice_is_jice_enabled()) {
+			nice_agent_get_local_credentials(handle->agent, stream->stream_id, &ufrag, &password);
+		} else {
+			ufrag = janus_jice_agent_get_local_ufrag(handle->agent);
+			password = janus_jice_agent_get_local_pwd(handle->agent);
+		}
 		a = janus_sdp_attribute_create("ice-ufrag", "%s", ufrag);
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		a = janus_sdp_attribute_create("ice-pwd", "%s", password);

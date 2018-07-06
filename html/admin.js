@@ -347,18 +347,18 @@ function updateSettings() {
 								setLogColors(!settings["log_colors"]);
 						});
 					});
-				} else if(k === 'libnice_debug') {
+				} else if(k === 'ice_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
 						.addClass(!settings[k] ? "btn-success" : "btn-danger")
-						.html(!settings[k] ? "Enable libnice debug" : "Disable libnice debug");
+						.html(!settings[k] ? "Enable ICE debug" : "Disable ICE debug");
 					$('#'+k + "_button").click(function() {
-						var text = (!settings["libnice_debug"] ?
-							"Are you sure you want to enable the libnice debug?<br/>This will print the a very verbose debug of every libnice-related operation on the console"
-								: "Are you sure you want to disable the libnice debug?");
+						var text = (!settings["ice_debug"] ?
+							"Are you sure you want to enable the ICE debug?<br/>If you're using libnice, this will print the a very verbose debug of every libnice-related operation on the console"
+								: "Are you sure you want to disable the ICE debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLibniceDebug(!settings["libnice_debug"]);
+								setIceDebug(!settings["ice_debug"]);
 						});
 					});
 				}
@@ -409,8 +409,8 @@ function setLogColors(enable) {
 	sendSettingsRequest(request);
 }
 
-function setLibniceDebug(enable) {
-	var request = { "janus": "set_libnice_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
+function setIceDebug(enable) {
+	var request = { "janus": "set_ice_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 

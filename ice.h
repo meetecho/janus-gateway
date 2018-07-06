@@ -2,7 +2,7 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    ICE/STUN/TURN processing (headers)
- * \details  Implementation (based on libnice) of the ICE process. The
+ * \details  Implementation (based on libnice or jice) of the ICE process. The
  * code handles the whole ICE process, from the gathering of candidates
  * to the final setup of a virtual channel RTP and RTCP can be transported
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "jice.h"
 #include "sdp.h"
 #include "dtls.h"
 #include "sctp.h"
@@ -31,13 +32,16 @@
 
 
 /*! \brief ICE stuff initialization
+ * @param[in] use_jice Whether we should use our experimental jice stack or libnice (default)
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
  * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
  * @param[in] full_trickle Whether full-trickle must be used (instead of half-trickle)
- * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
+ * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not (libnice only, currently unsupported in jice)
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+void janus_ice_init(gboolean use_jice,
+	gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6,
+	uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
@@ -81,7 +85,7 @@ void janus_ice_enable_nat_1_1(void);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
- * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
+ * adding it to the enforce list will prevent libnice/jice from gathering candidates from other interfaces.
  * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
  * @param[in] ip Interface/IP to enforce (e.g., 192.168. or eth0) */
 void janus_ice_enforce_interface(const char *ip);
@@ -92,7 +96,7 @@ gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
- * adding it to the ignore list will prevent libnice from gathering a candidate for it.
+ * adding it to the ignore list will prevent libnice/jice from gathering a candidate for it.
  * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
  * If you're interested in only using specific interfaces, instead, check janus_ice_enforce_interface.
  * @param[in] ip Interface/IP to ignore (e.g., 192.168. or eth1) */
@@ -101,6 +105,9 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether we'll use jice (experimental) or libnice as an ICE stack
+ * @returns true if jice will be used, false for libnice */
+gboolean janus_ice_is_jice_enabled(void);
 /*! \brief Method to check whether ICE Lite mode is enabled or not (still WIP)
  * @returns true if ICE-TCP support is enabled/supported, false otherwise */
 gboolean janus_ice_is_ice_lite_enabled(void);
@@ -137,12 +144,12 @@ void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
 int janus_ice_get_event_stats_period(void);
-/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
- * @returns True if libnice debugging is enabled, FALSE otherwise */
+/*! \brief Method to check whether ICE debugging has been enabled
+ * @returns True if ICE debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);
-/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+/*! \brief Method to enable ICE debugging */
 void janus_ice_debugging_enable(void);
-/*! \brief Method to disable libnice debugging (the default) */
+/*! \brief Method to disable ICE debugging (the default) */
 void janus_ice_debugging_disable(void);
 
 
@@ -273,8 +280,8 @@ struct janus_ice_handle {
 	GSource *rtp_source, *rtcp_source, *stats_source;
 	/*! \brief Atomic flag to check if the ICE loop is still running */
 	volatile gint looprunning;
-	/*! \brief libnice ICE agent */
-	NiceAgent *agent;
+	/*! \brief libnice/jice ICE agent */
+	void *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
 	gint64 agent_created;
 	/*! \brief ICE role (controlling or controlled) */
@@ -325,7 +332,7 @@ struct janus_ice_handle {
 struct janus_ice_stream {
 	/*! \brief Janus ICE handle this stream belongs to */
 	janus_ice_handle *handle;
-	/*! \brief libnice ICE stream ID */
+	/*! \brief ICE stream ID */
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
@@ -420,15 +427,15 @@ struct janus_ice_stream {
 struct janus_ice_component {
 	/*! \brief Janus ICE stream this component belongs to */
 	janus_ice_stream *stream;
-	/*! \brief libnice ICE stream ID */
+	/*! \brief ICE stream ID */
 	guint stream_id;
-	/*! \brief libnice ICE component ID */
+	/*! \brief ICE component ID */
 	guint component_id;
-	/*! \brief libnice ICE component state */
+	/*! \brief ICE component state */
 	guint state;
 	/*! \brief Monotonic time of when this component has successfully connected */
 	gint64 component_connected;
-	/*! \brief GLib list of libnice remote candidates for this component */
+	/*! \brief GLib list of remote candidates for this component */
 	GSList *candidates;
 	/*! \brief GLib list of local candidates for this component (summary) */
 	GSList *local_candidates;

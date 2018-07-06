@@ -230,6 +230,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
 		json_object_set_new(info, "public-ip", json_string(public_ip));
+	json_object_set_new(info, "ice-stack", json_string(janus_ice_is_jice_enabled() ? "jice" : "libnice"));
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
@@ -1237,8 +1238,13 @@ int janus_process_incoming_request(janus_request *request) {
 					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
 					/* Update remote credentials for ICE */
 					if(handle->stream) {
-						nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
-							handle->stream->ruser, handle->stream->rpass);
+						if(!janus_ice_is_jice_enabled()) {
+							nice_agent_set_remote_credentials(handle->agent, handle->stream->stream_id,
+								handle->stream->ruser, handle->stream->rpass);
+						} else {
+							janus_jice_agent_set_remote_credentials(handle->agent,
+								handle->stream->ruser, handle->stream->rpass);
+						}
 					}
 					/* FIXME We only need to do that for offers: if it's an answer, we did that already */
 					if(offer) {
@@ -1663,7 +1669,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
-			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
+			json_object_set_new(status, "ice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(reply, "status", status);
@@ -1788,8 +1794,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
-		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
-			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+		} else if(!strcasecmp(message_text, "set_ice_debug")) {
+			/* Enable/disable the ICE debugging */
 			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
 				error_code, error_cause, FALSE,
 				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
@@ -1805,7 +1811,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
+			json_object_set_new(reply, "ice_debug",
+				janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3426,6 +3433,9 @@ gint main(int argc, char *argv[])
 			janus_config_add_item(config, "nat", "stun_port", "3478");
 		}
 	}
+	if(args_info.jice_given) {
+		janus_config_add_item(config, "nat", "ice_stack", "jice");
+	}
 	if(args_info.nat_1_1_given) {
 		janus_config_add_item(config, "nat", "nat_1_1_mapping", args_info.nat_1_1_arg);
 	}
@@ -3435,8 +3445,8 @@ gint main(int argc, char *argv[])
 	if(args_info.ice_ignore_list_given) {
 		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
 	}
-	if(args_info.libnice_debug_given) {
-		janus_config_add_item(config, "nat", "nice_debug", "true");
+	if(args_info.ice_debug_given) {
+		janus_config_add_item(config, "nat", "ice_debug", "true");
 	}
 	if(args_info.full_trickle_given) {
 		janus_config_add_item(config, "nat", "full_trickle", "true");
@@ -3618,6 +3628,9 @@ gint main(int argc, char *argv[])
 		janus_recorder_init(FALSE, NULL);
 	}
 
+	/* Should we use libnice (default) or our new experimental jice stack? */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_stack");
+	gboolean use_jice = item && item->value && !strcasecmp(item->value, "jice");
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
 	uint16_t stun_port = 0, turn_port = 0;
@@ -3709,7 +3722,7 @@ gint main(int argc, char *argv[])
 		turn_rest_api_method = (char *)item->value;
 #endif
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(use_jice, ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
@@ -3728,9 +3741,9 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 #endif
-	item = janus_config_get_item_drilldown(config, "nat", "nice_debug");
+	item = janus_config_get_item_drilldown(config, "nat", "ice_debug");
 	if(item && item->value && janus_is_true(item->value)) {
-		/* Enable libnice debugging */
+		/* Enable ICE debugging */
 		janus_ice_debugging_enable();
 	}
 	if(stun_server == NULL && turn_server == NULL) {

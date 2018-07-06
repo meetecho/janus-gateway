@@ -342,6 +342,8 @@ or on the command line:
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
 	-c, --cert-pem=filename       DTLS certificate
+	-j, --jice                    Use jice instead of libnice for ICE
+                                  (default=off)
 	-k, --cert-key=filename       DTLS certificate key
 	-K, --cert-pwd=text           DTLS certificate key passphrase (if needed)
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
@@ -360,7 +362,7 @@ or on the command line:
                                   vmnet,192.168., default=vmnet)
 	-6, --ipv6-candidates         Whether to enable IPv6 candidates or not
                                   (experimental)  (default=off)
-	-l, --libnice-debug           Whether to enable libnice debugging or not
+	-l, --ice-debug              Whether to enable ICE debugging or not
                                   (default=off)
 	-f, --full-trickle            Do full-trickle instead of half-trickle
                                   (default=off)
@@ -376,8 +378,7 @@ or on the command line:
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
-	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
-								  if the installed libnice supports it)
+	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP
 	-n, --server-name=name        Public name of this Janus instance
                                   (default=MyJanusInstance)
 	-s, --session-timeout=number  Session timeout value, in seconds (default=60)
