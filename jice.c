@@ -1,4 +1,4 @@
-/*! \file    jice.h
+/*! \file    jice.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    ICE/STUN/TURN implementation
@@ -365,14 +365,11 @@ typedef struct janus_jice_fd_source {
 	janus_jice_candidate *candidate;
 } janus_jice_fd_source;
 static gboolean janus_jice_fd_source_prepare(GSource *source, gint *timeout) {
-	janus_jice_fd_source *t = (janus_jice_fd_source *)source;
-	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] Preparing source\n", t->handle_id);
 	*timeout = -1;
 	return FALSE;
 }
 static gboolean janus_jice_fd_source_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
 	janus_jice_fd_source *t = (janus_jice_fd_source *)source;
-	
 	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] Dispatching source\n", t->handle_id);
 	/* Receive the packet */
 	janus_jice_read_internal(t->candidate->agent, t->candidate);
@@ -381,7 +378,7 @@ static gboolean janus_jice_fd_source_dispatch(GSource *source, GSourceFunc callb
 static void janus_jice_fd_source_finalize(GSource *source) {
 	janus_jice_fd_source *t = (janus_jice_fd_source *)source;
 	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] Finalizing source\n", t->handle_id);
-	/* TODO */
+	/* TODO Any cleanup we should do here? */
 }
 static GSourceFuncs janus_jice_fd_source_funcs = {
 	janus_jice_fd_source_prepare,
@@ -405,12 +402,13 @@ static GSource *janus_jice_fd_source_create(guint64 handle_id, janus_jice_candid
 gboolean janus_stun_sockaddr_is_equal(struct sockaddr *addr1, struct sockaddr *addr2) {
 	gchar address1[INET6_ADDRSTRLEN], address2[INET6_ADDRSTRLEN];
 	guint16 port1 = 0, port2 = 0;
-	if((janus_jice_resolve_address(addr1, address1, INET6_ADDRSTRLEN, &port1) < 0) ||
-			(janus_jice_resolve_address(addr2, address2, INET6_ADDRSTRLEN, &port2) < 0)) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice] Error resolving address...\n");
+	int res = 0;
+	if((res = janus_jice_resolve_address(addr1, address1, INET6_ADDRSTRLEN, &port1)) < 0 ||
+			(res = janus_jice_resolve_address(addr2, address2, INET6_ADDRSTRLEN, &port2)) < 0) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice] Error resolving address... (error %d)\n", res);
 		return FALSE;
 	}
-	JANUS_LOG(JICE_LOG_WARN, "[jice] Comparing %s:%"SCNu16" with %s:%"SCNu16"\n", address1, port1, address2, port2);
+	JANUS_LOG(JICE_LOG_INFO, "[jice] Comparing %s:%"SCNu16" with %s:%"SCNu16"\n", address1, port1, address2, port2);
 	if(addr1->sa_family != addr2->sa_family)
 		return FALSE;
 	if(addr1->sa_family == AF_INET) {
@@ -1806,7 +1804,7 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 		c = agent->remote_candidates;
 		while(c) {
 			janus_jice_candidate *cand = (janus_jice_candidate *)c->data;
-			if(janus_stun_sockaddr_is_equal(&cand->address, &remote_addr)) {
+			if(janus_stun_sockaddr_is_equal(&remote_addr, &cand->address)) {
 				remote = cand;
 				break;
 			}
@@ -1817,9 +1815,10 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 			/* FIXME Create prflx candidate */
 			janus_jice_candidate *prflx = g_malloc0(sizeof(janus_jice_candidate));
 			prflx->agent = agent;
-			prflx->type = JANUS_JICE_SRFLX;
+			prflx->type = JANUS_JICE_PRFLX;
 			prflx->protocol = JANUS_JICE_UDP;
 			prflx->base = local;
+			memcpy(&prflx->address, &remote_addr, sizeof(remote_addr));
 			prflx->priority =
 				(2^24) * JANUS_JICE_TYPE_PREFERENCE_PRFLX +
 				(2^8)  * local->lp +
@@ -1845,7 +1844,8 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 			pair = janus_jice_candidate_pair_new(local, remote);
 			agent->pairs = g_slist_append(agent->pairs, pair);
 		}
-		JANUS_LOG(JICE_LOG_INFO, "[jice] Got connectivity check (%s), sent to local candidate %p from remote candidate %p\n", transaction, local, remote);
+		JANUS_LOG(JICE_LOG_INFO, "[jice] Got connectivity check (%s), sent to local candidate %p from remote candidate %p\n",
+			transaction, local, remote);
 		int res = janus_jice_handle_connectivity_check(agent, msg, len);
 		if(res == 0) {
 			/* TODO A valid connectivity check, handle and respond */
@@ -2199,7 +2199,14 @@ static gboolean janus_jice_new_candidate_internal(gpointer user_data) {
 	 * let's check if we need to pair it with our own for connectivity checks */
 	janus_jice_candidate *candidate = (janus_jice_candidate *)user_data;
 	janus_jice_agent *agent = candidate->agent;
-	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] candidate_cb: new remote candidate\n", agent->handle->handle_id);
+	/* Show the candidate for debugging purposes */
+	char buffer[200];
+	buffer[0] = '\0';
+	if(janus_jice_candidate_render(candidate, buffer, sizeof(buffer), NULL) < 0) {
+		JANUS_LOG(JICE_LOG_WARN, "Error rendering %s remote candidate..?\n", janus_jice_type_as_string(candidate->type));
+	}
+	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] candidate_cb: new remote candidate: %s\n",
+		agent->handle->handle_id, buffer);
 	agent->remote_candidates = g_slist_append(agent->remote_candidates, candidate);
 	/* Prepare new pairs */
 	GSList *lc = agent->local_candidates;
