@@ -70,12 +70,10 @@ typedef enum janus_jice_protocol {
 const char *janus_jice_protocol_as_string(janus_jice_protocol protocol);
 
 
-typedef struct janus_jice_candidate janus_jice_candidate;
-typedef struct janus_jice_candidate_pair janus_jice_candidate_pair;
 typedef struct janus_jice_agent janus_jice_agent;
 
 /*! \brief ICE candidate */
-struct janus_jice_candidate {
+typedef struct janus_jice_candidate {
 	/*! \brief ICE agent this candidate belongs to */
 	janus_jice_agent *agent;
 	/*! \brief Whether we notified the application about this candidate */
@@ -89,7 +87,7 @@ struct janus_jice_candidate {
 	/*! \brief Base address (only needed for remote candidates, for local we use the base property) */
 	struct sockaddr base_address;
 	/*! \brief Parent candidate, if any */
-	janus_jice_candidate *base;
+	struct janus_jice_candidate *base;
 	/*! \brief Gathering check packet, if any */
 	void *pkt;
 	/*! \brief How many times we have sent this packet */
@@ -104,33 +102,13 @@ struct janus_jice_candidate {
 	gint fd;
 	/*! \brief GLib source for incoming data, if any */
 	GSource *source;
-};
+} janus_jice_candidate;
 janus_jice_candidate *janus_jice_candidate_new(janus_jice_type type, janus_jice_protocol protocol);
 janus_jice_candidate *janus_jice_candidate_new_full(janus_jice_type type, janus_jice_protocol protocol,
 	guint32 priority, char *foundation, char *ip, guint16 port, char *base_ip, guint16 base_port);
 int janus_jice_candidate_render(janus_jice_candidate *candidate, char *buffer, int buflen, char *public_ip);
 int janus_jice_parse_address(char *ip, guint16 port, struct sockaddr *address);
 int janus_jice_resolve_address(struct sockaddr *address, char *ip, int len, guint16 *port);
-
-/*! \brief ICE candidate pair */
-typedef struct janus_jice_candidate_pair {
-	/*! \brief Local candidate */
-	janus_jice_candidate *local;
-	/*! \brief Remote candidate */
-	janus_jice_candidate *remote;
-	/*! \brief Connectivity check packet, if any */
-	void *pkt;
-	/*! \brief How many times we have sent this packet */
-	guint pkt_trans;
-	/*! \brief Whether this pair is the default */
-	gboolean default_pair;
-	/*! \brief Whether this pair is valid */
-	gboolean valid;
-	/*! \brief Whether this pair has been nominated */
-	gboolean nominated;
-	/*! \brief State */
-	janus_jice_pair_state state;
-} janus_jice_candidate_pair;
 
 /*! \brief Jice stack initialization */
 void janus_jice_init(void);

@@ -267,6 +267,18 @@ typedef struct janus_jice_stunturn_server {
 	char *pwd;
 } janus_jice_stunturn_server;
 
+/* ICE candidate pair */
+typedef struct janus_jice_candidate_pair {
+	janus_jice_candidate *local;
+	janus_jice_candidate *remote;
+	void *pkt;
+	guint pkt_trans;
+	gboolean default_pair;
+	gboolean valid;
+	gboolean nominated;
+	janus_jice_pair_state state;
+} janus_jice_candidate_pair;
+
 /* ICE agent */
 struct janus_jice_agent {
 	janus_ice_handle *handle;
@@ -1842,7 +1854,9 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 		if(pair == NULL) {
 			JANUS_LOG(JICE_LOG_WARN, "[jice] Not a pair we know about? Create one now...\n");
 			pair = janus_jice_candidate_pair_new(local, remote);
-			agent->pairs = g_slist_append(agent->pairs, pair);
+			if(pair) {
+				agent->pairs = g_slist_append(agent->pairs, pair);
+			}
 		}
 		JANUS_LOG(JICE_LOG_INFO, "[jice] Got connectivity check (%s), sent to local candidate %p from remote candidate %p\n",
 			transaction, local, remote);
