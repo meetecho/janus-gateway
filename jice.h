@@ -40,16 +40,6 @@ typedef enum janus_jice_state {
 } janus_jice_state;
 const char *janus_jice_state_as_string(janus_jice_state state);
 
-/*! \brief ICE pair states */
-typedef enum janus_jice_pair_state {
-	JANUS_JICE_PAIR_FROZEN = 0,
-	JANUS_JICE_PAIR_WAITING,
-	JANUS_JICE_PAIR_INPROGRESS,
-	JANUS_JICE_PAIR_SUCCEEDED,
-	JANUS_JICE_PAIR_FAILED
-} janus_jice_pair_state;
-const char *janus_jice_pair_state_as_string(janus_jice_pair_state state);
-
 /*! \brief Candidate type */
 typedef enum janus_jice_type {
 	JANUS_JICE_HOST = 0,

@@ -267,6 +267,16 @@ typedef struct janus_jice_stunturn_server {
 	char *pwd;
 } janus_jice_stunturn_server;
 
+/* ICE pair states */
+typedef enum janus_jice_pair_state {
+	JANUS_JICE_PAIR_FROZEN = 0,
+	JANUS_JICE_PAIR_WAITING,
+	JANUS_JICE_PAIR_INPROGRESS,
+	JANUS_JICE_PAIR_SUCCEEDED,
+	JANUS_JICE_PAIR_FAILED
+} janus_jice_pair_state;
+const char *janus_jice_pair_state_as_string(janus_jice_pair_state state);
+
 /* ICE candidate pair */
 typedef struct janus_jice_candidate_pair {
 	janus_jice_candidate *local;
@@ -356,7 +366,7 @@ static janus_stun_msg *janus_jice_create_connectivity_check(janus_jice_candidate
 static janus_stun_msg *janus_jice_create_connectivity_check_response(janus_jice_agent *agent, janus_stun_msg *request, guint *len, struct sockaddr *address);
 static janus_stun_msg *janus_jice_create_connectivity_check_error(janus_jice_agent *agent, janus_stun_msg *request, int code, guint *len);
 static int janus_jice_handle_gathering_response(janus_stun_msg *msg, guint len, struct sockaddr *address);
-static int janus_jice_handle_connectivity_check(janus_jice_agent *agent, janus_stun_msg *msg, guint len);
+static int janus_jice_handle_connectivity_check(janus_jice_agent *agent, janus_stun_msg *msg, guint len, gboolean *nominated);
 static int janus_jice_handle_connectivity_check_response(janus_jice_agent *agent, janus_stun_msg *msg, guint len, struct sockaddr *address);
 static char *janus_jice_random_string(guint len);
 static janus_jice_candidate_pair *janus_jice_candidate_pair_new(janus_jice_candidate *local, janus_jice_candidate *remote);
@@ -412,15 +422,18 @@ static GSource *janus_jice_fd_source_create(guint64 handle_id, janus_jice_candid
 
 /* Helper to compare sockaddr structures and see if they're the same */
 gboolean janus_stun_sockaddr_is_equal(struct sockaddr *addr1, struct sockaddr *addr2) {
-	gchar address1[INET6_ADDRSTRLEN], address2[INET6_ADDRSTRLEN];
-	guint16 port1 = 0, port2 = 0;
-	int res = 0;
-	if((res = janus_jice_resolve_address(addr1, address1, INET6_ADDRSTRLEN, &port1)) < 0 ||
-			(res = janus_jice_resolve_address(addr2, address2, INET6_ADDRSTRLEN, &port2)) < 0) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice] Error resolving address... (error %d)\n", res);
-		return FALSE;
+	if(JICE_LOG_INFO == LOG_INFO) {
+		/* Just for debugging, resolve the addresses we're trying to compare */
+		gchar address1[INET6_ADDRSTRLEN], address2[INET6_ADDRSTRLEN];
+		guint16 port1 = 0, port2 = 0;
+		int res = 0;
+		if((res = janus_jice_resolve_address(addr1, address1, INET6_ADDRSTRLEN, &port1)) < 0 ||
+				(res = janus_jice_resolve_address(addr2, address2, INET6_ADDRSTRLEN, &port2)) < 0) {
+			JANUS_LOG(JICE_LOG_ERR, "[jice] Error resolving address... (error %d)\n", res);
+			return FALSE;
+		}
+		JANUS_LOG(JICE_LOG_INFO, "[jice] Comparing %s:%"SCNu16" with %s:%"SCNu16"\n", address1, port1, address2, port2);
 	}
-	JANUS_LOG(JICE_LOG_INFO, "[jice] Comparing %s:%"SCNu16" with %s:%"SCNu16"\n", address1, port1, address2, port2);
 	if(addr1->sa_family != addr2->sa_family)
 		return FALSE;
 	if(addr1->sa_family == AF_INET) {
@@ -1079,7 +1092,7 @@ static int janus_jice_handle_gathering_response(janus_stun_msg *msg, guint len, 
 	return -3;
 }
 
-static int janus_jice_handle_connectivity_check(janus_jice_agent *agent, janus_stun_msg *msg, guint len) {
+static int janus_jice_handle_connectivity_check(janus_jice_agent *agent, janus_stun_msg *msg, guint len, gboolean *nominated) {
 	if(!agent || !msg || !janus_stun_msg_get_length(msg) || !len || !agent || !agent->local_ufrag || !agent->local_pwd)
 		return -1;
 	uint16_t index = janus_stun_msg_get_length(msg), total = len-20;
@@ -1204,6 +1217,8 @@ static int janus_jice_handle_connectivity_check(janus_jice_agent *agent, janus_s
 		return JANUS_STUN_ERROR_ROLE_CONFLICT;
 	}
 	/* TODO Handle connectivity check info to update the right candidate pair */
+	if(nominated)
+		*nominated = use_candidate;
 	return 0;
 }
 
@@ -1344,19 +1359,21 @@ static int janus_jice_handle_connectivity_check_response(janus_jice_agent *agent
 		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Not an error but no mapped address?\n", agent->handle->handle_id);
 		return -4;
 	}
-	if(strlen(integrity) == 0 || strlen(username) == 0 || crc == 0) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Missing username, message integryty, and/or fingerprint\n", agent->handle->handle_id);
+	if(strlen(integrity) == 0 || crc == 0) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Missing message integryty and/or fingerprint\n", agent->handle->handle_id);
 		return -5;
 	}
 	if(crc != computed_crc) {
 		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Fingerprint is wrong... %"SCNu32" != %"SCNu32"\n", agent->handle->handle_id, crc, computed_crc);
 		return -6;
 	}
-	char expected_username[256];
-	g_snprintf(expected_username, sizeof(expected_username), "%s:%s", agent->remote_ufrag, agent->local_ufrag);
-	if(strcmp(username, expected_username)) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Wrong username... %s != %s\n", agent->handle->handle_id, username, expected_username);
-		return -7;
+	if(strlen(username) > 0) {
+		char expected_username[256];
+		g_snprintf(expected_username, sizeof(expected_username), "%s:%s", agent->remote_ufrag, agent->local_ufrag);
+		if(strcmp(username, expected_username)) {
+			JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Wrong username... %s != %s\n", agent->handle->handle_id, username, expected_username);
+			return -7;
+		}
 	}
 	if(strcmp(integrity, computed)) {
 		JANUS_LOG(JICE_LOG_ERR, "[jice][%"SCNu64"] Wrong hash... %s != %s\n", agent->handle->handle_id, integrity, computed);
@@ -1698,13 +1715,11 @@ static gboolean janus_jice_checking_internal(gpointer user_data) {
 static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candidate *from) {
 	/* There's incoming data */
 	int fd = from->fd;
-	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] read_internal (%d)\n", agent->handle->handle_id, fd);
-
 	struct sockaddr remote_addr;
 	socklen_t addrlen = sizeof(remote_addr);
 	/* FIXME This currently assumes UDP */
 	int len = recvfrom(fd, agent->buffer, sizeof(agent->buffer), 0, &remote_addr, &addrlen);
-	JANUS_LOG(JICE_LOG_INFO, "[jice] Got %d bytes\n", len);
+	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] read_internal: got %d bytes (%d)\n", agent->handle->handle_id, len, fd);
 	if(janus_jice_is_stun(agent->buffer)) {
 		/* This is a STUN or TURN packet, let's handle it */
 		JANUS_LOG(JICE_LOG_INFO, "[jice] This is STUN!\n");
@@ -1780,17 +1795,17 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 			janus_jice_candidate_pair *pair = g_hash_table_lookup(agent->checks_tr, transaction);
 			if(pair != NULL) {
 				/* This is a response to a connectivity check */
-				/* TODO To what should we set "candidate"? */
 				g_hash_table_remove(agent->checks_tr, transaction);
 				JANUS_LOG(JICE_LOG_HUGE, "[jice] Got response to connectivity check (%s)\n", transaction);
 				/* Get rid of the original packet, so that we don't retransmit later */
 				janus_jice_packet_destroy(pair->pkt);
 				pair->pkt = NULL;
 				/* Parse this response and update the pair status */
-				int res = janus_jice_handle_connectivity_check_response(agent, msg, len, &candidate->address);
+				struct sockaddr address;
+				int res = janus_jice_handle_connectivity_check_response(agent, msg, len, &address);
 				if(res == 0) {
 					/* TODO Handle somehow */
-					JANUS_LOG(JICE_LOG_INFO, "[jice] Handling response to connectivity check (%s)\n", transaction);
+					JANUS_LOG(JICE_LOG_INFO, "[jice] Successful response to connectivity check (%s)\n", transaction);
 				} else {
 					JANUS_LOG(JICE_LOG_ERR, "[jice] Error parsing response to connectivity check (%s --> %d)\n", transaction, res);
 					/* TODO Handle somehow */
@@ -1860,9 +1875,10 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 		}
 		JANUS_LOG(JICE_LOG_INFO, "[jice] Got connectivity check (%s), sent to local candidate %p from remote candidate %p\n",
 			transaction, local, remote);
-		int res = janus_jice_handle_connectivity_check(agent, msg, len);
+		gboolean nominated = FALSE;
+		int res = janus_jice_handle_connectivity_check(agent, msg, len, &nominated);
 		if(res == 0) {
-			/* TODO A valid connectivity check, handle and respond */
+			/* A valid connectivity check, handle and respond */
 			guint msglen = 0;
 			janus_stun_msg *response = janus_jice_create_connectivity_check_response(agent, msg, &msglen, &remote_addr);
 			/* Prepare response and send it */
@@ -1877,18 +1893,27 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 			janus_jice_send_internal(agent, pkt);
 			/* Let's send a connectivity check back as well */
 			janus_stun_msg *check = janus_jice_create_connectivity_check(local, FALSE, &msglen);
+			char transaction[40];
+			janus_stun_msg_get_transaction_as_string(check, transaction);
 			pkt = janus_jice_packet_new(TRUE, (char *)check, msglen, FALSE);
 			pkt->agent = agent;
 			pkt->address = remote_addr;
 			pkt->fd = fd;
-			JANUS_LOG(JICE_LOG_INFO, "[jice]   -- Sending a connectivity check to %s:%"SCNu16" as well (%d bytes)\n", ip, port, msglen);
+			JANUS_LOG(JICE_LOG_INFO, "[jice]   -- Sending a connectivity check (%s) to %s:%"SCNu16" as well (%d bytes)\n",
+				transaction, ip, port, msglen);
+			pair->pkt = pkt;
+			g_hash_table_insert(agent->checks_tr, g_strdup(transaction), pair);
 			janus_jice_send_internal(agent, pkt);
-			/* TODO Just for testing, we assume the state is connected now */
-			agent->selected_pair = pair;
-			if(agent->state_cb)
-				agent->state_cb(agent->handle, JANUS_JICE_CONNECTED);
-			if(agent->selectedpair_cb)
-				agent->selectedpair_cb(agent->handle, local, remote);
+			/* Are we done? */
+			if(!agent->full && nominated) {
+				/* In case this is an ICE Lite agent, we assume the state
+				 * is connected whenever we get a nominated pair from a check */
+				agent->selected_pair = pair;
+				if(agent->state_cb)
+					agent->state_cb(agent->handle, JANUS_JICE_CONNECTED);
+				if(agent->selectedpair_cb)
+					agent->selectedpair_cb(agent->handle, local, remote);
+			}
 		} else {
 			JANUS_LOG(JICE_LOG_ERR, "[jice] Error parsing connectivity check (%s --> %d)\n", transaction, res);
 			/* TODO Handle somehow */

@@ -3255,7 +3255,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			NULL);
 	} else {
 		handle->agent = janus_jice_agent_new(handle,
-			janus_ice_lite_enabled, handle->controlling, janus_ipv6_enabled, janus_ice_tcp_enabled);
+			!janus_ice_lite_enabled, handle->controlling, janus_ipv6_enabled, janus_ice_tcp_enabled);
 	}
 	handle->agent_created = janus_get_monotonic_time();
 	handle->srtp_errors_count = 0;
