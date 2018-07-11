@@ -1818,6 +1818,12 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 			}
 		}
 		/* Incoming request, handle */
+		if(janus_stun_msg_get_method(msg) == JANUS_STUN_BINDING &&
+				janus_stun_msg_get_class(msg) == JANUS_STUN_INDICATION) {
+			/* We got a Binding Indication, ignore */
+			JANUS_LOG(JICE_LOG_INFO, "[jice] Got a Binding Indication (%s)\n", transaction);
+			return;
+		}
 		janus_jice_candidate *local = NULL, *remote = NULL;
 		GSList *c = agent->local_candidates;
 		while(c) {
