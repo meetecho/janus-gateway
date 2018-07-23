@@ -1085,6 +1085,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 	session->events = g_async_queue_new();
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
