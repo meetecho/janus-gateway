@@ -275,14 +275,20 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 				struct sockaddr_in *sa = (struct sockaddr_in *)(iap->ifa_addr);
 				char buffer[16];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			} else if(iap->ifa_addr->sa_family == AF_INET6) {
 				struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(iap->ifa_addr);
 				char buffer[48];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin6_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			}
 		}
 	}
@@ -630,8 +636,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_ws");
@@ -738,8 +744,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 	}
 	janus_config_destroy(config);
