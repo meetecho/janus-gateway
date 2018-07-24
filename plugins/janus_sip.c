@@ -2,12 +2,12 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus SIP plugin
- * \details Check the \ref sip for more details.
+ * \details Check the \ref sipsofia for more details.
  *
  * \ingroup plugins
  * \ref plugins
  *
- * \page sip SIP plugin documentation
+ * \page sipsofia SIP plugin documentation
  * This is a simple SIP plugin for Janus, allowing WebRTC peers
  * to register at a SIP server (e.g., Asterisk) and call SIP user agents
  * through the gateway. Specifically, when attaching to the plugin peers
@@ -391,9 +391,6 @@
  * that will be used for the up-to-four recordings that may need to be enabled.
  *
  * A \c recordingupdated event is sent back in case the request is successful.
- *
- * \ingroup plugins
- * \ref plugins
  */
 
 #include "plugin.h"

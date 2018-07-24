@@ -391,6 +391,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					tot -= psize;
 				}
 				/* Done, we'll wait for the next video data to write the frame */
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */

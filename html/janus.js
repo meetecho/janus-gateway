@@ -1279,7 +1279,6 @@ function Janus(gatewayCallbacks) {
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
-			callbacks.error("Invalid handle");
 			return;
 		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": Janus.randomString(12) };
@@ -2054,7 +2053,7 @@ function Janus(gatewayCallbacks) {
 										]
 									}
 								};
-								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
+								constraints.video.mandatory.chromeMediaSourceId = sourceId;
 								getScreenMedia(constraints, callbackUserMedia, isAudioSendEnabled(media));
 							});
 						}
