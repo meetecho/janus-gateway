@@ -228,9 +228,9 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		janus_turnrest_instance *instance = g_malloc(sizeof(janus_turnrest_instance));
 		instance->transport = NICE_RELAY_TYPE_TURN_UDP;
-		if(strstr(turn_uri, "turns:") == turn_uri)
+		if(strstr(turn_uri, "turns:") == turn_uri || strstr(turn_uri, "transport=tls") != NULL)
 			instance->transport = NICE_RELAY_TYPE_TURN_TLS;
-		else if(strstr(turn_uri, "transport=tcp") == turn_uri)
+		else if(strstr(turn_uri, "transport=tcp") != NULL)
 			instance->transport = NICE_RELAY_TYPE_TURN_TCP;
 		gchar **parts = NULL;
 		if(strstr(turn_uri, "?") != NULL) {

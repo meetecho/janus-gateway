@@ -657,8 +657,42 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 }
 
 
-int janus_rtcp_has_bye(char *packet, int len) {
-	gboolean got_bye = FALSE;
+gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction) {
+	/* Parse RTCP compound packet */
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return FALSE;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_RR: {
+				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
+				if(rr->header.rc > 0) {
+					if(fraction)
+						*fraction = ntohl(rr->rb[0].flcnpl) >> 24;
+					if(lost)
+						*lost = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
+					return TRUE;
+				}
+				return FALSE;
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return FALSE;
+}
+
+gboolean janus_rtcp_has_bye(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	if(rtcp->version != 2)
@@ -668,8 +702,7 @@ int janus_rtcp_has_bye(char *packet, int len) {
 		pno++;
 		switch(rtcp->type) {
 			case RTCP_BYE:
-				got_bye = TRUE;
-				break;
+				return TRUE;
 			default:
 				break;
 		}
@@ -682,11 +715,10 @@ int janus_rtcp_has_bye(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	return got_bye ? TRUE : FALSE;
+	return FALSE;
 }
 
-int janus_rtcp_has_fir(char *packet, int len) {
-	gboolean got_fir = FALSE;
+gboolean janus_rtcp_has_fir(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	if(rtcp->version != 2)
@@ -696,8 +728,7 @@ int janus_rtcp_has_fir(char *packet, int len) {
 		pno++;
 		switch(rtcp->type) {
 			case RTCP_FIR:
-				got_fir = TRUE;
-				break;
+				return TRUE;
 			default:
 				break;
 		}
@@ -710,11 +741,10 @@ int janus_rtcp_has_fir(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	return got_fir ? TRUE : FALSE;
+	return FALSE;
 }
 
-int janus_rtcp_has_pli(char *packet, int len) {
-	gboolean got_pli = FALSE;
+gboolean janus_rtcp_has_pli(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	if(rtcp->version != 2)
@@ -726,7 +756,7 @@ int janus_rtcp_has_pli(char *packet, int len) {
 			case RTCP_PSFB: {
 				gint fmt = rtcp->rc;
 				if(fmt == 1)
-					got_pli = TRUE;
+					return TRUE;
 				break;
 			}
 			default:
@@ -741,7 +771,7 @@ int janus_rtcp_has_pli(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	return got_pli ? TRUE : FALSE;
+	return FALSE;
 }
 
 GSList *janus_rtcp_get_nacks(char *packet, int len) {
@@ -781,6 +811,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
 					}
 				}
+				break;
 			}
 		}
 		/* Is this a compound packet? */
