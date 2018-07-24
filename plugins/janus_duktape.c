@@ -423,6 +423,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 	while(t > 0) {
 		r = fread(text+offset, 1, t, f);
 		if(r == 0) {
+			fclose(f);
 			g_free(text);
 			duk_push_error_object(ctx, DUK_ERR_ERROR, "Error reading file: %s\n", filename);
 			return duk_throw(ctx);
@@ -430,6 +431,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 		t -= r;
 	}
 	duk_push_lstring(ctx, text, len);
+	fclose(f);
 	g_free(text);
 	return 1;
 }
