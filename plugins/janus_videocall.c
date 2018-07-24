@@ -405,6 +405,7 @@ static void janus_videocall_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->username);
 	g_free(session);
 }
 
@@ -599,6 +600,8 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	if(session->username != NULL) {
 		int res = g_hash_table_remove(sessions, (gpointer)session->username);
 		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
+	} else {
+		janus_videocall_session_destroy(session);
 	}
 	janus_mutex_unlock(&sessions_mutex);
 	return;

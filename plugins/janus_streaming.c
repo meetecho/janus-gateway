@@ -1176,6 +1176,8 @@ typedef struct janus_streaming_rtp_relay_packet {
 
 /* Helper method to send an RTCP PLI */
 static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
+	if(source == NULL || source->video_rtcp_fd < 0 || source->video_rtcp_addr.sa_family == 0)
+		return;
 	if(!g_atomic_int_compare_and_exchange(&source->sending_pli, 0, 1))
 		return;
 	gint64 now = janus_get_monotonic_time();
@@ -1198,17 +1200,17 @@ static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
 			&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
-		JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
-			source->remote_video_rtcp_port, errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, strerror(errno));
 	} else {
-		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes to %d\n",
-			sent, rtcp_len, source->remote_video_rtcp_port);
+		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
 	}
 	g_atomic_int_set(&source->sending_pli, 0);
 }
 
 /* Helper method to send an RTCP REMB */
 static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
+	if(source == NULL || source->video_rtcp_fd < 0 || source->video_rtcp_addr.sa_family == 0)
+		return;
 	/* Update the time of when we last sent REMB feedback */
 	source->remb_latest = janus_get_monotonic_time();
 	/* Generate a REMB */
@@ -1223,11 +1225,9 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 	int sent = 0;
 	if((sent = sendto(source->video_rtcp_fd, rtcp_buf, rtcp_len, 0,
 			&source->video_rtcp_addr, sizeof(source->video_rtcp_addr))) < 0) {
-		JANUS_LOG(LOG_ERR, "Error sendto %d... %d (%s)\n",
-			source->remote_video_rtcp_port, errno, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Error in sendto... %d (%s)\n", errno, strerror(errno));
 	} else {
-		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes to %d\n",
-			sent, rtcp_len, source->remote_video_rtcp_port);
+		JANUS_LOG(LOG_HUGE, "Sent %d/%d bytes\n", sent, rtcp_len);
 	}
 }
 
@@ -3464,11 +3464,11 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 	if(mp->streaming_source != janus_streaming_source_rtp)
 		return;
 	janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
-	if(!video && (source->audio_rtcp_fd > -1)) {
+	if(!video && (source->audio_rtcp_fd > -1) && (source->audio_rtcp_addr.sa_family != 0)) {
 		JANUS_LOG(LOG_HUGE, "Got audio RTCP feedback from a viewer: SSRC %"SCNu32"\n",
 			janus_rtcp_get_sender_ssrc(buf, len));
 		/* FIXME We don't forward RR packets, so what should we check here? */
-	} else if(video && (source->video_rtcp_fd > -1)) {
+	} else if(video && (source->video_rtcp_fd > -1) && (source->video_rtcp_addr.sa_family != 0)) {
 		JANUS_LOG(LOG_HUGE, "Got video RTCP feedback from a viewer: SSRC %"SCNu32"\n",
 			janus_rtcp_get_sender_ssrc(buf, len));
 		/* We only relay PLI/FIR and REMB packets, but in a selective way */

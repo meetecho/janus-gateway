@@ -541,11 +541,11 @@ AC_ARG_ENABLE([plugin-audiobridge],
               [enable_plugin_audiobridge=maybe])
 
 AC_ARG_ENABLE([plugin-duktape],
-              [AS_HELP_STRING([--disable-plugin-duktape],
-                              [Disable duktape plugin])],
+              [AS_HELP_STRING([--enable-plugin-duktape],
+                              [Enable duktape plugin])],
               [AS_IF([test "x$enable_plugin_duktape" != "xyes"],
                      [enable_plugin_duktape=no])],
-              [enable_plugin_duktape=yes])
+              [enable_plugin_duktape=no])
 
 AC_ARG_ENABLE([plugin-echotest],
               [AS_HELP_STRING([--disable-plugin-echotest],
@@ -555,11 +555,11 @@ AC_ARG_ENABLE([plugin-echotest],
               [enable_plugin_echotest=yes])
 
 AC_ARG_ENABLE([plugin-lua],
-              [AS_HELP_STRING([--disable-plugin-lua],
-                              [Disable lua plugin])],
+              [AS_HELP_STRING([--enable-plugin-lua],
+                              [Enable lua plugin])],
               [AS_IF([test "x$enable_plugin_lua" != "xyes"],
                      [enable_plugin_lua=no])],
-              [enable_plugin_lua=yes])
+              [enable_plugin_lua=no])
 
 AC_ARG_ENABLE([plugin-recordplay],
               [AS_HELP_STRING([--disable-plugin-recordplay],
