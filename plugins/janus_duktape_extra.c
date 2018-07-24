@@ -39,6 +39,7 @@ static duk_ret_t janus_duktape_extra_sample(duk_context *ctx) {
 void janus_duktape_register_extra_functions(duk_context *ctx) {
 	if(ctx == NULL)
 		return;
+	JANUS_LOG(LOG_VERB, "Registering extra Duktape functions\n");
 	/* Register all extra functions here */
 	duk_push_c_function(ctx, janus_duktape_extra_sample, 0);
 	duk_put_global_string(ctx, "testExtraFunction");

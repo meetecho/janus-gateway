@@ -2164,6 +2164,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
 		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
+		json_object_set_new(flags, "new-datachan-sdp", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP) ? json_true() : json_false());
 		json_object_set_new(flags, "rfc4588-rtx", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);

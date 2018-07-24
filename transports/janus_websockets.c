@@ -133,8 +133,10 @@ static const char *janus_websockets_get_level_str(int level) {
 			return "CLIENT";
 		case LLL_LATENCY:
 			return "LATENCY";
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 		case LLL_USER:
 			return "USER";
+#endif
 		case LLL_COUNT:
 			return "COUNT";
 		default:
@@ -273,14 +275,20 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 				struct sockaddr_in *sa = (struct sockaddr_in *)(iap->ifa_addr);
 				char buffer[16];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			} else if(iap->ifa_addr->sa_family == AF_INET6) {
 				struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(iap->ifa_addr);
 				char buffer[48];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin6_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			}
 		}
 	}
@@ -401,7 +409,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Enable all libwebsockets logging */
 				ws_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
 					LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 					LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
+#else
+					LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
+#endif
 			} else {
 				/* Only enable some of the properties */
 				if(strstr(item->value, "err"))
@@ -424,8 +436,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 					ws_log_level |= LLL_CLIENT;
 				if(strstr(item->value, "latency"))
 					ws_log_level |= LLL_LATENCY;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
 				if(strstr(item->value, "user"))
 					ws_log_level |= LLL_USER;
+#endif
 				if(strstr(item->value, "count"))
 					ws_log_level |= LLL_COUNT;
 			}
@@ -622,8 +636,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_ws");
@@ -730,8 +744,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 	}
 	janus_config_destroy(config);
@@ -800,8 +814,6 @@ static void janus_websockets_destroy_client(
 		json_object_set_new(info, "event", json_string("disconnected"));
 		gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
 	}
-	/* Notify core */
-	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	ws_client->ts->transport_p = NULL;
 	/* Remove messages queue too, if needed */
 	if(ws_client->messages != NULL) {
@@ -820,6 +832,8 @@ static void janus_websockets_destroy_client(
 	ws_client->bufpending = 0;
 	ws_client->bufoffset = 0;
 	janus_mutex_unlock(&ws_client->ts->mutex);
+	/* Notify core */
+	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	janus_transport_session_destroy(ws_client->ts);
 }
 
