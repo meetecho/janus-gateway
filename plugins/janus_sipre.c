@@ -8,7 +8,7 @@
  * \ref plugins
  *
  * \page sipre SIPre plugin documentation
- * This is basically a clone of the SIPre plugin, with the key
+ * This is basically a clone of the original SIP plugin, with the key
  * difference being that it uses \c libre (http://creytiv.com/re.html)
  * instead of Sofia SIP for its internal stack. As such, it provides an
  * alternative for those who don't want to, or can't, use the Sofia-based

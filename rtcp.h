@@ -369,6 +369,16 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
 
+/*! \brief Method to quickly fetch the lost packets info from an RR packet, if present
+ * \note This is just means as a simple way for plugins to extract this information from
+ * a packet, without the need to setup a dedicated RTCP context for tracking the stats flow
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[out] lost The number of lost packets as a whole
+ * @param[out] fraction The fraction of lost packets since the last RR/SR
+ * @returns TRUE in case of success, FALSE otherwise */
+gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction);
+
 /*! \brief Method to check whether an RTCP message contains a BYE message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
@@ -470,10 +480,10 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
 /*! \brief Method to generate a new RTCP transport wide message to report reception stats
  * @param[in] packet The buffer data (MUST be at least 16 chars)
  * @param[in] len The message data length in bytes
- * @param[ssrc] ssrc SSRC of the origin stream
- * @param[media] madia SSRC of the destination stream
- * @param[media] feedback_packet_count Feedback paccket count
- * @param[media] transport_wide_cc_stats List of rtp packet reception stats
+ * @param[in] ssrc SSRC of the origin stream
+ * @param[in] media SSRC of the destination stream
+ * @param[in] feedback_packet_count Feedback paccket count
+ * @param[in] transport_wide_cc_stats List of rtp packet reception stats
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t len, guint32 ssrc, guint32 media, guint8 feedback_packet_count, GQueue *transport_wide_cc_stats);
 

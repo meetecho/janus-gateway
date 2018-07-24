@@ -85,6 +85,7 @@ static janus_pp_frame_packet *list = NULL, *last = NULL;
 static int working = 0;
 
 static int post_reset_trigger = 200;
+static int ignore_first_packets = 0;
 
 
 /* Signal handler */
@@ -115,6 +116,12 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			post_reset_trigger = val;
 		JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
+	}
+	if(g_getenv("JANUS_PPREC_IGNOREFIRST") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_IGNOREFIRST"));
+		if(val >= 0)
+			ignore_first_packets = val;
+		JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
 	}
 	
 	/* Evaluate arguments */
@@ -376,6 +383,7 @@ int main(int argc, char *argv[])
 	uint32_t last_ts = 0, reset = 0;
 	int times_resetted = 0;
 	int post_reset_pkts = 0;
+	int ignored = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -409,6 +417,12 @@ int main(int argc, char *argv[])
 		if(!data && len > 2000) {
 			/* Way too large, very likely not RTP, skip */
 			JANUS_LOG(LOG_VERB, "  -- Too large packet (%d bytes), skipping\n", len);
+			offset += len;
+			continue;
+		}
+		if(ignore_first_packets && ignored < ignore_first_packets) {
+			/* We've been told to ignore the first X packets */
+			ignored++;
 			offset += len;
 			continue;
 		}

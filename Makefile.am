@@ -296,8 +296,8 @@ transports_libjanus_nanomsg_la_SOURCES = transports/janus_nanomsg.c
 transports_libjanus_nanomsg_la_CFLAGS = $(transports_cflags)
 transports_libjanus_nanomsg_la_LDFLAGS = $(transports_ldflags) -lnanomsg
 transports_libjanus_nanomsg_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.nanomsg.cfg.sample
-EXTRA_DIST += conf/janus.transport.nanomsg.cfg.sample
+conf_DATA += conf/janus.transport.nanomsg.jcfg.sample
+EXTRA_DIST += conf/janus.transport.nanomsg.jcfg.sample
 endif
 
 ##
@@ -497,11 +497,11 @@ plugins_libjanus_duktape_la_SOURCES = plugins/janus_duktape.c \
 plugins_libjanus_duktape_la_CFLAGS = $(plugins_cflags) $(DUKTAPE_CFLAGS)
 plugins_libjanus_duktape_la_LDFLAGS = $(plugins_ldflags) $(DUKTAPE_LDFLAGS) $(DUKTAPE_LIBS)
 plugins_libjanus_duktape_la_LIBADD = $(plugins_libadd) $(DUKTAPE_LIBADD)
-conf_DATA += conf/janus.plugin.duktape.cfg.sample
+conf_DATA += conf/janus.plugin.duktape.jcfg.sample
 duktape_DATA += \
 	plugins/duktape/echotest.js \
 	plugins/duktape/janus-sdp.js
-EXTRA_DIST += conf/janus.plugin.duktape.cfg.sample.in
+EXTRA_DIST += conf/janus.plugin.duktape.jcfg.sample.in
 endif
 
 

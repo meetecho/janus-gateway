@@ -55,6 +55,7 @@ Makefile.in
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
 /conf/janus.jcfg.sample
+/conf/janus.plugin.duktape.jcfg.sample
 /conf/janus.plugin.lua.jcfg.sample
 /conf/janus.plugin.recordplay.jcfg.sample
 /conf/janus.plugin.streaming.jcfg.sample
