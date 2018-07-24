@@ -814,8 +814,6 @@ static void janus_websockets_destroy_client(
 		json_object_set_new(info, "event", json_string("disconnected"));
 		gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
 	}
-	/* Notify core */
-	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	ws_client->ts->transport_p = NULL;
 	/* Remove messages queue too, if needed */
 	if(ws_client->messages != NULL) {
@@ -834,6 +832,8 @@ static void janus_websockets_destroy_client(
 	ws_client->bufpending = 0;
 	ws_client->bufoffset = 0;
 	janus_mutex_unlock(&ws_client->ts->mutex);
+	/* Notify core */
+	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	janus_transport_session_destroy(ws_client->ts);
 }
 
