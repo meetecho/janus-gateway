@@ -683,10 +683,9 @@ void janus_ice_init(gboolean use_jice,
 	if(janus_use_jice) {
 		/* Use our new experimental jice stack */
 		JANUS_LOG(LOG_WARN, "Using jice for ICE: notice that this is still experimental...\n");
-		/* We only support ICE lite, but no IPv6 or TCP yet */
+		/* We only support ICE lite (IPv4 and IPv6), but no TCP or TURN yet */
 		janus_ice_lite_enabled = TRUE;
 		janus_ice_tcp_enabled = FALSE;
-		janus_ipv6_enabled = FALSE;
 		/* Initialize the jice stack */
 		janus_jice_init();
 	}
@@ -806,7 +805,6 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		remote6.sin6_family = AF_INET6;
 		remote6.sin6_port = htons(janus_stun_port);
 		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
-		remote6.sin6_addr = addr.ipv6;
 		address = (struct sockaddr *)(&address6);
 		remote = (struct sockaddr *)(&remote6);
 		addrlen = sizeof(remote6);
@@ -1808,14 +1806,14 @@ static void janus_jice_cb_selectedpair(void *app, janus_jice_candidate *local, j
 		json_object_set_new(lcand, "port", json_integer(lport));
 		json_object_set_new(lcand, "type", json_string(ltype));
 		json_object_set_new(lcand, "transport", json_string(janus_jice_protocol_as_string(local->protocol)));
-		json_object_set_new(lcand, "family", json_integer(local->address.sa_family == AF_INET ? 4 : 6));
+		json_object_set_new(lcand, "family", json_integer(local->address.ss_family == AF_INET ? 4 : 6));
 		json_object_set_new(candidates, "local", lcand);
 		json_t *rcand = json_object();
 		json_object_set_new(rcand, "address", json_string(raddress));
 		json_object_set_new(rcand, "port", json_integer(rport));
 		json_object_set_new(rcand, "type", json_string(rtype));
 		json_object_set_new(rcand, "transport", json_string(janus_jice_protocol_as_string(remote->protocol)));
-		json_object_set_new(rcand, "family", json_integer(remote->address.sa_family == AF_INET ? 4 : 6));
+		json_object_set_new(rcand, "family", json_integer(remote->address.ss_family == AF_INET ? 4 : 6));
 		json_object_set_new(candidates, "remote", rcand);
 		json_object_set_new(info, "candidates", candidates);
 		json_object_set_new(info, "stream_id", json_integer(stream->stream_id));

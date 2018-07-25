@@ -330,7 +330,7 @@ typedef struct janus_jice_packet {
 	char *data;
 	guint length;
 	int fd;
-	struct sockaddr address;
+	struct sockaddr_storage address;
 } janus_jice_packet;
 static janus_jice_packet *janus_jice_packet_new(gboolean stun, char *buf, guint length, gboolean allocate);
 static void janus_jice_packet_destroy(janus_jice_packet *packet);
@@ -420,6 +420,15 @@ static GSource *janus_jice_fd_source_create(guint64 handle_id, janus_jice_candid
 }
 
 
+/* Helper to compare s6_addr structures and see if they're the same */
+static gboolean janus_stun_in6_addr_is_equal(struct in6_addr *addr1, struct in6_addr *addr2) {
+	int i=0;
+	for(i=0; i<16; ++i) {
+		if(addr1->s6_addr[i] != addr2->s6_addr[i])
+			return FALSE;
+	}
+	return TRUE;
+}
 /* Helper to compare sockaddr structures and see if they're the same */
 gboolean janus_stun_sockaddr_is_equal(struct sockaddr *addr1, struct sockaddr *addr2) {
 	if(JICE_LOG_INFO == LOG_INFO) {
@@ -449,9 +458,7 @@ gboolean janus_stun_sockaddr_is_equal(struct sockaddr *addr1, struct sockaddr *a
 		struct sockaddr_in6 *addr2_v6 = (struct sockaddr_in6 *)addr2;
 		if(addr1_v6->sin6_port != addr2_v6->sin6_port)
 			return FALSE;
-		if(memcmp(addr1_v6->sin6_addr.s6_addr, addr2_v6->sin6_addr.s6_addr, sizeof(struct sockaddr_in6)))
-			return FALSE;
-		return TRUE;
+		return janus_stun_in6_addr_is_equal(&addr1_v6->sin6_addr, &addr2_v6->sin6_addr);
 	}
 	return FALSE;
 }
@@ -902,11 +909,18 @@ static janus_stun_msg *janus_jice_create_connectivity_check_response(janus_jice_
 		msglen += 12;
 		current_attr += 12;
 	} else {
-		/* IPv6 */
+		/* IPv6 (we need to XOR with magic cookie + transaction) */
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
 		ma->family = htons(2);
 		ma->port = htons(ntohs(addr6->sin6_port) ^ 0x2112);
-		/* TODO Compute XOR-ed IPv6 address */
+		uint32_t addr;
+		memcpy(&addr, &addr6->sin6_addr.s6_addr, sizeof(uint32_t));
+		addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
+		memcpy(&ma->address, &addr, sizeof(uint32_t));
+		uint8_t *saddr6 = (uint8_t *)&addr6->sin6_addr.s6_addr;
+		int i=0;
+		for(i=0; i<12; i++)
+			ma->address[i+4] = *(saddr6+i+4) ^ request->transaction[i];
 		janus_stun_attr_set_length(attribute, 20);
 		msglen += 24;
 		current_attr += 24;
@@ -1031,7 +1045,7 @@ static int janus_jice_handle_gathering_response(janus_stun_msg *msg, guint len, 
 					memcpy(&addr4->sin_addr.s_addr, ma->address, sizeof(struct in_addr));
 					return 0;
 				} else {
-					/* FIXME IPv6 */
+					/* IPv6 */
 					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
 					addr6->sin6_family = AF_INET6;
 					addr6->sin6_port = htons(port);
@@ -1057,7 +1071,18 @@ static int janus_jice_handle_gathering_response(janus_stun_msg *msg, guint len, 
 					memcpy(&addr4->sin_addr.s_addr, &addr, sizeof(struct in_addr));
 					return 0;
 				} else {
-					/* TODO IPv6 (we need to XOR with magic cookie + transaction) */
+					/* IPv6 (we need to XOR with magic cookie + transaction) */
+					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
+					addr6->sin6_family = AF_INET6;
+					addr6->sin6_port = htons(port);
+					uint32_t addr;
+					memcpy(&addr, xma->address, sizeof(uint32_t));
+					addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
+					memcpy(&addr6->sin6_addr.s6_addr, &addr, sizeof(uint32_t));
+					uint8_t *saddr6 = (uint8_t *)&addr6->sin6_addr.s6_addr;
+					int i=0;
+					for(i=0; i<12; i++)
+						*(saddr6+i+4) = xma->address[i+4] ^ msg->transaction[i];
 					return 0;
 				}
 				break;
@@ -1258,7 +1283,7 @@ static int janus_jice_handle_connectivity_check_response(janus_jice_agent *agent
 					addr4->sin_port = htons(port);
 					memcpy(&addr4->sin_addr.s_addr, ma->address, sizeof(struct in_addr));
 				} else {
-					/* FIXME IPv6 */
+					/* IPv6 */
 					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
 					addr6->sin6_family = AF_INET6;
 					addr6->sin6_port = htons(port);
@@ -1284,7 +1309,18 @@ static int janus_jice_handle_connectivity_check_response(janus_jice_agent *agent
 					addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
 					memcpy(&addr4->sin_addr.s_addr, &addr, sizeof(struct in_addr));
 				} else {
-					/* TODO IPv6 (we need to XOR with magic cookie + transaction) */
+					/* IPv6 (we need to XOR with magic cookie + transaction) */
+					struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
+					addr6->sin6_family = AF_INET6;
+					addr6->sin6_port = htons(port);
+					uint32_t addr;
+					memcpy(&addr, xma->address, sizeof(uint32_t));
+					addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
+					memcpy(&addr6->sin6_addr.s6_addr, &addr, sizeof(uint32_t));
+					uint8_t *saddr6 = (uint8_t *)&addr6->sin6_addr.s6_addr;
+					int i=0;
+					for(i=0; i<12; i++)
+						*(saddr6+i+4) = xma->address[i+4] ^ msg->transaction[i];
 				}
 				got_address = TRUE;
 				break;
@@ -1494,7 +1530,7 @@ static void janus_jice_packet_destroy(janus_jice_packet *packet) {
 janus_jice_candidate *janus_jice_candidate_new(janus_jice_type type, janus_jice_protocol protocol) {
 	janus_jice_candidate *candidate = (janus_jice_candidate *)g_malloc0(sizeof(janus_jice_candidate));
 	candidate->type = type;
-	candidate->protocol = type;
+	candidate->protocol = protocol;
 	return candidate;
 }
 
@@ -1518,7 +1554,7 @@ janus_jice_candidate *janus_jice_candidate_new_full(janus_jice_type type, janus_
 	/* Now let's create the candidate instance */
 	janus_jice_candidate *candidate = (janus_jice_candidate *)g_malloc0(sizeof(janus_jice_candidate));
 	candidate->type = type;
-	candidate->protocol = type;
+	candidate->protocol = protocol;
 	candidate->notified = TRUE;
 	candidate->priority = priority;
 	g_snprintf(candidate->foundation, 32, "%s", foundation);
@@ -1555,7 +1591,7 @@ static janus_jice_candidate_pair *janus_jice_candidate_pair_new(janus_jice_candi
 	/* Make sure these candidates refer to the same component, and are of the same address family */
 	if(local->agent != remote->agent)
 		return NULL;
-	if(local->address.sa_family != remote->address.sa_family)
+	if(local->address.ss_family != remote->address.ss_family)
 		return NULL;
 	/* Create the pair */
 	janus_jice_candidate_pair *pair = (janus_jice_candidate_pair *)g_malloc0(sizeof(janus_jice_candidate_pair));
@@ -1621,10 +1657,10 @@ int janus_jice_candidate_render(janus_jice_candidate *c, char *buffer, int bufle
 		} else {
 			if(!c->agent->tcp) {
 				/* ICE-TCP support disabled */
-				return -4;
+				return -2;
 			}
 			/* TODO We don't support TCP candidates yet */
-			return -4;
+			return -3;
 		}
 	} else if(c->type == JANUS_JICE_SRFLX || c->type == JANUS_JICE_PRFLX ||
 			c->type == JANUS_JICE_RELAY) {
@@ -1640,9 +1676,10 @@ int janus_jice_candidate_render(janus_jice_candidate *c, char *buffer, int bufle
 		} else {
 			if(!c->agent->tcp) {
 				/* ICE-TCP support disabled */
+				return -4;
 			}
 			/* TODO We don't support TCP candidates yet */
-			return -4;
+			return -5;
 		}
 	}
 	return 0;
@@ -1715,10 +1752,10 @@ static gboolean janus_jice_checking_internal(gpointer user_data) {
 static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candidate *from) {
 	/* There's incoming data */
 	int fd = from->fd;
-	struct sockaddr remote_addr;
+	struct sockaddr_storage remote_addr;
 	socklen_t addrlen = sizeof(remote_addr);
 	/* FIXME This currently assumes UDP */
-	int len = recvfrom(fd, agent->buffer, sizeof(agent->buffer), 0, &remote_addr, &addrlen);
+	int len = recvfrom(fd, agent->buffer, sizeof(agent->buffer), 0, (struct sockaddr *)&remote_addr, &addrlen);
 	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] read_internal: got %d bytes (%d)\n", agent->handle->handle_id, len, fd);
 	if(janus_jice_is_stun(agent->buffer)) {
 		/* This is a STUN or TURN packet, let's handle it */
@@ -1768,7 +1805,7 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 				janus_jice_packet_destroy(candidate->pkt);
 				candidate->pkt = NULL;
 				/* Parse this response and update the candidate address */
-				int res = janus_jice_handle_gathering_response(msg, len, &candidate->address);
+				int res = janus_jice_handle_gathering_response(msg, len, (struct sockaddr *)&candidate->address);
 				if(res == 0) {
 					agent->local_candidates = g_slist_append(agent->local_candidates, candidate);
 					/* Notify application, if needed */
@@ -1801,8 +1838,8 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 				janus_jice_packet_destroy(pair->pkt);
 				pair->pkt = NULL;
 				/* Parse this response and update the pair status */
-				struct sockaddr address;
-				int res = janus_jice_handle_connectivity_check_response(agent, msg, len, &address);
+				struct sockaddr_storage address;
+				int res = janus_jice_handle_connectivity_check_response(agent, msg, len, (struct sockaddr *)&address);
 				if(res == 0) {
 					/* TODO Handle somehow */
 					JANUS_LOG(JICE_LOG_INFO, "[jice] Successful response to connectivity check (%s)\n", transaction);
@@ -1837,7 +1874,7 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 		c = agent->remote_candidates;
 		while(c) {
 			janus_jice_candidate *cand = (janus_jice_candidate *)c->data;
-			if(janus_stun_sockaddr_is_equal(&remote_addr, &cand->address)) {
+			if(janus_stun_sockaddr_is_equal((struct sockaddr *)&remote_addr, (struct sockaddr *)&cand->address)) {
 				remote = cand;
 				break;
 			}
@@ -1886,7 +1923,7 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 		if(res == 0) {
 			/* A valid connectivity check, handle and respond */
 			guint msglen = 0;
-			janus_stun_msg *response = janus_jice_create_connectivity_check_response(agent, msg, &msglen, &remote_addr);
+			janus_stun_msg *response = janus_jice_create_connectivity_check_response(agent, msg, &msglen, (struct sockaddr *)&remote_addr);
 			/* Prepare response and send it */
 			char ip[INET6_ADDRSTRLEN];
 			guint16 port = 0;
@@ -1954,10 +1991,10 @@ static void janus_jice_read_internal(janus_jice_agent *agent, janus_jice_candida
 static int janus_jice_send_internal(janus_jice_agent *agent, janus_jice_packet *pkt) {
 	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] send_internal: sending %d bytes (%d)\n",
 		agent->handle->handle_id, pkt->length, pkt->fd);
-	int addrlen = sizeof(pkt->address);
+	int addrlen = sizeof(struct sockaddr_storage);
 	int fd = pkt->fd, sent = 0;
 	while(TRUE) {
-		sent = sendto(fd, pkt->data, pkt->length, 0, &pkt->address, addrlen);
+		sent = sendto(fd, pkt->data, pkt->length, 0, (struct sockaddr *)&pkt->address, addrlen);
 		if(sent < 0) {
 			if(errno == EAGAIN) {
 				/* Let's try again */
@@ -2071,7 +2108,7 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 		int fd = -1;
 		guint16 start_port = port;
 		while(fd < 0) {
-			fd = socket(AF_INET, SOCK_DGRAM, 0);
+			fd = socket(family, SOCK_DGRAM, 0);
 			if(fd < 0) {
 				break;
 			}
@@ -2080,7 +2117,7 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 			} else {
 				((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_port = htons(port);
 			}
-			if(bind(fd, ifa->ifa_addr, sizeof(struct sockaddr)) < 0) {
+			if(bind(fd, ifa->ifa_addr, sizeof(struct sockaddr_storage)) < 0) {
 				JANUS_LOG(JICE_LOG_WARN, "[jice][%"SCNu64"] Bind failed (port %d)...\n", agent->handle->handle_id, port);
 				close(fd);
 				fd = -1;
@@ -2102,9 +2139,9 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 				agent->handle->handle_id, (family == AF_INET6 ? "IPv6" : "IPv4"));
 		} else {
 			int bport = 0;
-			struct sockaddr address;
+			struct sockaddr_storage address;
 			socklen_t len = sizeof(address);
-			getsockname(fd, &address, &len);
+			getsockname(fd, (struct sockaddr *)&address, &len);
 			if(family == AF_INET6) {
 				bport = ntohs(((struct sockaddr_in *)&address)->sin_port);
 			} else {
@@ -2155,6 +2192,11 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 			GSList *cd = agent->local_candidates;
 			while(cd) {
 				janus_jice_candidate *candidate = (janus_jice_candidate *)cd->data;
+				if(st->type == JANUS_JICE_UDP && candidate->address.ss_family == AF_INET6) {
+					/* We don't gather srflx candidates for IPv6 candidates */
+					cd = cd->next;
+					continue;
+				}
 				/* Resolve candidate address */
 				janus_network_address naddr;
 				janus_network_address_string_buffer naddr_buf;
@@ -2166,7 +2208,7 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 					guint16 port = 0;
 					struct sockaddr_in *sin = NULL;
 					struct sockaddr_in6 *sin6 = NULL;
-					switch(candidate->address.sa_family) {
+					switch(candidate->address.ss_family) {
 						case AF_INET:
 							sin = (struct sockaddr_in *)&candidate->address;
 							port = ntohs(sin->sin_port);
@@ -2180,7 +2222,7 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 							break;
 					}
 					if(st->type == JANUS_JICE_UDP) {
-						/* Create a temporary srfx candidate */
+						/* Create a temporary srflx candidate */
 						janus_jice_candidate *srflx = g_malloc0(sizeof(janus_jice_candidate));
 						srflx->agent = agent;
 						srflx->type = JANUS_JICE_SRFLX;
@@ -2199,7 +2241,7 @@ static gboolean janus_jice_gathering_internal(gpointer user_data) {
 						/* Keep track of transaction */
 						char transaction[40];
 						janus_stun_msg_get_transaction_as_string(stun, transaction);
-						gboolean ipv6 = candidate->address.sa_family == AF_INET6;
+						gboolean ipv6 = candidate->address.ss_family == AF_INET6;
 						JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] Sending %s STUN request (%s) to %s:%"SCNu16" from %s:%"SCNu16" (s=%d, c=%d)\n",
 							agent->handle->handle_id, (ipv6 ? "IPv6" : "IPv4"), transaction,
 							st->server, st->port, ip, port,
@@ -2247,8 +2289,10 @@ static gboolean janus_jice_new_candidate_internal(gpointer user_data) {
 	/* Show the candidate for debugging purposes */
 	char buffer[200];
 	buffer[0] = '\0';
-	if(janus_jice_candidate_render(candidate, buffer, sizeof(buffer), NULL) < 0) {
-		JANUS_LOG(JICE_LOG_WARN, "Error rendering %s remote candidate..?\n", janus_jice_type_as_string(candidate->type));
+	int ret = 0;
+	if((ret = janus_jice_candidate_render(candidate, buffer, sizeof(buffer), NULL)) < 0) {
+		JANUS_LOG(JICE_LOG_WARN, "Error rendering %s %s remote candidate..? (%d)\n",
+			janus_jice_type_as_string(candidate->type), janus_jice_protocol_as_string(candidate->protocol), ret);
 	}
 	JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"] candidate_cb: new remote candidate: %s\n",
 		agent->handle->handle_id, buffer);
@@ -2257,9 +2301,25 @@ static gboolean janus_jice_new_candidate_internal(gpointer user_data) {
 	GSList *lc = agent->local_candidates;
 	while(lc) {
 		janus_jice_candidate *lcand = (janus_jice_candidate *)lc->data;
+		if(candidate->address.ss_family != lcand->address.ss_family) {
+			/* Not the same protocol family, skip */
+			lc = lc->next;
+			continue;
+		}
+		if(candidate->protocol != lcand->protocol) {
+			/* Not the same transport protocol, skip */
+			lc = lc->next;
+			continue;
+		}
 		janus_jice_candidate_pair *pair = janus_jice_candidate_pair_new(lcand, candidate);
 		if(pair) {
-			JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"]   -- paired with a local candidate\n", agent->handle->handle_id);
+			buffer[0] = '\0';
+			if((ret = janus_jice_candidate_render(lcand, buffer, sizeof(buffer), NULL)) < 0) {
+				JANUS_LOG(JICE_LOG_WARN, "Error rendering %s %s local candidate..? (%d)\n",
+					janus_jice_type_as_string(lcand->type), janus_jice_protocol_as_string(lcand->protocol), ret);
+			}
+			JANUS_LOG(JICE_LOG_INFO, "[jice][%"SCNu64"]   -- paired with a local candidate: %s\n",
+				agent->handle->handle_id, buffer);
 			agent->pairs = g_slist_append(agent->pairs, pair);
 		}
 		lc = lc->next;
@@ -2413,32 +2473,74 @@ int janus_jice_agent_set_port_range(janus_jice_agent *agent, guint16 min_port, g
 	return 0;
 }
 
-int janus_jice_agent_add_stun_server(janus_jice_agent *agent, char *address, guint16 port) {
-	if(!agent || g_atomic_int_get(&agent->destroyed) || !address || !port)
+/* Helper method to quickly resolve a STUN address */
+static int janus_jice_server_resolve(char *server, int port, struct sockaddr *remote, gboolean ipv6) {
+	if(!server || !remote)
 		return -1;
-	/* Resolve address */
+	/* Resolve address to get an IP */
 	struct addrinfo *res = NULL;
 	janus_network_address addr;
 	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s...\n", address);
+	if(getaddrinfo(server, NULL, NULL, &res) != 0) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s...\n", server);
 		if(res)
 			freeaddrinfo(res);
 		return -1;
 	}
-	freeaddrinfo(res);
+	struct addrinfo *tres = res;
+	while(tres) {
+		if((!ipv6 && tres->ai_family != AF_INET) || (ipv6 && tres->ai_family != AF_INET6)) {
+			tres = tres->ai_next;
+			continue;
+		}
+		if(janus_network_address_from_sockaddr(tres->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s...\n", server);
+			if(res)
+				freeaddrinfo(res);
+			return -1;
+		}
+		freeaddrinfo(res);
+		break;
+	}
+	if(tres == NULL) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s... (no %s address?)\n",
+			server, (ipv6 ? "IPv6" : "IPv4"));
+		if(res)
+			freeaddrinfo(res);
+		return -1;
+	}
+	JANUS_LOG(JICE_LOG_INFO, "[jice] %s resolved to %s\n", server, (char *)janus_network_address_string_from_buffer(&addr_buf));
+	if(addr.family == AF_INET) {
+		struct sockaddr_in *remote4 = (struct sockaddr_in *)remote;
+		remote4->sin_family = AF_INET;
+		remote4->sin_port = htons(port);
+		memcpy(&remote4->sin_addr.s_addr, &addr.ipv4, sizeof(addr.ipv4));
+	} else {
+		struct sockaddr_in6 *remote6 = (struct sockaddr_in6 *)remote;
+		remote6->sin6_family = AF_INET6;
+		remote6->sin6_port = htons(port);
+		memcpy(&remote6->sin6_addr.s6_addr, &addr.ipv6, sizeof(addr.ipv6));
+	}
+	return 0;
+}
+
+int janus_jice_agent_add_stun_server(janus_jice_agent *agent, char *address, guint16 port) {
+	if(!agent || g_atomic_int_get(&agent->destroyed) || !address || !port)
+		return -1;
+	/* Resolve the STUN server to get an address (IPv4 only, we don't do srflx for IPv6) we can use */
+	struct sockaddr_in addr4;
+	if(janus_jice_server_resolve(address, port, (struct sockaddr *)&addr4, FALSE) < 0) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not add STUN server %s:%"SCNu16"...\n", address, port);
+		return -1;
+	}
 	janus_jice_stunturn_server *stun = g_malloc0(sizeof(janus_jice_stunturn_server));
 	stun->type = JANUS_JICE_UDP;
 	stun->server = g_strdup(address);
 	stun->port = port;
 	stun->address.sin_family = AF_INET;
 	stun->address.sin_port = htons(port);
-	stun->address.sin_addr = addr.ipv4;
-	stun->address6.sin6_family = AF_INET6;
-	stun->address6.sin6_port = htons(port);
-	stun->address6.sin6_addr = addr.ipv6;
+	memcpy(&stun->address.sin_addr.s_addr, &addr4.sin_addr.s_addr, sizeof(addr4.sin_addr.s_addr));
 	agent->stunturn_servers = g_slist_append(agent->stunturn_servers, stun);
 	return 0;
 }
@@ -2451,19 +2553,21 @@ int janus_jice_agent_add_turn_server(janus_jice_agent *agent, char *address, gui
 		return -2;
 	/* TODO We don't support TURN yet, so this is just a placeholder */
 	JANUS_LOG(JICE_LOG_WARN, "[jice] TURN not supported yet, will ignore this server when gathering\n");
-	/* Resolve address */
-	struct addrinfo *res = NULL;
-	janus_network_address addr;
-	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s...\n", address);
-		if(res)
-			freeaddrinfo(res);
+	struct sockaddr_in remote4;
+	struct sockaddr_in6 remote6;
+	gboolean ipv4 = FALSE, ipv6 = FALSE;
+	/* Resolve to an IPv4 address first, if available */
+	if(janus_jice_server_resolve(address, port, (struct sockaddr *)&remote4, FALSE) == 0) {
+		ipv4 = TRUE;
+	}
+	/* Resolve to an IPv6 address as well, if available */
+	if(janus_jice_server_resolve(address, port, (struct sockaddr *)&remote6, TRUE) == 0) {
+		ipv6 = TRUE;
+	}
+	if(!ipv4 && ipv6) {
+		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not add TURN server %s:%"SCNu16"...\n", address, port);
 		return -1;
 	}
-	freeaddrinfo(res);
 	janus_jice_stunturn_server *turn = g_malloc0(sizeof(janus_jice_stunturn_server));
 	turn->type = protocol;
 	turn->server = g_strdup(address);
@@ -2472,12 +2576,16 @@ int janus_jice_agent_add_turn_server(janus_jice_agent *agent, char *address, gui
 		turn->user = g_strdup(user);
 	if(pwd)
 		turn->pwd = g_strdup(pwd);
-	turn->address.sin_family = AF_INET;
-	turn->address.sin_port = htons(port);
-	turn->address.sin_addr = addr.ipv4;
-	turn->address6.sin6_family = AF_INET6;
-	turn->address6.sin6_port = htons(port);
-	turn->address6.sin6_addr = addr.ipv6;
+	if(ipv4) {
+		turn->address.sin_family = AF_INET;
+		turn->address.sin_port = htons(port);
+		memcpy(&turn->address.sin_addr.s_addr, &remote4.sin_addr.s_addr, sizeof(remote4.sin_addr.s_addr));
+	}
+	if(ipv6) {
+		turn->address6.sin6_family = AF_INET6;
+		turn->address6.sin6_port = htons(port);
+		memcpy(&turn->address6.sin6_addr.s6_addr, &remote6.sin6_addr.s6_addr, sizeof(remote6.sin6_addr.s6_addr));
+	}
 	agent->stunturn_servers = g_slist_append(agent->stunturn_servers, turn);
 	return 0;
 }
@@ -2579,7 +2687,7 @@ int janus_jice_agent_send(janus_jice_agent *agent, char *buf, int len) {
 	janus_jice_packet *pkt = janus_jice_packet_new(FALSE, buf, len, TRUE);
 	pkt->agent = agent;
 	pkt->fd = agent->selected_pair->local->fd;
-	memcpy(&pkt->address, &agent->selected_pair->remote->address, sizeof(struct sockaddr));
+	memcpy(&pkt->address, &agent->selected_pair->remote->address, sizeof(struct sockaddr_storage));
 	return janus_jice_send_internal(agent, pkt);
 }
 
@@ -2600,46 +2708,42 @@ void janus_jice_agent_destroy(janus_jice_agent *agent) {
 
 
 /* Helper method to create a socket for a quick STUN request */
-static int janus_ice_test_stun_fd(void) {
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	struct sockaddr_in address;
-	address.sin_family = AF_INET;
-	address.sin_port = 0;
-	address.sin_addr.s_addr = INADDR_ANY;
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(JICE_LOG_FATAL, "[jice] Bind failed for STUN BINDING test\n");
+static int janus_ice_test_stun_fd(gboolean ipv6) {
+	int fd = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+	if(fd < 0) {
+		JANUS_LOG(JICE_LOG_FATAL, "[jice] Socket creation failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		return -1;
+	}
+	if(ipv6) {
+		int mode = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&mode, sizeof(mode)) < 0) {
+			JANUS_LOG(JICE_LOG_FATAL, "[jice] setsockopt failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+			return -1;
+		}
+	}
+	struct sockaddr_storage address;
+	struct sockaddr_in *addr4 = (struct sockaddr_in *)&address;
+	struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&address;
+	memset(&address, 0, sizeof(struct sockaddr));
+	if(!ipv6) {
+		addr4->sin_family = AF_INET;
+		addr4->sin_port = 0;
+		addr4->sin_addr.s_addr = INADDR_ANY;
+	} else {
+		addr6->sin6_family = AF_INET6;
+		addr6->sin6_port = 0;
+		addr6->sin6_addr = in6addr_any;
+	}
+	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr_storage)) < 0) {
+		JANUS_LOG(JICE_LOG_FATAL, "[jice] Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
 		close(fd);
 		return -1;
 	}
 	socklen_t addrlen = sizeof(address);
 	getsockname(fd, (struct sockaddr *)&address, &addrlen);
-	JANUS_LOG(JICE_LOG_INFO, "[jice] STUN client bound to port %"SCNu16"\n", ntohs(address.sin_port));
+	JANUS_LOG(JICE_LOG_INFO, "[jice] STUN client bound to port %"SCNu16"\n",
+		ntohs(ipv6 ? addr6->sin6_port : addr4->sin_port));
 	return fd;
-}
-
-/* Helper method to quickly resolve a STUN address */
-static int janus_ice_test_stun_resolve(char *server, int port, struct sockaddr *remote) {
-	if(!server || !remote)
-		return -1;
-	/* Resolve address to get an IP */
-	struct addrinfo *res = NULL;
-	janus_network_address addr;
-	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(server, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		JANUS_LOG(JICE_LOG_ERR, "[jice] Could not resolve %s...\n", server);
-		if(res)
-			freeaddrinfo(res);
-		return -1;
-	}
-	freeaddrinfo(res);
-	JANUS_LOG(JICE_LOG_INFO, "[jice] %s resolved to %s\n", server, (char *)janus_network_address_string_from_buffer(&addr_buf));
-	struct sockaddr_in *remote4 = (struct sockaddr_in *)remote;
-	remote4->sin_family = AF_INET;
-	remote4->sin_port = htons(port);
-	remote4->sin_addr = addr.ipv4;
-	return 0;
 }
 
 /* Helper method to actually perform the STUN request */
@@ -2650,7 +2754,7 @@ static int janus_jice_test_stun_send(int fd, struct sockaddr *remote, struct soc
 	char buf[1500];
 	guint reqlen = 0;
 	janus_stun_msg *request = janus_jice_create_binding_request(&reqlen);
-	int len = sendto(fd, request, reqlen, 0, remote, sizeof(*remote));
+	int len = sendto(fd, request, reqlen, 0, remote, sizeof(struct sockaddr_storage));
 	janus_stun_msg_destroy(request);
 	if(len < 0) {
 		JANUS_LOG(JICE_LOG_ERR, "[jice] Error sending STUN request... %d (%s)\n", errno, strerror(errno));
@@ -2671,7 +2775,7 @@ static int janus_jice_test_stun_send(int fd, struct sockaddr *remote, struct soc
 		break;
 	}
 	if(fds.revents & POLLIN) {
-		socklen_t addrlen = sizeof(remote);
+		socklen_t addrlen = sizeof(struct sockaddr_storage);
 		len = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&remote, &addrlen);
 		JANUS_LOG(JICE_LOG_INFO, "[jice]   >> Got %d bytes...\n", len);
 		janus_stun_msg *response = (janus_stun_msg *)buf;
@@ -2708,19 +2812,22 @@ static int janus_jice_test_stun_send(int fd, struct sockaddr *remote, struct soc
 						janus_stun_attr_mapped_address *address = (janus_stun_attr_mapped_address *)attr->value;
 						int family = ntohs(address->family);
 						uint16_t port = ntohs(address->port);
-						char ip[64];
+						char ip[INET6_ADDRSTRLEN];
 						ip[0] = '\0';
 						if(family == 1) {
 							/* IPv4 */
-							unsigned char *ipv4 = (unsigned char *)address->address;
-							g_snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
-							/* Update the return value */
 							struct sockaddr_in *addr4 = (struct sockaddr_in *)mapped_address;
 							addr4->sin_family = AF_INET;
 							addr4->sin_port = htons(port);
 							memcpy(&addr4->sin_addr.s_addr, address->address, sizeof(struct in_addr));
+							inet_ntop(AF_INET, &addr4->sin_addr.s_addr, ip, INET_ADDRSTRLEN);
 						} else {
-							/* TODO IPv6 */
+							/* IPv6 */
+							struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)address;
+							addr6->sin6_family = AF_INET6;
+							addr6->sin6_port = htons(port);
+							memcpy(&addr6->sin6_addr.s6_addr, address->address, sizeof(struct in6_addr));
+							inet_ntop(AF_INET6, &addr6->sin6_addr.s6_addr, ip, INET6_ADDRSTRLEN);
 						}
 						JANUS_LOG(JICE_LOG_INFO, "[jice] \t\tFamily:  %s\n", family == 1 ? "IPv4" : "IPv6");
 						JANUS_LOG(JICE_LOG_INFO, "[jice] \t\tPort:    %"SCNu16"\n", port);
@@ -2733,22 +2840,32 @@ static int janus_jice_test_stun_send(int fd, struct sockaddr *remote, struct soc
 						janus_stun_attr_xor_mapped_address *address = (janus_stun_attr_xor_mapped_address *)attr->value;
 						int family = ntohs(address->family);
 						uint16_t port = ntohs(htons(ntohs(address->port) ^ 0x2112));
-						char ip[64];
+						char ip[INET6_ADDRSTRLEN];
 						ip[0] = '\0';
 						if(family == 1) {
 							/* IPv4 */
 							uint32_t addr;
 							memcpy(&addr, address->address, sizeof(uint32_t));
 							addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
-							unsigned char *ipv4 = (unsigned char *)&addr;
-							g_snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
-							/* Update the return value */
 							struct sockaddr_in *addr4 = (struct sockaddr_in *)mapped_address;
 							addr4->sin_family = AF_INET;
 							addr4->sin_port = htons(port);
 							memcpy(&addr4->sin_addr.s_addr, &addr, sizeof(struct in_addr));
+							inet_ntop(AF_INET, &addr4->sin_addr.s_addr, ip, INET_ADDRSTRLEN);
 						} else {
-							/* TODO IPv6 */
+							/* IPv6 (we need to XOR with magic cookie + transaction) */
+							struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)mapped_address;
+							addr6->sin6_family = AF_INET6;
+							addr6->sin6_port = htons(port);
+							uint32_t addr;
+							memcpy(&addr, address->address, sizeof(uint32_t));
+							addr = htonl(ntohl(addr) ^ JANUS_STUN_MAGIC_COOKIE);
+							memcpy(&addr6->sin6_addr.s6_addr, &addr, sizeof(uint32_t));
+							uint8_t *saddr6 = (uint8_t *)&addr6->sin6_addr.s6_addr;
+							int i=0;
+							for(i=0; i<12; i++)
+								*(saddr6+i+4) = address->address[i+4] ^ response->transaction[i];
+							inet_ntop(AF_INET6, &addr6->sin6_addr.s6_addr, ip, INET6_ADDRSTRLEN);
 						}
 						JANUS_LOG(JICE_LOG_INFO, "[jice] \t\tFamily:  %s\n", family == 1 ? "IPv4" : "IPv6");
 						JANUS_LOG(JICE_LOG_INFO, "[jice] \t\tPort:    %"SCNu16"\n", port);
@@ -2778,16 +2895,16 @@ static int janus_jice_test_stun_send(int fd, struct sockaddr *remote, struct soc
 }
 
 /* Mostly a helper to quickly perform a STUN request, e.g., for testing purposes or at startup */
-int janus_jice_test_stun(char *server, guint16 port, struct sockaddr *mapped_address) {
+int janus_jice_test_stun(char *server, guint16 port, gboolean ipv6, struct sockaddr *mapped_address) {
 	if(!server || port < 1 || !mapped_address)
 		return -1;
 	/* Get a file descriptor */
-	int fd = janus_ice_test_stun_fd();
+	int fd = janus_ice_test_stun_fd(ipv6);
 	if(fd < 0)
 		return -1;
 	/* Resolve the STUN server to get an address we can use */
-	struct sockaddr_in remote;
-	if(janus_ice_test_stun_resolve(server, port, (struct sockaddr *)&remote) < 0) {
+	struct sockaddr_storage remote;
+	if(janus_jice_server_resolve(server, port, (struct sockaddr *)&remote, ipv6) < 0) {
 		close(fd);
 		return -1;
 	}
@@ -2805,14 +2922,14 @@ int janus_jice_detect_nat_type(char *local_ip, char *serverA, guint16 portA, cha
 	if(!serverA || portA < 1 || !serverB || portB < 1)
 		return -1;
 	/* Get a file descriptor: we'll use the same for both STUN servers */
-	int fd = janus_ice_test_stun_fd();
+	int fd = janus_ice_test_stun_fd(FALSE);
 	if(fd < 0)
 		return -1;
 	/* Resolve STUN servers to get addresses we can use */
 	struct sockaddr_in local, remoteA, remoteB;
-	if(janus_ice_test_stun_resolve(local_ip, 0, (struct sockaddr *)&local) < 0 ||
-			janus_ice_test_stun_resolve(serverA, portA, (struct sockaddr *)&remoteA) < 0 ||
-			janus_ice_test_stun_resolve(serverB, portB, (struct sockaddr *)&remoteB) < 0) {
+	if(janus_jice_server_resolve(local_ip, 0, (struct sockaddr *)&local, FALSE) < 0 ||
+			janus_jice_server_resolve(serverA, portA, (struct sockaddr *)&remoteA, FALSE) < 0 ||
+			janus_jice_server_resolve(serverB, portB, (struct sockaddr *)&remoteB, FALSE) < 0) {
 		close(fd);
 		return -1;
 	}

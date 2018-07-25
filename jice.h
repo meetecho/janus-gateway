@@ -73,9 +73,9 @@ typedef struct janus_jice_candidate {
 	/*! \brief Protocol */
 	janus_jice_protocol protocol;
 	/*! \brief Address */
-	struct sockaddr address;
+	struct sockaddr_storage address;
 	/*! \brief Base address (only needed for remote candidates, for local we use the base property) */
-	struct sockaddr base_address;
+	struct sockaddr_storage base_address;
 	/*! \brief Parent candidate, if any */
 	struct janus_jice_candidate *base;
 	/*! \brief Gathering check packet, if any */
@@ -141,7 +141,7 @@ void janus_jice_agent_restart(janus_jice_agent *agent);
 void janus_jice_agent_destroy(janus_jice_agent *agent);
 
 /* Quick method to test a STUN server (and get an address back) */
-int janus_jice_test_stun(char *server, guint16 port, struct sockaddr *mapped_address);
+int janus_jice_test_stun(char *server, guint16 port, gboolean ipv6, struct sockaddr *mapped_address);
 /* Quick method to detect the NAT type: needs two different STUN servers to test against */
 int janus_jice_detect_nat_type(char *local_ip, char *serverA, guint16 portA, char *serverB, guint16 portB);
 
