@@ -121,7 +121,9 @@ $(document).ready(function() {
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
-											clearInterval(bitrateTimer);
+											if(bitrateTimer)
+												clearInterval(bitrateTimer);
+											bitrateTimer = null;
 											janus.destroy();
 										});
 								},
@@ -355,6 +357,9 @@ $(document).ready(function() {
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
 									spinner = null;
+									if(bitrateTimer)
+										clearInterval(bitrateTimer);
+									bitrateTimer = null;
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$("#videoleft").parent().unblock();
