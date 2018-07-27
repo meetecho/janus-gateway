@@ -992,9 +992,9 @@ int janus_rtcp_sdes_cname(char *packet, int len, const char *cname, int cnamelen
 	rtcp->type = RTCP_SDES;
 	rtcp->rc = 1;
 	int plen = 8;	/* Header + chunk + item header */
-	plen += cnamelen+2;
-	if((cnamelen+2)%4)	/* Account for padding */
-		plen += 4;
+	plen += cnamelen+3; /* cname item header(2) + cnamelen + terminator(1) */
+	/* calculate padding length. assume that plen is shorter than 65535 */
+	plen = (plen + 3) & 0xFFFC;
 	if(len < plen) {
 		JANUS_LOG(LOG_ERR, "Buffer too small for SDES message: %d < %d\n", len, plen);
 		return -1;
