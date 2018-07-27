@@ -1032,7 +1032,9 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId); },
+						getVolume : function() { return getVolume(handleId, true); },
+						getRemoteVolume : function() { return getVolume(handleId, true); },
+						getLocalVolume : function() { return getVolume(handleId, false); },
 						isAudioMuted : function() { return isMuted(handleId, false); },
 						muteAudio : function() { return mute(handleId, false, true); },
 						unmuteAudio : function() { return mute(handleId, false, false); },
@@ -1115,7 +1117,9 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId); },
+						getVolume : function() { return getVolume(handleId, true); },
+						getRemoteVolume : function() { return getVolume(handleId, true); },
+						getLocalVolume : function() { return getVolume(handleId, false); },
 						isAudioMuted : function() { return isMuted(handleId, false); },
 						muteAudio : function() { return mute(handleId, false, true); },
 						unmuteAudio : function() { return mute(handleId, false, false); },
@@ -1568,7 +1572,7 @@ function Janus(gatewayCallbacks) {
 			config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 			Janus.debug(config.pc);
 			if(config.pc.getStats) {	// FIXME
-				config.volume.value = 0;
+				config.volume = {};
 				config.bitrate.value = "0 kbits/sec";
 			}
 			Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
@@ -2546,39 +2550,49 @@ function Janus(gatewayCallbacks) {
 		callbacks.success(config.mySdp);
 	}
 
-	function getVolume(handleId) {
+	function getVolume(handleId, remote) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			return 0;
 		}
+		var stream = remote ? "remote" : "local";
 		var config = pluginHandle.webrtcStuff;
+		if(!config.volume[stream])
+			config.volume[stream] = { value: 0 };
 		// Start getting the volume, if getStats is supported
-		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser == "chrome") {	// FIXME
-			if(config.remoteStream === null || config.remoteStream === undefined) {
+		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+			if(remote && (config.remoteStream === null || config.remoteStream === undefined)) {
 				Janus.warn("Remote stream unavailable");
 				return 0;
+			} else if(!remote && (config.myStream === null || config.myStream === undefined)) {
+				Janus.warn("Local stream unavailable");
+				return 0;
 			}
-			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
-			if(config.volume.timer === null || config.volume.timer === undefined) {
-				Janus.log("Starting volume monitor");
-				config.volume.timer = setInterval(function() {
+			if(config.volume[stream].timer === null || config.volume[stream].timer === undefined) {
+				Janus.log("Starting " + stream + " volume monitor");
+				config.volume[stream].timer = setInterval(function() {
 					config.pc.getStats(function(stats) {
 						var results = stats.result();
 						for(var i=0; i<results.length; i++) {
 							var res = results[i];
-							if(res.type == 'ssrc' && res.stat('audioOutputLevel')) {
-								config.volume.value = res.stat('audioOutputLevel');
+							if(res.type == 'ssrc') {
+								if(remote && res.stat('audioOutputLevel'))
+									config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
+								else if(!remote && res.stat('audioInputLevel'))
+									config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
 							}
 						}
 					});
 				}, 200);
 				return 0;	// We don't have a volume to return yet
 			}
-			return config.volume.value;
+			return config.volume[stream].value;
 		} else {
-			Janus.log("Getting the remote volume unsupported by browser");
+			// audioInputLevel and audioOutputLevel seem only available in Chrome? audioLevel
+			// seems to be available on Chrome and Firefox, but they don't seem to work
+			Janus.warn("Getting the " + stream + " volume unsupported by browser");
 			return 0;
 		}
 	}
@@ -2758,9 +2772,13 @@ function Janus(gatewayCallbacks) {
 			}
 			// Cleanup stack
 			config.remoteStream = null;
-			if(config.volume.timer)
-				clearInterval(config.volume.timer);
-			config.volume.value = null;
+			if(config.volume) {
+				if(config.volume["local"] && config.volume["local"].timer)
+					clearInterval(config.volume["local"].timer);
+				if(config.volume["remote"] && config.volume["remote"].timer)
+					clearInterval(config.volume["remote"].timer);
+			}
+			config.volume = {};
 			if(config.bitrate.timer)
 				clearInterval(config.bitrate.timer);
 			config.bitrate.timer = null;
