@@ -447,19 +447,10 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 				context->v_last_ssrc, ssrc);
 			context->v_last_ssrc = ssrc;
 			context->v_base_ts_prev = context->v_last_ts;
-			context->v_base_ts = timestamp+1000000;
+			context->v_base_ts = timestamp;
 			context->v_base_seq_prev = context->v_last_seq;
 			context->v_base_seq = seq;
-			/* How much time since the last video RTP packet? We compute an offset accordingly */
-			if(context->v_last_time > 0) {
-				gint64 time_diff = janus_get_monotonic_time() - context->v_last_time;
-				time_diff = (time_diff*90)/1000; 	/* We're assuming 90khz here */
-				if(time_diff == 0)
-					time_diff = 1;
-				context->v_base_ts_prev += (guint32)time_diff;
-				context->v_last_ts += (guint32)time_diff;
-				JANUS_LOG(LOG_VERB, "Computed offset for video RTP timestamp: %"SCNu32"\n", (guint32)time_diff);
-			}
+
 			/* Reset skew compensation data */
 			context->v_new_ssrc = TRUE;
 		}
