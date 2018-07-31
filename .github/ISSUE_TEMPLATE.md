@@ -4,6 +4,6 @@
 > 2. nobody opened the same bug already (do a search);
 > 3. the issue wasn't already solved;
 > 4. you don't paste a huge amount of text in the issue or comments: use a service like [pastebin](http://pastebin.com/) or similar;
-> 5. you provide a GDB stacktrace if Janus crashed on you, and/or output from AddressSanitizer or Valgrind (more details available[here](http://janus.conf.meetecho.com/docs/debug.html)).
+> 5. you provide a GDB stacktrace if Janus crashed on you, and/or output from AddressSanitizer or Valgrind (more details available [here](http://janus.conf.meetecho.com/docs/debug.html)).
 > 
 > If so, just remove this text and share your findings!
