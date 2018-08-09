@@ -467,9 +467,9 @@ function Janus(gatewayCallbacks) {
 		if(maxev !== undefined && maxev !== null)
 			longpoll = longpoll + "&maxev=" + maxev;
 		if(token !== null && token !== undefined)
-			longpoll = longpoll + "&token=" + token;
+			longpoll = longpoll + "&token=" + encodeURIComponent(token);
 		if(apisecret !== null && apisecret !== undefined)
-			longpoll = longpoll + "&apisecret=" + apisecret;
+			longpoll = longpoll + "&apisecret=" + encodeURIComponent(apisecret);
 		Janus.httpAPICall(longpoll, {
 			verb: 'GET',
 			withCredentials: withCredentials,
