@@ -449,6 +449,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks["reconnect"] = true;
+		server=null;
+		serversIndex=0;
 		createSession(callbacks);
 	};
 	this.getSessionId = function() { return sessionId; };
