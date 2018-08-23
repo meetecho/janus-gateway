@@ -86,8 +86,6 @@ JANUSSDP.findCodec = function(sdp, pt) {
 					codec = "pcmu";
 				} else if(a.value.indexOf("pcma") !== -1 || a.value.indexOf("PCMA") !== -1) {
 					codec = "pcma";
-				} else if(a.value.indexOf("pcma") !== -1 || a.value.indexOf("PCMA") !== -1) {
-					codec = "pcma";
 				} else if(a.value.indexOf("isac16") !== -1 || a.value.indexOf("ISAC16") !== -1) {
 					codec = "isac16";
 				} else if(a.value.indexOf("isac32") !== -1 || a.value.indexOf("ISAC32") !== -1) {
