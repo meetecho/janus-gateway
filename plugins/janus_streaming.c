@@ -4689,7 +4689,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
 	}
 	if(svc) {
-		if(live_rtp->codecs.video_codec == JANUS_STREAMING_VP9) {
+		if(live_rtp->codecs.video_codec == JANUS_VIDEOCODEC_VP9) {
 			live_rtp_source->svc = TRUE;
 		} else {
 			JANUS_LOG(LOG_WARN, "SVC is only supported, in an experimental way, for VP9-SVC mountpoints: disabling it...\n");
