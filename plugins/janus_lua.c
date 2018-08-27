@@ -65,6 +65,10 @@
  * the Lua plugin will return its own info (i.e., "janus.plugin.lua", etc.).
  * Most of the times, Lua scripts will not need to override this information,
  * unless they really want to register their own name spaces and versioning.
+ * Finally, Lua scripts can receive information on slow links via the
+ * \c slowLink() callback, in order to react accordingly: e.g., reduce
+ * the bitrate of a video sender if they, or their viewers, are experiencing
+ * issues.
  *
  * \section capi C interfaces
  *
@@ -279,6 +283,7 @@ static char *lua_script_package = NULL;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
+static gboolean has_slow_link = FALSE;
 /* Lua C scheduler (for coroutines) */
 static GThread *scheduler_thread = NULL;
 static void *janus_lua_scheduler(void *data);
@@ -1200,6 +1205,9 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "incomingData");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_data = TRUE;
+	lua_getglobal(lua_state, "slowLink");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_slow_link = TRUE;
 
 	lua_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
 	lua_ids = g_hash_table_new(NULL, NULL);
@@ -1858,7 +1866,21 @@ void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video) {
 	janus_mutex_unlock(&lua_sessions_mutex);
 	if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
-	/* TODO Handle feedback depending on the logic the Lua script dictated */
+	/* Check if the Lua script wants to handle such events */
+	janus_refcount_increase(&session->ref);
+	if(has_slow_link) {
+		/* Notify the Lua script */
+		janus_mutex_lock(&lua_mutex);
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "slowLink");
+		lua_pushnumber(t, session->id);
+		lua_pushboolean(t, uplink);
+		lua_pushboolean(t, video);
+		lua_call(t, 3, 0);
+		lua_pop(lua_state, 1);
+		janus_mutex_unlock(&lua_mutex);
+	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_lua_hangup_media(janus_plugin_session *handle) {

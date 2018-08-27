@@ -1666,9 +1666,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	janus_mutex_lock(&sessions_mutex);
 	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
 		goto plugin_response;
 	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
@@ -3023,12 +3024,10 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		return;
 	}
 	g_atomic_int_set(&session->started, 0);
-	if(session->participant == NULL) {
+	if(session->participant == NULL)
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_mutex_lock(&rooms_mutex);
@@ -3115,6 +3114,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		}
 	}
 	janus_mutex_unlock(&rooms_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
