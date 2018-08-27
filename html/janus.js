@@ -555,7 +555,7 @@ function Janus(gatewayCallbacks) {
 					config.pc.addIceCandidate();
 				} else {
 					// New candidate
-					config.pc.addIceCandidate(new RTCIceCandidate(candidate));
+					config.pc.addIceCandidate(candidate);
 				}
 			} else {
 				// We didn't do setRemoteDescription (trickle got here before the offer?)
@@ -1664,29 +1664,28 @@ function Janus(gatewayCallbacks) {
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
 		} else {
-			config.pc.setRemoteDescription(
-					new RTCSessionDescription(jsep),
-					function() {
-						Janus.log("Remote description accepted!");
-						config.remoteSdp = jsep.sdp;
-						// Any trickle candidate we cached?
-						if(config.candidates && config.candidates.length > 0) {
-							for(var i in config.candidates) {
-								var candidate = config.candidates[i];
-								Janus.debug("Adding remote candidate:", candidate);
-								if(!candidate || candidate.completed === true) {
-									// end-of-candidates
-									config.pc.addIceCandidate();
-								} else {
-									// New candidate
-									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
-								}
+			config.pc.setRemoteDescription(jsep)
+				.then(function() {
+					Janus.log("Remote description accepted!");
+					config.remoteSdp = jsep.sdp;
+					// Any trickle candidate we cached?
+					if(config.candidates && config.candidates.length > 0) {
+						for(var i in config.candidates) {
+							var candidate = config.candidates[i];
+							Janus.debug("Adding remote candidate:", candidate);
+							if(!candidate || candidate.completed === true) {
+								// end-of-candidates
+								config.pc.addIceCandidate();
+							} else {
+								// New candidate
+								config.pc.addIceCandidate(candidate);
 							}
-							config.candidates = [];
 						}
-						// Create the answer now
-						createAnswer(handleId, media, callbacks);
-					}, callbacks.error);
+						config.candidates = [];
+					}
+					// Create the answer now
+					createAnswer(handleId, media, callbacks);
+				}, callbacks.error);
 		}
 	}
 
@@ -2164,29 +2163,28 @@ function Janus(gatewayCallbacks) {
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
 			}
-			config.pc.setRemoteDescription(
-					new RTCSessionDescription(jsep),
-					function() {
-						Janus.log("Remote description accepted!");
-						config.remoteSdp = jsep.sdp;
-						// Any trickle candidate we cached?
-						if(config.candidates && config.candidates.length > 0) {
-							for(var i in config.candidates) {
-								var candidate = config.candidates[i];
-								Janus.debug("Adding remote candidate:", candidate);
-								if(!candidate || candidate.completed === true) {
-									// end-of-candidates
-									config.pc.addIceCandidate();
-								} else {
-									// New candidate
-									config.pc.addIceCandidate(new RTCIceCandidate(candidate));
-								}
+			config.pc.setRemoteDescription(jsep)
+				.then(function() {
+					Janus.log("Remote description accepted!");
+					config.remoteSdp = jsep.sdp;
+					// Any trickle candidate we cached?
+					if(config.candidates && config.candidates.length > 0) {
+						for(var i in config.candidates) {
+							var candidate = config.candidates[i];
+							Janus.debug("Adding remote candidate:", candidate);
+							if(!candidate || candidate.completed === true) {
+								// end-of-candidates
+								config.pc.addIceCandidate();
+							} else {
+								// New candidate
+								config.pc.addIceCandidate(candidate);
 							}
-							config.candidates = [];
 						}
-						// Done
-						callbacks.success();
-					}, callbacks.error);
+						config.candidates = [];
+					}
+					// Done
+					callbacks.success();
+				}, callbacks.error);
 		} else {
 			callbacks.error("Invalid JSEP");
 		}
@@ -2321,8 +2319,8 @@ function Janus(gatewayCallbacks) {
 				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
 			]});
 		}
-		config.pc.createOffer(
-			function(offer) {
+		config.pc.createOffer(mediaConstraints)
+			.then(function(offer) {
 				Janus.debug(offer);
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
@@ -2335,7 +2333,8 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 				config.mySdp = offer.sdp;
-				config.pc.setLocalDescription(offer);
+				config.pc.setLocalDescription(offer)
+					.catch(callbacks.error);
 				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
@@ -2351,7 +2350,7 @@ function Janus(gatewayCallbacks) {
 					"sdp": offer.sdp
 				};
 				callbacks.success(jsep);
-			}, callbacks.error, mediaConstraints);
+			}, callbacks.error);
 	}
 
 	function createAnswer(handleId, media, callbacks) {
@@ -2490,8 +2489,8 @@ function Janus(gatewayCallbacks) {
 				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
 			]});
 		}
-		config.pc.createAnswer(
-			function(answer) {
+		config.pc.createAnswer(mediaConstraints)
+			.then(function(answer) {
 				Janus.debug(answer);
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
@@ -2506,7 +2505,8 @@ function Janus(gatewayCallbacks) {
 					}
 				}
 				config.mySdp = answer.sdp;
-				config.pc.setLocalDescription(answer);
+				config.pc.setLocalDescription(answer)
+					.catch(callbacks.error);
 				config.mediaConstraints = mediaConstraints;
 				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
@@ -2520,7 +2520,7 @@ function Janus(gatewayCallbacks) {
 					"sdp": answer.sdp
 				};
 				callbacks.success(jsep);
-			}, callbacks.error, mediaConstraints);
+			}, callbacks.error);
 	}
 
 	function sendSDP(handleId, callbacks) {
