@@ -1201,7 +1201,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
-	/* For VP8 simulcast */
+	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
@@ -1345,7 +1345,7 @@ typedef struct janus_videoroom_publisher {
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
-	uint32_t ssrc[3];		/* Only needed in case VP8 simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	int rtpmapid_extmap_id;	/* Only needed in case Firefox's RID-based simulcasting is involved */
 	char *rid[3];			/* Only needed in case Firefox's RID-based simulcasting is involved */
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
@@ -1398,9 +1398,9 @@ typedef struct janus_videoroom_subscriber {
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	janus_sdp *sdp;			/* Offer we sent this listener (may be updated within renegotiations) */
 	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this subscriber */
-	int substream;			/* Which VP8 simulcast substream we should forward, in case the publisher is simulcasting */
+	int substream;			/* Which VP8 (or H.264) simulcast substream we should forward, in case the publisher is simulcasting */
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
-	int templayer;			/* Which VP8 simulcast temporal layer we should forward, in case the publisher is simulcasting */
+	int templayer;			/* Which VP8 (unavailable for H.264) simulcast temporal layer we should forward, in case the publisher is simulcasting */
 	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
 	janus_vp8_simulcast_context simulcast_context;
@@ -1409,7 +1409,7 @@ typedef struct janus_videoroom_subscriber {
 	gboolean audio_offered, video_offered, data_offered;
 	gboolean paused;
 	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
-	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with VP8
+	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with plain
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
 	int temporal_layer, target_temporal_layer;
@@ -5139,7 +5139,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_videoroom_reqfir(publisher, "Simulcasting substream change");
 						}
 					}
-					if(sc_temporal && publisher->ssrc[0] != 0) {
+					if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8 &&
+							sc_temporal && publisher->ssrc[0] != 0) {
 						subscriber->templayer_target = json_integer_value(sc_temporal);
 						JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 							subscriber->templayer_target, subscriber->templayer);
@@ -5755,7 +5756,8 @@ static void *janus_videoroom_handler(void *data) {
 				char *offer_sdp = janus_sdp_write(offer);
 				if(!sdp_update) {
 					/* Is simulcasting involved */
-					if(msg_simulcast && participant->vcodec == JANUS_VIDEOCODEC_VP8) {
+					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
+							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
 						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
 						participant->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 						participant->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
@@ -6050,46 +6052,53 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			}
 			subscriber->last_relayed = janus_get_monotonic_time();
-			/* Check if there's any temporal scalability to take into account */
-			uint16_t picid = 0;
-			uint8_t tlzi = 0;
-			uint8_t tid = 0;
-			uint8_t ybit = 0;
-			uint8_t keyidx = 0;
-			if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
-				//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-				if(subscriber->templayer != subscriber->templayer_target) {
-					/* FIXME We should be smarter in deciding when to switch */
-					subscriber->templayer = subscriber->templayer_target;
-					/* Notify the user */
-					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("event"));
-					json_object_set_new(event, "room", json_integer(subscriber->room_id));
-					json_object_set_new(event, "temporal", json_integer(subscriber->templayer));
-					gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-				if(tid > subscriber->templayer) {
-					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-						tid, subscriber->templayer);
-					/* We increase the base sequence number, or there will be gaps when delivering later */
-					subscriber->context.v_base_seq++;
-					return;
+			if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* Check if there's any temporal scalability to take into account */
+				uint16_t picid = 0;
+				uint8_t tlzi = 0;
+				uint8_t tid = 0;
+				uint8_t ybit = 0;
+				uint8_t keyidx = 0;
+				if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+					//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+					if(subscriber->templayer != subscriber->templayer_target) {
+						/* FIXME We should be smarter in deciding when to switch */
+						subscriber->templayer = subscriber->templayer_target;
+						/* Notify the user */
+						json_t *event = json_object();
+						json_object_set_new(event, "videoroom", json_string("event"));
+						json_object_set_new(event, "room", json_integer(subscriber->room_id));
+						json_object_set_new(event, "temporal", json_integer(subscriber->templayer));
+						gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+						json_decref(event);
+					}
+					if(tid > subscriber->templayer) {
+						JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+							tid, subscriber->templayer);
+						/* We increase the base sequence number, or there will be gaps when delivering later */
+						subscriber->context.v_base_seq++;
+						return;
+					}
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
 			char vp8pd[6];
-			memcpy(vp8pd, payload, sizeof(vp8pd));
-			janus_vp8_simulcast_descriptor_update(payload, plen, &subscriber->simulcast_context, switched);
+			if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* For VP8, we save the original payload descriptor, to restore it after */
+				memcpy(vp8pd, payload, sizeof(vp8pd));
+				janus_vp8_simulcast_descriptor_update(payload, plen, &subscriber->simulcast_context, switched);
+			}
 			/* Send the packet */
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
-			/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
-			memcpy(payload, vp8pd, sizeof(vp8pd));
+			if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
+				memcpy(payload, vp8pd, sizeof(vp8pd));
+			}
 		} else {
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
 			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
