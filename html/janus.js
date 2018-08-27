@@ -449,8 +449,6 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks["reconnect"] = true;
-		server=null;
-		serversIndex=0;
 		createSession(callbacks);
 	};
 	this.getSessionId = function() { return sessionId; };
@@ -753,7 +751,7 @@ function Janus(gatewayCallbacks) {
 			wsHandlers = {
 				'error': function() {
 					Janus.error("Error connecting to the Janus WebSockets server... " + server);
-					if (Janus.isArray(servers)) {
+					if (Janus.isArray(servers) && !callbacks["reconnect"]) {
 						serversIndex++;
 						if (serversIndex == servers.length) {
 							// We tried all the servers the user gave us and they all failed
@@ -837,9 +835,9 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
-				if(Janus.isArray(servers)) {
+				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
-					if(serversIndex == servers.length) {
+					if(serversIndex == servers.length ) {
 						// We tried all the servers the user gave us and they all failed
 						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
 						return;
