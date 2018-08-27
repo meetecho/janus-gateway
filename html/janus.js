@@ -837,7 +837,7 @@ function Janus(gatewayCallbacks) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
-					if(serversIndex == servers.length ) {
+					if(serversIndex == servers.length) {
 						// We tried all the servers the user gave us and they all failed
 						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
 						return;
