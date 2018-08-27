@@ -1004,7 +1004,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
@@ -1046,6 +1046,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		janus_refcount_decrease(&peer->ref);
 	}
 	janus_rtp_switching_context_reset(&session->context);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

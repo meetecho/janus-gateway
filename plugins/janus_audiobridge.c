@@ -3024,12 +3024,10 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		return;
 	}
 	g_atomic_int_set(&session->started, 0);
-	if(session->participant == NULL) {
+	if(session->participant == NULL)
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_mutex_lock(&rooms_mutex);
@@ -3116,6 +3114,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		}
 	}
 	janus_mutex_unlock(&rooms_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

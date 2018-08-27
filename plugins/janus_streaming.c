@@ -3502,12 +3502,10 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(g_atomic_int_get(&session->destroyed)) {
+	if(g_atomic_int_get(&session->destroyed))
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	session->substream = -1;
 	session->substream_target = 2;
 	session->templayer = -1;
@@ -3530,6 +3528,7 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		janus_mutex_unlock(&mp->mutex);
 	}
 	session->mountpoint = NULL;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

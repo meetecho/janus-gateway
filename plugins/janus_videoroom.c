@@ -4231,12 +4231,10 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	}
 	session->started = FALSE;
-	if(g_atomic_int_get(&session->destroyed)) {
+	if(g_atomic_int_get(&session->destroyed))
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -4323,6 +4321,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		}
 		/* TODO Should we close the handle as well? */
 	}
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
