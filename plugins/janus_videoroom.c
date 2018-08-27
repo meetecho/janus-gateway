@@ -648,12 +648,12 @@ notify_joining = true|false (optional, whether to notify all participants when a
 	"video_port" : <port to forward the video RTP packets to>,
 	"video_ssrc" : <video SSRC to use to use when streaming; optional>,
 	"video_ptype" : <video payload type to use when streaming; optional>,
-	"video_port_2" : <if simulcasting or doing VP9-SVC, port to forward the video RTP packets from the second substream/layer to>,
-	"video_ssrc_2" : <if simulcasting or doing VP9-SVC, video SSRC to use to use the second substream/layer; optional>,
-	"video_ptype_2" : <if simulcasting or doing VP9-SVC, video payload type to use the second substream/layer; optional>,
-	"video_port_3" : <if simulcasting or doing VP9-SVC, port to forward the video RTP packets from the third substream/layer to>,
-	"video_ssrc_3" : <if simulcasting or doing VP9-SVC, video SSRC to use to use the third substream/layer; optional>,
-	"video_ptype_3" : <if simulcasting or doing VP9-SVC, video payload type to use the third substream/layer; optional>,
+	"video_port_2" : <if simulcasting, port to forward the video RTP packets from the second substream/layer to>,
+	"video_ssrc_2" : <if simulcasting, video SSRC to use to use the second substream/layer; optional>,
+	"video_ptype_2" : <if simulcasting, video payload type to use the second substream/layer; optional>,
+	"video_port_3" : <if simulcasting, port to forward the video RTP packets from the third substream/layer to>,
+	"video_ssrc_3" : <if simulcasting, video SSRC to use to use the third substream/layer; optional>,
+	"video_ptype_3" : <if simulcasting, video payload type to use the third substream/layer; optional>,
 	"data_port" : <port to forward the datachannel messages to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
 	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>"
@@ -2289,14 +2289,15 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "video-offered", participant->video_offered ? json_true() : json_false());
 				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
 				json_object_set_new(media, "data-offered", participant->data_offered ? json_true() : json_false());
-				if(feed && feed->ssrc[0] != 0) {
-					json_object_set_new(info, "simulcast", json_true());
-					json_object_set_new(info, "substream", json_integer(participant->substream));
-					json_object_set_new(info, "substream-target", json_integer(participant->substream_target));
-					json_object_set_new(info, "temporal-layer", json_integer(participant->templayer));
-					json_object_set_new(info, "temporal-layer-target", json_integer(participant->templayer_target));
-				}
 				json_object_set_new(info, "media", media);
+				if(feed && feed->ssrc[0] != 0) {
+					json_t *simulcast = json_object();
+					json_object_set_new(simulcast, "substream", json_integer(participant->substream));
+					json_object_set_new(simulcast, "substream-target", json_integer(participant->substream_target));
+					json_object_set_new(simulcast, "temporal-layer", json_integer(participant->templayer));
+					json_object_set_new(simulcast, "temporal-layer-target", json_integer(participant->templayer_target));
+					json_object_set_new(info, "simulcast", simulcast);
+				}
 				if(participant->room && participant->room->do_svc) {
 					json_t *svc = json_object();
 					json_object_set_new(svc, "spatial-layer", json_integer(participant->spatial_layer));

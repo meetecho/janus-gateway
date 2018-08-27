@@ -41,6 +41,7 @@
 ; videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 ; videoskew = yes|no (whether the plugin should perform skew
 ;		analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
+; videosvc = yes|no (whether the video will have SVC support; works only for VP9-SVC, default=no)
 ; collision = in case of collision (more than one SSRC hitting the same port), the plugin
 ;		will discard incoming RTP packets with a new SSRC unless this many milliseconds
 ;		passed, which would then change the current SSRC (0=disabled)
