@@ -41,6 +41,7 @@
 ; videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 ; videoskew = yes|no (whether the plugin should perform skew
 ;		analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
+; videosvc = yes|no (whether the video will have SVC support; works only for VP9-SVC, default=no)
 ; collision = in case of collision (more than one SSRC hitting the same port), the plugin
 ;		will discard incoming RTP packets with a new SSRC unless this many milliseconds
 ;		passed, which would then change the current SSRC (0=disabled)
@@ -48,6 +49,9 @@
 ; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; databuffermsg = yes|no (whether the plugin should store the latest
 ;		message and send it immediately for new viewers)
+; threads = number of threads to assist with the relaying part, which can help
+;		if you expect a lot of viewers that may cause the RTP receiving part
+;		in the Streaming plugin to slow down and fail to catch up (default=0)
 ;
 ; In case you want to use SRTP for your RTP-based mountpoint, you'll need
 ; to configure the SRTP-related properties as well, namely the suite to

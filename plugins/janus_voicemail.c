@@ -617,7 +617,7 @@ static void janus_voicemail_hangup_media_internal(janus_plugin_session *handle) 
 	session->started = FALSE;
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Close and reset stuff */
 	if(session->file)
@@ -626,6 +626,7 @@ static void janus_voicemail_hangup_media_internal(janus_plugin_session *handle) 
 	if(session->stream)
 		ogg_stream_destroy(session->stream);
 	session->stream = NULL;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

@@ -1195,12 +1195,10 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		return;
 	}
 	session->active = FALSE;
-	if(g_atomic_int_get(&session->destroyed)) {
+	if(g_atomic_int_get(&session->destroyed))
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	session->simulcast_ssrc = 0;
 
 	/* Send an event to the browser and tell it's over */
@@ -1282,6 +1280,7 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		janus_refcount_decrease(&session->recording->ref);
 		session->recording = NULL;
 	}
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
