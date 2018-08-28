@@ -1988,7 +1988,7 @@ static void *janus_nosip_relay_thread(void *data) {
 			!g_atomic_int_get(&session->destroyed) && !g_atomic_int_get(&session->hangingup)) {
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0)) {
+			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				janus_nosip_connect_sockets(session, &server_addr);
 			} else {
 				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't update session details: missing or invalid remote IP address? (%s)\n",
