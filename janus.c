@@ -204,6 +204,15 @@ static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
 #define DEFAULT_RECLAIM_SESSION_TIMEOUT		0
 static uint reclaim_session_timeout = DEFAULT_RECLAIM_SESSION_TIMEOUT;
 
+/* We don't hold (trickle) candidates indefinitely either: by default, we
+ * only store them for 45 seconds. After that, they're discarded, in order
+ * to avoid leaks or orphaned media details. This means that, if for instance
+ * you're trying to set up a call with someone, and that someone only answers
+ * a minute later, the candidates you sent initially will be discarded and
+ * the call will fail. You can modify the default value in janus.cfg */
+#define DEFAULT_CANDIDATES_TIMEOUT		45
+static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
+
 
 /* Information */
 static json_t *janus_info(const char *transaction) {
@@ -226,6 +235,7 @@ static json_t *janus_info(const char *transaction) {
 #endif
 	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
 	json_object_set_new(info, "reclaim-session-timeout", json_integer(reclaim_session_timeout));
+	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
@@ -721,8 +731,9 @@ static void janus_request_ice_handle_answer(janus_ice_handle *handle, int audio,
 			g_list_free(temp);
 			if(trickle == NULL)
 				continue;
-			if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
+			if((janus_get_monotonic_time() - trickle->received) > candidates_timeout*G_USEC_PER_SEC) {
 				/* FIXME Candidate is too old, discard it */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Discarding candidate (too old)\n", handle->handle_id);
 				janus_ice_trickle_destroy(trickle);
 				/* FIXME We should report that */
 				continue;
@@ -1658,6 +1669,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
 			json_object_set_new(status, "reclaim_session_timeout", json_integer(reclaim_session_timeout));
+			json_object_set_new(status, "candidates_timeout", json_integer(candidates_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
@@ -3586,6 +3598,17 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_WARN, "Reclaim session timeouts have been disabled, will cleanup immediately\n");
 			}
 			reclaim_session_timeout = rst;
+		}
+	}
+
+	/* Check if a custom candidates timeout value was specified */
+	item = janus_config_get_item_drilldown(config, "general", "candidates_timeout");
+	if(item && item->value) {
+		int ct = atoi(item->value);
+		if(ct <= 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring candidates_timeout value as it's not a positive integer\n");
+		} else {
+			candidates_timeout = ct;
 		}
 	}
 

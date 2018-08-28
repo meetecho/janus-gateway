@@ -61,6 +61,12 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							mechanism, and sessions will be destroyed immediately
 ;							if the transport is gone.
 ;
+;candidates_timeout = 45	; How long (in seconds) we should keep hold of
+;							pending (trickle) candidates before discarding
+;							them (default=45s). Notice that setting this
+;							to 0 will NOT disable the timeout, but will
+;							be considered an invalid value and ignored.
+;
 ;recordings_tmp_ext = tmp	; The extension for recordings, in Janus, is
 ;							.mjr, a custom format we devised ourselves.
 ;							By default, we save to .mjr directly. If you'd
