@@ -2282,6 +2282,14 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		json_integer(participant->user_id));
 	janus_mutex_lock(&participant->room->mutex);
 	janus_videoroom_notify_participants(participant, event);
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string(is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished"));
+		json_object_set_new(info, "room", json_integer(participant->room_id));
+		json_object_set_new(info, "id", json_integer(participant->user_id));
+		gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+	}
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants, &participant->user_id);
 		g_hash_table_remove(participant->room->private_ids, GUINT_TO_POINTER(participant->pvt_id));
@@ -3604,14 +3612,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		/* This publisher is leaving, tell everybody */
 		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
-		/* Also notify event handlers */
-		if(notify_events && gateway->events_is_enabled()) {
-			json_t *info = json_object();
-			json_object_set_new(info, "event", json_string("kicked"));
-			json_object_set_new(info, "room", json_integer(room_id));
-			json_object_set_new(info, "id", json_integer(user_id));
-			gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
-		}
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && participant->session)
 			gateway->close_pc(participant->session->handle);
@@ -4424,14 +4424,6 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		}
 		janus_mutex_unlock(&participant->subscribers_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
-		/* Also notify event handlers */
-		if(notify_events && gateway->events_is_enabled()) {
-			json_t *info = json_object();
-			json_object_set_new(info, "event", json_string("unpublished"));
-			json_object_set_new(info, "room", json_integer(participant->room_id));
-			json_object_set_new(info, "id", json_integer(participant->user_id));
-			gateway->notify_event(&janus_videoroom_plugin, handle, info);
-		}
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of subscriber */
