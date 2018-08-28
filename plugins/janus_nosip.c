@@ -1340,7 +1340,7 @@ static void *janus_nosip_handler(void *data) {
 					/* Clean up SRTP stuff from before first, in case it's still needed */
 					janus_nosip_srtp_cleanup(session);
 				}
-				janus_nosip_sdp_process(session, parsed_sdp, !offer, FALSE, &changed);
+				janus_nosip_sdp_process(session, parsed_sdp, !offer, sdp_update, &changed);
 				/* Check if offer has neither audio nor video, fail */
 				if(!session->media.has_audio && !session->media.has_video) {
 					JANUS_LOG(LOG_ERR, "No audio and no video being negotiated\n");
