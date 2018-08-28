@@ -121,7 +121,9 @@ $(document).ready(function() {
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
-											clearInterval(bitrateTimer);
+											if(bitrateTimer)
+												clearInterval(bitrateTimer);
+											bitrateTimer = null;
 											janus.destroy();
 										});
 								},
@@ -202,7 +204,7 @@ $(document).ready(function() {
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
-											addSimulcastButtons();
+											addSimulcastButtons(temporal !== null && temporal !== undefined);
 										}
 										// We just received notice that there's been a switch, update the buttons
 										updateSimulcastButtons(substream, temporal);
@@ -355,6 +357,9 @@ $(document).ready(function() {
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
 									spinner = null;
+									if(bitrateTimer)
+										clearInterval(bitrateTimer);
+									bitrateTimer = null;
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$("#videoleft").parent().unblock();
@@ -416,7 +421,7 @@ function getQueryStringValue(name) {
 }
 
 // Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons() {
+function addSimulcastButtons(temporal) {
 	$('#curres').parent().append(
 		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -427,14 +432,14 @@ function addSimulcastButtons() {
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
 		'			<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
 		'			<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
 		'			<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'</div>');
-	// Enable the VP8 simulcast selection buttons
+	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
@@ -465,6 +470,9 @@ function addSimulcastButtons() {
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			echotest.send({message: { substream: 2 }});
 		});
+	if(!temporal)	// No temporal layer support
+		return;
+	$('#tl-0').parent().removeClass('hide');
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});

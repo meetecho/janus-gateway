@@ -133,7 +133,7 @@ static const char *janus_websockets_get_level_str(int level) {
 			return "CLIENT";
 		case LLL_LATENCY:
 			return "LATENCY";
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 		case LLL_USER:
 			return "USER";
 #endif
@@ -409,7 +409,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				/* Enable all libwebsockets logging */
 				ws_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
 					LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 					LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
 #else
 					LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
@@ -436,7 +436,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 					ws_log_level |= LLL_CLIENT;
 				if(strstr(item->value, "latency"))
 					ws_log_level |= LLL_LATENCY;
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 				if(strstr(item->value, "user"))
 					ws_log_level |= LLL_USER;
 #endif
@@ -489,7 +489,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		int pingpong_trigger = 0, pingpong_timeout = 0;
 		item = janus_config_get_item_drilldown(config, "general", "pingpong_trigger");
 		if(item && item->value) {
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_trigger = atoi(item->value);
 			if(pingpong_trigger < 0) {
 				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_trigger (%d), ignoring...\n", pingpong_trigger);
@@ -501,7 +501,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 		item = janus_config_get_item_drilldown(config, "general", "pingpong_timeout");
 		if(item && item->value) {
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_timeout = atoi(item->value);
 			if(pingpong_timeout < 0) {
 				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_timeout (%d), ignoring...\n", pingpong_timeout);
@@ -514,7 +514,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
 			wscinfo.ws_ping_pong_interval = pingpong_trigger;
 			wscinfo.timeout_secs = pingpong_timeout;

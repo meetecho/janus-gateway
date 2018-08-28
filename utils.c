@@ -366,7 +366,7 @@ int janus_pidfile_create(const char *file) {
 		return 0;
 	pidfile = g_strdup(file);
 	/* Try creating a PID file (or opening an existing one) */
-	pidfd = open(pidfile, O_RDWR|O_CREAT, 0644);
+	pidfd = open(pidfile, O_RDWR|O_CREAT|O_TRUNC, 0644);
 	if(pidfd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
 		return -1;
