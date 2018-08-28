@@ -1849,12 +1849,13 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	session->media.simulcast_ssrc = 0;
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
+		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
@@ -1868,6 +1869,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->jsep = NULL;
 	g_async_queue_push(messages, msg);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

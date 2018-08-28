@@ -368,8 +368,8 @@ typedef struct janus_videocall_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
-	const char *acodec;		/* Codec used for audio, if available */
-	const char *vcodec;		/* Codec used for video, if available */
+	janus_audiocodec acodec;/* Codec used for audio, if available */
+	janus_videocodec vcodec;/* Codec used for video, if available */
 	gboolean perc;
 	uint32_t bitrate;
 	guint16 slowlink_count;
@@ -627,10 +627,10 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "peer", peer->username ? json_string(peer->username) : NULL);
 		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
-		if(session->acodec)
-			json_object_set_new(info, "audio_codec", json_string(session->acodec));
-		if(session->vcodec)
-			json_object_set_new(info, "video_codec", json_string(session->vcodec));
+		if(session->acodec != JANUS_AUDIOCODEC_NONE)
+			json_object_set_new(info, "audio_codec", json_string(janus_audiocodec_name(session->acodec)));
+		if(session->vcodec != JANUS_VIDEOCODEC_NONE)
+			json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(session->vcodec)));
 		if(session->perc)
 			json_object_set_new(info, "perc", json_true());
 		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
@@ -806,38 +806,41 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				return;
 			}
 			session->last_relayed = janus_get_monotonic_time();
-			/* Check if there's any temporal scalability to take into account */
-			uint16_t picid = 0;
-			uint8_t tlzi = 0;
-			uint8_t tid = 0;
-			uint8_t ybit = 0;
-			uint8_t keyidx = 0;
-			if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
-				//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-				if(peer->templayer != peer->templayer_target) {
-					/* FIXME We should be smarter in deciding when to switch */
-					peer->templayer = peer->templayer_target;
-					/* Notify the peer */
-					json_t *event = json_object();
-						json_object_set_new(event, "videocall", json_string("event"));
-						json_t *result = json_object();
-						json_object_set_new(result, "event", json_string("simulcast"));
-						json_object_set_new(result, "temporal", json_integer(peer->templayer));
-						json_object_set_new(event, "result", result);
-					gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-				if(tid > peer->templayer) {
-					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-						tid, peer->templayer);
-					/* We increase the base sequence number, or there will be gaps when delivering later */
-					peer->context.v_base_seq++;
-					return;
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* Check if there's any temporal scalability to take into account */
+				uint16_t picid = 0;
+				uint8_t tlzi = 0;
+				uint8_t tid = 0;
+				uint8_t ybit = 0;
+				uint8_t keyidx = 0;
+				if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+					//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+					if(peer->templayer != peer->templayer_target) {
+						/* FIXME We should be smarter in deciding when to switch */
+						peer->templayer = peer->templayer_target;
+						/* Notify the peer */
+						json_t *event = json_object();
+							json_object_set_new(event, "videocall", json_string("event"));
+							json_t *result = json_object();
+							json_object_set_new(result, "event", json_string("simulcast"));
+							json_object_set_new(result, "temporal", json_integer(peer->templayer));
+							json_object_set_new(event, "result", result);
+						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
+						json_decref(event);
+					}
+					if(tid > peer->templayer) {
+						JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+							tid, peer->templayer);
+						/* We increase the base sequence number, or there will be gaps when delivering later */
+						peer->context.v_base_seq++;
+						return;
+					}
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(header, &peer->context, TRUE, 4500);
-			janus_vp8_simulcast_descriptor_update(payload, plen, &peer->simulcast_context, switched);
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8)
+				janus_vp8_simulcast_descriptor_update(payload, plen, &peer->simulcast_context, switched);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
@@ -1006,7 +1009,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
@@ -1041,14 +1044,15 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
-	session->acodec = NULL;
-	session->vcodec = NULL;
+	session->acodec = JANUS_AUDIOCODEC_NONE;
+	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	session->perc = FALSE;
 	session->bitrate = 0;
 	if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
 		janus_refcount_decrease(&peer->ref);
 	}
 	janus_rtp_switching_context_reset(&session->context);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -1367,15 +1371,18 @@ static void *janus_videocall_handler(void *data) {
 				}
 			}
 			/* Check which codecs we ended up using */
-			janus_sdp_find_first_codecs(answer, &session->acodec, &session->vcodec);
-			if(session->acodec == NULL) {
+			const char *acodec = NULL, *vcodec = NULL;
+			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			session->acodec = janus_audiocodec_from_name(acodec);
+			session->vcodec = janus_videocodec_from_name(vcodec);
+			if(session->acodec != JANUS_AUDIOCODEC_NONE) {
 				session->has_audio = FALSE;
 				if(peer)
 					peer->has_audio = FALSE;
 			} else if(peer) {
 				peer->acodec = session->acodec;
 			}
-			if(session->vcodec == NULL) {
+			if(session->vcodec != JANUS_VIDEOCODEC_NONE) {
 				session->has_video = FALSE;
 				if(peer)
 					peer->has_video = FALSE;
@@ -1496,7 +1503,7 @@ static void *janus_videocall_handler(void *data) {
 				session->templayer_target = json_integer_value(temporal);
 				JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 					session->templayer_target, session->templayer);
-				if(session->templayer_target == session->templayer) {
+				if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
 					/* No need to do anything, we're already getting the right temporal, so notify the user */
 					json_t *event = json_object();
 					json_object_set_new(event, "event", json_string("simulcast"));
@@ -1537,7 +1544,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							rc = janus_recorder_create(NULL, session->acodec, filename);
+							rc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
 							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1548,7 +1555,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(peer && peer->username) ? peer->username : "unknown",
 								now);
-							rc = janus_recorder_create(NULL, session->acodec, filename);
+							rc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
 							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1564,7 +1571,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", recording_base);
-							rc = janus_recorder_create(NULL, session->vcodec, filename);
+							rc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
 							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
@@ -1575,7 +1582,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(peer && peer->username) ? peer->username : "unknown",
 								now);
-							rc = janus_recorder_create(NULL, session->vcodec, filename);
+							rc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
 							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");

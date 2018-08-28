@@ -1557,11 +1557,12 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	if(!(session->status == janus_sipre_call_status_inviting ||
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall))
+		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
@@ -1572,6 +1573,7 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

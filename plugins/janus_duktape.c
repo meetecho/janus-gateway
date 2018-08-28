@@ -65,6 +65,10 @@
  * the JavaScript plugin will return its own info (i.e., "janus.plugin.javascript", etc.).
  * Most of the times, JavaScript scripts will not need to override this information,
  * unless they really want to register their own name spaces and versioning.
+ * Finally, JavaScript scripts can receive information on slow links via the
+ * \c slowLink() callback, in order to react accordingly: e.g., reduce
+ * the bitrate of a video sender if they, or their viewers, are experiencing
+ * issues.
  *
  * \section dtcapi C interfaces
  *
@@ -279,6 +283,7 @@ static char *duktape_script_package = NULL;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
+static gboolean has_slow_link = FALSE;
 /* JavaScript C scheduler (for coroutines) */
 static GThread *scheduler_thread = NULL;
 static void *janus_duktape_scheduler(void *data);
@@ -423,6 +428,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 	while(t > 0) {
 		r = fread(text+offset, 1, t, f);
 		if(r == 0) {
+			fclose(f);
 			g_free(text);
 			duk_push_error_object(ctx, DUK_ERR_ERROR, "Error reading file: %s\n", filename);
 			return duk_throw(ctx);
@@ -430,6 +436,7 @@ static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 		t -= r;
 	}
 	duk_push_lstring(ctx, text, len);
+	fclose(f);
 	g_free(text);
 	return 1;
 }
@@ -1356,6 +1363,9 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_get_global_string(duktape_ctx, "incomingData");
 	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
 		has_incoming_data = TRUE;
+	duk_get_global_string(duktape_ctx, "slowLink");
+	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
+		has_slow_link = TRUE;
 
 	duktape_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_duktape_session_destroy);
 	duktape_ids = g_hash_table_new(NULL, NULL);
@@ -2127,7 +2137,26 @@ void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
-	/* TODO Handle feedback depending on the logic the JS script dictated */
+	/* Check if the Duktape script wants to handle such events */
+	janus_refcount_increase(&session->ref);
+	if(has_slow_link) {
+		/* Notify the JS script */
+		janus_mutex_lock(&duktape_mutex);
+		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
+		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
+		duk_get_global_string(t, "slowLink");
+		duk_push_number(t, session->id);
+		duk_push_boolean(t, uplink);
+		duk_push_boolean(t, video);
+		int res = duk_pcall(t, 3);
+		if(res != DUK_EXEC_SUCCESS) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
+		}
+		duk_pop(t);
+		janus_mutex_unlock(&duktape_mutex);
+	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_duktape_hangup_media(janus_plugin_session *handle) {

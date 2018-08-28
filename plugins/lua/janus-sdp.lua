@@ -99,8 +99,6 @@ function JANUSSDP.findCodec(sdp, pt)
 					codec = "pcmu"
 				elseif a.value:find("pcma") ~= nil or a.value:find("PCMA") ~= nil then
 					codec = "pcma"
-				elseif a.value:find("pcma") ~= nil or a.value:find("PCMA") ~= nil then
-					codec = "pcma"
 				elseif a.value:find("isac16") ~= nil or a.value:find("ISAC16") ~= nil then
 					codec = "isac16"
 				elseif a.value:find("isac32") ~= nil or a.value:find("ISAC32") ~= nil then
