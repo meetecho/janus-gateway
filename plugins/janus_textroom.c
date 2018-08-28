@@ -1042,9 +1042,10 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	janus_mutex_lock(&sessions_mutex);
 	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
 		goto plugin_response;
 	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
@@ -2261,7 +2262,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Get rid of all participants */
 	janus_mutex_lock(&session->mutex);
@@ -2291,6 +2292,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		list = list->next;
 	}
 	g_list_free_full(first, (GDestroyNotify)g_free);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

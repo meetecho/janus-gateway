@@ -197,11 +197,11 @@ typedef struct janus_echotest_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
-	const char *acodec;		/* Codec used for audio, if available */
-	const char *vcodec;		/* Codec used for video, if available */
+	janus_audiocodec acodec;/* Codec used for audio, if available */
+	janus_videocodec vcodec;/* Codec used for video, if available */
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
-	uint32_t ssrc[3];		/* Only needed in case VP8 simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	int rtpmapid_extmap_id;	/* Only needed in case Firefox's RID-based simulcasting is involved */
 	char *rid[3];			/* Only needed in case Firefox's RID-based simulcasting is involved */
 	int substream;			/* Which simulcast substream we should forward back */
@@ -446,10 +446,10 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
-	if(session->acodec)
-		json_object_set_new(info, "audio_codec", json_string(session->acodec));
-	if(session->vcodec)
-		json_object_set_new(info, "video_codec", json_string(session->vcodec));
+	if(session->acodec != JANUS_AUDIOCODEC_NONE)
+		json_object_set_new(info, "audio_codec", json_string(janus_audiocodec_name(session->acodec)));
+	if(session->vcodec != JANUS_VIDEOCODEC_NONE)
+		json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(session->vcodec)));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 	json_object_set_new(info, "peer-bitrate", json_integer(session->peer_bitrate));
 	if(session->ssrc[0] != 0) {
@@ -615,35 +615,38 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 				return;
 			}
 			session->last_relayed = janus_get_monotonic_time();
-			/* Check if there's any temporal scalability to take into account */
-			uint16_t picid = 0;
-			uint8_t tlzi = 0;
-			uint8_t tid = 0;
-			uint8_t ybit = 0;
-			uint8_t keyidx = 0;
-			if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
-				//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-				if(session->templayer != session->templayer_target) {
-					/* FIXME We should be smarter in deciding when to switch */
-					session->templayer = session->templayer_target;
-					/* Notify the user */
-					json_t *event = json_object();
-					json_object_set_new(event, "echotest", json_string("event"));
-					json_object_set_new(event, "temporal", json_integer(session->templayer));
-					gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
-					json_decref(event);
-				}
-				if(tid > session->templayer) {
-					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-						tid, session->templayer);
-					/* We increase the base sequence number, or there will be gaps when delivering later */
-					session->context.v_base_seq++;
-					return;
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
+				/* Check if there's any temporal scalability to take into account */
+				uint16_t picid = 0;
+				uint8_t tlzi = 0;
+				uint8_t tid = 0;
+				uint8_t ybit = 0;
+				uint8_t keyidx = 0;
+				if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+					//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+					if(session->templayer != session->templayer_target) {
+						/* FIXME We should be smarter in deciding when to switch */
+						session->templayer = session->templayer_target;
+						/* Notify the user */
+						json_t *event = json_object();
+						json_object_set_new(event, "echotest", json_string("event"));
+						json_object_set_new(event, "temporal", json_integer(session->templayer));
+						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
+						json_decref(event);
+					}
+					if(tid > session->templayer) {
+						JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+							tid, session->templayer);
+						/* We increase the base sequence number, or there will be gaps when delivering later */
+						session->context.v_base_seq++;
+						return;
+					}
 				}
 			}
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(header, &session->context, TRUE, 0);
-			janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8)
+				janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
@@ -823,12 +826,10 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(g_atomic_int_get(&session->destroyed)) {
+	if(g_atomic_int_get(&session->destroyed))
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
 	json_object_set_new(event, "echotest", json_string("event"));
@@ -846,8 +847,8 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
-	session->acodec = NULL;
-	session->vcodec = NULL;
+	session->acodec = JANUS_AUDIOCODEC_NONE;
+	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
 	session->ssrc[0] = 0;
@@ -858,6 +859,7 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->templayer = -1;
 	session->templayer_target = 0;
 	session->last_relayed = 0;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -1023,7 +1025,7 @@ static void *janus_echotest_handler(void *data) {
 			session->templayer_target = json_integer_value(temporal);
 			JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 				session->templayer_target, session->templayer);
-			if(session->templayer_target == session->templayer) {
+			if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
 				/* No need to do anything, we're already getting the right temporal, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
@@ -1061,7 +1063,7 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-audio", recording_base);
-						session->arc = janus_recorder_create(NULL, session->acodec, filename);
+						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -1069,7 +1071,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
-						session->arc = janus_recorder_create(NULL, session->acodec, filename);
+						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -1082,7 +1084,7 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create(NULL, session->vcodec, filename);
+						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -1090,7 +1092,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create(NULL, session->vcodec, filename);
+						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -1193,6 +1195,15 @@ static void *janus_echotest_handler(void *data) {
 			m = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO);
 			if(m && m->direction == JANUS_SDP_SENDONLY)
 				m->direction = JANUS_SDP_INACTIVE;
+			/* Check which codecs we ended up with */
+			const char *acodec = NULL, *vcodec = NULL;
+			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			if(acodec)
+				session->acodec = janus_audiocodec_from_name(acodec);
+			if(vcodec)
+				session->vcodec = janus_videocodec_from_name(vcodec);
+			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;
+			session->has_video = session->vcodec != JANUS_VIDEOCODEC_NONE;
 			/* Add the extmap attribute, if needed */
 			if(session->rtpmapid_extmap_id > -1) {
 				/* First of all, let's check if the extmap attribute had a direction */
@@ -1213,18 +1224,13 @@ static void *janus_echotest_handler(void *data) {
 					"%d%s %s\r\n", session->rtpmapid_extmap_id, direction, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
 				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
 			}
-			if(janus_sdp_get_codec_pt(answer, "vp8") < 0) {
-				/* VP8 was not negotiated, if simulcasting was enabled then disable it here */
+			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
+				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
 				session->ssrc[0] = 0;
 				session->ssrc[1] = 0;
 				session->ssrc[2] = 0;
 			}
-			/* Check which codecs we ended up using */
-			janus_sdp_find_first_codecs(answer, &session->acodec, &session->vcodec);
-			if(session->acodec == NULL)
-				session->has_audio = FALSE;
-			if(session->vcodec == NULL)
-				session->has_video = FALSE;
+			/* Done */
 			char *sdp = janus_sdp_write(answer);
 			janus_sdp_destroy(offer);
 			janus_sdp_destroy(answer);
