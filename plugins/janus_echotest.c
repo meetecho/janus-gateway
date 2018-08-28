@@ -754,33 +754,17 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
 		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
-		if(video) {
-			/* Halve the bitrate, but don't go too low... */
-			session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
-			session->bitrate = session->bitrate/2;
-			if(session->bitrate < 64*1024)
-				session->bitrate = 64*1024;
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
-				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
-			/* ... and send a new REMB back */
-			char rtcpbuf[32];
-			int numssrc = 1;
-			if(session->ssrc[1])
-				numssrc++;
-			if(session->ssrc[2])
-				numssrc++;
-			int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, remblen);
-			/* As a last thing, notify the user about this */
+		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s\n",
+			uplink ? "uplink" : "downlink", video ? "video" : "audio");
+		if(!uplink) {
+			/* Send an event on the handle to notify the application: it's
+			 * up to the application to then choose a policy and enforce it */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
-			json_t *result = json_object();
-			json_object_set_new(result, "status", json_string("slow_link"));
-			json_object_set_new(result, "bitrate", json_integer(session->bitrate));
-			json_object_set_new(event, "result", result);
+			json_object_set_new(event, "event", json_string("slow_link"));
+			/* Also add info on what the current bitrate cap is */
+			json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
 			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
-			/* We don't need the event anymore */
 			json_decref(event);
 		}
 	}
