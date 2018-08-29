@@ -1186,6 +1186,9 @@ static void *janus_nosip_handler(void *data) {
 			const char *msg_sdp_type = json_string_value(json_object_get(generate ? msg->jsep : root, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(generate ? msg->jsep : root, "sdp"));
 			gboolean sdp_update = json_is_true(json_object_get(generate ? msg->jsep : root, "update"));
+			if(!generate && session->media.ready) {
+				sdp_update = TRUE;
+			}
 			if(!msg_sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_NOSIP_ERROR_MISSING_SDP;
@@ -1337,7 +1340,7 @@ static void *janus_nosip_handler(void *data) {
 					/* Clean up SRTP stuff from before first, in case it's still needed */
 					janus_nosip_srtp_cleanup(session);
 				}
-				janus_nosip_sdp_process(session, parsed_sdp, !offer, FALSE, &changed);
+				janus_nosip_sdp_process(session, parsed_sdp, !offer, sdp_update, &changed);
 				/* Check if offer has neither audio nor video, fail */
 				if(!session->media.has_audio && !session->media.has_video) {
 					JANUS_LOG(LOG_ERR, "No audio and no video being negotiated\n");
@@ -1988,7 +1991,7 @@ static void *janus_nosip_relay_thread(void *data) {
 			!g_atomic_int_get(&session->destroyed) && !g_atomic_int_get(&session->hangingup)) {
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0)) {
+			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				janus_nosip_connect_sockets(session, &server_addr);
 			} else {
 				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Couldn't update session details: missing or invalid remote IP address? (%s)\n",
