@@ -3617,7 +3617,7 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 		if(bw > 0) {
 			/* Keep track of this value, if this is the lowest right now */
 			JANUS_LOG(LOG_HUGE, "  -- REMB for this PeerConnection: %"SCNu64"\n", bw);
-			if(source->lowest_bitrate < bw)
+			if((0 == source->lowest_bitrate) || (source->lowest_bitrate > bw))
 				source->lowest_bitrate = bw;
 		}
 	}
