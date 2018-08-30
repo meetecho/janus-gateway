@@ -3411,7 +3411,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Free and reset stats list */
 		g_slist_free(stream->transport_wide_received_seq_nums);
 		stream->transport_wide_received_seq_nums = NULL;
-		/* Get feedback pacakte count and increase it for next one */
+		/* Get feedback packet count and increase it for next one */
 		guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
 		/* Create rtcp packet */
 		int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
