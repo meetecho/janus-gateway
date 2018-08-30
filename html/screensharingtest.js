@@ -277,20 +277,9 @@ function checkEnterShare(field, event) {
 	}
 }
 
-function switchToHttps() {
-	window.location.href = "https:" + window.location.href.substring(window.location.protocol.length);
-	return false;
-}
-
 function preShareScreen() {
-	// Make sure HTTPS is being used
-	if(window.location.protocol !== 'https:') {
-		bootbox.alert('Sharing your screen only works on HTTPS: click <b><a href="#" onclick="return switchToHttps();">here</a></b> to try the https:// version of this page');
-		$('#start').attr('disabled', true);
-		return;
-	}
 	if(!Janus.isExtensionEnabled()) {
-		bootbox.alert("You're using a recent version of Chrome but don't have the screensharing extension installed: click <b><a href='https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj' target='_blank'>here</a></b> to do so", function() {
+		bootbox.alert("You're using Chrome but don't have the screensharing extension installed: click <b><a href='https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj' target='_blank'>here</a></b> to do so", function() {
 			window.location.reload();
 		});
 		return;
