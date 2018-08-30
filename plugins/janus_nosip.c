@@ -581,7 +581,7 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gboolean answer, gboolean update, gboolean *changed);
 char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, gboolean answer);
 /* Media */
-static int janus_nosip_allocate_local_ports(janus_nosip_session *session);
+static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboolean update);
 static void *janus_nosip_relay_thread(void *data);
 
 
@@ -1286,24 +1286,23 @@ static void *janus_nosip_handler(void *data) {
 				goto error;
 			}
 			if(generate) {
-				if(!sdp_update) {
-					/* Allocate RTP ports and merge them with the anonymized SDP */
-					if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
-						JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-						session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
-					}
-					if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
-						JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-						session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
-					}
-					if(janus_nosip_allocate_local_ports(session) < 0) {
-						JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-						janus_sdp_destroy(parsed_sdp);
-						error_code = JANUS_NOSIP_ERROR_IO_ERROR;
-						g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
-						goto error;
-					}
+				/* Allocate RTP ports and merge them with the anonymized SDP */
+				if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
+					JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
+					session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
 				}
+				if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
+					JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
+					session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+				}
+				if(janus_nosip_allocate_local_ports(session, sdp_update) < 0) {
+					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+					janus_sdp_destroy(parsed_sdp);
+					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
+					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+					goto error;
+				}
+
 				char *sdp = janus_nosip_sdp_manipulate(session, parsed_sdp, FALSE);
 				if(sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -1762,41 +1761,43 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 }
 
 /* Bind local RTP/RTCP sockets */
-static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
+static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboolean update) {
 	if(session == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
 		return -1;
 	}
 	/* Reset status */
-	if(session->media.audio_rtp_fd != -1) {
-		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
-	}
-	if(session->media.audio_rtcp_fd != -1) {
-		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
-	}
-	session->media.local_audio_rtp_port = 0;
-	session->media.local_audio_rtcp_port = 0;
-	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd != -1) {
-		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
-	}
-	if(session->media.video_rtcp_fd != -1) {
-		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
-	}
-	session->media.local_video_rtp_port = 0;
-	session->media.local_video_rtcp_port = 0;
-	session->media.video_ssrc = 0;
-	if(session->media.pipefd[0] > 0) {
-		close(session->media.pipefd[0]);
-		session->media.pipefd[0] = -1;
-	}
-	if(session->media.pipefd[1] > 0) {
-		close(session->media.pipefd[1]);
-		session->media.pipefd[1] = -1;
+	if(!update) {
+		if(session->media.audio_rtp_fd != -1) {
+			close(session->media.audio_rtp_fd);
+			session->media.audio_rtp_fd = -1;
+		}
+		if(session->media.audio_rtcp_fd != -1) {
+			close(session->media.audio_rtcp_fd);
+			session->media.audio_rtcp_fd = -1;
+		}
+		session->media.local_audio_rtp_port = 0;
+		session->media.local_audio_rtcp_port = 0;
+		session->media.audio_ssrc = 0;
+		if(session->media.video_rtp_fd != -1) {
+			close(session->media.video_rtp_fd);
+			session->media.video_rtp_fd = -1;
+		}
+		if(session->media.video_rtcp_fd != -1) {
+			close(session->media.video_rtcp_fd);
+			session->media.video_rtcp_fd = -1;
+		}
+		session->media.local_video_rtp_port = 0;
+		session->media.local_video_rtcp_port = 0;
+		session->media.video_ssrc = 0;
+		if(session->media.pipefd[0] > 0) {
+			close(session->media.pipefd[0]);
+			session->media.pipefd[0] = -1;
+		}
+		if(session->media.pipefd[1] > 0) {
+			close(session->media.pipefd[1]);
+			session->media.pipefd[1] = -1;
+		}
 	}
 	/* Start */
 	int attempts = 100;	/* FIXME Don't retry forever */
@@ -1899,7 +1900,19 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 		}
 	}
 	/* We need this to quickly interrupt the poll when it's time to update a session or wrap up */
-	pipe(session->media.pipefd);
+	if(!update) {
+		pipe(session->media.pipefd);
+	} else {
+		/* Something changed: mark this on the session, so that the thread can update the sockets */
+		session->media.updated = TRUE;
+		if(session->media.pipefd[1] > 0) {
+			int code = 1;
+			ssize_t res = 0;
+			do {
+				res = write(session->media.pipefd[1], &code, sizeof(int));
+			} while(res == -1 && errno == EINTR);
+		}
+	}
 	return 0;
 }
 
