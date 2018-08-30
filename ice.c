@@ -2223,7 +2223,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
 						/* Lock and append to received list */
 						janus_mutex_lock(&stream->mutex);
-						stream->transport_wide_received_seq_nums = g_slist_append(stream->transport_wide_received_seq_nums, stats);
+						stream->transport_wide_received_seq_nums = g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
 						janus_mutex_unlock(&stream->mutex);
 					}
 				}
@@ -3419,7 +3419,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
 		/* Free mem */
-		g_queue_free_full(packets, (GDestroyNotify)g_free);
+		g_queue_free(packets);
 	}
 	return G_SOURCE_CONTINUE;
 }

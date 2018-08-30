@@ -1388,7 +1388,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			}
 		}
 		/* Free mem */
-		free(stat);
+		g_free(stat);
 
 		/* Get next packet stat */
 		stat = (janus_rtcp_transport_wide_cc_stats *) g_queue_pop_head (transport_wide_cc_stats);
