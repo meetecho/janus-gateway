@@ -4092,7 +4092,14 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
-	}
+        /* Sanitary check */
+        if(handle->stream->component != component) {
+            JANUS_LOG(LOG_ERR, "Unexpected component %p with id %u for stream %p with id %u\n",
+            	component, component->component_id, handle->stream, handle->stream->stream_id);
+            janus_mutex_unlock(&handle->mutex);
+            return;
+        }
+    }
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		/* Already notified */
 		janus_mutex_unlock(&handle->mutex);
