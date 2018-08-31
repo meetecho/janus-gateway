@@ -5709,10 +5709,10 @@ static void *janus_videoroom_handler(void *data) {
 				if(participant->acodec == JANUS_AUDIOCODEC_NONE) {
 					int i=0;
 					for(i=0; i<3; i++) {
-						if(participant->room->acodec[i] == JANUS_AUDIOCODEC_NONE)
+						if(videoroom->acodec[i] == JANUS_AUDIOCODEC_NONE)
 							continue;
-						if(janus_sdp_get_codec_pt(offer, janus_audiocodec_name(participant->room->acodec[i])) != -1) {
-							participant->acodec = participant->room->acodec[i];
+						if(janus_sdp_get_codec_pt(offer, janus_audiocodec_name(videoroom->acodec[i])) != -1) {
+							participant->acodec = videoroom->acodec[i];
 							break;
 						}
 					}
@@ -5722,10 +5722,10 @@ static void *janus_videoroom_handler(void *data) {
 				if(participant->vcodec == JANUS_VIDEOCODEC_NONE) {
 					int i=0;
 					for(i=0; i<3; i++) {
-						if(participant->room->vcodec[i] == JANUS_VIDEOCODEC_NONE)
+						if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_NONE)
 							continue;
-						if(janus_sdp_get_codec_pt(offer, janus_videocodec_name(participant->room->vcodec[i])) != -1) {
-							participant->vcodec = participant->room->vcodec[i];
+						if(janus_sdp_get_codec_pt(offer, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
+							participant->vcodec = videoroom->vcodec[i];
 							break;
 						}
 					}
