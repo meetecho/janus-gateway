@@ -1076,7 +1076,10 @@ gboolean janus_dtls_retry(gpointer stack) {
 		goto stoptimer;
 	}
 	struct timeval timeout = {0};
-	DTLSv1_get_timeout(dtls->ssl, &timeout);
+	if(DTLSv1_get_timeout(dtls->ssl, &timeout) == 0) {
+		/* failed to get timeout. try again on next iter */
+		return TRUE;
+	}
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
 	if(timeout_value == 0) {
