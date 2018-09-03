@@ -8,6 +8,8 @@
 ; publishers = <max number of concurrent senders> (e.g., 6 for a video
 ;              conference or 1 for a webinar)
 ; bitrate = <max video bitrate for senders> (e.g., 128000)
+; bitrate_cap = yes|no (whether the above cap should act as a hard limit to
+;			dynamic bitrate changes by publishers; default=no, publishers can go beyond that)
 ; fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 ; audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec(s) to force on publishers, default=opus
 ;			can be a comma separated list in order of preference, e.g., opus,pcmu)
@@ -24,8 +26,7 @@
 ; playoutdelay_ext = yes|no (whether the playout-delay RTP extension must
 ;		be negotiated/used or not for new publishers, default=yes)
 ; transport_wide_cc_ext = yes|no (whether the transport wide CC RTP extension must be
-;		negotiated/used or not for new publishers, default=no; note that this currently
-;		doesn't work correctly when the publisher is doing simulcasting)
+;		negotiated/used or not for new publishers, default=no)
 ; record = true|false (whether this room should be recorded, default=false)
 ; rec_dir = <folder where recordings should be stored, when enabled>
 ; notify_joining = true|false (optional, whether to notify all participants when a new

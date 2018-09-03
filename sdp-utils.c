@@ -30,9 +30,29 @@ const char *janus_preferred_video_codecs[] = {
 };
 uint janus_video_codecs = sizeof(janus_preferred_video_codecs)/sizeof(*janus_preferred_video_codecs);
 
-void janus_sdp_free(janus_sdp *sdp) {
-	if(!sdp)
+/* Reference counters management */
+void janus_sdp_destroy(janus_sdp *sdp) {
+	if(!sdp || !g_atomic_int_compare_and_exchange(&sdp->destroyed, 0, 1))
 		return;
+	janus_refcount_decrease(&sdp->ref);
+}
+
+void janus_sdp_mline_destroy(janus_sdp_mline *m) {
+	if(!m || !g_atomic_int_compare_and_exchange(&m->destroyed, 0, 1))
+		return;
+	janus_refcount_decrease(&m->ref);
+}
+
+void janus_sdp_attribute_destroy(janus_sdp_attribute *a) {
+	if(!a || !g_atomic_int_compare_and_exchange(&a->destroyed, 0, 1))
+		return;
+	janus_refcount_decrease(&a->ref);
+}
+
+/* Internal frees */
+static void janus_sdp_free(const janus_refcount *sdp_ref) {
+	janus_sdp *sdp = janus_refcount_containerof(sdp_ref, janus_sdp, ref);
+	/* This SDP instance can be destroyed, free all the resources */
 	g_free(sdp->o_name);
 	g_free(sdp->o_addr);
 	g_free(sdp->s_name);
@@ -56,24 +76,9 @@ void janus_sdp_free(janus_sdp *sdp) {
 	g_free(sdp);
 }
 
-janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction) {
-	janus_sdp_mline *m = g_malloc0(sizeof(janus_sdp_mline));
-	m->type = type;
-	const char *type_str = janus_sdp_mtype_str(type);
-	if(type_str == NULL) {
-		JANUS_LOG(LOG_WARN, "Unknown media type, type_str will have to be set manually\n");
-	} else {
-		m->type_str = g_strdup(type_str);
-	}
-	m->port = port;
-	m->proto = proto ? g_strdup(proto) : NULL;
-	m->direction = direction;
-	return m;
-}
-
-void janus_sdp_mline_destroy(janus_sdp_mline *mline) {
-	if(!mline)
-		return;
+static void janus_sdp_mline_free(const janus_refcount *mline_ref) {
+	janus_sdp_mline *mline = janus_refcount_containerof(mline_ref, janus_sdp_mline, ref);
+	/* This SDP m-line instance can be destroyed, free all the resources */
 	g_free(mline->type_str);
 	g_free(mline->proto);
 	g_free(mline->c_addr);
@@ -90,6 +95,33 @@ void janus_sdp_mline_destroy(janus_sdp_mline *mline) {
 	}
 	g_list_free(mline->attributes);
 	g_free(mline);
+}
+
+static void janus_sdp_attribute_free(const janus_refcount *attr_ref) {
+	janus_sdp_attribute *attr = janus_refcount_containerof(attr_ref, janus_sdp_attribute, ref);
+	/* This SDP attribute instance can be destroyed, free all the resources */
+	g_free(attr->name);
+	g_free(attr->value);
+	g_free(attr);
+}
+
+
+/* SDP and m-lines/attributes code */
+janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction) {
+	janus_sdp_mline *m = g_malloc0(sizeof(janus_sdp_mline));
+	g_atomic_int_set(&m->destroyed, 0);
+	janus_refcount_init(&m->ref, janus_sdp_mline_free);
+	m->type = type;
+	const char *type_str = janus_sdp_mtype_str(type);
+	if(type_str == NULL) {
+		JANUS_LOG(LOG_WARN, "Unknown media type, type_str will have to be set manually\n");
+	} else {
+		m->type_str = g_strdup(type_str);
+	}
+	m->port = port;
+	m->proto = proto ? g_strdup(proto) : NULL;
+	m->direction = direction;
+	return m;
 }
 
 janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type) {
@@ -127,6 +159,8 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 	if(!name)
 		return NULL;
 	janus_sdp_attribute *a = g_malloc(sizeof(janus_sdp_attribute));
+	g_atomic_int_set(&a->destroyed, 0);
+	janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 	a->name = g_strdup(name);
 	a->direction = JANUS_SDP_DEFAULT;
 	a->value = NULL;
@@ -139,14 +173,6 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 		a->value = g_strdup(buffer);
 	}
 	return a;
-}
-
-void janus_sdp_attribute_destroy(janus_sdp_attribute *attr) {
-	if(!attr)
-		return;
-	g_free(attr->name);
-	g_free(attr->value);
-	g_free(attr);
 }
 
 int janus_sdp_attribute_add_to_mline(janus_sdp_mline *mline, janus_sdp_attribute *attr) {
@@ -224,6 +250,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		return NULL;
 	}
 	janus_sdp *imported = g_malloc0(sizeof(janus_sdp));
+	g_atomic_int_set(&imported->destroyed, 0);
+	janus_refcount_init(&imported->ref, janus_sdp_free);
 	imported->o_ipv4 = TRUE;
 	imported->c_ipv4 = TRUE;
 
@@ -323,6 +351,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
+						g_atomic_int_set(&a->destroyed, 0);
+						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL) {
@@ -352,6 +382,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'm': {
 						janus_sdp_mline *m = g_malloc0(sizeof(janus_sdp_mline));
+						g_atomic_int_set(&m->destroyed, 0);
+						janus_refcount_init(&m->ref, janus_sdp_mline_free);
 						/* Start with media type, port and protocol */
 						char type[32];
 						char proto[64];
@@ -442,19 +474,21 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						}
 						*semicolon = '\0';
 						mline->b_name = g_strdup(line);
-						mline->b_value = atoi(semicolon+1);
+						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
 						break;
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
+						g_atomic_int_set(&a->destroyed, 0);
+						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL) {
 							/* Is this a media direction attribute? */
 							janus_sdp_mdirection direction = janus_sdp_parse_mdirection(line);
 							if(direction != JANUS_SDP_INVALID) {
-								g_free(a);
+								janus_sdp_attribute_destroy(a);
 								mline->direction = direction;
 								break;
 							}
@@ -506,7 +540,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	if(!success) {
 		if(error)
 			JANUS_LOG(LOG_ERR, "%s\n", error);
-		janus_sdp_free(imported);
+		janus_sdp_destroy(imported);
 		imported = NULL;
 	}
 	return imported;
@@ -688,6 +722,7 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
+	janus_refcount_increase(&imported->ref);
 	char *sdp = g_malloc(JANUS_BUFSIZE), buffer[512];
 	*sdp = '\0';
 	/* v= */
@@ -765,7 +800,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		if(m->port > 0) {
 			/* b= */
 			if(m->b_name != NULL) {
-				g_snprintf(buffer, sizeof(buffer), "b=%s:%d\r\n", m->b_name, m->b_value);
+				g_snprintf(buffer, sizeof(buffer), "b=%s:%"SCNu32"\r\n", m->b_name, m->b_value);
 				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			}
 		}
@@ -793,12 +828,14 @@ char *janus_sdp_write(janus_sdp *imported) {
 		}
 		temp = temp->next;
 	}
+	janus_refcount_decrease(&imported->ref);
 	return sdp;
 }
 
 void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
 	if(sdp == NULL)
 		return;
+	janus_refcount_increase(&sdp->ref);
 	gboolean audio = FALSE, video = FALSE;
 	GList *temp = sdp->m_lines;
 	while(temp) {
@@ -833,11 +870,13 @@ void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const 
 			break;
 		temp = temp->next;
 	}
+	janus_refcount_decrease(&sdp->ref);
 }
 
 void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
 	if(sdp == NULL)
 		return;
+	janus_refcount_increase(&sdp->ref);
 	gboolean audio = FALSE, video = FALSE;
 	GList *temp = sdp->m_lines;
 	while(temp) {
@@ -870,6 +909,7 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char
 			break;
 		temp = temp->next;
 	}
+	janus_refcount_decrease(&sdp->ref);
 }
 
 const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec) {
@@ -890,6 +930,8 @@ const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec) {
 
 janus_sdp *janus_sdp_new(const char *name, const char *address) {
 	janus_sdp *sdp = g_malloc(sizeof(janus_sdp));
+	g_atomic_int_set(&sdp->destroyed, 0);
+	janus_refcount_init(&sdp->ref, janus_sdp_free);
 	/* Fill in some predefined stuff */
 	sdp->version = 0;
 	sdp->o_name = g_strdup("-");
@@ -914,7 +956,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	va_start(args, address);
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
+		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE,
+		data_legacy = TRUE;
 	const char *audio_codec = NULL, *video_codec = NULL;
 	int audio_pt = 111, video_pt = 96;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
@@ -944,6 +987,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
 			h264_fmtp = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_DATA_LEGACY) {
+			data_legacy = va_arg(args, gboolean);
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1017,13 +1062,19 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 	if(do_data) {
-		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_APPLICATION, 1, "DTLS/SCTP", JANUS_SDP_DEFAULT);
+		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_APPLICATION, 1,
+			data_legacy ? "DTLS/SCTP" : "UDP/DTLS/SCTP", JANUS_SDP_DEFAULT);
 		m->c_ipv4 = TRUE;
 		m->c_addr = g_strdup(offer->c_addr);
-		m->fmts = g_list_append(m->fmts, g_strdup("5000"));
-		/* Add an sctmap attribute */
-		janus_sdp_attribute *aa = janus_sdp_attribute_create("sctmap", "5000 webrtc-datachannel 16");
-		m->attributes = g_list_append(m->attributes, aa);
+		m->fmts = g_list_append(m->fmts, g_strdup(data_legacy ? "5000" : "webrtc-datachannel"));
+		/* Add an sctpmap attribute */
+		if(data_legacy) {
+			janus_sdp_attribute *aa = janus_sdp_attribute_create("sctpmap", "5000 webrtc-datachannel 16");
+			m->attributes = g_list_append(m->attributes, aa);
+		} else {
+			janus_sdp_attribute *aa = janus_sdp_attribute_create("sctp-port", "5000");
+			m->attributes = g_list_append(m->attributes, aa);
+		}
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 
@@ -1037,6 +1088,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	if(offer == NULL)
 		return NULL;
 
+	janus_refcount_increase(&offer->ref);
 	/* This method has a variable list of arguments, telling us how we should respond */
 	va_list args;
 	va_start(args, offer);
@@ -1077,6 +1129,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 #endif
 
 	janus_sdp *answer = g_malloc(sizeof(janus_sdp));
+	g_atomic_int_set(&answer->destroyed, 0);
+	janus_refcount_init(&answer->ref, janus_sdp_free);
 	/* Start by copying some of the headers */
 	answer->version = offer->version;
 	answer->o_name = g_strdup(offer->o_name ? offer->o_name : "-");
@@ -1099,6 +1153,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		/* For each m-line we parse, we'll need a corresponding one in the answer */
 		janus_sdp_mline *am = g_malloc0(sizeof(janus_sdp_mline));
+		g_atomic_int_set(&am->destroyed, 0);
+		janus_refcount_init(&am->ref, janus_sdp_mline_free);
 		am->type = m->type;
 		am->type_str = m->type_str ? g_strdup(m->type_str) : NULL;
 		am->proto = g_strdup(m->proto ? m->proto : "UDP/TLS/RTP/SAVPF");
@@ -1199,7 +1255,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 							codec = "pcma";
 							if(janus_sdp_get_codec_pt(offer, codec) < 0) {
 								/* a-law not found, maybe G.722? */
-								codec = "722";
+								codec = "g722";
 								if(janus_sdp_get_codec_pt(offer, codec) < 0) {
 									/* G.722 not found, maybe isac32? */
 									codec = "isac32";
@@ -1271,7 +1327,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				}
 			}
 		} else {
-			/* This is for data, add formats and an sctmap attribute */
+			/* This is for data, add formats and an sctpmap attribute */
 			am->direction = JANUS_SDP_DEFAULT;
 			GList *fmt = m->fmts;
 			while(fmt) {
@@ -1283,6 +1339,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 		}
 		temp = temp->next;
 	}
+	janus_refcount_decrease(&offer->ref);
 
 	/* Done */
 	va_end(args);

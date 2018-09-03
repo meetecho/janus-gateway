@@ -36,10 +36,10 @@
 #endif
 
 #if LIBAVCODEC_VER_AT_LEAST(56, 56)
-#ifndef AV_CODEC_FLAG_GLOBAL_HEADER
+#ifndef CODEC_FLAG_GLOBAL_HEADER
 #define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
 #endif
-#ifndef AV_INPUT_BUFFER_PADDING_SIZE
+#ifndef FF_INPUT_BUFFER_PADDING_SIZE
 #define FF_INPUT_BUFFER_PADDING_SIZE AV_INPUT_BUFFER_PADDING_SIZE
 #endif
 #endif
@@ -391,6 +391,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					tot -= psize;
 				}
 				/* Done, we'll wait for the next video data to write the frame */
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */

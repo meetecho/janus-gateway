@@ -146,7 +146,7 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
- * @param[out] transport wide sequence number
+ * @param[out] transSeqNum transport wide sequence number
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
 	uint16_t *transSeqNum);
@@ -178,9 +178,9 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] step \b deprecated The expected timestamp step */
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
-#define RTP_AUDIO_SKEW_TH_MS 40
-#define RTP_VIDEO_SKEW_TH_MS 40
-#define SKEW_DETECTION_WAIT_TIME_SECS 15
+#define RTP_AUDIO_SKEW_TH_MS 160
+#define RTP_VIDEO_SKEW_TH_MS 160
+#define SKEW_DETECTION_WAIT_TIME_SECS 10
 
 /*! \brief Use the context info to compensate for audio source skew, if needed
  * @param[in] header The RTP header to update
@@ -194,5 +194,28 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
  * @param[in] now \b The packet arrival monotonic time
  * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
+
+typedef enum janus_audiocodec {
+	JANUS_AUDIOCODEC_NONE,
+	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_PCMU,
+	JANUS_AUDIOCODEC_PCMA,
+	JANUS_AUDIOCODEC_G722,
+	JANUS_AUDIOCODEC_ISAC_32K,
+	JANUS_AUDIOCODEC_ISAC_16K
+} janus_audiocodec;
+const char *janus_audiocodec_name(janus_audiocodec acodec);
+janus_audiocodec janus_audiocodec_from_name(const char *name);
+int janus_audiocodec_pt(janus_audiocodec acodec);
+
+typedef enum janus_videocodec {
+	JANUS_VIDEOCODEC_NONE,
+	JANUS_VIDEOCODEC_VP8,
+	JANUS_VIDEOCODEC_VP9,
+	JANUS_VIDEOCODEC_H264
+} janus_videocodec;
+const char *janus_videocodec_name(janus_videocodec vcodec);
+janus_videocodec janus_videocodec_from_name(const char *name);
+int janus_videocodec_pt(janus_videocodec vcodec);
 
 #endif

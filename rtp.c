@@ -289,7 +289,7 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate current delay */
 			gint32 delay_now = context->a_last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (31*context->a_prev_delay + delay_now)/32;
+			gint32 delay_estimate = (63*context->a_prev_delay + delay_now)/64;
 			/* Save previous delay for the next iteration*/
 			context->a_prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
@@ -600,4 +600,118 @@ const char *janus_srtp_error_str(int error) {
 	if(error < 0 || error > 24)
 		return NULL;
 	return janus_srtp_error[error];
+}
+
+/* Payload types we'll offer internally */
+#define OPUS_PT		111
+#define ISAC32_PT	104
+#define ISAC16_PT	103
+#define PCMU_PT		0
+#define PCMA_PT		8
+#define G722_PT		9
+#define VP8_PT		96
+#define VP9_PT		101
+#define H264_PT		107
+const char *janus_audiocodec_name(janus_audiocodec acodec) {
+	switch(acodec) {
+		case JANUS_AUDIOCODEC_NONE:
+			return "none";
+		case JANUS_AUDIOCODEC_OPUS:
+			return "opus";
+		case JANUS_AUDIOCODEC_PCMU:
+			return "pcmu";
+		case JANUS_AUDIOCODEC_PCMA:
+			return "pcma";
+		case JANUS_AUDIOCODEC_G722:
+			return "g722";
+		case JANUS_AUDIOCODEC_ISAC_32K:
+			return "isac32";
+		case JANUS_AUDIOCODEC_ISAC_16K:
+			return "isac16";
+		default:
+			/* Shouldn't happen */
+			return "opus";
+	}
+}
+janus_audiocodec janus_audiocodec_from_name(const char *name) {
+	if(name == NULL)
+		return JANUS_AUDIOCODEC_NONE;
+	else if(!strcasecmp(name, "opus"))
+		return JANUS_AUDIOCODEC_OPUS;
+	else if(!strcasecmp(name, "isac32"))
+		return JANUS_AUDIOCODEC_ISAC_32K;
+	else if(!strcasecmp(name, "isac16"))
+		return JANUS_AUDIOCODEC_ISAC_16K;
+	else if(!strcasecmp(name, "pcmu"))
+		return JANUS_AUDIOCODEC_PCMU;
+	else if(!strcasecmp(name, "pcma"))
+		return JANUS_AUDIOCODEC_PCMA;
+	else if(!strcasecmp(name, "g722"))
+		return JANUS_AUDIOCODEC_G722;
+	JANUS_LOG(LOG_WARN, "Unsupported audio codec '%s'\n", name);
+	return JANUS_AUDIOCODEC_NONE;
+}
+int janus_audiocodec_pt(janus_audiocodec acodec) {
+	switch(acodec) {
+		case JANUS_AUDIOCODEC_NONE:
+			return -1;
+		case JANUS_AUDIOCODEC_OPUS:
+			return OPUS_PT;
+		case JANUS_AUDIOCODEC_ISAC_32K:
+			return ISAC32_PT;
+		case JANUS_AUDIOCODEC_ISAC_16K:
+			return ISAC16_PT;
+		case JANUS_AUDIOCODEC_PCMU:
+			return PCMU_PT;
+		case JANUS_AUDIOCODEC_PCMA:
+			return PCMA_PT;
+		case JANUS_AUDIOCODEC_G722:
+			return G722_PT;
+		default:
+			/* Shouldn't happen */
+			return OPUS_PT;
+	}
+}
+
+const char *janus_videocodec_name(janus_videocodec vcodec) {
+	switch(vcodec) {
+		case JANUS_VIDEOCODEC_NONE:
+			return "none";
+		case JANUS_VIDEOCODEC_VP8:
+			return "vp8";
+		case JANUS_VIDEOCODEC_VP9:
+			return "vp9";
+		case JANUS_VIDEOCODEC_H264:
+			return "h264";
+		default:
+			/* Shouldn't happen */
+			return "vp8";
+	}
+}
+janus_videocodec janus_videocodec_from_name(const char *name) {
+	if(name == NULL)
+		return JANUS_VIDEOCODEC_NONE;
+	else if(!strcasecmp(name, "vp8"))
+		return JANUS_VIDEOCODEC_VP8;
+	else if(!strcasecmp(name, "vp9"))
+		return JANUS_VIDEOCODEC_VP9;
+	else if(!strcasecmp(name, "h264"))
+		return JANUS_VIDEOCODEC_H264;
+	JANUS_LOG(LOG_WARN, "Unsupported video codec '%s'\n", name);
+	return JANUS_VIDEOCODEC_NONE;
+}
+int janus_videocodec_pt(janus_videocodec vcodec) {
+	switch(vcodec) {
+		case JANUS_VIDEOCODEC_NONE:
+			return -1;
+		case JANUS_VIDEOCODEC_VP8:
+			return VP8_PT;
+		case JANUS_VIDEOCODEC_VP9:
+			return VP9_PT;
+		case JANUS_VIDEOCODEC_H264:
+			return H264_PT;
+		default:
+			/* Shouldn't happen */
+			return VP8_PT;
+	}
 }

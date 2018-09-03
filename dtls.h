@@ -21,13 +21,15 @@
 #include "rtp.h"
 #include "rtpsrtp.h"
 #include "sctp.h"
+#include "refcount.h"
 #include "dtls-bio.h"
 
 /*! \brief DTLS stuff initialization
  * @param[in] server_pem Path to the certificate to use
  * @param[in] server_key Path to the key to use
+ * @param[in] password Password needed to use the key, if any
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_dtls_srtp_init(const char* server_pem, const char* server_key);
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password);
 /*! \brief Method to cleanup DTLS stuff before exiting */
 void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */
@@ -71,6 +73,8 @@ typedef struct janus_dtls_srtp {
 	BIO *filter_bio;
 	/*! \brief Whether SRTP has been correctly set up for this component or not */
 	gint srtp_valid;
+	/*! \brief The SRTP profile currently in use */
+	gint srtp_profile;
 	/*! \brief libsrtp context for incoming SRTP packets */
 	srtp_t srtp_in;
 	/*! \brief libsrtp context for outgoing SRTP packets */
@@ -79,8 +83,6 @@ typedef struct janus_dtls_srtp {
 	srtp_policy_t remote_policy;
 	/*! \brief libsrtp policy for outgoing SRTP packets */
 	srtp_policy_t local_policy;
-	/*! \brief Mutex to lock/unlock this libsrtp context */
-	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
 	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
@@ -89,6 +91,10 @@ typedef struct janus_dtls_srtp {
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
 #endif
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_dtls_srtp;
 
 
@@ -173,5 +179,9 @@ const gchar *janus_get_dtls_srtp_state(janus_dtls_state state);
  * @returns A string representation of the role */
 const gchar *janus_get_dtls_srtp_role(janus_dtls_role role);
 
+/*! \brief Helper method to get a string representation of an SRTP profile
+ * @param[in] profile The SRTP profile as exported by a DTLS-SRTP handshake
+ * @returns A string representation of the profile */
+const gchar *janus_get_dtls_srtp_profile(int profile);
 
 #endif

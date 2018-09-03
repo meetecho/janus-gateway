@@ -95,24 +95,24 @@ guint64 *janus_uint64_dup(guint64 num) {
 
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)
-		*flags = 0;
+		g_atomic_pointer_set(flags, 0);
 }
 
-void janus_flags_set(janus_flags *flags, uint32_t flag) {
+void janus_flags_set(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		*flags |= flag;
+		g_atomic_pointer_or(flags, flag);
 	}
 }
 
-void janus_flags_clear(janus_flags *flags, uint32_t flag) {
+void janus_flags_clear(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		*flags &= ~(flag);
+		g_atomic_pointer_and(flags, ~(flag));
 	}
 }
 
-gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag) {
+gboolean janus_flags_is_set(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		uint32_t bit = *flags & flag;
+		gsize bit = ((gsize) g_atomic_pointer_get(flags)) & flag;
 		return (bit != 0);
 	}
 	return FALSE;
@@ -366,7 +366,7 @@ int janus_pidfile_create(const char *file) {
 		return 0;
 	pidfile = g_strdup(file);
 	/* Try creating a PID file (or opening an existing one) */
-	pidfd = open(pidfile, O_RDWR|O_CREAT, 0644);
+	pidfd = open(pidfile, O_RDWR|O_CREAT|O_TRUNC, 0644);
 	if(pidfd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
 		return -1;
@@ -647,7 +647,6 @@ gboolean janus_h264_is_keyframe(char* buffer, int len) {
 	uint8_t fragment = *buffer & 0x1F;
 	uint8_t nal = *(buffer+1) & 0x1F;
 	uint8_t start_bit = *(buffer+1) & 0x80;
-	JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d\n", fragment, nal, start_bit);
 	if(fragment == 5 ||
 			((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
 		JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");

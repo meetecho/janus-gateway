@@ -59,7 +59,11 @@ admin_https = no				; Whether to enable HTTPS (default=no)
 [cors]
 ;allow_origin = http://foo.example
 
-; Certificate and key to use for HTTPS.
+; Certificate and key to use for HTTPS, if enabled (and passphrase if needed).
+; You can also disable insecure protocols and ciphers by configuring the
+; 'ciphers' property accordingly (no limitation by default).
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
+;cert_pwd = secretpassphrase
+;ciphers = PFS:-VERS-TLS1.0:-VERS-TLS1.1:-3DES-CBC:-ARCFOUR-128

@@ -26,6 +26,7 @@
 #include "rtcp.h"
 #include "text2pcap.h"
 #include "utils.h"
+#include "refcount.h"
 #include "plugins/plugin.h"
 
 
@@ -131,7 +132,7 @@ void janus_set_rfc4588_enabled(gboolean enabled);
  * @returns TRUE if it's enabled, FALSE otherwise */
 gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
- * @param[in] timer The new timer value, in seconds */
+ * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
@@ -178,6 +179,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
 #define JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES		(1 << 18)
 #define JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX			(1 << 19)
+#define JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP	(1 << 20)
 
 
 /*! \brief Janus media statistics
@@ -267,6 +269,10 @@ struct janus_ice_handle {
 	GMainLoop *iceloop;
 	/*! \brief GLib thread for libnice */
 	GThread *icethread;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
+	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief Atomic flag to check if the ICE loop is still running */
+	volatile gint looprunning;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -297,20 +303,22 @@ struct janus_ice_handle {
 	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */
 	GAsyncQueue *queued_packets;
-	/*! \brief GLib thread for sending outgoing packets */
-	GThread *send_thread;
-	/*! \brief Atomic flag to make sure we only create the thread once */
-	volatile gint send_thread_created;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
 	guint srtp_errors_count;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
-	gint last_srtp_error;
+	gint last_srtp_error, last_srtp_summary;
+	/*! \brief Count of how many seconds passed since the last stats passed to event handlers */
+	gint last_event_stats;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief Janus ICE stream */
@@ -401,6 +409,10 @@ struct janus_ice_stream {
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 #define LAST_SEQS_MAX_LEN 160
@@ -464,6 +476,10 @@ struct janus_ice_component {
 	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
@@ -482,11 +498,10 @@ struct janus_ice_trickle {
  */
 ///@{
 /*! \brief Helper method to allocate a janus_ice_trickle instance
- * @param[in] handle The Janus ICE handle this trickle candidate belongs to
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
+janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candidate);
 /*! \brief Helper method to parse trickle candidates
  * @param[in] handle The Janus ICE handle this candidate belongs to
  * @param[in] candidate The trickle candidate to parse, as a Jansson object
@@ -503,30 +518,22 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
  */
 ///@{
 /*! \brief Method to create a new Janus ICE handle
- * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
+ * @param[in] core_session The core/peer session this ICE handle will belong to
  * @param[in] opaque_id The opaque identifier provided by the creator, if any (optional)
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id);
-/*! \brief Method to find an existing Janus ICE handle from its ID
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID
- * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id);
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id);
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID
+ * @param[in] core_session The core/peer session this ICE handle belongs to
+ * @param[in] handle The Janus ICE handle
  * @param[in] plugin The plugin the ICE handle needs to be attached to
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin);
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
 /*! \brief Method to destroy a Janus ICE handle
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID to destroy
+ * @param[in] core_session The core/peer session this ICE handle belongs to
+ * @param[in] handle The Janus ICE handle to destroy
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
-/*! \brief Method to actually free the resources allocated by a Janus ICE handle
- * @param[in] handle The Janus ICE handle instance to free */
-void janus_ice_free(janus_ice_handle *handle);
+gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup
  * @param[in] reason A description of why this happened */
@@ -536,10 +543,10 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
 void janus_ice_webrtc_free(janus_ice_handle *handle);
 /*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
  * @param[in] stream The Janus ICE stream instance to free */
-void janus_ice_stream_free(janus_ice_stream *stream);
+void janus_ice_stream_destroy(janus_ice_stream *stream);
 /*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
  * @param[in] component The Janus ICE component instance to free */
-void janus_ice_component_free(janus_ice_component *component);
+void janus_ice_component_destroy(janus_ice_component *component);
 ///@}
 
 
@@ -568,16 +575,17 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Gateway SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buffer The message data (buffer)
+ * @param[in] length The buffer lenght */
+void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
 /** @name Janus ICE handle helpers
  */
 ///@{
-/*! \brief Janus ICE handle thread */
-void *janus_ice_thread(void *data);
-/*! \brief Janus ICE thread for sending outgoing packets */
-void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER
