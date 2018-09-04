@@ -1974,7 +1974,7 @@ function Janus(gatewayCallbacks) {
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
 						navigator.getDisplayMedia({ video: true })
-							.then(stream => {
+							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media)){
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -1985,7 +1985,7 @@ function Janus(gatewayCallbacks) {
 								} else {
 									streamsDone(handleId, jsep, media, callbacks, stream);
 								}
-							}, error => {
+							}, function (error) {
 								pluginHandle.consentDialog(false);
 								callbacks.error(error);
 							});
