@@ -3113,7 +3113,7 @@ function Janus(gatewayCallbacks) {
 			return false;
 		if (typeof media.video !== 'object' || typeof media.video.mandatory !== 'object')
 			return false;
-		const constraints = media.video.mandatory;
+		var constraints = media.video.mandatory;
 		if (constraints.chromeMediaSource)
 			return constraints.chromeMediaSource === 'desktop' || constraints.chromeMediaSource === 'screen';
 		else if (constraints.mozMediaSource)
