@@ -507,7 +507,6 @@ function handleMessage(id, tr, msg, jsep)
 						end
 						if comsg["data"] == true then
 							configureMedium(id, "data", "in", true)
-							sendPli(id)
 						elseif comsg["data"] == false then
 							configureMedium(id, "data", "in", false)
 						end
