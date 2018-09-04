@@ -90,7 +90,7 @@ gint janus_session_destroy(janus_session *session);
 janus_ice_handle *janus_session_handles_find(janus_session *session, guint64 handle_id);
 /*! \brief Method to insert a Janus ICE handle in a session
  * @param[in] session The Janus Gateway-Client session
- * @param[in] handle_id The Janus ICE handle */
+ * @param[in] handle The Janus ICE handle */
 void janus_session_handles_insert(janus_session *session, janus_ice_handle *handle);
 /*! \brief Method to remove a Janus ICE handle from a session
  * @param[in] session The Janus Gateway-Client session

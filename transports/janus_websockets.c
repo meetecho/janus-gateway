@@ -111,6 +111,42 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
 /* Logging */
 static int ws_log_level = 0;
+static const char *janus_websockets_get_level_str(int level) {
+	switch(level) {
+		case LLL_ERR:
+			return "ERR";
+		case LLL_WARN:
+			return "WARN";
+		case LLL_NOTICE:
+			return "NOTICE";
+		case LLL_INFO:
+			return "INFO";
+		case LLL_DEBUG:
+			return "DEBUG";
+		case LLL_PARSER:
+			return "PARSER";
+		case LLL_HEADER:
+			return "HEADER";
+		case LLL_EXT:
+			return "EXT";
+		case LLL_CLIENT:
+			return "CLIENT";
+		case LLL_LATENCY:
+			return "LATENCY";
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		case LLL_USER:
+			return "USER";
+#endif
+		case LLL_COUNT:
+			return "COUNT";
+		default:
+			return NULL;
+	}
+}
+static void janus_websockets_log_emit_function(int level, const char *line) {
+	/* FIXME Do we want to use different Janus debug levels according to the level here? */
+	JANUS_LOG(LOG_INFO, "[libwebsockets][%s] %s", janus_websockets_get_level_str(level), line);
+}
 
 /* WebSockets service thread */
 static GThread *ws_thread = NULL;
@@ -126,7 +162,6 @@ typedef struct janus_websockets_client {
 	int buflen;								/* Length of the buffer (may be resized after re-allocations) */
 	int bufpending;							/* Data an interrupted previous write couldn't send */
 	int bufoffset;							/* Offset from where the interrupted previous write should resume */
-	volatile gint session_timeout;			/* Whether a Janus session timeout occurred in the core */
 	volatile gint destroyed;				/* Whether this libwebsockets client instance has been closed */
 	janus_transport_session *ts;			/* Janus core-transport session */
 } janus_websockets_client;
@@ -240,14 +275,20 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 				struct sockaddr_in *sa = (struct sockaddr_in *)(iap->ifa_addr);
 				char buffer[16];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			} else if(iap->ifa_addr->sa_family == AF_INET6) {
 				struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(iap->ifa_addr);
 				char buffer[48];
 				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin6_addr), buffer, sizeof(buffer));
-				if(!strcmp(ip, buffer))
-					return g_strdup(iap->ifa_name);
+				if(!strcmp(ip, buffer)) {
+					char *iface = g_strdup(iap->ifa_name);
+					freeifaddrs(addrs);
+					return iface;
+				}
 			}
 		}
 	}
@@ -360,12 +401,51 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 
 		item = janus_config_get_item_drilldown(config, "general", "ws_logging");
 		if(item && item->value) {
-			ws_log_level = atoi(item->value);
-			if(ws_log_level < 0)
-				ws_log_level = 0;
+			/* libwebsockets uses a mask to set log levels, as documented here:
+			 * https://libwebsockets.org/lws-api-doc-master/html/group__log.html */
+			if(strstr(item->value, "none")) {
+				/* Disable libwebsockets logging completely (the default) */
+			} else if(strstr(item->value, "all")) {
+				/* Enable all libwebsockets logging */
+				ws_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
+					LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+					LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
+#else
+					LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
+#endif
+			} else {
+				/* Only enable some of the properties */
+				if(strstr(item->value, "err"))
+					ws_log_level |= LLL_ERR;
+				if(strstr(item->value, "warn"))
+					ws_log_level |= LLL_WARN;
+				if(strstr(item->value, "notice"))
+					ws_log_level |= LLL_NOTICE;
+				if(strstr(item->value, "info"))
+					ws_log_level |= LLL_INFO;
+				if(strstr(item->value, "debug"))
+					ws_log_level |= LLL_DEBUG;
+				if(strstr(item->value, "parser"))
+					ws_log_level |= LLL_PARSER;
+				if(strstr(item->value, "header"))
+					ws_log_level |= LLL_HEADER;
+				if(strstr(item->value, "ext"))
+					ws_log_level |= LLL_EXT;
+				if(strstr(item->value, "client"))
+					ws_log_level |= LLL_CLIENT;
+				if(strstr(item->value, "latency"))
+					ws_log_level |= LLL_LATENCY;
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+				if(strstr(item->value, "user"))
+					ws_log_level |= LLL_USER;
+#endif
+				if(strstr(item->value, "count"))
+					ws_log_level |= LLL_COUNT;
+			}
 		}
-		JANUS_LOG(LOG_VERB, "libwebsockets logging: %d\n", ws_log_level);
-		lws_set_log_level(ws_log_level, NULL);
+		JANUS_LOG(LOG_INFO, "libwebsockets logging: %d\n", ws_log_level);
+		lws_set_log_level(ws_log_level, janus_websockets_log_emit_function);
 
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get_item_drilldown(config, "general", "ws_acl");
@@ -409,7 +489,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		int pingpong_trigger = 0, pingpong_timeout = 0;
 		item = janus_config_get_item_drilldown(config, "general", "pingpong_trigger");
 		if(item && item->value) {
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_trigger = atoi(item->value);
 			if(pingpong_trigger < 0) {
 				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_trigger (%d), ignoring...\n", pingpong_trigger);
@@ -421,7 +501,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 		item = janus_config_get_item_drilldown(config, "general", "pingpong_timeout");
 		if(item && item->value) {
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_timeout = atoi(item->value);
 			if(pingpong_timeout < 0) {
 				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_timeout (%d), ignoring...\n", pingpong_timeout);
@@ -434,7 +514,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
 			wscinfo.ws_ping_pong_interval = pingpong_trigger;
 			wscinfo.timeout_secs = pingpong_timeout;
@@ -556,8 +636,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_ws");
@@ -664,8 +744,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
-				g_free(ip);
 			}
+			g_free(ip);
 		}
 	}
 	janus_config_destroy(config);
@@ -734,8 +814,6 @@ static void janus_websockets_destroy_client(
 		json_object_set_new(info, "event", json_string("disconnected"));
 		gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
 	}
-	/* Notify core */
-	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	ws_client->ts->transport_p = NULL;
 	/* Remove messages queue too, if needed */
 	if(ws_client->messages != NULL) {
@@ -754,6 +832,8 @@ static void janus_websockets_destroy_client(
 	ws_client->bufpending = 0;
 	ws_client->bufoffset = 0;
 	janus_mutex_unlock(&ws_client->ts->mutex);
+	/* Notify core */
+	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	janus_transport_session_destroy(ws_client->ts);
 }
 
@@ -822,19 +902,7 @@ void janus_websockets_session_created(janus_transport_session *transport, guint6
 }
 
 void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
-	if(!timeout || claimed || transport == NULL || g_atomic_int_get(&transport->destroyed))
-		return;
-	/* Claimed sessions return -- is there any extra logic necessary for a claimed session when using websockets? */
-	janus_mutex_lock(&transport->mutex);
-	/* We only care if it's a timeout: if so, close the connection */
-	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
-	if(!client) {
-		janus_mutex_unlock(&transport->mutex);
-		return;
-	}
-	g_atomic_int_set(&client->session_timeout, 1);
-	lws_callback_on_writable(client->wsi);
-	janus_mutex_unlock(&transport->mutex);
+	/* We don't care either: transport timeouts can be detected using the ping/pong mechanism */
 }
 
 void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id) {
@@ -940,7 +1008,6 @@ static int janus_websockets_common_callback(
 			ws_client->buflen = 0;
 			ws_client->bufpending = 0;
 			ws_client->bufoffset = 0;
-			g_atomic_int_set(&ws_client->session_timeout, 0);
 			g_atomic_int_set(&ws_client->destroyed, 0);
 			ws_client->ts = janus_transport_session_create(ws_client, NULL);
 			/* Let us know when the WebSocket channel becomes writeable */
@@ -1054,8 +1121,6 @@ static int janus_websockets_common_callback(
 				}
 				janus_mutex_unlock(&ws_client->ts->mutex);
 			}
-			if(g_atomic_int_get(&ws_client->session_timeout))
-				return -1;
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {

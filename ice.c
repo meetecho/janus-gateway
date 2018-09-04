@@ -230,6 +230,7 @@ typedef struct janus_ice_queued_packet {
 	gboolean control;
 	gboolean retransmission;
 	gboolean encrypted;
+	gint64 added;
 } janus_ice_queued_packet;
 /* This is a static, fake, message we use as a trigger to send a DTLS alert */
 static janus_ice_queued_packet janus_ice_dtls_handshake, janus_ice_dtls_alert;
@@ -276,7 +277,8 @@ static gboolean janus_ice_outgoing_traffic_dispatch(GSource *source, GSourceFunc
 }
 static void janus_ice_outgoing_traffic_finalize(GSource *source) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
-	g_main_loop_quit(t->handle->iceloop);
+	if(g_main_loop_is_running(t->handle->iceloop) && g_atomic_int_compare_and_exchange(&t->handle->looprunning, 1, 0))
+		g_main_loop_quit(t->handle->iceloop);
 	janus_refcount_decrease(&t->handle->ref);
 }
 static GSourceFuncs janus_ice_outgoing_traffic_funcs = {
@@ -1048,7 +1050,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->stream_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop) &&
+					g_atomic_int_compare_and_exchange(&handle->looprunning, 1, 0)) {
 				g_main_loop_quit(handle->iceloop);
 			}
 		}
@@ -1145,7 +1148,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		if(handle->stream_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 		}
-		if(handle->rtp_source == NULL) {
+		if(handle->rtp_source == NULL && g_main_loop_is_running(handle->iceloop) &&
+				g_atomic_int_compare_and_exchange(&handle->looprunning, 1, 0)) {
 			g_main_loop_quit(handle->iceloop);
 		}
 	}
@@ -1198,6 +1202,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	g_free(handle->data_mid);
 	handle->data_mid = NULL;
 	handle->icethread = NULL;
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
@@ -2533,6 +2538,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
+							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 								/* We're not: just clarify the packet was already encrypted before */
@@ -2945,6 +2951,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
 
 	handle->icectx = g_main_context_new();
+	g_atomic_int_set(&handle->looprunning, 1);
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
@@ -3252,7 +3259,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	if(stream && stream->component && stream->component->out_stats.audio.packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 20;
+		int sdeslen = 24;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
@@ -3305,7 +3312,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 20;
+		int sdeslen = 24;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
@@ -3607,6 +3614,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	if(pkt == NULL)
 		return G_SOURCE_CONTINUE;
 	if(pkt->data == NULL) {
+		janus_ice_free_queued_packet(pkt);
+		return G_SOURCE_CONTINUE;
+	}
+	gint64 age = (janus_get_monotonic_time() - pkt->added);
+	if(age > G_USEC_PER_SEC) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Discarding too old outgoing packet (age=%"SCNi64"us)\n", handle->handle_id, age);
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
@@ -3981,6 +3994,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
 
@@ -4019,6 +4033,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != buf) {
 		/* We filtered the original packet, deallocate it */
@@ -4043,6 +4058,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
 #endif
@@ -4060,6 +4076,7 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif
 }

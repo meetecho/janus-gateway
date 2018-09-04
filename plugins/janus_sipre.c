@@ -8,7 +8,7 @@
  * \ref plugins
  *
  * \page sipre SIPre plugin documentation
- * This is basically a clone of the SIPre plugin, with the key
+ * This is basically a clone of the original SIP plugin, with the key
  * difference being that it uses \c libre (http://creytiv.com/re.html)
  * instead of Sofia SIP for its internal stack. As such, it provides an
  * alternative for those who don't want to, or can't, use the Sofia-based
@@ -17,7 +17,7 @@
  * client side. The configuration file looks exactly the same as well.
  * As such, you can mostly refer to the \ref sip for both.
  *
- * \section sipapi SIPre Plugin API
+ * \section sipreapi SIPre Plugin API
  *
  * All requests you can send in the SIPre Plugin API are asynchronous,
  * which means all responses (successes and errors) will be delivered
@@ -1557,11 +1557,12 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	if(!(session->status == janus_sipre_call_status_inviting ||
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall))
+		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
@@ -1572,6 +1573,7 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

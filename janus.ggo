@@ -1,4 +1,4 @@
-#Janus 0.4.2 gengetopt file
+#Janus 0.4.3 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -29,6 +29,7 @@ option "reclaim-session-timeout" m "Reclaim session timeout value, in seconds (d
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
+option "debug-locks" M "Enable debugging of locks/mutexes (very verbose!)" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
 option "token-auth" A "Enable token-based authentication for all requests" flag off
 option "token-auth-secret" - "Secret to verify HMAC-signed tokens with, to be used with -A" string typestr="randomstring" optional

@@ -65,6 +65,10 @@
  * the Lua plugin will return its own info (i.e., "janus.plugin.lua", etc.).
  * Most of the times, Lua scripts will not need to override this information,
  * unless they really want to register their own name spaces and versioning.
+ * Finally, Lua scripts can receive information on slow links via the
+ * \c slowLink() callback, in order to react accordingly: e.g., reduce
+ * the bitrate of a video sender if they, or their viewers, are experiencing
+ * issues.
  *
  * \section capi C interfaces
  *
@@ -279,6 +283,7 @@ static char *lua_script_package = NULL;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
+static gboolean has_slow_link = FALSE;
 /* Lua C scheduler (for coroutines) */
 static GThread *scheduler_thread = NULL;
 static void *janus_lua_scheduler(void *data);
@@ -407,7 +412,7 @@ static int janus_lua_method_timecallback(lua_State *s) {
 	cb->source = g_timeout_source_new(ms);
 	g_source_set_callback(cb->source, janus_lua_timer_cb, cb, NULL);
 	cb->id = g_source_attach(cb->source, timer_context);
-	JANUS_LOG(LOG_WARN, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	/* Done */
 	lua_pushnumber(s, 0);
 	return 1;
@@ -672,6 +677,7 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 		janus_refcount_increase(&session->ref);
 		janus_refcount_increase(&recipient->ref);
 		session->recipients = g_slist_append(session->recipients, recipient);
+		recipient->sender = session;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
 	/* Done */
@@ -715,6 +721,7 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 	gboolean unref = FALSE;
 	if(g_slist_find(session->recipients, recipient) != NULL) {
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		unref = TRUE;
 	}
 	janus_mutex_unlock(&session->recipients_mutex);
@@ -1198,6 +1205,9 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "incomingData");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_data = TRUE;
+	lua_getglobal(lua_state, "slowLink");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_slow_link = TRUE;
 
 	lua_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
 	lua_ids = g_hash_table_new(NULL, NULL);
@@ -1535,6 +1545,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	while(session->recipients != NULL) {
 		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
 		if(recipient != NULL) {
+			recipient->sender = NULL;
 			janus_refcount_decrease(&session->ref);
 			janus_refcount_decrease(&recipient->ref);
 		}
@@ -1781,7 +1792,19 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		} else {
 			janus_core->relay_rtcp(handle, 1, buf, len);
 		}
-		return;
+	}
+	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
+	if(janus_rtcp_has_pli(buf, len)) {
+		if(session->sender != NULL) {
+			janus_mutex_lock_nodebug(&session->sender->recipients_mutex);
+			/* Send a PLI */
+			session->sender->pli_latest = janus_get_monotonic_time();
+			char rtcpbuf[12];
+			janus_rtcp_pli((char *)&rtcpbuf, 12);
+			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
+			janus_core->relay_rtcp(session->sender->handle, 1, rtcpbuf, 12);
+			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
+		}
 	}
 }
 
@@ -1795,6 +1818,8 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	}
 	if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
+	/* Are we recording? */
+	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
 	if(has_incoming_data) {
 		/* Yep, pass the data to the Lua script and return */
@@ -1812,8 +1837,6 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	/* Is this session allowed to send data? */
 	if(!session->send_data)
 		return;
-	/* Are we recording? */
-	janus_recorder_save_frame(session->drc, buf, len);
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
 	if(text == NULL) {
@@ -1843,7 +1866,21 @@ void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video) {
 	janus_mutex_unlock(&lua_sessions_mutex);
 	if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
 		return;
-	/* TODO Handle feedback depending on the logic the Lua script dictated */
+	/* Check if the Lua script wants to handle such events */
+	janus_refcount_increase(&session->ref);
+	if(has_slow_link) {
+		/* Notify the Lua script */
+		janus_mutex_lock(&lua_mutex);
+		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "slowLink");
+		lua_pushnumber(t, session->id);
+		lua_pushboolean(t, uplink);
+		lua_pushboolean(t, video);
+		lua_call(t, 3, 0);
+		lua_pop(lua_state, 1);
+		janus_mutex_unlock(&lua_mutex);
+	}
+	janus_refcount_decrease(&session->ref);
 }
 
 void janus_lua_hangup_media(janus_plugin_session *handle) {
@@ -1886,6 +1923,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	while(session->recipients) {
 		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
 		session->recipients = g_slist_remove(session->recipients, recipient);
+		recipient->sender = NULL;
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&recipient->ref);
 	}
@@ -1989,7 +2027,7 @@ static gboolean janus_lua_timer_cb(void *data) {
 	if(cb == NULL)
 		return FALSE;
 	/* Invoke the callback with the provided argument, if available */
-	JANUS_LOG(LOG_WARN, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	JANUS_LOG(LOG_VERB, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, cb->function);

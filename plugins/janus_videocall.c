@@ -405,6 +405,7 @@ static void janus_videocall_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->username);
 	g_free(session);
 }
 
@@ -599,6 +600,8 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	if(session->username != NULL) {
 		int res = g_hash_table_remove(sessions, (gpointer)session->username);
 		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
+	} else {
+		janus_videocall_session_destroy(session);
 	}
 	janus_mutex_unlock(&sessions_mutex);
 	return;
@@ -1001,7 +1004,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
@@ -1039,7 +1042,11 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->acodec = NULL;
 	session->vcodec = NULL;
 	session->bitrate = 0;
+	if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+		janus_refcount_decrease(&peer->ref);
+	}
 	janus_rtp_switching_context_reset(&session->context);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -1213,10 +1220,14 @@ static void *janus_videocall_handler(void *data) {
 				gateway->close_pc(session->handle);
 				goto error;
 			}
-			janus_refcount_increase(&peer->ref);	/* If the call attempt proceeds we keep the reference */
+			/* If the call attempt proceeds we keep the references */
+			janus_refcount_increase(&session->ref);
+			janus_refcount_increase(&peer->ref);
 			if(g_atomic_int_get(&peer->incall) || peer->peer != NULL) {
-				g_atomic_int_set(&session->incall, 0);
-				janus_refcount_decrease(&peer->ref);
+				if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_decrease(&peer->ref);
+				}
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_VERB, "%s is busy\n", username_text);
 				result = json_object();
@@ -1235,8 +1246,10 @@ static void *janus_videocall_handler(void *data) {
 			} else {
 				/* Any SDP to handle? if not, something's wrong */
 				if(!msg_sdp) {
-					g_atomic_int_set(&session->incall, 0);
-					janus_refcount_decrease(&peer->ref);
+					if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+						janus_refcount_decrease(&session->ref);
+						janus_refcount_decrease(&peer->ref);
+					}
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Missing SDP\n");
 					error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
@@ -1246,8 +1259,10 @@ static void *janus_videocall_handler(void *data) {
 				char error_str[512];
 				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(offer == NULL) {
-					g_atomic_int_set(&session->incall, 0);
-					janus_refcount_decrease(&peer->ref);
+					if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+						janus_refcount_decrease(&session->ref);
+						janus_refcount_decrease(&peer->ref);
+					}
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
 					error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
@@ -1316,6 +1331,7 @@ static void *janus_videocall_handler(void *data) {
 			char error_str[512];
 			janus_sdp *answer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 			if(answer == NULL) {
+				janus_refcount_decrease(&peer->ref);
 				JANUS_LOG(LOG_ERR, "Error parsing answer: %s\n", error_str);
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
 				g_snprintf(error_cause, 512, "Error parsing answer: %s", error_str);
@@ -1391,6 +1407,8 @@ static void *janus_videocall_handler(void *data) {
 				session->substream_target = 2;	/* Let's aim for the highest quality */
 				session->templayer_target = 2;	/* Let's aim for all temporal layers */
 			}
+			/* We don't need this reference anymore, it was already increased by the peer calling us */
+			janus_refcount_decrease(&peer->ref);
 		} else if(!strcasecmp(request_text, "set")) {
 			/* Update the local configuration (audio/video mute/unmute, bitrate cap or recording) */
 			JANUS_VALIDATE_JSON_OBJECT(root, set_parameters,
