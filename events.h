@@ -4,12 +4,12 @@
  * \brief    Event handler notifications (headers)
  * \details  Event handler plugins can receive events from the Janus core
  * and other plugins, in order to handle them somehow. This methods
- * provide helpers to notify events to such handlers. 
- * 
+ * provide helpers to notify events to such handlers.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_EVENTS_H
 #define _JANUS_EVENTS_H
 
@@ -36,5 +36,22 @@ gboolean janus_events_is_enabled(void);
  * @param[in] type Type of the event to notify
  * @param[in] session_id Janus session identifier this event refers to */
 void janus_events_notify_handlers(int type, guint64 session_id, ...);
+
+/*! \brief Helper method to change the mask of events a handler is interested in
+ * @note Every time this is called, the mask is resetted, which means that to
+ * unsubscribe from a single event you have to pass an updated list
+ * @param[in] list A comma separated string of event types to subscribe to
+ * @param[out] target The mask to update */
+void janus_events_edit_events_mask(const char *list, janus_flags *target);
+
+/*! \brief Helper method to stringify an event type to its label
+ * @param[in] type The event type
+ * @returns The event type label, if found, or NULL otherwise */
+const char *janus_events_type_to_label(int type);
+
+/*! \brief Helper method to stringify an event type to its prettified name
+ * @param[in] type The event type
+ * @returns The prettified name of the event type, if found, or NULL otherwise */
+const char *janus_events_type_to_name(int type);
 
 #endif

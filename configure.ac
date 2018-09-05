@@ -142,6 +142,8 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_sample_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
                      [enable_rabbitmq_event_handler=no])
+               AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
+                     [enable_mqtt_event_handler=no])
               ],
               [])
 
@@ -211,6 +213,13 @@ AC_ARG_ENABLE([rabbitmq-event-handler],
               [AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
                      [enable_rabbitmq_event_handler=no])],
               [enable_rabbitmq_event_handler=maybe])
+
+AC_ARG_ENABLE([mqtt-event-handler],
+              [AS_HELP_STRING([--disable-mqtt-event-handler],
+                              [Disable MQTT event handler ])],
+              [AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
+                     [enable_mqtt_event_handler=no])],
+              [enable_mqtt_event_handler=maybe])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -450,7 +459,6 @@ AC_CHECK_LIB([rabbitmq],
                  AC_DEFINE(HAVE_RABBITMQEVH)
                  enable_rabbitmq_event_handler=yes
                ])
-
              ],
              [
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
@@ -466,10 +474,17 @@ AC_CHECK_LIB([paho-mqtt3a],
                   AC_DEFINE(HAVE_MQTT)
                   enable_mqtt=yes
                ])
+               AS_IF([test "x$enable_mqtt_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_MQTTEVH)
+                 enable_mqtt_event_handler=yes
+               ])
              ],
              [
                AS_IF([test "x$enable_mqtt" = "xyes"],
                      [AC_MSG_ERROR([paho c client not found. See README.md for installation instructions or use --disable-mqtt])])
+               AS_IF([test "x$enable_mqtt_event_handler" = "xyes"],
+                     [AC_MSG_ERROR([paho c not found. See README.md for installation instructions or use --disable-mqtt-event-handler])])
              ])
 AC_CHECK_LIB([nanomsg],
              [nn_socket],
@@ -487,6 +502,7 @@ AC_CHECK_LIB([nanomsg],
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
+AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 
 AC_TRY_COMPILE([
@@ -521,7 +537,7 @@ AS_IF([test "x$enable_systemd_sockets" = "xyes"],
                           [AC_MSG_ERROR([libsystemd not found. systemd unix domain socket service not supported])])
       ])
 
- 
+
 ##
 # Plugins
 ##
@@ -927,6 +943,9 @@ AM_COND_IF([ENABLE_SAMPLEEVH],
 AM_COND_IF([ENABLE_RABBITMQEVH],
 	[echo "    RabbitMQ event handler:yes"],
 	[echo "    RabbitMQ event handler:no"])
+AM_COND_IF([ENABLE_MQTTEVH],
+	[echo "    MQTT event handler:    yes"],
+	[echo "    MQTT event handler:    no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"
