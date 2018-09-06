@@ -1308,7 +1308,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_room_destroy);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_audiobridge_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Parse configuration to populate the rooms list */
@@ -1666,9 +1666,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	janus_mutex_lock(&sessions_mutex);
 	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
 		goto plugin_response;
 	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
@@ -3023,12 +3024,10 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		return;
 	}
 	g_atomic_int_set(&session->started, 0);
-	if(session->participant == NULL) {
+	if(session->participant == NULL)
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_mutex_lock(&rooms_mutex);
@@ -3115,6 +3114,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 		}
 	}
 	janus_mutex_unlock(&rooms_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -4078,7 +4078,7 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_sdp_destroy(offer);
 			janus_sdp_destroy(answer);
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
-			/* How long will the gateway take to push the event? */
+			/* How long will the Janus core take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_audiobridge_plugin, msg->transaction, event, jsep);
@@ -4450,7 +4450,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					outpkt->data->markerbit = 0;	/* FIXME Should be 1 for the first packet */
 					outpkt->data->seq_number = htons(mixedpkt->seq_number);
 					outpkt->data->timestamp = htonl(mixedpkt->timestamp);
-					outpkt->data->ssrc = htonl(mixedpkt->ssrc);	/* The gateway will fix this anyway */
+					outpkt->data->ssrc = htonl(mixedpkt->ssrc);	/* The Janus core will fix this anyway */
 					/* Backup the actual timestamp and sequence number set by the audiobridge, in case a room is changed */
 					outpkt->ssrc = mixedpkt->ssrc;
 					outpkt->timestamp = mixedpkt->timestamp;

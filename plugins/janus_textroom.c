@@ -780,7 +780,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_textroom_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_textroom_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Parse configuration to populate the rooms list */
@@ -1042,9 +1042,10 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	janus_mutex_lock(&sessions_mutex);
 	janus_textroom_session *session = janus_textroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
 		goto plugin_response;
 	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
@@ -2261,7 +2262,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	/* Get rid of all participants */
 	janus_mutex_lock(&session->mutex);
@@ -2291,6 +2292,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		list = list->next;
 	}
 	g_list_free_full(first, (GDestroyNotify)g_free);
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -2398,7 +2400,7 @@ static void *janus_textroom_handler(void *data) {
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
 			if(sdp_update)
 				json_object_set_new(jsep, "restart", json_true());
-			/* How long will the gateway take to push the event? */
+			/* How long will the Janus core take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_textroom_plugin, msg->transaction, event, jsep);

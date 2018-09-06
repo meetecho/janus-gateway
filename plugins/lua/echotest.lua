@@ -162,6 +162,13 @@ function hangupMedia(id)
 	end
 end
 
+function incomingData(id, buf, len)
+	-- Relaying RTP/RTCP in Lua makes no sense, but just for fun
+	-- we handle data channel messages ourselves to manipulate them
+	local edit = "[" .. name .. "] --> " .. buf
+	relayData(id, edit, string.len(edit));
+end
+
 function resumeScheduler()
 	-- This is the function responsible for resuming coroutines associated
 	-- with whatever is relevant to the Lua script, e.g., for this script,

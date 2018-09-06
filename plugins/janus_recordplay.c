@@ -723,7 +723,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_recordplay_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_recordplay_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	g_atomic_int_set(&initialized, 1);
@@ -895,7 +895,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
 		goto plugin_response;
 	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
@@ -1195,12 +1195,10 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		return;
 	}
 	session->active = FALSE;
-	if(g_atomic_int_get(&session->destroyed)) {
+	if(g_atomic_int_get(&session->destroyed))
 		return;
-	}
-	if(g_atomic_int_add(&session->hangingup, 1)) {
+	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	}
 	session->simulcast_ssrc = 0;
 
 	/* Send an event to the browser and tell it's over */
@@ -1282,6 +1280,7 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		janus_refcount_decrease(&session->recording->ref);
 		session->recording = NULL;
 	}
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
