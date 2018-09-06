@@ -59,6 +59,11 @@ general: {
 									# risk having orphaned sessions (sessions not
 									# controlled by any transport and never freed).
 									# To avoid timeouts, keep-alives can be used.
+	#candidates_timeout = 45		# How long (in seconds) we should keep hold of
+									# pending (trickle) candidates before discarding
+									# them (default=45s). Notice that setting this
+									# to 0 will NOT disable the timeout, but will
+									# be considered an invalid value and ignored.
 	#reclaim_session_timeout = 0	# How long (in seconds) we should wait for a
 									# janus session to be reclaimed after the transport
 									# is gone. After the transport is gone, a session 

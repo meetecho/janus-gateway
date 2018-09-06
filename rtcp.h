@@ -3,10 +3,10 @@
  * \copyright GNU General Public License v3
  * \brief    RTCP processing (headers)
  * \details  Implementation of the RTCP messages. RTCP messages coming
- * through the gateway are parsed and, if needed (according to
+ * through the server are parsed and, if needed (according to
  * http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00),
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
- * have been changed by the gateway). Methods to generate FIR messages
+ * have been changed by the server). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
  *
  * \ingroup protocols
@@ -228,7 +228,7 @@ typedef struct rtcp_context
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
 	uint8_t rtp_recvd:1;
 
-	uint16_t last_seq_nr;
+	uint16_t max_seq_nr;
 	uint16_t seq_cycle;
 	uint16_t base_seq;
 	/* Payload type */

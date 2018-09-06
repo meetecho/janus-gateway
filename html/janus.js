@@ -26,6 +26,10 @@
 Janus.sessions = {};
 
 Janus.isExtensionEnabled = function() {
+	if(navigator.getDisplayMedia) {
+		// No need for the extension, getDisplayMedia is supported
+		return true;
+	}
 	if(window.navigator.userAgent.match('Chrome')) {
 		var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
 		var maxver = 33;
@@ -111,7 +115,7 @@ Janus.useDefaultDependencies = function (deps) {
 			}
 
 			var fetching = f(url, fetchOptions).catch(function(error) {
-				return p.reject({message: 'Probably a network error, is the gateway down?', error: error});
+				return p.reject({message: 'Probably a network error, is the server down?', error: error});
 			});
 
 			/*
@@ -366,7 +370,7 @@ function Janus(gatewayCallbacks) {
 	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
 	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(gatewayCallbacks.server === null || gatewayCallbacks.server === undefined) {
-		gatewayCallbacks.error("Invalid gateway url");
+		gatewayCallbacks.error("Invalid server url");
 		return {};
 	}
 	var websockets = false;
@@ -460,7 +464,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		Janus.debug('Long poll...');
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			return;
 		}
 		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
@@ -479,9 +483,9 @@ function Janus(gatewayCallbacks) {
 				Janus.error(textStatus + ":", errorThrown);
 				retries++;
 				if(retries > 3) {
-					// Did we just lose the gateway? :-(
+					// Did we just lose the server? :-(
 					connected = false;
-					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 					return;
 				}
 				eventHandler();
@@ -566,7 +570,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug(config.candidates);
 			}
 		} else if(json["janus"] === "webrtcup") {
-			// The PeerConnection with the gateway is up! Notify this
+			// The PeerConnection with the server is up! Notify this
 			Janus.debug("Got a webrtcup event on session " + sessionId);
 			Janus.debug(json);
 			var sender = json["sender"];
@@ -755,7 +759,7 @@ function Janus(gatewayCallbacks) {
 						serversIndex++;
 						if (serversIndex == servers.length) {
 							// We tried all the servers the user gave us and they all failed
-							callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+							callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 							return;
 						}
 						// Let's try the next server
@@ -765,7 +769,7 @@ function Janus(gatewayCallbacks) {
 						}, 200);
 						return;
 					}
-					callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
+					callbacks.error("Error connecting to the Janus WebSockets server: Is the server down?");
 				},
 
 				'open': function() {
@@ -801,7 +805,7 @@ function Janus(gatewayCallbacks) {
 					}
 					connected = false;
 					// FIXME What if this is called when the page is closed?
-					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 				}
 			};
 
@@ -839,7 +843,7 @@ function Janus(gatewayCallbacks) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
 						// We tried all the servers the user gave us and they all failed
-						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+						callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 						return;
 					}
 					// Let's try the next server
@@ -848,7 +852,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				if(errorThrown === "")
-					callbacks.error(textStatus + ": Is the gateway down?");
+					callbacks.error(textStatus + ": Is the server down?");
 				else
 					callbacks.error(textStatus + ": " + errorThrown);
 			}
@@ -868,7 +872,7 @@ function Janus(gatewayCallbacks) {
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			callbacks.success();
 			return;
 		}
@@ -912,7 +916,7 @@ function Janus(gatewayCallbacks) {
 			};
 			var onUnbindError = function(event) {
 				unbindWebSocket();
-				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
+				callbacks.error("Failed to destroy the server: Is the server down?");
 				if(notifyDestroyed)
 					gatewayCallbacks.destroyed();
 			};
@@ -970,8 +974,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : Janus.noop;
 		callbacks.ondetached = (typeof callbacks.ondetached == "function") ? callbacks.ondetached : Janus.noop;
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var plugin = callbacks.plugin;
@@ -1163,8 +1167,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var pluginHandle = pluginHandles[handleId];
@@ -1266,7 +1270,7 @@ function Janus(gatewayCallbacks) {
 	// Private method to send a trickle candidate
 	function sendTrickleCandidate(handleId, candidate) {
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			return;
 		}
 		var pluginHandle = pluginHandles[handleId];
@@ -1407,8 +1411,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var request = { "janus": "detach", "transaction": Janus.randomString(12) };
@@ -1965,12 +1969,26 @@ function Janus(gatewayCallbacks) {
 					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
 					}
-					// Not a webcam, but screen capture
-					if(window.location.protocol !== 'https:') {
-						// Screen sharing mandates HTTPS
-						Janus.warn("Screen sharing only works on HTTPS, try the https:// version of this page");
-						pluginHandle.consentDialog(false);
-						callbacks.error("Screen sharing only works on HTTPS, try the https:// version of this page");
+					if(navigator.getDisplayMedia) {
+						// The new experimental getDisplayMedia API is available, let's use that
+						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
+						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
+						navigator.getDisplayMedia({ video: true })
+							.then(function(stream) {
+								pluginHandle.consentDialog(false);
+								if(isAudioSendEnabled(media)){
+									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+									.then(function (audioStream) {
+										stream.addTrack(audioStream.getAudioTracks()[0]);
+										streamsDone(handleId, jsep, media, callbacks, stream);
+									})
+								} else {
+									streamsDone(handleId, jsep, media, callbacks, stream);
+								}
+							}, function (error) {
+								pluginHandle.consentDialog(false);
+								callbacks.error(error);
+							});
 						return;
 					}
 					// We're going to try and use the extension for Chrome 34+, the old approach
@@ -2095,7 +2113,7 @@ function Janus(gatewayCallbacks) {
 					var audioExist = devices.some(function(device) {
 						return device.kind === 'audioinput';
 					}),
-					videoExist = devices.some(function(device) {
+					videoExist = isScreenSendEnabled(media) || devices.some(function(device) {
 						return device.kind === 'videoinput';
 					});
 
@@ -3087,6 +3105,22 @@ function Janus(gatewayCallbacks) {
 		if(media.videoRecv === undefined || media.videoRecv === null)
 			return true;	// Default
 		return (media.videoRecv === true);
+	}
+
+	function isScreenSendEnabled(media) {
+		Janus.debug("isScreenSendEnabled:", media);
+		if (media === undefined || media === null)
+			return false;
+		if (typeof media.video !== 'object' || typeof media.video.mandatory !== 'object')
+			return false;
+		var constraints = media.video.mandatory;
+		if (constraints.chromeMediaSource)
+			return constraints.chromeMediaSource === 'desktop' || constraints.chromeMediaSource === 'screen';
+		else if (constraints.mozMediaSource)
+			return constraints.mozMediaSource === 'window' || constraints.mozMediaSource === 'screen';
+		else if (constraints.mediaSource)
+			return constraints.mediaSource === 'window' || constraints.mediaSource === 'screen';
+		return false;
 	}
 
 	function isDataEnabled(media) {

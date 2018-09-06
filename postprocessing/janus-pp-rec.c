@@ -35,6 +35,7 @@
  * in a different way:
  *
 \verbatim
+./janus-pp-rec --json /path/to/source.mjr
 ./janus-pp-rec --header /path/to/source.mjr
 ./janus-pp-rec --parse /path/to/source.mjr
 \endverbatim
@@ -100,9 +101,16 @@ int main(int argc, char *argv[])
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
 
-	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+	/* If we're asked to print the JSON header as it is, we must not print anything else */
+	gboolean jsonheader_only = FALSE;
+	if(argc == 3)
+		jsonheader_only = !strcmp(argv[1], "--json");
+
+	if(!jsonheader_only) {
+		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
+		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
+		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
+	}
 
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
@@ -127,6 +135,7 @@ int main(int argc, char *argv[])
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|wav|webm|mp4|srt]\n", argv[0]);
+		JANUS_LOG(LOG_INFO, "       %s --json source.mjr (only print JSON header)\n", argv[0]);
 		JANUS_LOG(LOG_INFO, "       %s --header source.mjr (only parse header)\n", argv[0]);
 		JANUS_LOG(LOG_INFO, "       %s --parse source.mjr (only parse and re-order packets)\n", argv[0]);
 		return -1;
@@ -134,7 +143,7 @@ int main(int argc, char *argv[])
 	char *source = NULL, *destination = NULL, *extension = NULL;
 	gboolean header_only = !strcmp(argv[1], "--header");
 	gboolean parse_only = !strcmp(argv[1], "--parse");
-	if(header_only || parse_only) {
+	if(jsonheader_only || header_only || parse_only) {
 		/* Only parse the .mjr header and/or re-order the packets, no processing */
 		source = argv[2];
 	} else {
@@ -165,14 +174,16 @@ int main(int argc, char *argv[])
 	fseek(file, 0L, SEEK_END);
 	long fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
+	if(!jsonheader_only)
+		JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
 
 	/* Handle SIGINT */
 	working = 1;
 	signal(SIGINT, janus_pp_handle_signal);
 
 	/* Pre-parse */
-	JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
+	if(!jsonheader_only)
+		JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean parsed_header = FALSE;
 	int video = 0, data = 0;
 	int opus = 0, g711 = 0, g722 = 0, vp8 = 0, vp9 = 0, h264 = 0;
@@ -209,6 +220,8 @@ int main(int argc, char *argv[])
 				/* This is the main header */
 				parsed_header = TRUE;
 				JANUS_LOG(LOG_WARN, "Old .mjr header format\n");
+				if(jsonheader_only)	/* No JSON header to print */
+					exit(1);
 				bytes = fread(prebuffer, sizeof(char), 5, file);
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_INFO, "This is a video recording, assuming VP8\n");
@@ -244,7 +257,8 @@ int main(int argc, char *argv[])
 				continue;
 			} else if(!data && len < 12) {
 				/* Not RTP, skip */
-				JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
+				if(!jsonheader_only)
+					JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
 				offset += len;
 				continue;
 			}
@@ -256,10 +270,16 @@ int main(int argc, char *argv[])
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				JANUS_LOG(LOG_WARN, "New .mjr header format\n");
+				if(!jsonheader_only)
+					JANUS_LOG(LOG_WARN, "New .mjr header format\n");
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
+				if(jsonheader_only) {
+					/* Print the header as it is and exit */
+					JANUS_PRINT("%s\n", prebuffer);
+					exit(0);
+				}
 				json_error_t error;
 				json_t *info = json_loads(prebuffer, 0, &error);
 				if(!info) {
@@ -377,7 +397,7 @@ int main(int argc, char *argv[])
 		/* Skip data for now */
 		offset += len;
 	}
-	if(!working)
+	if(!working || jsonheader_only)
 		exit(0);
 	/* Now let's parse the frames and order them */
 	uint32_t last_ts = 0, reset = 0;

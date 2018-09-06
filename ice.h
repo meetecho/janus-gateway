@@ -8,7 +8,7 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
+ * relay_rtcp core callbacks instead. 
  * 
  * \ingroup protocols
  * \ref protocols
@@ -79,7 +79,7 @@ char *janus_ice_get_turn_rest_api(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
 void janus_ice_enable_nat_1_1(void);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
  * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
  * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
@@ -90,7 +90,7 @@ void janus_ice_enforce_interface(const char *ip);
  * @returns true if the interface/IP is in the enforce list, false otherwise */
 gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
  * adding it to the ignore list will prevent libnice from gathering a candidate for it.
  * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
@@ -247,7 +247,7 @@ enum {
 
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
-	/*! \brief Opaque pointer to the gateway/peer session */
+	/*! \brief Opaque pointer to the core/peer session */
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
@@ -257,7 +257,7 @@ struct janus_ice_handle {
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
 	void *app;
-	/*! \brief Opaque gateway/plugin session pointer */
+	/*! \brief Opaque core/plugin session pointer */
 	janus_plugin_session *app_handle;
 	/*! \brief Mask of WebRTC-related flags for this handle */
 	janus_flags webrtc_flags;
@@ -329,9 +329,9 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
-	/*! \brief Audio SSRC of the gateway for this stream */
+	/*! \brief Audio SSRC of the server for this stream */
 	guint32 audio_ssrc;
-	/*! \brief Video SSRC of the gateway for this stream */
+	/*! \brief Video SSRC of the server for this stream */
 	guint32 video_ssrc;
 	/*! \brief Video retransmission SSRC of the peer for this stream */
 	guint32 video_ssrc_rtx;
@@ -391,7 +391,7 @@ struct janus_ice_stream {
 	guint transport_wide_cc_feedback_count;
 	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
-	/*! \brief DTLS role of the gateway for this stream */
+	/*! \brief DTLS role of the server for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
@@ -553,19 +553,19 @@ void janus_ice_component_destroy(janus_ice_component *component);
 /** @name Janus ICE media relaying callbacks
  */
 ///@{
-/*! \brief Gateway RTP callback, called when a plugin has an RTP packet to send to a peer
+/*! \brief Core RTP callback, called when a plugin has an RTP packet to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is an audio or a video frame
  * @param[in] buf The packet data (buffer)
  * @param[in] len The buffer lenght */
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len);
-/*! \brief Gateway RTCP callback, called when a plugin has an RTCP message to send to a peer
+/*! \brief Core RTCP callback, called when a plugin has an RTCP message to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is related to an audio or a video stream
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
-/*! \brief Gateway SCTP/DataChannel callback, called when a plugin has data to send to a peer
+/*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
@@ -575,7 +575,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
-/*! \brief Gateway SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
+/*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */

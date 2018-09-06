@@ -6,7 +6,7 @@
  * Janus API, using the libwebsockets library (http://libwebsockets.org).
  * This means that, with the help of this module, browsers or applications
  * (e.g., nodejs server side implementations) can also make use of
- * WebSockets to make requests to the gateway. In that case, the same
+ * WebSockets to make requests to Janus. In that case, the same
  * WebSocket can be used for both sending requests and receiving
  * notifications, without the need for long polls. At the same time,
  * without the concept of a REST path, requests sent through the
@@ -352,7 +352,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	JANUS_LOG(LOG_WARN, "libwebsockets has been built without IPv6 support, will bind to IPv4 only\n");
 #endif
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Prepare the common context */

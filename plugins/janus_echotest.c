@@ -11,7 +11,7 @@
  * This is a trivial EchoTest plugin for Janus, just used to
  * showcase the plugin interface. A peer attaching to this plugin will
  * receive back the same RTP packets and RTCP messages he sends: the
- * RTCP messages, of course, would be modified on the way by the gateway
+ * RTCP messages, of course, would be modified on the way by the Janus core
  * to make sure they are coherent with the involved SSRCs. In order to
  * demonstrate how peer-provided messages can change the behaviour of a
  * plugin, this plugin implements a simple API based on three messages:
@@ -302,7 +302,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_echotest_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_echotest_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the server */
 	gateway = callback;
 	g_atomic_int_set(&initialized, 1);
 
@@ -761,33 +761,17 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
 		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
-		if(video) {
-			/* Halve the bitrate, but don't go too low... */
-			session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
-			session->bitrate = session->bitrate/2;
-			if(session->bitrate < 64*1024)
-				session->bitrate = 64*1024;
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
-				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
-			/* ... and send a new REMB back */
-			char rtcpbuf[32];
-			int numssrc = 1;
-			if(session->ssrc[1])
-				numssrc++;
-			if(session->ssrc[2])
-				numssrc++;
-			int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, remblen);
-			/* As a last thing, notify the user about this */
+		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s\n",
+			uplink ? "uplink" : "downlink", video ? "video" : "audio");
+		if(!uplink) {
+			/* Send an event on the handle to notify the application: it's
+			 * up to the application to then choose a policy and enforce it */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
-			json_t *result = json_object();
-			json_object_set_new(result, "status", json_string("slow_link"));
-			json_object_set_new(result, "bitrate", json_integer(session->bitrate));
-			json_object_set_new(event, "result", result);
+			json_object_set_new(event, "event", json_string("slow_link"));
+			/* Also add info on what the current bitrate cap is */
+			json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
 			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
-			/* We don't need the event anymore */
 			json_decref(event);
 		}
 	}
@@ -1159,7 +1143,7 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
 		} else {
-			/* Answer the offer and send it to the gateway, to start the echo test */
+			/* Answer the offer and pass it to the core, to start the echo test */
 			const char *type = "answer";
 			char error_str[512];
 			janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
@@ -1242,7 +1226,7 @@ static void *janus_echotest_handler(void *data) {
 			janus_sdp_destroy(offer);
 			janus_sdp_destroy(answer);
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
-			/* How long will the gateway take to push the event? */
+			/* How long will the core take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event, jsep);

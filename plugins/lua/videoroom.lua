@@ -77,6 +77,17 @@ function destroySession(id)
 			room = rooms[s.roomId]
 		end
 		if room ~= nil then
+			-- If this is a publisher, notify other participants that the user is leaving
+			if(s["pType"] == "publisher") then
+				local event = { videoroom = "event", leaving = s.userId, room = room.roomId }
+				local eventjson = json.encode(event)
+				for index,partId in pairs(room.participants) do
+					local p = sessions[partId]
+					if p ~= nil and p.id ~= id then
+						pushEvent(p.id, nil, eventjson, nil)
+					end
+				end
+			end
 			room.participants[s.userId] = nil
 		end
 		s.userId = nil
@@ -496,7 +507,6 @@ function handleMessage(id, tr, msg, jsep)
 						end
 						if comsg["data"] == true then
 							configureMedium(id, "data", "in", true)
-							sendPli(id)
 						elseif comsg["data"] == false then
 							configureMedium(id, "data", "in", false)
 						end

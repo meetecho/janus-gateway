@@ -9,9 +9,9 @@
  *
  * \page videocall VideoCall plugin documentation
  * This is a simple video call plugin for Janus, allowing two
- * WebRTC peers to call each other through the gateway. The idea is to
+ * WebRTC peers to call each other through the Janus core. The idea is to
  * provide a similar service as the well known AppRTC demo (https://apprtc.appspot.com),
- * but with the media flowing through the gateway rather than being peer-to-peer.
+ * but with the media flowing through a server rather than being peer-to-peer.
  * 
  * The plugin provides a simple fake registration mechanism. A peer attaching
  * to the plugin needs to specify a username, which acts as a "phone number":
@@ -269,7 +269,7 @@
 /* Plugin information */
 #define JANUS_VIDEOCALL_VERSION			6
 #define JANUS_VIDEOCALL_VERSION_STRING	"0.0.6"
-#define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
+#define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through a server."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOCALL_PACKAGE			"janus.plugin.videocall"
@@ -487,7 +487,7 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videocall_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videocall_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	g_atomic_int_set(&initialized, 1);
@@ -941,39 +941,19 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
 		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
-		if(video) {
-			/* Halve the bitrate, but don't go too low... */
-			janus_videocall_session *peer = session->peer;
-			if(!uplink) {
-				/* Downlink issue, user has trouble sending, halve this user's bitrate cap */
-				session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
-				session->bitrate = session->bitrate/2;
-				if(session->bitrate < 64*1024)
-					session->bitrate = 64*1024;
-			} else {
-				/* Uplink issue, user has trouble receiving, halve this user's peer's bitrate cap */
-				if(peer == NULL || peer->handle == NULL)
-					return;	/* Nothing to do */
-				peer->bitrate = peer->bitrate > 0 ? peer->bitrate : 512*1024;
-				peer->bitrate = peer->bitrate/2;
-				if(peer->bitrate < 64*1024)
-					peer->bitrate = 64*1024;
-			}
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
-				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? peer->bitrate : session->bitrate);
-			/* ... and send a new REMB back */
-			char rtcpbuf[24];
-			janus_rtcp_remb((char *)(&rtcpbuf), 24, uplink ? peer->bitrate : session->bitrate);
-			gateway->relay_rtcp(uplink ? peer->handle : handle, 1, rtcpbuf, 24);
-			/* As a last thing, notify the affected user about this */
+		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s\n",
+			uplink ? "uplink" : "downlink", video ? "video" : "audio");
+		if(!uplink) {
+			/* Send an event on the handle to notify the application: it's
+			 * up to the application to then choose a policy and enforce it */
 			json_t *event = json_object();
 			json_object_set_new(event, "videocall", json_string("event"));
+			/* Also add info on what the current bitrate cap is */
 			json_t *result = json_object();
-			json_object_set_new(result, "status", json_string("slow_link"));
-			json_object_set_new(result, "bitrate", json_integer(uplink ? peer->bitrate : session->bitrate));
+			json_object_set_new(result, "event", json_string("slow_link"));
+			json_object_set_new(result, "current-bitrate", json_integer(session->bitrate));
 			json_object_set_new(event, "result", result);
-			gateway->push_event(uplink ? peer->handle : handle, &janus_videocall_plugin, NULL, event, NULL);
+			gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
 			json_decref(event);
 		}
 	}
