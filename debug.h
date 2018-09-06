@@ -83,7 +83,7 @@ static const char *janus_log_prefix[] = {
 /*! \brief Simple wrapper to g_print/printf */
 #define JANUS_PRINT janus_vprintf
 /*! \brief Logger based on different levels, which can either be displayed
- * or not according to the configuration of the gateway.
+ * or not according to the configuration of the server.
  * The format must be a string literal. */
 #define JANUS_LOG(level, format, ...) \
 do { \

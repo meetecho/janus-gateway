@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    SDP processing (headers)
  * \details  Implementation of an SDP
- * parser/merger/generator in the gateway. Each SDP coming from peers is
+ * parser/merger/generator in the server. Each SDP coming from peers is
  * stripped/anonymized before it is passed to the plugins: all
  * DTLS/ICE/transport related information is removed, only leaving the
  * relevant information in place. SDP coming from plugins is stripped/anonymized
@@ -14,7 +14,7 @@
  * 
  * \todo Right now, we only support sessions with up to a single audio
  * and/or a single video stream (as in, a single audio and/or video
- * m-line) plus an optional DataChannel. Later versions of the gateway
+ * m-line) plus an optional DataChannel. Later versions of the server
  * will add support for more media streams of the same type in a session.
  * 
  * \ingroup protocols

@@ -10,7 +10,7 @@
  * \page sipsofia SIP plugin documentation
  * This is a simple SIP plugin for Janus, allowing WebRTC peers
  * to register at a SIP server (e.g., Asterisk) and call SIP user agents
- * through the gateway. Specifically, when attaching to the plugin peers
+ * through a Janus instance. Specifically, when attaching to the plugin peers
  * are requested to provide their SIP server credentials, i.e., the address
  * of the SIP server and their username/secret. This results in the plugin
  * registering at the SIP server and acting as a SIP client on behalf of
@@ -424,7 +424,7 @@
 /* Plugin information */
 #define JANUS_SIP_VERSION			7
 #define JANUS_SIP_VERSION_STRING	"0.0.7"
-#define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
+#define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SIP_PACKAGE			"janus.plugin.sip"
@@ -1258,7 +1258,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		if(item && item->value)
 			user_agent = g_strdup(item->value);
 		else
-			user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
+			user_agent = g_strdup("Janus WebRTC Server SIP Plugin "JANUS_SIP_VERSION_STRING);
 		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 
 		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
@@ -1320,7 +1320,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	g_atomic_int_set(&initialized, 1);
@@ -1738,7 +1738,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		/* Forward to our SIP peer */
 		if(video) {
 			if(session->media.has_video && session->media.video_rtcp_fd != -1) {
-				/* Fix SSRCs as the gateway does */
+				/* Fix SSRCs as the Janus core does */
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.video_ssrc, session->media.video_ssrc_peer);
 				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
@@ -1768,7 +1768,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 			}
 		} else {
 			if(session->media.has_audio && session->media.audio_rtcp_fd != -1) {
-				/* Fix SSRCs as the gateway does */
+				/* Fix SSRCs as the Janus core does */
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.audio_ssrc, session->media.audio_ssrc_peer);
 				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
