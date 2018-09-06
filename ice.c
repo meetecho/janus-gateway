@@ -2124,14 +2124,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* The original sequence number is in the first two bytes of the payload */
 					int plen = 0;
 					char *payload = janus_rtp_payload(buf, buflen, &plen);
-					guint16 original_seq = 0;
-					memcpy(&original_seq, payload, 2);
-					original_seq = htons(original_seq);
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = stream->video_payload_type;
 					packet_ssrc = stream->video_ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					header->seq_number = htons(original_seq);
+					memcpy(&header->seq_number, payload, 2);
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
