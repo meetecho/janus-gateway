@@ -1807,7 +1807,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_streaming_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Launch the thread that will handle incoming messages */
@@ -5680,7 +5680,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	header->type = mountpoint->codecs.audio_pt;
 	header->seq_number = htons(seq);
 	header->timestamp = htonl(ts);
-	header->ssrc = htonl(1);	/* The gateway will fix this anyway */
+	header->ssrc = htonl(1);	/* The Janus core will fix this anyway */
 	/* Timer */
 	struct timeval now, before;
 	gettimeofday(&before, NULL);

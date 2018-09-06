@@ -4,7 +4,7 @@
  * \brief  Janus Unix Sockets transport plugin
  * \details  This is an implementation of a Unix Sockets transport for the
  * Janus API. This means that, with the help of this module, local
- * applications can use Unix Sockets to make requests to the gateway.
+ * applications can use Unix Sockets to make requests to Janus.
  * This plugin can make use of either the \c SOCK_SEQPACKET or the
  * \c SOCK_DGRAM socket type according to what you configure, so make
  * sure you're using the right one when writing a client application.
@@ -209,7 +209,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		return -1;
 	}
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Read configuration */

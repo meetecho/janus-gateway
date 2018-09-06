@@ -168,7 +168,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		return -1;
 	}
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Read configuration */

@@ -115,7 +115,7 @@ Janus.useDefaultDependencies = function (deps) {
 			}
 
 			var fetching = f(url, fetchOptions).catch(function(error) {
-				return p.reject({message: 'Probably a network error, is the gateway down?', error: error});
+				return p.reject({message: 'Probably a network error, is the server down?', error: error});
 			});
 
 			/*
@@ -370,7 +370,7 @@ function Janus(gatewayCallbacks) {
 	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
 	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(gatewayCallbacks.server === null || gatewayCallbacks.server === undefined) {
-		gatewayCallbacks.error("Invalid gateway url");
+		gatewayCallbacks.error("Invalid server url");
 		return {};
 	}
 	var websockets = false;
@@ -464,7 +464,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		Janus.debug('Long poll...');
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			return;
 		}
 		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
@@ -483,9 +483,9 @@ function Janus(gatewayCallbacks) {
 				Janus.error(textStatus + ":", errorThrown);
 				retries++;
 				if(retries > 3) {
-					// Did we just lose the gateway? :-(
+					// Did we just lose the server? :-(
 					connected = false;
-					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 					return;
 				}
 				eventHandler();
@@ -570,7 +570,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug(config.candidates);
 			}
 		} else if(json["janus"] === "webrtcup") {
-			// The PeerConnection with the gateway is up! Notify this
+			// The PeerConnection with the server is up! Notify this
 			Janus.debug("Got a webrtcup event on session " + sessionId);
 			Janus.debug(json);
 			var sender = json["sender"];
@@ -759,7 +759,7 @@ function Janus(gatewayCallbacks) {
 						serversIndex++;
 						if (serversIndex == servers.length) {
 							// We tried all the servers the user gave us and they all failed
-							callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+							callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 							return;
 						}
 						// Let's try the next server
@@ -769,7 +769,7 @@ function Janus(gatewayCallbacks) {
 						}, 200);
 						return;
 					}
-					callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
+					callbacks.error("Error connecting to the Janus WebSockets server: Is the server down?");
 				},
 
 				'open': function() {
@@ -805,7 +805,7 @@ function Janus(gatewayCallbacks) {
 					}
 					connected = false;
 					// FIXME What if this is called when the page is closed?
-					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+					gatewayCallbacks.error("Lost connection to the server (is it down?)");
 				}
 			};
 
@@ -843,7 +843,7 @@ function Janus(gatewayCallbacks) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
 						// We tried all the servers the user gave us and they all failed
-						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+						callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 						return;
 					}
 					// Let's try the next server
@@ -852,7 +852,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				if(errorThrown === "")
-					callbacks.error(textStatus + ": Is the gateway down?");
+					callbacks.error(textStatus + ": Is the server down?");
 				else
 					callbacks.error(textStatus + ": " + errorThrown);
 			}
@@ -872,7 +872,7 @@ function Janus(gatewayCallbacks) {
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			callbacks.success();
 			return;
 		}
@@ -916,7 +916,7 @@ function Janus(gatewayCallbacks) {
 			};
 			var onUnbindError = function(event) {
 				unbindWebSocket();
-				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
+				callbacks.error("Failed to destroy the server: Is the server down?");
 				if(notifyDestroyed)
 					gatewayCallbacks.destroyed();
 			};
@@ -974,8 +974,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : Janus.noop;
 		callbacks.ondetached = (typeof callbacks.ondetached == "function") ? callbacks.ondetached : Janus.noop;
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var plugin = callbacks.plugin;
@@ -1167,8 +1167,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var pluginHandle = pluginHandles[handleId];
@@ -1270,7 +1270,7 @@ function Janus(gatewayCallbacks) {
 	// Private method to send a trickle candidate
 	function sendTrickleCandidate(handleId, candidate) {
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
 			return;
 		}
 		var pluginHandle = pluginHandles[handleId];
@@ -1411,8 +1411,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		if(!connected) {
-			Janus.warn("Is the gateway down? (connected=false)");
-			callbacks.error("Is the gateway down? (connected=false)");
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.error("Is the server down? (connected=false)");
 			return;
 		}
 		var request = { "janus": "detach", "transaction": Janus.randomString(12) };

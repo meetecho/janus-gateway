@@ -8,7 +8,7 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead.
+ * relay_rtcp core callbacks instead.
  *
  * \ingroup protocols
  * \ref protocols
@@ -2124,14 +2124,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* The original sequence number is in the first two bytes of the payload */
 					int plen = 0;
 					char *payload = janus_rtp_payload(buf, buflen, &plen);
-					guint16 original_seq = 0;
-					memcpy(&original_seq, payload, 2);
-					original_seq = htons(original_seq);
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = stream->video_payload_type;
 					packet_ssrc = stream->video_ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					header->seq_number = htons(original_seq);
+					memcpy(&header->seq_number, payload, 2);
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
@@ -2279,11 +2276,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 
-				/* Update the RTCP context as well (but not if it's a retransmission) */
-				if(!rtx) {
-					rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-					janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
-				}
+				/* Update the RTCP context as well */
+				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
@@ -2350,7 +2345,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(cur_seq->state == SEQ_MISSING && now - cur_seq->ts > SEQ_MISSING_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							nacks = g_slist_append(nacks, GUINT_TO_POINTER(cur_seq->seq));
+							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_NACKED;
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 								/* Keep track of this sequence number, we need to avoid duplicates */
@@ -2372,7 +2367,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 2nd NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							nacks = g_slist_append(nacks, GUINT_TO_POINTER(cur_seq->seq));
+							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_GIVEUP;
 						}
 						if(cur_seq == *last_seqs) {
