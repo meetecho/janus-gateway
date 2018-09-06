@@ -228,7 +228,7 @@ typedef struct rtcp_context
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
 	uint8_t rtp_recvd:1;
 
-	uint16_t last_seq_nr;
+	uint16_t max_seq_nr;
 	uint16_t seq_cycle;
 	uint16_t base_seq;
 	/* Payload type */

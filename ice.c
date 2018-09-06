@@ -2276,11 +2276,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 
-				/* Update the RTCP context as well (but not if it's a retransmission) */
-				if(!rtx) {
-					rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-					janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
-				}
+				/* Update the RTCP context as well */
+				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
