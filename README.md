@@ -225,7 +225,7 @@ following steps:
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
-To conclude, should you be interested in building the gateway
+To conclude, should you be interested in building the Janus
 documentation as well, you'll need some additional tools too:
 
 * [Doxygen](http://www.doxygen.org)
@@ -316,7 +316,7 @@ when configuring Janus as well, e.g.:
 Everything else works exactly the same way as on Linux.
 
 ## Configure and start
-To start the gateway, you can use the janus executable. There are several
+To start the server, you can use the `janus` executable. There are several
 things you can configure, either in a configuration file:
 
 	<installdir>/etc/janus/janus.cfg
@@ -345,7 +345,7 @@ or on the command line:
 	-k, --cert-key=filename       DTLS certificate key
 	-K, --cert-pwd=text           DTLS certificate key passphrase (if needed)
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
-								  gateway behind NAT, default=none)
+								  Janus behind NAT, default=none)
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
                                   assuming a 1:1 NAT is in place (e.g., Amazon
                                   EC2 instances, default=none)
@@ -399,11 +399,11 @@ or on the command line:
 	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
-specified in the configuration file. To start the gateway, simply run:
+specified in the configuration file. To start the server, simply run:
 
 	<installdir>/bin/janus
 
-This will start the gateway, and have it look at the configuration file.
+This will start the server, and have it look at the configuration file.
 
 Make sure you have a look at all of the configuration files, to tailor
 Janus to your specific needs: each configuration file is documented, so

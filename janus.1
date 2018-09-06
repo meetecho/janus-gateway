@@ -6,7 +6,7 @@ janus \- WebRTC server/gateway
 [options]
 .SH DESCRIPTION
 .B janus
-is a WebRTC server/gateway developed by Meetecho conceived to be a general purpose one. As such, it doesn't provide any functionality per se other than implementing the means to set up a WebRTC media communication with a browser or application, exchanging JSON messages with it over different transports, and relaying RTP/RTCP and messages between clients and the server-side application logic they're attached to. Any specific feature/application is provided by server side plugins, that browsers can then contact via the gateway to take advantage of the functionality they provide. Example of such plugins can be implementations of applications like echo tests, conference bridges, media recorders, SIP gateways and the like.
+is a WebRTC server/gateway developed by Meetecho conceived to be a general purpose one. As such, it doesn't provide any functionality per se other than implementing the means to set up a WebRTC media communication with a browser or application, exchanging JSON messages with it over different transports, and relaying RTP/RTCP and messages between clients and the server-side application logic they're attached to. Any specific feature/application is provided by server side plugins, that browsers can then contact via the server to take advantage of the functionality they provide. Example of such plugins can be implementations of applications like echo tests, conference bridges, media recorders, SIP gateways and the like.
 .TP
 The reason for this is simple: we wanted something that would have a small footprint (hence a C implementation) and that we could only equip with what was really needed (hence pluggable modules). That is, something that would allow us to deploy either a full-fledged WebRTC server on the cloud, or a small nettop/box to handle a specific use case.
 .SH OPTIONS
@@ -51,7 +51,7 @@ DTLS certificate key
 DTLS certificate key passphrase (if needed)
 .TP
 .BR \-S ", " \-\-stun-server=\fIip:port\fR
-STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)
+STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)
 .TP
 .BR \-1 ", " \-\-nat-1-1=\fIip\fR
 Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)

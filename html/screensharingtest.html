@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Screen Sharing Demo</title>
+<title>Janus WebRTC Server: Screen Sharing Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.0.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -58,7 +58,7 @@
 						for instance, on the AudioBridge plugin for the purpose.</p>
 						<div class="alert alert-info"><b>Note well!</b> Sharing your screen is an experimental
 						feature in WebRTC, and only works if the browser you're using meets particular requirements.
-						If you're using a recent version of Chrome (34+), you'll need to install
+						If you're using a relatively recent version of Chrome (34+), you'll need to install
 						<b><a href="https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj">this extension</a></b>.
 						If you're using an older verson of Chrome, instead, you'll need to manually enable the Chrome flag
 						<b><a href="chrome://flags/#enable-usermedia-screen-capture">chrome://flags/#enable-usermedia-screen-capture</a></b>
@@ -69,12 +69,12 @@
 						the <code>media.getusermedia.screensharing.enabled</code> setting in
 						<b><a href="about:config">about:config</a></b>, and that the domain this web application is from
 						is listed in <code>media.getusermedia.screensharing.allowed_domains</code>.</div>
-						<div class="alert alert-info"><b>Note well (part 2)!</b> If you want to share your screen, you'll need to open
-						the <b>HTTPS</b> version of this page. If the gateway is not behind the same webserver
+						<div class="alert alert-info"><b>Note well (part 2)!</b> If you want to share your screen, you may need to open
+						the <b>HTTPS</b> version of this page. If Janus is not behind the same webserver
 						as the pages that are served (that is, you didn't configure a proxying of HTTP requests
-						to the gateway via a web frontend, e.g., Apache HTTPD), make sure you started it
+						to Janus via a web frontend, e.g., Apache HTTPD), make sure you started it
 						with HTTPS support as well, since for security reasons you cannot contact an HTTP
-						backend if the page has been served via HTTPS. Besides, if you configured the gateway
+						backend if the page has been served via HTTPS. Besides, if you configured Janus
 						to make use of self-signed certificates, try and open a generic link served by Janus
 						in the browser itself, or otherwise AJAX requests to it will fail due to the unsafe
 						nature of the certificate.</div>

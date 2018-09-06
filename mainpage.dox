@@ -1,22 +1,22 @@
 /*!
- * \mainpage Janus - General purpose WebRTC Gateway
+ * \mainpage Janus - General purpose WebRTC server
  *
- * \par Developer Documentation for the Janus WebRTC Gateway
+ * \par Developer Documentation for the Janus WebRTC server
  * This is the main developer documentation for the Janus WebRTC
- * Gateway, generated with the help of
+ * Server, generated with the help of
  * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
  * check the \ref DEPS before attempting a compilation. If you are
- * interested in how to compile, install and use the gateway,
+ * interested in how to compile, install and use Janus,
  * checkout the \ref README information. A \ref FAQ page is also available.
  *
- * \par A general purpose gateway
- * The Janus WebRTC Gateway has been conceived as a <tt>general purpose</tt>
- * gateway. As such, it doesn't provide any functionality per se
+ * \par A general purpose WebRTC server
+ * The Janus WebRTC Server has been conceived as a <tt>general purpose</tt>
+ * server. As such, it doesn't provide any functionality per se
  * other than implementing the means to set up a WebRTC media communication
  * with a browser, exchanging JSON messages with it, and relaying RTP/RTCP
  * and messages between browsers and the server-side application logic they're attached to. Any specific
  * feature/application needs to be implemented in server side plugins,
- * that browsers can then contact via the gateway to take advantage of
+ * that browsers can then contact via the Janus core to take advantage of
  * the functionality they provide. Example of such plugins can be
  * implementations of applications like echo tests, conference bridges,
  * media recorders, SIP gateways and the like.
@@ -25,11 +25,11 @@
  * <tt>small footprint</tt> (hence a C implementation) and that we could only
  * equip with what was <tt>really needed</tt> (hence pluggable modules). That is,
  * something that would allow us to deploy either a full-fledged WebRTC
- * gateway on the cloud, or a small nettop/box to handle a specific use case.
+ * server on the cloud, or a small nettop/box to handle a specific use case.
  *
  * \par Architecture and APIs
- * The core of the gateway is specified in the \ref core section. The protocols
- * implemented in the gateway are listed in the \ref protocols group
+ * The core of the server is specified in the \ref core section. The protocols
+ * implemented in the Janus core are listed in the \ref protocols group
  * instead. A list of plugins provided out of the box by Meetecho are
  * documented in the \ref pluginslist page: these plugins can be changed
  * or extended to match your requirements, or just used as a simple
@@ -37,7 +37,7 @@
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
  * create new plugins, or understand how they're conceived, is documented
  * as well. A documentation on the available API tranports and the
- * HTTP/WebSocket JavaScript API to use the gateway and the plugins it
+ * HTTP/WebSocket JavaScript API to use Janus and the plugins it
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
@@ -53,15 +53,12 @@
  * case you're interested in talking to Janus from different languages
  * and platforms.
  *
- * This is only the first version of the gateway, and as such it is a bit
- * rough at the edges: there is definitely room for improvement, there are
- * bugs, limitations, and things that need to be done. Make also
- * sure you read the \ref debug page for info on how you can help us
+ * To conclude, the \ref debug page contains info on how you can help us
  * fixing issues you might encounter along the road.
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -102,7 +99,7 @@
  */
 
 /*! \page JS JavaScript API
- * The gateway exposes, assuming the HTTP transport has been compiled, a
+ * Janus exposes, assuming the HTTP transport has been compiled, a
  * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/MQTT/Nanomsg/UnixSockets
  * interfaces as well, all of which based on JSON messages. These
  * interfaces are described in more detail in the \ref plainhttp \ref WS
@@ -113,7 +110,7 @@
  * interface for the purpose. To make things easier for web
  * developers, a JavaScript library (\c janus.js) is available that can
  * make use of both interfaces using exactly the same API. This library
- * eases the task of creating sessions with the gateway, attaching WebRTC
+ * eases the task of creating sessions with the Janus core, attaching WebRTC
  * users to plugins, send and receive requests and events to the plugins
  * themselves and so on. For real examples of how this library can be
  * used, check the demos in the \b html folder of this package. Notice
@@ -137,11 +134,11 @@
  * when initialising the Janus library and pass a custom dependencies object instead.
  * For details, refer to: \ref js-dependencies
  *
- * In general, when using the gateway features, you would normally do the following:
+ * In general, when using the Janus features, you would normally do the following:
  *
  * -# include the Janus JavaScript library in your web page;
  * -# initialize the Janus JavaScript library and (optionally) passing its dependencies;
- * -# connect to the gateway and create a session;
+ * -# connect to the server and create a session;
  * -# create one or more handles to attach to a plugin (e.g., echo test and/or streaming);
  * -# interact with the plugin (sending/receiving messages, negotiating a PeerConnection);
  * -# eventually, close all the handles and shutdown the related PeerConnections;  
@@ -151,7 +148,7 @@
  * the low level API to accomplish them. Consider that in the future we might
  * provide higher level wrappers to this API to address specific needs, e.g.,
  * a higher level API for each plugin: this would make it even easier to use
- * the gateway features, as a high level API for the streaming plugin, for
+ * the server features, as a high level API for the streaming plugin, for
  * instance, may just ask you to provide the server address and the ID of
  * the \c &lt;video&gt; element to display the stream in, and would take care of all the
  * above mentioned steps on your behalf. Needless to say, you're very welcome
@@ -210,20 +207,20 @@ Janus.init({
  \endverbatim
  *
  * Once the library has been initialized, you can start creating sessions.
- * Normally, each browser tab will need a single session with the gateway: in
- * fact, each gateway session can contain several different plugin handles
+ * Normally, each browser tab will need a single session with the server: in
+ * fact, each Janus session can contain several different plugin handles
  * at the same time, meaning you can start several different WebRTC sessions
  * with the same or different plugins for the same user using the same
- * gateway session. That said, you're free to set up different gateway
+ * Janus session. That said, you're free to set up different Janus
  * sessions in the same page, should you prefer so.
  *
  * Creating a session is quite easy. You just need to use the \c new constructor
  * to create a new \c Janus object that will handle your interaction with the
- * gateway. Considering the dynamic and asynchronous nature of Janus sessions
+ * server. Considering the dynamic and asynchronous nature of Janus sessions
  * (events may occur at any time), there are several properties and callbacks you
  * can configure when creating a session:
  *
- * - \c server: the address of the gateway as a specific address (e.g.,
+ * - \c server: the address of the server as a specific address (e.g.,
  * http://yourserver:8088/janus to use the plain HTTP API or ws://yourserver:8188/
  * for WebSockets) or as an array of addresses to try sequentially to allow
  * automatic for fallback/failover during setup;
@@ -293,17 +290,17 @@ var janus = new Janus(
 		[..]
  \endverbatim
  *
- * Once created, this object represents your session with the gateway.
+ * Once created, this object represents your session with the server.
  * you can interact with a \c Janus object in several different ways.
  * In particular, the following properties and methods are defined:
  *
- * - \c getServer(): returns the address of the gateway;
+ * - \c getServer(): returns the address of the server;
  * - \c isConnected(): returns \c true if the Janus instance is connected
- * to the gateway, \c false otherwise;
- * - \c getSessionId(): returns the unique gateway session identifier;
+ * to the server, \c false otherwise;
+ * - \c getSessionId(): returns the unique Janus session identifier;
  * - \c attach(parameters): attaches the session to a plugin, creating an handle;
  * more handles to the same or different plugins can be created at the same time;
- * - \c destroy(parameters): destroys the session with the gateway, and closes
+ * - \c destroy(parameters): destroys the session with the server, and closes
  * all the handles (and related PeerConnections) the session may have with any plugin as well.
  *
  * The most important property is obviously the \c attach() method, as
@@ -502,7 +499,7 @@ janus.attach(
  * Whether you use \c createOffer or \c createAnswer depending on the scenario,
  * you should end up with a valid \c jsep object returned in the \c success
  * callback. You can attach this \c jsep object to a message in a \c send request
- * to pass it to the plugin, and have the gateway negotiate a PeerConnection
+ * to pass it to the plugin, and have Janus negotiate a PeerConnection
  * with your application.
  *
  * Here's an example of how to use \c createOffer, taken from the Echo Test demo page:
@@ -784,13 +781,13 @@ echotest.createOffer({
  *
  * Building the modules can be done in two ways:
  *
- * -# As part of a regular build of the Janus Gateway, using \c make, by enabling the integrated support via \c configure
+ * -# As part of a regular build of the Janus WebRTC Server, using \c make, by enabling the integrated support via \c configure
  * -# By running NPM commands manually. This may be useful if you are looking to build just the JavaScript modules without
- *    incurring the overhead of a full build of the Janus Gateway.
+ *    incurring the overhead of a full build of Janus.
  *
  * \section auto-build-js-modules Building modules using make
  * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module flag
- * (with or without a \c =yes directive) to \c configure before invoking \c make to build the Janus Gateway.
+ * (with or without a \c =yes directive) to \c configure before invoking \c make to build Janus.
  * Please note: if you do not pass any such flag, by default no modules will be built.
  *
  * The following table provides a summary of available module formats and their corresponding \c configure options:
@@ -826,7 +823,7 @@ echotest.createOffer({
  npm run rollup -- --o /path/to/desired/output/file-name.js --f cjs # or es, iffe, umd, amd, ...
  \endverbatim
  *
- * Using \c npm directly is useful if you want to build the JavaScript modules only, without building the Janus Gateway itself
+ * Using \c npm directly is useful if you want to build the JavaScript modules only, without building Janus itself
  * or if you are looking for advanced customisation options or alternative formats which are not integrated in \c configure yet.
  * As you may have surmised from the example command, the actual build consists mostly of invoking \c rollup with the
  * correct parameters. For more information on available parameters, please refer to the \c rollup documentation:
@@ -850,12 +847,12 @@ echotest.createOffer({
  * for Chrome is installed/available. This can be done by testing whether or not an element
  * with an \c id attribute value of \c janus-extension-installed is present.
  * -# \c httpAPICall: a function which given an url and options argument performs an
- * HTTP API request to the Janus Gateway. This function is not as straightforward to implement,
+ * HTTP API request to Janus. This function is not as straightforward to implement,
  * see the section on \ref js-http-apicall below for details.
  *
  * Depending on your needs you do not have to provide all these dependencies, e.g.
  * you do not need to implement the \c httpAPICall function if your application relies
- * exclusively on WebSockets to access the gateway API.
+ * exclusively on WebSockets to access the Janus API.
  *
  * Two implementations of the dependencies object are provided by \c janus.js:
  *
@@ -911,7 +908,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * tied to jQuery (especially since previous versions of \c janus.js depended on it).
  *
  * \section js-http-apicall httpAPICall
- * The \c httpAPICall function is used to issue API calls to the Janus gateway HTTP(S) interfaces.
+ * The \c httpAPICall function is used to issue API calls to the Janus HTTP(S) interfaces.
  * It will be passed two arguments:
  *
  * -# \c url: a string which refers to the (server) URL of the API endpoint to contact
@@ -991,17 +988,17 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * Some details are also provided in case you're interested in \ref auth.
  *
  * \section plainhttp Plain HTTP REST Interface
- * As anticipated in the \ref JS documentation, the gateway deploys a
+ * As anticipated in the \ref JS documentation, the server deploys a
  * RESTful interface that clients can exploit. The \c janus.js library
  * makes use of it in a transparent way, but if you're interested in
- * more details about it (e.g., because you want to talk to the gateway
+ * more details about it (e.g., because you want to talk to the server
  * your own way), this page described the interface and the protocol
  * the API exposes and uses.
  *
  * There are basically three types/levels of endpoints you can meet:
  *
  * -# \ref root (\c /janus by default, but configurable), which
- * you only \b POST to in order to create a gateway session;
+ * you only \b POST to in order to create a Janus session;
  * -# \ref sessions (e.g., \c /janus/12345678, using the
  * identifier retrieved with a previous create), which you either send
  * a \b GET to (long poll for events and messages from plugins) or a \b POST
@@ -1019,7 +1016,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  *
  * - \c janus: the request/event (e.g., "create", "attach", "message", etc.);
  * - \c transaction: a random string that the client can use to match incoming
- * messages from the gateway (since, as explained in the \ref plugins
+ * messages from the server (since, as explained in the \ref plugins
  * documentation, all messages are asynchronous).
  *
  * Different messages will of course add different information to this
@@ -1061,7 +1058,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 {
 	"janus": "server_info",
 	"transaction": "i1bzIL341Kl2",
-	"name": "Janus WebRTC Gateway",
+	"name": "Janus WebRTC Server",
 	"version": 10,
 	"version_string": "0.1.0",
 	"author": "Meetecho s.r.l.",
@@ -1081,7 +1078,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 	"plugins": {
 		"janus.plugin.sip": {		// The SIP plugin is available
 			"version_string": "0.0.2",
-			"description": "This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway.",
+			"description": "This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through Janus.",
 			"author": "Meetecho s.r.l.",
 			"name": "JANUS SIP plugin",
 			"version": 2
@@ -1102,13 +1099,13 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  * you're trying to contact.
  *
  *
- * \section root The gateway root
- * The gateway root is \c /janus by default but, as anticipated, it is
+ * \section root The server root
+ * The server root is \c /janus by default but, as anticipated, it is
  * configurable, either via command line or in the \c janus.cfg configuration.
  *
- * You can only contact the gateway root when you want to create a new
- * session with the gateway. To do so, you need to \b POST the a \c janus "create"
- * JSON message to the gateway:
+ * You can only contact the server root when you want to create a new
+ * session with the server. To do so, you need to \b POST the a \c janus "create"
+ * JSON message to the server:
  *
 \verbatim
 {
@@ -1131,14 +1128,14 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 \endverbatim
  *
  * In case of an error, you'll receive an error message as the one introduced
- * before. This request, if issued with a POST to the gateway root, can only
+ * before. This request, if issued with a POST to the server root, can only
  * fail if you miss any of the required fields in the request.
  *
  *
  * \section sessions The session endpoint
  * Once you've created a session, a new endpoint you can use is created
- * in the gateway. Specifically, the new endpoint is constructed by
- * concatenating the gateway root and the session identifier you've been
+ * in the server. Specifically, the new endpoint is constructed by
+ * concatenating the server root and the session identifier you've been
  * returned (\c e.g., \c /janus/12345678).
  *
  * This endpoint can be used in two different ways: 
@@ -1226,7 +1223,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
 ]
 \endverbatim
  *
- * This request will instruct the gateway to return at maximum 5 events
+ * This request will instruct the server to return at maximum 5 events
  * within the context of the same long poll, formatted as a JSON array
  * of events. Please beware that this does \b NOT mean that you'll
  * always get 5 events this way: it only means that, if a message becomes
@@ -1244,7 +1241,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * JSON message to the session endpoint.
  *
  * To attach to a plugin in order to exploit its features, you need to
- * \b POST a \c janus "attach" JSON message to the gateway; you'll need
+ * \b POST a \c janus "attach" JSON message to the server; you'll need
  * of course to provide information on the plugin you want to attach to,
  * which can be done using the \c plugin field: 
  *
@@ -1276,7 +1273,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * In case of an error, you'll receive an error message as the one introduced
  * before. This request, if issued with a POST to a valid session endpoint, can only
  * fail if you miss any of the required fields in the request or if the
- * plugin you requested is not available in the gateway.
+ * plugin you requested is not available in the server.
  *
  * To destroy the current session, instead, just send a "destroy" \c janus
  * request:
@@ -1291,14 +1288,14 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * This will also destroy the endpoint created for this session.
  * If your session is currently managing one or more plugin handles, 
  * make sure you destroy them first (as explained in the next section).
- * The gateway tries to do this automatically when receiving a session
+ * The server tries to do this automatically when receiving a session
  * destroy request, but a cleaner approach on the client side would help 
  * nonetheless avoid potential issues.
  *
  * \section handles The plugin handle endpoint
  * Once you've created a plugin handle, a new endpoint you can use is created
- * in the gateway. Specifically, the new endpoint is constructed by
- * concatenating the gateway root, the session identifier and the new
+ * in the server. Specifically, the new endpoint is constructed by
+ * concatenating the server root, the session identifier and the new
  * plugin handle identifier you've been returned (\c e.g.,
  * \c /janus/12345678/98765432).
  *
@@ -1427,7 +1424,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * immediately; in the latter, instead, the plugin would only notify a
  * successful reception of the request, which it would process later.
  * Considering the asynchronous nature of the Janus API, a successful
- * management of such messages within the gateway would in such case result in
+ * management of such messages within Janus would in such case result in
  * a \c janus "ack" messages being sent back to the client. A logical response
  * to those messages, if needed, would be provided as an event in the
  * long-poll interface described previously, and clients would be able
@@ -1456,7 +1453,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * introduced before. This request, if issued with a POST to a valid plugin
  * handle endpoint, can only fail if you miss any of the required fields
  * in the request, if the plugin you tried to contact is not available in
- * the gateway anymore, if an error occurred in the plugin when trying to
+ * the server anymore, if an error occurred in the plugin when trying to
  * receive the message or if the \c jsep SDP you may have provided is
  * invalid.
  *
@@ -1473,7 +1470,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * This will also destroy the endpoint created for this plugin handle.
  * If your plugin handle is also managing an ongoing WebRTC connection
  * with the plugin, make sure it is torn down as part of this process.
- * The plugin implementation and the gateway core should do this
+ * The plugin implementation and the Janus core should do this
  * automatically, but implementing the right behaviour in clients would
  * help avoid potential issues nonetheless.
  *
@@ -1607,7 +1604,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  *
  * \section WS WebSockets Interface
  * In recent version of Janus we added support for WebSockets to control
- * the gateway, along the already existing (and still the default) REST
+ * the server, along the already existing (and still the default) REST
  * API. In fact, while WebSockets still present some more issues in terms
  * of reachability when compared to plain HTTP, they definitely provide
  * a more efficient means for implementing a bidirectional communication.
@@ -1635,7 +1632,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * fields to the requests when necessary.
  *
  * So, when you want to create a session using the REST API, you send a
- * POST to the gateway base path: 
+ * POST to the server base path: 
  *
 \verbatim
 {
@@ -1707,7 +1704,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * An \b important aspect to point out is related to keep-alive messages
  * for WebSockets Janus channels. A Janus session is kept alive as long
  * as there's no inactivity for 60 seconds: if no messages have been
- * received in that time frame, the session is torn down by the gateway.
+ * received in that time frame, the session is torn down by the server.
  * A normal activity on a session is usually enough to prevent that;
  * for a more prolonged inactivity with respect to messaging, on plain
  * HTTP the session is usually kept alive through the regular long poll
@@ -1725,7 +1722,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 }
 \endverbatim
  *
- * This will make sure that the gateway detects activity on the session
+ * This will make sure that the server detects activity on the session
  * even when no actual messages are being exchanged with handles.
  *
  * As a last point, another slight difference with WebSockets comes from
@@ -2385,13 +2382,13 @@ POST /admin
  * That said, deploying Janus is, in principle, quite simple: just start Janus on a
  * machine, put the HTML and JavaScript that will make use of it on a webserver
  * somewhere, make sure the JavaScript code is configured with the right
- * address for the gateway and you're done!
+ * address for the server and you're done!
  *
  * Let's assume, for the sake of simplicity, that your webserver is serving
  * files on port \c 80. By default, Janus binds on the \c 8088 port for HTTP.
  * So, if Janus and the webserver hosting the are co-located, all you need to get your 
  * application working is configure the web application to point to the right
- * address for the gateway. In the demos provided with these packages, this
+ * address for the server. In the demos provided with these packages, this
  * is done by means of the \c server variable:
  *
  \verbatim
@@ -2400,7 +2397,7 @@ var server = "http://" + window.location.hostname + ":8088/janus";
  *
  * which basically tells the JavaScript application that the Janus API can be
  * contacted at the same host as the website but at a different port (8088) and path (/janus). 
- * In case you configured the gateway differently, e.g., 7000 as the port 
+ * In case you configured the server differently, e.g., 7000 as the port 
  * for HTTP and /my/custom/path as the API endpoint, the \c server variable
  * could be built this way:
  *
@@ -2410,7 +2407,7 @@ var server = "http://" + window.location.hostname + ":7000/my/custom/path";
  *
  * In case the webserver and Janus are <b>NOT</b> colocated, instead, just
  * replace the \c window.location.hostname part with the right address of
- * the gateway, e.g.:
+ * the server, e.g.:
  *
  \verbatim
 var server = "http://www.example.com:8088/janus";
@@ -2465,7 +2462,7 @@ var server = "/janus";
  *
  * which would automatically work whether the page is served via HTTP or
  * HTTPS. In fact, all the HTTPS requests would be terminated at the webserver,
- * which would then always send simple HTTP messages to the gateway itself.
+ * which would then always send simple HTTP messages to the server itself.
  *
  * An easy way to do so in Apache HTTPD is by means of the following directives:
  *
@@ -2558,7 +2555,7 @@ var server = "ws://" + window.location.hostname + ":8188/";
 var server = "ws://" + window.location.hostname + ":7000/";
  \endverbatim
  *
- * and/or the right address of the gateway in case the webserver and Janus
+ * and/or the right address of the server in case the webserver and Janus
  * are <b>NOT</b> colocated:
  *
  \verbatim
@@ -2566,7 +2563,7 @@ var server = "ws://www.example.com:8188/";
  \endverbatim
  *
  * Notice how the path (\c /janus by default for HTTP) is not provided
- * for WebSockets, as it is ignored by the gateway.
+ * for WebSockets, as it is ignored by the server.
  *
  * The considerations for deploying Janus behind a proxy/webserver, though,
  * differ if you use WebSockets, as most webservers don't provide an easy
@@ -2689,7 +2686,7 @@ screen -r janus
  *
  \verbatim
 [Unit]
-Description=Janus WebRTC gateway
+Description=Janus WebRTC Server
 After=network.target
 
 [Service]
@@ -2756,8 +2753,8 @@ exec /opt/janus/bin/janus
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Janus WebRTC gateway
-# Description:       Janus WebRTC gateway
+# Short-Description: Janus WebRTC Server
+# Description:       Janus WebRTC Server
 ### END INIT INFO
 
 DAEMON=/usr/bin/janus
@@ -3206,7 +3203,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3293,7 +3290,7 @@ ldd janus | grep asan
  * \anchor janus
  * -# <b>What is Janus?</b>\n
  *    .
- *    Janus is an open source WebRTC gateway and server written by <a href="http://www.meetecho.com">Meetecho</a>,
+ *    Janus is an open source WebRTC server written by <a href="http://www.meetecho.com">Meetecho</a>,
  *    conceived as modular and, as much as possible,
  *    general purpose. It acts as a WebRTC endpoint browsers can interact
  *    with, and different modules can determine what should be done with
@@ -3357,7 +3354,7 @@ ldd janus | grep asan
  *    [ˈiaː.nus]) is the god of beginnings and transitions, and thereby of
  *    gates, doors, passages, endings and time. He is usually depicted as
  *    having two faces, since he looks to the future and to the past.</i>"
- *    Considering the general purpose nature of our gateway, where one face always looks
+ *    Considering the general purpose nature of our server, where one face always looks
  *    at the future (WebRTC) and the other at the past (whatever the modules
  *    allows you to do, be it legacy stuff or not), Janus looked like the
  *    perfect name for it! And besides, we're Italian, Ancient Rome was
@@ -3452,7 +3449,7 @@ ldd janus | grep asan
  * -# <b>Can I use existing SIP stacks (e.g., JsSIP) with Janus?</b>\n
  *    .
  *    Janus uses a custom JSON-based protocol for all the communication
- *    between web users and plugins in the gateway, so no, that's not
+ *    between web users and plugins in the server, so no, that's not
  *    possible right now. While there are some controls that give you access
  *    to some of the SIP details (e.g., requesting SRTP negotiation or injecting
  *    custom headers), the SIP plugin in Janus only exposes some very
@@ -3747,10 +3744,10 @@ ldd janus | grep asan
  */
 
 /*! \defgroup core Core
- * \brief Core implementation of the gateway
- * \details The Janus WebRTC Gateway is founded on a core that glues the
+ * \brief Core implementation of the server
+ * \details The Janus WebRTC Server is founded on a core that glues the
  * involved parts together. The main code is janus.c that implements
- * the logic behind the gateway itself: it implements the web server that
+ * the logic behind the server itself: it implements the web server that
  * interacts with browsers, and handles sessions with them. This includes
  * taking care of media signalling and negotiation, and bridging peers
  * with available plugins.
@@ -3765,7 +3762,7 @@ ldd janus | grep asan
  */
 
 /*! \defgroup plugins Plugins
- * \brief Gateway plugins available out of the box
+ * \brief Janus plugins available out of the box
  * \details In order to showcase how different plugins can implement
  * completely different applications on top of the Janus core, a few
  * plugin implementations are provided out of the box. The API for
@@ -3775,7 +3772,7 @@ ldd janus | grep asan
 /*! \defgroup pluginapi Plugin API
  * \brief Plugin API (aka, how to write your own plugin)
  * \details The plugin.h header specifies the API a plugin needs to
- * implement and make available in order to be used by the gateway and
+ * implement and make available in order to be used by the server and
  * exposed to browsers. 
  * \ingroup plugins
  */
@@ -3812,7 +3809,7 @@ ldd janus | grep asan
  * \brief Transport API (aka, how to write your own transport plugin)
  * \details The transport.h header specifies the API a plugin needs to
  * implement and make available in order to expose a new transport protocol
- * that can be used by the gateway for talking the Janus API.
+ * that can be used by the server for talking the Janus API.
  * \ingroup transports
  */
 

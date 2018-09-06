@@ -4,7 +4,7 @@
  * \brief  Janus Nanomsg transport plugin
  * \details  This is an implementation of a Nanomsg transport for the
  * Janus API. This means that, with the help of this module, local and
- * remote applications can use Nanomsg to make requests to the gateway.
+ * remote applications can use Nanomsg to make requests to Janus.
  * Note that not all the protocols Nanomsg implements are made available
  * in this plugin: specifically, you'll only be able to use the \c NN_PAIR
  * transport mechanism. Future versions may implement more, but for the
@@ -126,7 +126,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 		return -1;
 	}
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Read configuration */
