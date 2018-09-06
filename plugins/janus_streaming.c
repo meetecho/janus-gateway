@@ -1807,7 +1807,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_streaming_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Launch the thread that will handle incoming messages */
@@ -3617,7 +3617,7 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 		if(bw > 0) {
 			/* Keep track of this value, if this is the lowest right now */
 			JANUS_LOG(LOG_HUGE, "  -- REMB for this PeerConnection: %"SCNu64"\n", bw);
-			if(source->lowest_bitrate < bw)
+			if((0 == source->lowest_bitrate) || (source->lowest_bitrate > bw))
 				source->lowest_bitrate = bw;
 		}
 	}
@@ -5680,7 +5680,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	header->type = mountpoint->codecs.audio_pt;
 	header->seq_number = htons(seq);
 	header->timestamp = htonl(ts);
-	header->ssrc = htonl(1);	/* The gateway will fix this anyway */
+	header->ssrc = htonl(1);	/* The Janus core will fix this anyway */
 	/* Timer */
 	struct timeval now, before;
 	gettimeofday(&before, NULL);

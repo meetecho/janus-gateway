@@ -2,7 +2,7 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    RTP processing
- * \details  Implementation of the RTP header. Since the gateway does not
+ * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
  * 

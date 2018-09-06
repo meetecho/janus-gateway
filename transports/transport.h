@@ -3,23 +3,23 @@
  * \copyright GNU General Public License v3
  * \brief  Modular Janus API transports (headers)
  * \details  This header contains the definition of the callbacks both
- * the gateway and all the transports need to implement to interact with
+ * the Janus core and all the transports need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
  *
- * In particular, the gateway implements the \c janus_transport_callbacks
+ * In particular, the Janus core implements the \c janus_transport_callbacks
  * interface. This means that, as a transport plugin, you can use the
- * methods it exposes to contact the gateway, e.g., in order to notify
- * an incoming message. In particular, the methods the gateway exposes
+ * methods it exposes to contact the core, e.g., in order to notify
+ * an incoming message. In particular, the methods the core exposes
  * to transport plugins are:
  *
  * - \c incoming_request(): to notify an incoming JSON message/event
  * from one of the transport clients.
  *
  * On the other hand, a transport plugin that wants to register at the
- * gateway needs to implement the \c janus_transport interface. Besides,
+ * Janus core needs to implement the \c janus_transport interface. Besides,
  * as a transport plugin is a shared object, and as such external to the
- * gateway itself, in order to be dynamically loaded at startup it needs
+ * core itself, in order to be dynamically loaded at startup it needs
  * to implement the \c create_t() hook as well, that should return a
  * pointer to the plugin instance. This is an example of such a step:
  *
@@ -35,16 +35,16 @@ janus_transport *create(void) {
 \endverbatim
  *
  * This will make sure that your transport plugin is loaded at startup
- * by the gateway, if it is deployed in the proper folder.
+ * by the Janus core, if it is deployed in the proper folder.
  *
  * As anticipated and described in the above example, a transport plugin
  * must basically be an instance of the \c janus_transport type. As such,
- * it must implement the following methods and callbacks for the gateway:
+ * it must implement the following methods and callbacks for the core:
  *
- * - \c init(): this is called by the gateway as soon as your transport
+ * - \c init(): this is called by the Janus core as soon as your transport
  * plugin is started; this is where you should setup your transport plugin
  * (e.g., static stuff and reading the configuration file);
- * - \c destroy(): on the other hand, this is called by the gateway when it
+ * - \c destroy(): on the other hand, this is called by the core when it
  * is shutting down, and your transport plugin should too;
  * - \c get_api_compatibility(): this method MUST return JANUS_TRANSPORT_API_VERSION;
  * - \c get_version(): this method should return a numeric version identifier (e.g., 3);
@@ -63,7 +63,7 @@ janus_transport *create(void) {
  * reject a transport plugin that doesn't implement any of the
  * mandatory callbacks.
  *
- * The gateway \c janus_transport_callbacks interface is provided to a
+ * The Janus core \c janus_transport_callbacks interface is provided to a
  * transport plugin, together with the path to the configurations files
  * folder, in the \c init() method. This path can be used to read and
  * parse a configuration file for the transport plugin: the transport
@@ -71,7 +71,7 @@ janus_transport *create(void) {
  * name for the file (e.g., \c janus.transport.http.cfg for the HTTP/HTTPS
  * transport plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing transport
- * plugins use the same INI format for configuration files the gateway
+ * plugins use the same INI format for configuration files the core
  * uses (relying on the \c janus_config helpers for the purpose) but
  * again, if you prefer a different format (XML, JSON, etc.) that's up to you.
  *
@@ -132,7 +132,7 @@ static janus_transport janus_http_transport plugin =
 		## __VA_ARGS__ }
 
 
-/*! \brief Callbacks to contact the gateway */
+/*! \brief Callbacks to contact the Janus core */
 typedef struct janus_transport_callbacks janus_transport_callbacks;
 /*! \brief The transport plugin session and callbacks interface */
 typedef struct janus_transport janus_transport;
@@ -173,7 +173,7 @@ void janus_transport_session_destroy(janus_transport_session *session);
 /*! \brief The transport plugin session and callbacks interface */
 struct janus_transport {
 	/*! \brief Transport plugin initialization/constructor
-	 * @param[in] callback The callback instance the transport plugin can use to contact the gateway
+	 * @param[in] callback The callback instance the transport plugin can use to contact the Janus core
 	 * @param[in] config_path Path of the folder where the configuration for this transport plugin can be found
 	 * @returns 0 in case of success, a negative integer in case of error */
 	int (* const init)(janus_transport_callbacks *callback, const char *config_path);
@@ -232,7 +232,7 @@ struct janus_transport {
 
 };
 
-/*! \brief Callbacks to contact the gateway */
+/*! \brief Callbacks to contact the Janus core */
 struct janus_transport_callbacks {
 	/*! \brief Callback to notify a new incoming request
 	 * @param[in] handle The transport session that should be associated to this client
@@ -285,7 +285,7 @@ struct janus_transport_callbacks {
 	void (* const notify_event)(janus_transport *plugin, void *transport, json_t *event);
 };
 
-/*! \brief The hook that transport plugins need to implement to be created from the gateway */
+/*! \brief The hook that transport plugins need to implement to be created from the Janus core */
 typedef janus_transport* create_t(void);
 
 #endif

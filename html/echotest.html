@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Echo Test</title>
+<title>Janus WebRTC Server: Echo Test</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.0.3/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -49,13 +49,13 @@
 						<h3>Demo details</h3>
 						<p>This Echo Test demo just blindly sends you back whatever you
 						send to it. You're basically attached to yourself, and so your audio
-						and video you send to the gateway are echoed back to you. The same
+						and video you send to Janus are echoed back to you. The same
 						is done for RTCP packets as well, with the information properly updated.</p>
 						<p>The demo also provides a few controls to manipulate the media
 						before you send them. You can mute audio and video, for instance,
-						which will tell the gateway to drop the frames and not echo them
+						which will tell the server to drop the frames and not echo them
 						back to you. You can also try and cap the bitrate: such control
-						will tell the gateway to manipulate the RTCP REMB packets passing
+						will tell the server to manipulate the RTCP REMB packets passing
 						through, in order to simulate a bandwidth limitation. In case
 						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
 						query string to the url of this page and reload it: buttons will appear

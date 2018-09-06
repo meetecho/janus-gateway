@@ -8,7 +8,7 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead.
+ * relay_rtcp core callbacks instead.
  *
  * \ingroup protocols
  * \ref protocols
@@ -2363,14 +2363,11 @@ static void janus_ice_cb_recv(janus_ice_handle *handle, char *buf, int len) {
 					/* The original sequence number is in the first two bytes of the payload */
 					int plen = 0;
 					char *payload = janus_rtp_payload(buf, buflen, &plen);
-					guint16 original_seq = 0;
-					memcpy(&original_seq, payload, 2);
-					original_seq = htons(original_seq);
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = stream->video_payload_type;
 					packet_ssrc = stream->video_ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					header->seq_number = htons(original_seq);
+					memcpy(&header->seq_number, payload, 2);
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
@@ -2460,7 +2457,7 @@ static void janus_ice_cb_recv(janus_ice_handle *handle, char *buf, int len) {
 						/* Set stats values */
 						stats->transport_seq_num = transport_ext_seq_num;
 						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
-						/* Lock & append to received list*/
+						/* Lock and append to received list */
 						janus_mutex_lock(&stream->mutex);
 						stream->transport_wide_received_seq_nums = g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
 						janus_mutex_unlock(&stream->mutex);
@@ -2518,11 +2515,9 @@ static void janus_ice_cb_recv(janus_ice_handle *handle, char *buf, int len) {
 					}
 				}
 
-				/* Update the RTCP context as well (but not if it's a retransmission) */
-				if(!rtx) {
-					rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-					janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
-				}
+				/* Update the RTCP context as well */
+				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
@@ -2589,7 +2584,7 @@ static void janus_ice_cb_recv(janus_ice_handle *handle, char *buf, int len) {
 						} else if(cur_seq->state == SEQ_MISSING && now - cur_seq->ts > SEQ_MISSING_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							nacks = g_slist_append(nacks, GUINT_TO_POINTER(cur_seq->seq));
+							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_NACKED;
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 								/* Keep track of this sequence number, we need to avoid duplicates */
@@ -2611,7 +2606,7 @@ static void janus_ice_cb_recv(janus_ice_handle *handle, char *buf, int len) {
 						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 2nd NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							nacks = g_slist_append(nacks, GUINT_TO_POINTER(cur_seq->seq));
+							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_GIVEUP;
 						}
 						if(cur_seq == *last_seqs) {
@@ -3712,25 +3707,28 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		size_t size = 1300;
 		char rtcpbuf[1300];
 		/* Order packet list */
-		GSList *sorted = g_slist_sort(handle->stream->transport_wide_received_seq_nums, rtcp_transport_wide_cc_stats_comparator);
+		stream->transport_wide_received_seq_nums = g_slist_sort(stream->transport_wide_received_seq_nums,
+			rtcp_transport_wide_cc_stats_comparator);
 		/* Create full stats queue */
 		GQueue *packets = g_queue_new();
 		/* For all packets */
 		GSList *it = NULL;
-		for (it = sorted; it; it = it->next) {
+		for(it = stream->transport_wide_received_seq_nums; it; it = it->next) {
 			/* Get stat */
 			janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
 			/* Get transport seq */
 			guint32 transport_seq_num = stats->transport_seq_num;
 			/* Check if it is an out of order  */
-			if (transport_seq_num < handle->stream->transport_wide_cc_last_feedback_seq_num)
+			if(transport_seq_num < stream->transport_wide_cc_last_feedback_seq_num) {
 				/* Skip, it was already reported as lost */
+				g_free(stats);
 				continue;
+			}
 			/* If not first */
-			if (handle->stream->transport_wide_cc_last_feedback_seq_num) {
+			if(stream->transport_wide_cc_last_feedback_seq_num) {
 				/* For each lost */
 				guint32 i = 0;
-				for (i = handle->stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
+				for(i = stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
 					/* Create new stat */
 					janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
 					/* Add missing packet */
@@ -3741,18 +3739,18 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				}
 			}
 			/* Store last */
-			handle->stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
+			stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
 			/* Add this one */
 			g_queue_push_tail(packets, stats);
 		}
-		/* Clear stats */
-		g_slist_free(handle->stream->transport_wide_received_seq_nums);
-		/* Reset list */
-		handle->stream->transport_wide_received_seq_nums = NULL;
-		/* Get feedback pacakte count and increase it for next one */
-		guint8 feedback_packet_count = handle->stream->transport_wide_cc_feedback_count++;
+		/* Free and reset stats list */
+		g_slist_free(stream->transport_wide_received_seq_nums);
+		stream->transport_wide_received_seq_nums = NULL;
+		/* Get feedback packet count and increase it for next one */
+		guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
 		/* Create rtcp packet */
-		int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size, handle->stream->video_ssrc, stream->video_ssrc_peer[0] , feedback_packet_count, packets);
+		int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
+			stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
 		/* Free mem */
