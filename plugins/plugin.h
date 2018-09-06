@@ -1,17 +1,17 @@
 /*! \file   plugin.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief  Plugin-Gateway communication
+ * \brief  Plugin-Core communication
  * \details  This header contains the definition of the callbacks both
- * the gateway and all the plugins need to implement to interact with
+ * the Janus core and all the plugins need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
  *
- * In particular, the gateway implements the \c janus_callbacks interface.
+ * In particular, the Janus core implements the \c janus_callbacks interface.
  * This means that, as a plugin, you can use the methods it exposes to
- * contact the gateway, e.g., in order to have it relay a message, event
+ * contact the core, e.g., in order to have it relay a message, event
  * or RTP/RTCP packet to the peer you're handling. In particular, the
- * methods the gateway exposes to plugins are:
+ * methods the core exposes to plugins are:
  *
  * - \c push_event(): to send a JSON message/event to the peer (with or without
  * an attached JSEP formatted SDP to negotiate a WebRTC PeerConnection);
@@ -22,9 +22,9 @@
  * - \c relay_rtcp(): to send/relay the peer an RTCP message.
  * - \c relay_data(): to send/relay the peer a SCTP DataChannel message.
  *
- * On the other hand, a plugin that wants to register at the gateway
+ * On the other hand, a plugin that wants to register at the Janus core
  * needs to implement the \c janus_plugin interface. Besides, as a
- * plugin is a shared object, and as such external to the gateway itself,
+ * plugin is a shared object, and as such external to the core itself,
  * in order to be dynamically loaded at startup it needs to implement
  * the \c create_p() hook as well, that should return a pointer to the
  * plugin instance. This is an example of such a step:
@@ -40,17 +40,17 @@ janus_plugin *create(void) {
 }
 \endverbatim
  *
- * This will make sure that your plugin is loaded at startup by the gateway,
+ * This will make sure that your plugin is loaded at startup by the Janus core,
  * if it is deployed in the proper folder.
  *
  * As anticipated and described in the above example, a plugin must basically
  * be an instance of the \c janus_plugin type. As such, it must implement
- * the following methods and callbacks for the gateway:
+ * the following methods and callbacks for the core:
  *
- * - \c init(): this is called by the gateway as soon as your plugin is started;
+ * - \c init(): this is called by the Janus core as soon as your plugin is started;
  * this is where you should setup your plugin (e.g., static stuff and reading
  * the configuration file);
- * - \c destroy(): on the other hand, this is called by the gateway when it
+ * - \c destroy(): on the other hand, this is called by the core when it
  * is shutting down, and your plugin should too;
  * - \c get_api_compatibility(): this method MUST return JANUS_PLUGIN_API_VERSION;
  * - \c get_version(): this method should return a numeric version identifier (e.g., 3);
@@ -58,7 +58,7 @@ janus_plugin *create(void) {
  * - \c get_description(): this method should return a verbose description of your plugin (e.g., "This is my awesome plugin that does this and that");
  * - \c get_name(): this method should return a short display name for your plugin (e.g., "My Awesome Plugin");
  * - \c get_package(): this method should return a unique package identifier for your plugin (e.g., "janus.plugin.myplugin");
- * - \c create_session(): this method is called by the gateway to create a session between you and a peer;
+ * - \c create_session(): this method is called by the core to create a session between you and a peer;
  * - \c handle_message(): a callback to notify you the peer sent you a message/request;
  * - \c setup_media(): a callback to notify you the peer PeerConnection is now ready to be used;
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
@@ -66,8 +66,8 @@ janus_plugin *create(void) {
  * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
  * - \c slow_link(): a callback to notify you a peer has sent a lot of NACKs recently, and the media path may be slow;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
- * - \c query_session(): this method is called by the gateway to get plugin-specific info on a session between you and a peer;
- * - \c destroy_session(): this method is called by the gateway to destroy a session between you and a peer.
+ * - \c query_session(): this method is called by the core to get plugin-specific info on a session between you and a peer;
+ * - \c destroy_session(): this method is called by the core to destroy a session between you and a peer.
  *
  * All the above methods and callbacks, except for \c incoming_rtp ,
  * \c incoming_rtcp , \c incoming_data and \c slow_link , are mandatory:
@@ -82,22 +82,22 @@ janus_plugin *create(void) {
  * additional information you may be interested about, but you're not
  * forced to receive it if you don't care.
  *
- * The gateway \c janus_callbacks interface is provided to a plugin, together
+ * The Janus core \c janus_callbacks interface is provided to a plugin, together
  * with the path to the configurations files folder, in the \c init() method.
  * This path can be used to read and parse a configuration file for the
  * plugin: the plugins we made available out of the box use the package
  * name as a name for the file (e.g., \c janus.plugin.echotest.cfg for
  * the Echo Test plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing plugins
- * use the same INI format for configuration files the gateway uses (relying
+ * use the same INI format for configuration files the core uses (relying
  * on the \c janus_config helpers for the purpose) but again, if you prefer
  * a different format (XML, JSON, etc.) that's up to you.
  *
- * Both the the gateway and a plugin can have several different sessions
+ * Both the the Janus core and a plugin can have several different sessions
  * with the same and/or different peers: to match a specific session,
  * a plugin can rely on a mapping called janus_plugin_session that
- * is what all the communication between the plugins and the gateway
- * (that is, both methods invoked by the gateway and callbacks invoked by
+ * is what all the communication between the plugins and the core
+ * (that is, both methods invoked by the core and callbacks invoked by
  * the plugins) will make use of. See the janus_videoroom.c plugin for
  * an example of multiple handles associated to the same peer.
  *
@@ -121,7 +121,7 @@ janus_plugin *create(void) {
  * object before passing it to the core. Notice that the core adds a property
  * called \c update whenever the remote user is requesting a renegotiation,
  * whether it's for ICE restarts or just for some media related change.
- * \note It's important to notice that, while the gateway core would indeed
+ * \note It's important to notice that, while the Janus core would indeed
  * take care of the WebRTC PeerConnection setup itself in terms of
  * ICE/DTLS/RT(C)P on your behalf, plugins are what will actually manipulate
  * the media flowing around, and as such it's them who are responsible for
@@ -136,7 +136,7 @@ janus_plugin *create(void) {
  * SDP-provided information (e.g., payload types, increasing versions in
  * case of renegotiations) coherently.
  *
- * \todo Right now plugins can only interact with peers, through the gateway.
+ * \todo Right now plugins can only interact with peers through the Janus core.
  * Besides, a single PeerConnection can at the moment be used by only one
  * plugin, as that plugin is actually the "owner" of the PeerConnection itself.
  *
@@ -162,18 +162,18 @@ janus_plugin *create(void) {
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  *
- * \note This was added in version 0.0.7 of the gateway, to address changes
+ * \note This was added in version 0.0.7 of Janus, to address changes
  * to the API that might break existing plugin or the core itself. All
  * plugins MUST implement the get_api_compatibility() method to make
  * this work. Do NOT try to launch a pre 0.0.7 plugin on a >= 0.0.7
- * gateway or it will crash.
+ * Janus instance or it will crash.
  *
  */
 #define JANUS_PLUGIN_API_VERSION	10
 
 /*! \brief Initialization of all plugin properties to NULL
  *
- * \note This was added in version 0.0.8 of the gateway, to address changes
+ * \note This was added in version 0.0.8 of Janus, to address changes
  * to the API that might break existing plugin or the core itself. All
  * plugins MUST add this as the FIRST line when initializing their
  * plugin structure, e.g.:
@@ -210,7 +210,7 @@ static janus_plugin janus_echotest_plugin =
 		## __VA_ARGS__ }
 
 
-/*! \brief Callbacks to contact the gateway */
+/*! \brief Callbacks to contact the Janus core */
 typedef struct janus_callbacks janus_callbacks;
 /*! \brief The plugin session and callbacks interface */
 typedef struct janus_plugin janus_plugin;
@@ -224,7 +224,7 @@ typedef struct json_t json_t;
 
 /*! \brief Plugin-Gateway session mapping */
 struct janus_plugin_session {
-	/*! \brief Opaque pointer to the gateway core-level handle */
+	/*! \brief Opaque pointer to the Janus core-level handle */
 	void *gateway_handle;
 	/*! \brief Opaque pointer to the plugin session */
 	void *plugin_handle;
@@ -238,7 +238,7 @@ struct janus_plugin_session {
 /*! \brief The plugin session and callbacks interface */
 struct janus_plugin {
 	/*! \brief Plugin initialization/constructor
-	 * @param[in] callback The callback instance the plugin can use to contact the gateway
+	 * @param[in] callback The callback instance the plugin can use to contact the Janus core
 	 * @param[in] config_path Path of the folder where the configuration for this plugin can be found
 	 * @returns 0 in case of success, a negative integer in case of error */
 	int (* const init)(janus_callbacks *callback, const char *config_path);
@@ -246,11 +246,11 @@ struct janus_plugin {
 	void (* const destroy)(void);
 
 	/*! \brief Informative method to request the API version this plugin was compiled against
-	 *  \note This was added in version 0.0.7 of the gateway, to address changes
+	 *  \note This was added in version 0.0.7 of Janus, to address changes
 	 * to the API that might break existing plugin or the core itself. All
 	 * plugins MUST implement this method and return JANUS_PLUGIN_API_VERSION
 	 * to make this work, or they will be rejected by the core. Do NOT try
-	 * to launch a <= 0.0.7 plugin on a >= 0.0.7 gateway or it will crash. */
+	 * to launch a <= 0.0.7 plugin on a >= 0.0.7 Janus or it will crash. */
 	int (* const get_api_compatibility)(void);
 	/*! \brief Informative method to request the numeric version of the plugin */
 	int (* const get_version)(void);
@@ -325,7 +325,7 @@ struct janus_plugin {
 	 * @param[out] error An integer that may contain information about any error */
 	void (* const destroy_session)(janus_plugin_session *handle, int *error);
 	/*! \brief Method to get plugin-specific info of a session/handle
-	 *  \note This was added in version 0.0.7 of the gateway. Janus assumes
+	 *  \note This was added in version 0.0.7 of Janus. Janus assumes
 	 * the string is always allocated, so don't return constants here
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @returns A json_t object with the requested info */
@@ -333,7 +333,7 @@ struct janus_plugin {
 
 };
 
-/*! \brief Callbacks to contact the gateway */
+/*! \brief Callbacks to contact the Janus core */
 struct janus_callbacks {
 	/*! \brief Callback to push events/messages to a peer
 	 * @note The Janus core increases the references to both the message and jsep
@@ -398,7 +398,7 @@ struct janus_callbacks {
 	gboolean (* const auth_signature_contains)(janus_plugin *plugin, const char *token, const char *descriptor);
 };
 
-/*! \brief The hook that plugins need to implement to be created from the gateway */
+/*! \brief The hook that plugins need to implement to be created from the Janus core */
 typedef janus_plugin* create_p(void);
 
 

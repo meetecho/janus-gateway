@@ -4,14 +4,14 @@
  * \brief  Janus RESTs transport plugin
  * \details  This is an implementation of a RESTs transport for the
  * Janus API, using the libmicrohttpd library (http://www.gnu.org/software/libmicrohttpd/).
- * This module allows browsers to make use of HTTP to talk to the gateway.
- * Since the gateway may be deployed on a different domain than the web
- * server hosting the web applications using it, the gateway automatically
+ * This module allows browsers to make use of HTTP to talk to the Janus core.
+ * Since a Janus instance may be deployed on a different domain than the web
+ * server hosting the web applications using it, the plugin automatically
  * handles OPTIONS request to comply with the CORS specification.
  * POST requests can be used to ask for the management of a session with
- * the gateway, to attach to a plugin, to send messages to the plugin
+ * the server, to attach to a plugin, to send messages to the plugin
  * itself and so on. GET requests instead are used for getting events
- * associated to a gateway session (and as such to all its plugin handles
+ * associated to a Janus session (and as such to all its plugin handles
  * and the events plugins push in the session itself), using a long poll
  * approach. A JavaScript library (janus.js) implements all of this on
  * the client side automatically.
@@ -120,7 +120,7 @@ typedef struct janus_http_msg {
 	gchar *contenttype;					/* Content-Type of the payload */
 	gchar *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
-	gint64 session_id;					/* Gateway-Client session identifier this message belongs to */
+	gint64 session_id;					/* Janus-Client session identifier this message belongs to */
 	janus_mutex wait_mutex;				/* Mutex to wait on the response condition */
 	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
@@ -617,7 +617,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	JANUS_LOG(LOG_VERB, "The installed libmicrohttpd version supports MHD_USE_AUTO\n");
 #endif
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Register a function to detect problems for which MHD would typically abort */
@@ -1275,7 +1275,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
@@ -1623,7 +1623,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Use GET for the info endpoint");
 			goto done;

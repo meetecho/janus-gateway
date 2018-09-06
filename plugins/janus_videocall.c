@@ -9,9 +9,9 @@
  *
  * \page videocall VideoCall plugin documentation
  * This is a simple video call plugin for Janus, allowing two
- * WebRTC peers to call each other through the gateway. The idea is to
+ * WebRTC peers to call each other through the Janus core. The idea is to
  * provide a similar service as the well known AppRTC demo (https://apprtc.appspot.com),
- * but with the media flowing through the gateway rather than being peer-to-peer.
+ * but with the media flowing through a server rather than being peer-to-peer.
  * 
  * The plugin provides a simple fake registration mechanism. A peer attaching
  * to the plugin needs to specify a username, which acts as a "phone number":
@@ -269,7 +269,7 @@
 /* Plugin information */
 #define JANUS_VIDEOCALL_VERSION			6
 #define JANUS_VIDEOCALL_VERSION_STRING	"0.0.6"
-#define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
+#define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through a server."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOCALL_PACKAGE			"janus.plugin.videocall"
@@ -480,7 +480,7 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videocall_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videocall_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	g_atomic_int_set(&initialized, 1);

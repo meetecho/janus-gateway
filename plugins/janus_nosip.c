@@ -42,7 +42,7 @@
  * (via the NoSIP plugin) is only responsible for bridging the media. This
  * might be more appropriate than the SIP plugin in cases where developers
  * want to keep control on the signalling layer, while still involving a
- * gateway of sorts. Of course, SIP is just an example here: other signalling
+ * server of sorts. Of course, SIP is just an example here: other signalling
  * protocols may be involved as well (e.g., IAX, XMPP, others). The NoSIP
  * plugin, though, will generate and expect plain SDP, so you'll need to
  * take care of any adaptation that may be needed to make this work with
@@ -689,7 +689,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_nosip_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_nosip_message_free);
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	g_atomic_int_set(&initialized, 1);
@@ -1009,7 +1009,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 		/* Forward to our NoSIP peer */
 		if((video && session->media.has_video && session->media.video_rtcp_fd != -1) ||
 				(!video && session->media.has_audio && session->media.audio_rtcp_fd != -1)) {
-			/* Fix SSRCs as the gateway does */
+			/* Fix SSRCs as the Janus core does */
 			JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Fixing %s SSRCs (local %u, peer %u)\n",
 				session, video ? "video" : "audio",
 				(video ? session->media.video_ssrc : session->media.audio_ssrc),

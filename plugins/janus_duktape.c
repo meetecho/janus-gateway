@@ -1405,7 +1405,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	janus_core = callback;
 
 	/* Init the JS script, in case it's needed */

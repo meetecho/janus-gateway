@@ -2,8 +2,8 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus core (headers)
- * \details Implementation of the gateway core. This code takes care of
- * the gateway initialization (command line/configuration) and setup,
+ * \details Implementation of the Janus core. This code takes care of
+ * the server initialization (command line/configuration) and setup,
  * and makes use of the available transport plugins (by default HTTP,
  * WebSockets, RabbitMQ, if compiled) and Janus protocol (a JSON-based
  * protocol) to interact with the applications, whether they're web based
@@ -15,8 +15,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_GATEWAY_H
-#define _JANUS_GATEWAY_H
+#ifndef _JANUS_CORE_H
+#define _JANUS_CORE_H
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -41,9 +41,9 @@
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
 typedef struct janus_request janus_request;
 
-/*! \brief Gateway-Client session */
+/*! \brief Janus Core-Client session */
 typedef struct janus_session {
-	/*! \brief Janus Gateway-Client session ID */
+	/*! \brief Janus Core-Client session ID */
 	guint64 session_id;
 	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
@@ -64,44 +64,44 @@ typedef struct janus_session {
 } janus_session;
 
 
-/** @name Janus Gateway-Client session methods
+/** @name Janus Core-Client session methods
  */
 ///@{
-/*! \brief Method to create a new Janus Gateway-Client session
- * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+/*! \brief Method to create a new Janus Core-Client session
+ * @param[in] session_id The desired Janus Core-Client session ID, or 0 if it needs to be generated randomly
+ * @returns The created Janus Core-Client session if successful, NULL otherwise */
 janus_session *janus_session_create(guint64 session_id);
-/*! \brief Method to find an existing Janus Gateway-Client session from its ID
- * @param[in] session_id The Janus Gateway-Client session ID
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+/*! \brief Method to find an existing Janus Core-Client session from its ID
+ * @param[in] session_id The Janus Core-Client session ID
+ * @returns The created Janus Core-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
 /*! \brief Method to add an event to notify to the queue of notifications for this session
- * @param[in] session The Janus Gateway-Client session this notification is related to
+ * @param[in] session The Janus Core-Client session this notification is related to
  * @param[in] event The event to notify as a Jansson JSON object */
 void janus_session_notify_event(janus_session *session, json_t *event);
-/*! \brief Method to destroy a Janus Gateway-Client session
- * @param[in] session The Janus Gateway-Client session to destroy
+/*! \brief Method to destroy a Janus Core-Client session
+ * @param[in] session The Janus Core-Client session to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_session_destroy(janus_session *session);
 /*! \brief Method to find an existing Janus ICE handle from its ID
- * @param[in] session The Janus Gateway-Client session this ICE handle belongs to
+ * @param[in] session The Janus Core-Client session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
  * @returns The Janus ICE handle if successful, NULL otherwise */
 janus_ice_handle *janus_session_handles_find(janus_session *session, guint64 handle_id);
 /*! \brief Method to insert a Janus ICE handle in a session
- * @param[in] session The Janus Gateway-Client session
+ * @param[in] session The Janus Core-Client session
  * @param[in] handle The Janus ICE handle */
 void janus_session_handles_insert(janus_session *session, janus_ice_handle *handle);
 /*! \brief Method to remove a Janus ICE handle from a session
- * @param[in] session The Janus Gateway-Client session
+ * @param[in] session The Janus Core-Client session
  * @param[in] handle The Janus ICE handle
  * @returns The error code of janus_ice_handle_destroy */
 gint janus_session_handles_remove(janus_session *session, janus_ice_handle *handle);
 /*! \brief Method to remove all Janus ICE handles from a session
- * @param[in] session The Janus Gateway-Client session */
+ * @param[in] session The Janus Core-Client session */
 void janus_session_handles_clear(janus_session *session);
 /*! \brief Method to list the IDs of all Janus ICE handles of a session as JSON
- * @param[in] session The Janus Gateway-Client session
+ * @param[in] session The Janus Core-Client session
  * @returns The JSON array */
 json_t *janus_session_handles_list_json(janus_session *session);
 ///@}
@@ -175,8 +175,8 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
  * needed, e.g., to provide support for REST HTTP/HTTPS, WebSockets,
  * RabbitMQ or others. These transport plugins are shared objects that
  * need to implement the interfaces defined in transport.h and as such
- * are dynamically loaded by the gateway at startup, and unloaded when
- * the gateway closes.
+ * are dynamically loaded by the server at startup, and unloaded when
+ * the server closes.
  */
 ///@{
 /*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy a transport instance
@@ -197,8 +197,8 @@ void janus_transportso_close(void *key, void *value, void *user_data);
  * apt management of core and plugin related events on a broader sense,
  * event handler plugins are needed. These event handler plugins are
  * shared objects that need to implement the interfaces defined in
- * eventhandler.h and as such are dynamically loaded by the gateway at
- * startup, and unloaded when the gateway closes.
+ * eventhandler.h and as such are dynamically loaded by the server at
+ * startup, and unloaded when the server closes.
  */
 ///@{
 /*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy an eventhandler instance
@@ -214,12 +214,12 @@ void janus_eventhandlerso_close(void *key, void *value, void *user_data);
 ///@}
 
 /** @name Janus plugin management
- * As anticipated, the gateway doesn't provide any specific feature: it takes
+ * As anticipated, the server doesn't provide any specific feature: it takes
  * care of WebRTC-related stuff, and of sending and receiving JSON-based
  * messages. To implement applications based on these foundations, plugins
  * can be used. These plugins are shared objects that need to implement
  * the interfaces defined in plugin.h and as such are dynamically loaded
- * by the gateway at startup, and unloaded when the gateway closes.
+ * by the server at startup, and unloaded when the server closes.
  */
 ///@{
 /*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy a plugin instance
@@ -250,7 +250,7 @@ gchar *janus_get_local_ip(void);
 gchar *janus_get_public_ip(void);
 /*! \brief Helper method to overwrite the IP address to use in the SDP */
 void janus_set_public_ip(const char *ip);
-/*! \brief Helper method to check whether the gateway is being shut down */
+/*! \brief Helper method to check whether the server is being shut down */
 gint janus_is_stopping(void);
 
 
