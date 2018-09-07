@@ -1000,7 +1000,6 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
 		g_free(session_handle);
-		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
 	janus_refcount_init(&session_handle->ref, janus_ice_plugin_session_free);
