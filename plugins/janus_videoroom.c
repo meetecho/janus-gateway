@@ -1416,6 +1416,7 @@ typedef struct janus_videoroom_publisher {
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this publisher's data, if enabled */
+	janus_rtp_switching_context rec_ctx;
 	janus_rtp_simulcasting_context rec_simctx;
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *subscribers;	/* Subscriptions to this publisher (who's watching this publisher)  */
@@ -4017,10 +4018,26 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 		/* Set the payload type of the publisher */
 		rtp->type = video ? participant->video_pt : participant->audio_pt;
-		if(sc < 1) {
-			/* Save the frame if we're recording
-			 * FIXME: for video, we're currently only recording the base substream, when simulcasting */
+		/* Save the frame if we're recording */
+		if(!video || participant->ssrc[0] == 0) {
 			janus_recorder_save_frame(video ? participant->vrc : participant->arc, buf, len);
+		} else {
+			/* We're simulcasting, save the best video quality */
+			gboolean save = janus_rtp_simulcasting_context_process_rtp(&participant->rec_simctx,
+				buf, len, participant->ssrc, participant->vcodec, &participant->rec_ctx);
+			if(save) {
+				janus_rtp_header *header = (janus_rtp_header *)buf;
+				uint32_t seq_number = ntohs(header->seq_number);
+				uint32_t timestamp = ntohl(header->timestamp);
+				uint32_t ssrc = ntohl(header->ssrc);
+				janus_rtp_header_update(header, &participant->rec_ctx, TRUE, 4500);
+				header->ssrc = htonl(participant->ssrc[0]);		/* We use the main SSRC for the whole recording */
+				janus_recorder_save_frame(participant->vrc, buf, len);
+				/* Restore the header, as it will be needed by subscribers */
+				header->ssrc = htonl(ssrc);
+				header->timestamp = htonl(timestamp);
+				header->seq_number = htons(seq_number);
+			}
 		}
 		/* Done, relay it */
 		janus_videoroom_rtp_relay_packet packet;
@@ -4292,6 +4309,10 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 		}
 	}
 	if(video && participant->vrc == NULL) {
+		janus_rtp_switching_context_reset(&participant->rec_ctx);
+		janus_rtp_simulcasting_context_reset(&participant->rec_simctx);
+		participant->rec_simctx.substream_target = 2;
+		participant->rec_simctx.templayer_target = 2;
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
