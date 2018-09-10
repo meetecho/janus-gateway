@@ -569,6 +569,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 						/* Notify the user */
 						json_t *event = json_object();
 						json_object_set_new(event, "echotest", json_string("event"));
+						json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 						json_object_set_new(event, "substream", json_integer(session->substream));
 						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 						json_decref(event);
@@ -602,6 +603,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 						/* Notify the user */
 						json_t *event = json_object();
 						json_object_set_new(event, "echotest", json_string("event"));
+						json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 						json_object_set_new(event, "substream", json_integer(session->substream));
 						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 						json_decref(event);
@@ -630,6 +632,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 						/* Notify the user */
 						json_t *event = json_object();
 						json_object_set_new(event, "echotest", json_string("event"));
+						json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 						json_object_set_new(event, "temporal", json_integer(session->templayer));
 						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 						json_decref(event);
@@ -647,7 +650,8 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			janus_rtp_header_update(header, &session->context, TRUE, 0);
 			if(session->vcodec == JANUS_VIDEOCODEC_VP8)
 				janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
-			/* Save the frame if we're recording */
+			/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
+			header->ssrc = htonl(1);
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(handle, video, buf, len);
@@ -993,6 +997,7 @@ static void *janus_echotest_handler(void *data) {
 				/* No need to do anything, we're already getting the right substream, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "substream", json_integer(session->substream));
 				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -1013,6 +1018,7 @@ static void *janus_echotest_handler(void *data) {
 				/* No need to do anything, we're already getting the right temporal, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 				json_object_set_new(event, "temporal", json_integer(session->templayer));
 				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);

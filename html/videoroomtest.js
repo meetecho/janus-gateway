@@ -469,6 +469,7 @@ function newRemoteFeed(id, display, audio, video) {
 					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
 					listen["offer_video"] = false;
 				}
+				remoteFeed.videoCodec = video;
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -510,7 +511,7 @@ function newRemoteFeed(id, display, audio, video) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, temporal !== null && temporal !== undefined);
+								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
 							}
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);

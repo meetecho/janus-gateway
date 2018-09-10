@@ -754,6 +754,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 						json_object_set_new(event, "videocall", json_string("event"));
 						json_t *result = json_object();
 						json_object_set_new(result, "event", json_string("simulcast"));
+						json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 						json_object_set_new(result, "substream", json_integer(peer->substream));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
@@ -790,6 +791,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 						json_object_set_new(event, "videocall", json_string("event"));
 						json_t *result = json_object();
 						json_object_set_new(result, "event", json_string("simulcast"));
+						json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 						json_object_set_new(result, "substream", json_integer(peer->substream));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
@@ -821,6 +823,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 							json_object_set_new(event, "videocall", json_string("event"));
 							json_t *result = json_object();
 							json_object_set_new(result, "event", json_string("simulcast"));
+							json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
 							json_object_set_new(result, "temporal", json_integer(peer->templayer));
 							json_object_set_new(event, "result", result);
 						gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
@@ -839,7 +842,8 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			janus_rtp_header_update(header, &peer->context, TRUE, 4500);
 			if(session->vcodec == JANUS_VIDEOCODEC_VP8)
 				janus_vp8_simulcast_descriptor_update(payload, plen, &peer->simulcast_context, switched);
-			/* Save the frame if we're recording */
+			/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
+			header->ssrc = htonl(1);
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(peer->handle, video, buf, len);
@@ -1457,8 +1461,12 @@ static void *janus_videocall_handler(void *data) {
 				if(session->substream_target == session->substream) {
 					/* No need to do anything, we're already getting the right substream, so notify the user */
 					json_t *event = json_object();
-					json_object_set_new(event, "event", json_string("simulcast"));
-					json_object_set_new(event, "substream", json_integer(session->substream));
+					json_object_set_new(event, "videocall", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "event", json_string("simulcast"));
+					json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+					json_object_set_new(result, "substream", json_integer(session->substream));
+					json_object_set_new(event, "result", result);
 					gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
 					json_decref(event);
 				} else {
@@ -1478,8 +1486,12 @@ static void *janus_videocall_handler(void *data) {
 				if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
 					/* No need to do anything, we're already getting the right temporal, so notify the user */
 					json_t *event = json_object();
-					json_object_set_new(event, "event", json_string("simulcast"));
-					json_object_set_new(event, "temporal", json_integer(session->templayer));
+					json_object_set_new(event, "videocall", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "event", json_string("simulcast"));
+					json_object_set_new(result, "videocodec", json_string(janus_videocodec_name(session->vcodec)));
+					json_object_set_new(result, "temporal", json_integer(session->templayer));
+					json_object_set_new(event, "result", result);
 					gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
 					json_decref(event);
 				} else {
