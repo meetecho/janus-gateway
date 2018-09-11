@@ -1351,14 +1351,14 @@ static void *janus_videocall_handler(void *data) {
 			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
 			session->acodec = janus_audiocodec_from_name(acodec);
 			session->vcodec = janus_videocodec_from_name(vcodec);
-			if(session->acodec != JANUS_AUDIOCODEC_NONE) {
+			if(session->acodec == JANUS_AUDIOCODEC_NONE) {
 				session->has_audio = FALSE;
 				if(peer)
 					peer->has_audio = FALSE;
 			} else if(peer) {
 				peer->acodec = session->acodec;
 			}
-			if(session->vcodec != JANUS_VIDEOCODEC_NONE) {
+			if(session->vcodec == JANUS_VIDEOCODEC_NONE) {
 				session->has_video = FALSE;
 				if(peer)
 					peer->has_video = FALSE;
