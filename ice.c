@@ -2356,7 +2356,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								/* We don't track it forever, though: add a timed source to remove it in a few seconds */
 								janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
 								np->handle = handle;
-								np->seq_number = new_seqn;
+								np->seq_number = cur_seq->seq;
 								np->vindex = vindex;
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
