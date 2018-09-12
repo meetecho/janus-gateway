@@ -33,9 +33,9 @@ you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in
 WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
-you are interested in RabbitMQ support for the Janus API)
+you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
-you are interested in MQTT support for the Janus API)
+you are interested in MQTT support for the Janus API or events)
 * [nanomsg](https://nanomsg.org/) (only needed if
 you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
@@ -187,9 +187,9 @@ the first line with this:
 
 The same applies for Eclipse Paho MQTT C client library, which is needed
 for the optional MQTT support. If you're interested in integrating MQTT
-queues as an alternative (or replacement) to HTTP and/or WebSockets
-to control Janus, you can install the latest version with the
-following steps:
+channels as an alternative (or replacement) to HTTP and/or WebSockets
+to control Janus, or as a carrier of Janus Events, you can install the
+latest version with the following steps:
 
 	git clone https://github.com/eclipse/paho.mqtt.c.git
 	cd paho.mqtt.c

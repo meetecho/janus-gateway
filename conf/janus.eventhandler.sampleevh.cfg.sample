@@ -13,6 +13,9 @@ grouping = yes	; Whether events should be sent individually (one per
 				; HTTP POST, JSON object), or if it's ok to group them
 				; (one or more per HTTP POST, JSON array with objects)
 				; The default is 'yes' to limit the number of connections.
+json = indented	; Whether the JSON messages should be indented (default),
+				; plain (no indentation) or compact (no indentation and no spaces)
+
 backend = http://your.webserver.here/and/a/path
 				; Address the plugin will send all events to as HTTP POST
 				; requests with an application/json payload. In case
