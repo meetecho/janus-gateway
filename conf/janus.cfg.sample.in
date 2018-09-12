@@ -134,8 +134,8 @@ nice_debug = false
 ; all host candidates (which normally have a private IP address) to
 ; be rewritten with the public address provided in the settings. As
 ; such, use the option with caution and only if you know what you're doing.
-; Besides, it's still recommended to also enable STUN in those cases,
-; and keep ICE Lite disabled as it's not strictly speaking a public server.
+; Make sure you keep ICE Lite disabled, though, as it's not strictly
+; speaking a publicly reachable server, and a NAT is still involved.
 ;nat_1_1_mapping = 1.2.3.4
 
 ; You can configure a TURN server in two different ways: specifying a
