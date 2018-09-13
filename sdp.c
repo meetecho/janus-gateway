@@ -592,6 +592,12 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 		}
 	}
 	if(res >= 7) {
+		/* FIXME Discard mDNS candidates for now: in the future, we may want to try and resolve them
+		 * https://tools.ietf.org/html/draft-ietf-rtcweb-mdns-ice-candidates-00 */
+		if(strstr(rip, ".local")) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Ignoring unsupported mDNS candidate\n", handle->handle_id);
+			return res;
+		}
 		/* Add remote candidate */
 		component = stream->component;
 		if(component == NULL || rcomponent > 1) {
