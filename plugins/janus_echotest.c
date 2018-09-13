@@ -770,6 +770,7 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->peer_bitrate = 0;
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
+	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	g_atomic_int_set(&session->hangingup, 0);
 }
 

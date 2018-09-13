@@ -955,6 +955,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->acodec = JANUS_AUDIOCODEC_NONE;
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	session->bitrate = 0;
+	janus_rtp_switching_context_reset(&session->context);
+	janus_rtp_simulcasting_context_reset(&session->sim_context);
+	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
 		janus_refcount_decrease(&peer->ref);
 	}
