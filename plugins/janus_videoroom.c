@@ -1494,6 +1494,12 @@ static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) 
 	janus_refcount_decrease(&p->ref);
 }
 
+static void janus_videoroom_publisher_dereference_by_subscriber(janus_videoroom_publisher *p) {
+	/* This is used by g_pointer_clear and g_hash_table_new_full so that NULL is only possible if that was inserted into the hash table. */
+	janus_refcount_decrease(&p->session->ref);
+	janus_refcount_decrease(&p->ref);
+}
+
 static void janus_videoroom_publisher_dereference_nodebug(janus_videoroom_publisher *p) {
 	janus_refcount_decrease_nodebug(&p->ref);
 }
@@ -3620,7 +3626,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
-		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
@@ -4369,6 +4374,34 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 }
 
+static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
+	/* already hangup */
+	if (!s->feed) {
+		return;
+	}
+	/* check if the owner needs to be cleaned up */
+	if(s->pvt_id > 0 && s->room != NULL) {
+		janus_mutex_lock(&s->room->mutex);
+		janus_videoroom_publisher *owner = g_hash_table_lookup(s->room->private_ids, GUINT_TO_POINTER(s->pvt_id));
+		if(owner != NULL) {
+			janus_mutex_lock(&owner->subscribers_mutex);
+			/* Note: we should refcount these subscription-publisher mappings as well */
+			owner->subscriptions = g_slist_remove(owner->subscriptions, s);
+			janus_mutex_unlock(&owner->subscribers_mutex);
+		}
+		janus_mutex_unlock(&s->room->mutex);
+	}
+	/* TODO: are we sure this is okay as other handlers use feed directly without synchronization */
+	if(s->feed)
+		g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference_by_subscriber);
+	if(s->room)
+		g_clear_pointer(&s->room, janus_videoroom_room_dereference);
+	if(s->session && s->close_pc)
+		gateway->close_pc(s->session->handle);
+	/* Done with the subscriber and free its reference */
+	janus_refcount_decrease(&s->ref);
+}
+
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -4408,21 +4441,17 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
-		while(participant->subscribers) {
-			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)participant->subscribers->data;
+		GSList *subscribers = participant->subscribers;
+		participant->subscribers = NULL;
+		janus_mutex_unlock(&participant->subscribers_mutex);
+		/* Hangup all subscribers */
+		while(subscribers) {
+			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)subscribers->data;
+			subscribers = g_slist_remove(subscribers, s);
 			if(s) {
-				participant->subscribers = g_slist_remove(participant->subscribers, s);
-				janus_refcount_decrease(&participant->session->ref);
-				if(s->feed)
-					g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference);
-				if(s->room)
-					g_clear_pointer(&s->room, janus_videoroom_room_dereference);
-				if(s->session && s->close_pc)
-					gateway->close_pc(s->session->handle);
-				janus_refcount_decrease(&s->ref);
+				janus_videoroom_hangup_subscriber(s);
 			}
 		}
-		janus_mutex_unlock(&participant->subscribers_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -4431,16 +4460,10 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		if(subscriber) {
 			subscriber->paused = TRUE;
 			janus_videoroom_publisher *publisher = subscriber->feed;
+			/* It is safe to use feed as the only other place sets feed to NULL
+			   is in this function and accessing to this function is synchronized
+			   by sesssions_mutex */
 			if(publisher != NULL) {
-				janus_mutex_lock(&publisher->subscribers_mutex);
-				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
-				if(subscriber->pvt_id > 0 && publisher->room != NULL) {
-					janus_videoroom_publisher *owner = g_hash_table_lookup(publisher->room->private_ids, GUINT_TO_POINTER(subscriber->pvt_id));
-					if(owner != NULL) {
-						/* Note: we should refcount these subscription-publisher mappings as well */
-						owner->subscriptions = g_slist_remove(owner->subscriptions, subscriber);
-					}
-				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -4449,13 +4472,10 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 					json_object_set_new(info, "feed", json_integer(publisher->user_id));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
+				janus_mutex_lock(&publisher->subscribers_mutex);
+				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
 				janus_mutex_unlock(&publisher->subscribers_mutex);
-				janus_refcount_decrease(&publisher->session->ref);
-				if(subscriber->feed)
-					g_clear_pointer(&subscriber->feed, janus_videoroom_publisher_dereference);
-				if(subscriber->room)
-					g_clear_pointer(&subscriber->room, janus_videoroom_room_dereference);
-				janus_refcount_decrease(&subscriber->ref);
+				janus_videoroom_hangup_subscriber(subscriber);
 			}
 		}
 		/* TODO Should we close the handle as well? */
@@ -4773,7 +4793,6 @@ static void *janus_videoroom_handler(void *data) {
 					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
 					janus_refcount_increase(&publisher->ref);
 					janus_refcount_increase(&publisher->session->ref);
-					janus_mutex_unlock(&videoroom->mutex);
 					/* First of all, let's check if this room requires valid private_id values */
 					if(videoroom->require_pvtid) {
 						/* It does, let's make sure this subscription complies */
@@ -4782,9 +4801,13 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_LOG(LOG_ERR, "Unauthorized (this room requires a valid private_id)\n");
 							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 							g_snprintf(error_cause, 512, "Unauthorized (this room requires a valid private_id)");
+							janus_mutex_unlock(&videoroom->mutex);
 							goto error;
 						}
+						janus_refcount_increase(&owner->ref);
+						janus_refcount_increase(&owner->session->ref);
 					}
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_videoroom_subscriber *subscriber = g_malloc0(sizeof(janus_videoroom_subscriber));
 					subscriber->session = session;
 					subscriber->room_id = videoroom->room_id;
@@ -4802,6 +4825,10 @@ static void *janus_videoroom_handler(void *data) {
 							(!publisher->video || !subscriber->video_offered) &&
 							(!publisher->data || !subscriber->data_offered)) {
 						g_free(subscriber);
+						if (owner) {
+							janus_refcount_decrease(&owner->session->ref);
+							janus_refcount_decrease(&owner->ref);
+						}
 						janus_refcount_decrease(&publisher->session->ref);
 						janus_refcount_decrease(&publisher->ref);
 						JANUS_LOG(LOG_ERR, "Can't offer an SDP with no audio, video or data\n");
@@ -4845,6 +4872,9 @@ static void *janus_videoroom_handler(void *data) {
 						janus_mutex_lock(&owner->subscribers_mutex);
 						owner->subscriptions = g_slist_append(owner->subscriptions, subscriber);
 						janus_mutex_unlock(&owner->subscribers_mutex);
+						/* Done adding the subscription, owner is safe to be released */
+						janus_refcount_decrease(&owner->session->ref);
+						janus_refcount_decrease(&owner->ref);
 					}
 					event = json_object();
 					json_object_set_new(event, "videoroom", json_string("attached"));
