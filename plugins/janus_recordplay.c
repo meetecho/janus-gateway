@@ -389,10 +389,10 @@ typedef struct janus_recordplay_recording {
 	char *name;					/* Name of the recording */
 	char *date;					/* Time of the recording */
 	char *arc_file;				/* Audio file name */
-	const char *acodec;			/* Codec used for audio, if available */
+	janus_audiocodec acodec;	/* Codec used for audio, if available */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
 	char *vrc_file;				/* Video file name */
-	const char *vcodec;			/* Codec used for video, if available */
+	janus_videocodec vcodec;	/* Codec used for video, if available */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	GList *viewers;				/* List of users watching this recording */
@@ -420,10 +420,13 @@ typedef struct janus_recordplay_session {
 	guint video_remb_startup;
 	gint64 video_remb_last;
 	guint32 video_bitrate;
-	guint video_keyframe_interval; /* keyframe request interval (ms) */
-	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
+	guint video_keyframe_interval;			/* Keyframe request interval (ms) */
+	guint64 video_keyframe_request_last;	/* Timestamp of last keyframe request sent */
 	gint video_fir_seq;
-	guint32 simulcast_ssrc;	/* We don't support Simulcast in this plugin, so we'll stick to the base substream */
+	janus_rtp_switching_context context;
+	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	janus_rtp_simulcasting_context sim_context;
+	janus_vp8_simulcast_context vp8_context;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -612,18 +615,18 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 	if(rec == NULL)
 		return -1;
 	/* Prepare an SDP offer we'll send to playout viewers */
-	gboolean offer_audio = (rec->arc_file != NULL && rec->acodec != NULL),
-		offer_video = (rec->vrc_file != NULL && rec->vcodec != NULL);
+	gboolean offer_audio = (rec->arc_file != NULL && rec->acodec != JANUS_AUDIOCODEC_NONE),
+		offer_video = (rec->vrc_file != NULL && rec->vcodec != JANUS_VIDEOCODEC_NONE);
 	char s_name[100];
 	g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
 	janus_sdp *offer = janus_sdp_generate_offer(
 		s_name, "1.1.1.1",
 		JANUS_SDP_OA_AUDIO, offer_audio,
-		JANUS_SDP_OA_AUDIO_CODEC, rec->acodec,
+		JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_VIDEO, offer_video,
-		JANUS_SDP_OA_VIDEO_CODEC, rec->vcodec,
+		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_DATA, FALSE,
@@ -821,6 +824,9 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->video_keyframe_request_last = 0;
 	session->video_keyframe_interval = 15000; 	/* 15 seconds by default */
 	session->video_fir_seq = 0;
+	janus_rtp_switching_context_reset(&session->context);
+	janus_rtp_simulcasting_context_reset(&session->sim_context);
+	janus_vp8_simulcast_context_reset(&session->vp8_context);
 	janus_refcount_init(&session->ref, janus_recordplay_session_free);
 	handle->plugin_handle = session;
 
@@ -954,11 +960,11 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			json_object_set_new(ml, "name", json_string(rec->name));
 			json_object_set_new(ml, "date", json_string(rec->date));
 			json_object_set_new(ml, "audio", rec->arc_file ? json_true() : json_false());
-			if(rec->acodec)
-				json_object_set_new(ml, "audio_codec", json_string(rec->acodec));
+			if(rec->acodec != JANUS_AUDIOCODEC_NONE)
+				json_object_set_new(ml, "audio_codec", json_string(janus_audiocodec_name(rec->acodec)));
 			json_object_set_new(ml, "video", rec->vrc_file ? json_true() : json_false());
-			if(rec->vcodec)
-				json_object_set_new(ml, "video_codec", json_string(rec->vcodec));
+			if(rec->vcodec != JANUS_VIDEOCODEC_NONE)
+				json_object_set_new(ml, "video_codec", json_string(janus_videocodec_name(rec->vcodec)));
 			janus_refcount_decrease(&rec->ref);
 			json_array_append_new(list, ml);
 		}
@@ -1125,17 +1131,44 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 	}
 	if(g_atomic_int_get(&session->destroyed))
 		return;
-	if(video && session->simulcast_ssrc) {
-		/* The user is simulcasting: drop everything except the base layer */
+	if(!session->recorder || !session->recording)
+		return;
+	if(video && session->ssrc[0] != 0) {
+		/* Handle simulcast: backup the header information first */
 		janus_rtp_header *header = (janus_rtp_header *)buf;
+		uint32_t seq_number = ntohs(header->seq_number);
+		uint32_t timestamp = ntohl(header->timestamp);
 		uint32_t ssrc = ntohl(header->ssrc);
-		if(ssrc != session->simulcast_ssrc) {
-			JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
+		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
+			buf, len, session->ssrc, session->recording->vcodec, &session->context);
+		/* Do we need to drop this? */
+		if(!save)
 			return;
+		if(session->sim_context.need_pli) {
+			/* Send a PLI */
+			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+			char rtcpbuf[12];
+			memset(rtcpbuf, 0, 12);
+			janus_rtcp_pli((char *)&rtcpbuf, 12);
+			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
 		}
-	}
-	/* Are we recording? */
-	if(session->recorder) {
+		/* If we got here, update the RTP header and save the packet */
+		janus_rtp_header_update(header, &session->context, TRUE, 0);
+		if(session->recording->vcodec == JANUS_VIDEOCODEC_VP8) {
+			int plen = 0;
+			char *payload = janus_rtp_payload(buf, len, &plen);
+			janus_vp8_simulcast_descriptor_update(payload, plen, &session->vp8_context, session->sim_context.changed_substream);
+		}
+		/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
+		header->ssrc = htonl(session->ssrc[0]);
+		janus_recorder_save_frame(session->vrc, buf, len);
+		/* Restore header or core statistics will be messed up */
+		header->ssrc = htonl(ssrc);
+		header->timestamp = htonl(timestamp);
+		header->seq_number = htons(seq_number);
+	} else {
+		/* Save the frame if we're recording */
 		janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 	}
 
@@ -1199,7 +1232,9 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	session->simulcast_ssrc = 0;
+	janus_rtp_switching_context_reset(&session->context);
+	janus_rtp_simulcasting_context_reset(&session->sim_context);
+	janus_vp8_simulcast_context_reset(&session->vp8_context);
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1424,36 +1459,41 @@ static void *janus_recordplay_handler(void *data) {
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
 			rec->offer = NULL;
+			rec->acodec = JANUS_AUDIOCODEC_NONE;
+			rec->vcodec = JANUS_VIDEOCODEC_NONE;
 			g_atomic_int_set(&rec->destroyed, 0);
 			g_atomic_int_set(&rec->completed, 0);
 			janus_refcount_init(&rec->ref, janus_recordplay_recording_free);
 			janus_refcount_increase(&rec->ref);	/* This is for the user writing the recording */
 			janus_mutex_init(&rec->mutex);
 			/* Check which codec we should record for audio and/or video */
-			janus_sdp_find_preferred_codecs(offer, &rec->acodec, &rec->vcodec);
+			const char *acodec = NULL, *vcodec = NULL;
+			janus_sdp_find_preferred_codecs(offer, &acodec, &vcodec);
+			rec->acodec = janus_audiocodec_from_name(acodec);
+			rec->vcodec = janus_videocodec_from_name(vcodec);
 			/* We found preferred codecs: let's just make sure the direction is what we need */
 			janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
 			if(m != NULL && m->direction == JANUS_SDP_RECVONLY)
-				rec->acodec = NULL;
-			audio = (rec->acodec != NULL);
+				rec->acodec = JANUS_AUDIOCODEC_NONE;
+			audio = (rec->acodec != JANUS_AUDIOCODEC_NONE);
 			if(audio) {
-				JANUS_LOG(LOG_WARN, "Audio codec: %s\n", rec->acodec);
+				JANUS_LOG(LOG_VERB, "Audio codec: %s\n", janus_audiocodec_name(rec->acodec));
 			}
 			m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
 			if(m != NULL && m->direction == JANUS_SDP_RECVONLY)
-				rec->vcodec = NULL;
-			video = (rec->vcodec != NULL);
+				rec->vcodec = JANUS_VIDEOCODEC_NONE;
+			video = (rec->vcodec != JANUS_VIDEOCODEC_NONE);
 			if(video) {
-				JANUS_LOG(LOG_WARN, "Video codec: %s\n", rec->vcodec);
+				JANUS_LOG(LOG_VERB, "Video codec: %s\n", janus_videocodec_name(rec->vcodec));
 			}
 			rec->audio_pt = AUDIO_PT;
-			if(rec->acodec) {
+			if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
 				/* Some audio codecs have a fixed payload type that we can't mess with */
-				if(!strcasecmp(rec->acodec, "pcmu"))
+				if(rec->acodec == JANUS_AUDIOCODEC_PCMU)
 					rec->audio_pt = 0;
-				else if(!strcasecmp(rec->acodec, "pcma"))
+				else if(rec->acodec == JANUS_AUDIOCODEC_PCMA)
 					rec->audio_pt = 8;
-				else if(!strcasecmp(rec->acodec, "g722"))
+				else if(rec->acodec == JANUS_AUDIOCODEC_G722)
 					rec->audio_pt = 9;
 			}
 			rec->video_pt = VIDEO_PT;
@@ -1471,7 +1511,7 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
 				}
 				rec->arc_file = g_strdup(filename);
-				session->arc = janus_recorder_create(recordings_path, rec->acodec, rec->arc_file);
+				session->arc = janus_recorder_create(recordings_path, janus_audiocodec_name(rec->acodec), rec->arc_file);
 			}
 			if(video) {
 				char filename[256];
@@ -1481,7 +1521,7 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, rec->vcodec, rec->vrc_file);
+				session->vrc = janus_recorder_create(recordings_path, janus_videocodec_name(rec->vcodec), rec->vrc_file);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1493,10 +1533,10 @@ static void *janus_recordplay_handler(void *data) {
 recdone:
 			answer = janus_sdp_generate_answer(offer,
 				JANUS_SDP_OA_AUDIO, audio,
-				JANUS_SDP_OA_AUDIO_CODEC, rec->acodec,
+				JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
 				JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_VIDEO, video,
-				JANUS_SDP_OA_VIDEO_CODEC, rec->vcodec,
+				JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_DATA, FALSE,
 				JANUS_SDP_OA_DONE);
@@ -1512,11 +1552,21 @@ recdone:
 			janus_sdp_destroy(offer);
 			janus_sdp_destroy(answer);
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
-			/* If the user negotiated simulcasting, just stick with the base substream */
+			/* If the user negotiated simulcasting, prepare it accordingly */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Recording client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				session->simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
+				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
+				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
+				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
+					/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
+					session->ssrc[0] = 0;
+					session->ssrc[1] = 0;
+					session->ssrc[2] = 0;
+				}
 			}
 			/* Done! */
 			result = json_object();
@@ -1818,7 +1868,7 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->acodec = janus_recordplay_parse_codec(recordings_path, rec->arc_file);
+			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->arc_file));
 		}
 		if(video && video->value) {
 			rec->vrc_file = g_strdup(video->value);
@@ -1826,16 +1876,16 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->vcodec = janus_recordplay_parse_codec(recordings_path, rec->vrc_file);
+			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->vrc_file));
 		}
 		rec->audio_pt = AUDIO_PT;
-		if(rec->acodec) {
+		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
 			/* Some audio codecs have a fixed payload type that we can't mess with */
-			if(!strcasecmp(rec->acodec, "pcmu"))
+			if(rec->acodec == JANUS_AUDIOCODEC_PCMU)
 				rec->audio_pt = 0;
-			else if(!strcasecmp(rec->acodec, "pcma"))
+			else if(rec->acodec == JANUS_AUDIOCODEC_PCMA)
 				rec->audio_pt = 8;
-			else if(!strcasecmp(rec->acodec, "g722"))
+			else if(rec->acodec == JANUS_AUDIOCODEC_G722)
 				rec->audio_pt = 9;
 		}
 		rec->video_pt = VIDEO_PT;
