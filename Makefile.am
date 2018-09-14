@@ -44,7 +44,7 @@ confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
 
 certdir = $(datadir)/janus/certs
-cert_DATA = certs/mycert.key certs/mycert.pem
+dist_cert_DATA = certs/mycert.key certs/mycert.pem
 
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
@@ -56,7 +56,7 @@ eventdir = $(libdir)/janus/events
 event_LTLIBRARIES = $(NULL)
 
 SUBDIRS = html
-html_DATA = README.md
+dist_html_DATA = README.md
 
 streamdir = $(datadir)/janus/streams
 stream_DATA = $(NULL)
