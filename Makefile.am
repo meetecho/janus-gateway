@@ -168,7 +168,7 @@ janus_LDADD = \
 	$(JANUS_MANUAL_LIBS) \
 	$(NULL)
 
-man1_MANS = janus.1
+dist_man1_MANS = janus.1
 
 BUILT_SOURCES = cmdline.c cmdline.h version.c
 
@@ -501,7 +501,6 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
-man1_MANS += postprocessing/janus-pp-rec.1
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.c \
@@ -532,6 +531,7 @@ janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(NULL)
 endif
+dist_man1_MANS += postprocessing/janus-pp-rec.1
 
 ##
 # Docs
