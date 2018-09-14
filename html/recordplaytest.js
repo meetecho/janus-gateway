@@ -62,6 +62,8 @@ var recordingId = null;
 var selectedRecording = null;
 var selectedRecordingInfo = null;
 
+var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -419,7 +421,11 @@ function startRecording() {
 		
 		recordplay.createOffer(
 			{
-				// By default, it's sendrecv for audio and video...
+				// By default, it's sendrecv for audio and video... no datachannels
+				// If you want to test simulcasting (Chrome and Firefox only), then
+				// pass a ?simulcast=true when opening this demo page: it will turn
+				// the following 'simulcast' property to pass to janus.js to true
+				simulcast: doSimulcast,
 				success: function(jsep) {
 					Janus.debug("Got SDP!");
 					Janus.debug(jsep);
@@ -460,4 +466,12 @@ function stop() {
 	var stop = { "request": "stop" };
 	recordplay.send({"message": stop});
 	recordplay.hangup();
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
