@@ -5173,20 +5173,20 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
-			close(video_fds.fd);
-			close(video_fds.rtcp_fd);
-			close(audio_fds.fd);
-			close(audio_fds.rtcp_fd);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -5;
 		} else if(code != 200) {
 			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
-			close(video_fds.fd);
-			close(video_fds.rtcp_fd);
-			close(audio_fds.fd);
-			close(audio_fds.rtcp_fd);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -5;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
@@ -5229,20 +5229,20 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
-			close(video_fds.fd);
-			close(video_fds.rtcp_fd);
-			close(audio_fds.fd);
-			close(audio_fds.rtcp_fd);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -6;
 		} else if(code != 200) {
 			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
-			close(video_fds.fd);
-			close(video_fds.rtcp_fd);
-			close(audio_fds.fd);
-			close(audio_fds.rtcp_fd);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -6;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
