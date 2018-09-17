@@ -5034,6 +5034,11 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			return -1;
 		}
 		port = ntohs(address.sin_port);
+		if (port & 1) {
+			close(fds->fd);
+			port = -1;
+			continue;
+		}
 		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
 		if(fds->rtcp_fd < 0) {
 			close(fds->fd);
