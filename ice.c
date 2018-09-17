@@ -1158,7 +1158,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
 	janus_mutex_lock(&handle->mutex);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	if(handle->iceloop != NULL) {
 		g_main_loop_unref (handle->iceloop);
 		handle->iceloop = NULL;
