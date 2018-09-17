@@ -3967,7 +3967,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		janus_rtp_header *rtp = (janus_rtp_header *)buf;
-		int sc = -1;
+		int sc = video ? 0 : -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
 			uint32_t ssrc = ntohl(rtp->ssrc);
@@ -3994,6 +3994,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
 		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_rtp_forwarder *rtp_forward = (janus_videoroom_rtp_forwarder *)value;
+			if(rtp_forward->is_data || (video && !rtp_forward->is_video) || (!video && rtp_forward->is_video))
+				continue;
 			/* Backup the RTP header info, as we may rewrite part of it */
 			uint32_t seq_number = ntohs(rtp->seq_number);
 			uint32_t timestamp = ntohl(rtp->timestamp);
@@ -4001,7 +4003,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			uint32_t ssrc = ntohl(rtp->ssrc);
 			/* First of all, check if we're simulcasting and if we need to forward or ignore this frame */
 			if(video && !rtp_forward->simulcast && rtp_forward->substream != sc) {
-				/* This is video, we're not simulcasting, and it's not our layer: ignore */
 				continue;
 			} else if(video && rtp_forward->simulcast) {
 				/* This is video and we're simulcasting, check if we need to forward this frame */
@@ -4017,34 +4018,32 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				rtp->type = rtp_forward->payload_type;
 			if(rtp_forward->ssrc > 0)
 				rtp->ssrc = htonl(rtp_forward->ssrc);
-			if((video && rtp_forward->is_video) || (!video && !rtp_forward->is_video && !rtp_forward->is_data)) {
-				/* Check if this is an RTP or SRTP forwarder */
-				if(!rtp_forward->is_srtp) {
-					/* Plain RTP */
-					if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
-						JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
-							(video ? "video" : "audio"), participant->display, strerror(errno), len);
+			/* Check if this is an RTP or SRTP forwarder */
+			if(!rtp_forward->is_srtp) {
+				/* Plain RTP */
+				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
+						(video ? "video" : "audio"), participant->display, strerror(errno), len);
+				}
+			} else {
+				/* SRTP: check if we already encrypted the packet before */
+				if(rtp_forward->srtp_ctx->slen == 0) {
+					memcpy(&rtp_forward->srtp_ctx->sbuf, buf, len);
+					int protected = len;
+					int res = srtp_protect(rtp_forward->srtp_ctx->ctx, &rtp_forward->srtp_ctx->sbuf, &protected);
+					if(res != srtp_err_status_ok) {
+						janus_rtp_header *header = (janus_rtp_header *)&rtp_forward->srtp_ctx->sbuf;
+						guint32 timestamp = ntohl(header->timestamp);
+						guint16 seq = ntohs(header->seq_number);
+						JANUS_LOG(LOG_ERR, "Error encrypting %s packet for %s... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+							(video ? "Video" : "Audio"), participant->display, janus_srtp_error_str(res), len, protected, timestamp, seq);
+					} else {
+						rtp_forward->srtp_ctx->slen = protected;
 					}
-				} else {
-					/* SRTP: check if we already encrypted the packet before */
-					if(rtp_forward->srtp_ctx->slen == 0) {
-						memcpy(&rtp_forward->srtp_ctx->sbuf, buf, len);
-						int protected = len;
-						int res = srtp_protect(rtp_forward->srtp_ctx->ctx, &rtp_forward->srtp_ctx->sbuf, &protected);
-						if(res != srtp_err_status_ok) {
-							janus_rtp_header *header = (janus_rtp_header *)&rtp_forward->srtp_ctx->sbuf;
-							guint32 timestamp = ntohl(header->timestamp);
-							guint16 seq = ntohs(header->seq_number);
-							JANUS_LOG(LOG_ERR, "Error encrypting %s packet for %s... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-								(video ? "Video" : "Audio"), participant->display, janus_srtp_error_str(res), len, protected, timestamp, seq);
-						} else {
-							rtp_forward->srtp_ctx->slen = protected;
-						}
-					}
-					if(rtp_forward->srtp_ctx->slen > 0 && sendto(participant->udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
-						JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
-							(video ? "video" : "audio"), participant->display, strerror(errno), rtp_forward->srtp_ctx->slen);
-					}
+				}
+				if(rtp_forward->srtp_ctx->slen > 0 && sendto(participant->udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
+						(video ? "video" : "audio"), participant->display, strerror(errno), rtp_forward->srtp_ctx->slen);
 				}
 			}
 			/* Restore original values of payload type and SSRC before going on */
