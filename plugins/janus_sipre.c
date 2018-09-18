@@ -904,6 +904,7 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 /* Media */
 static int janus_sipre_allocate_local_ports(janus_sipre_session *session);
 static void *janus_sipre_relay_thread(void *data);
+static void janus_sipre_media_cleanup(janus_sipre_session *session);
 
 
 /* Error codes */
@@ -1569,6 +1570,10 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	session->status = janus_sipre_call_status_closing;
 	/* Enqueue the BYE */
 	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+	/* Do cleanup if media thread has not been created */
+	if(!session->media.ready) {
+		janus_sipre_media_cleanup(session);
+	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
@@ -3137,6 +3142,41 @@ static void janus_sipre_connect_sockets(janus_sipre_session *session, struct soc
 
 }
 
+static void janus_sipre_media_cleanup(janus_sipre_session *session) {
+	if(session->media.audio_rtp_fd != -1) {
+		close(session->media.audio_rtp_fd);
+		session->media.audio_rtp_fd = -1;
+	}
+	if(session->media.audio_rtcp_fd != -1) {
+		close(session->media.audio_rtcp_fd);
+		session->media.audio_rtcp_fd = -1;
+	}
+	session->media.local_audio_rtp_port = 0;
+	session->media.local_audio_rtcp_port = 0;
+	session->media.audio_ssrc = 0;
+	if(session->media.video_rtp_fd != -1) {
+		close(session->media.video_rtp_fd);
+		session->media.video_rtp_fd = -1;
+	}
+	if(session->media.video_rtcp_fd != -1) {
+		close(session->media.video_rtcp_fd);
+		session->media.video_rtcp_fd = -1;
+	}
+	session->media.local_video_rtp_port = 0;
+	session->media.local_video_rtcp_port = 0;
+	session->media.video_ssrc = 0;
+	if(session->media.pipefd[0] > 0) {
+		close(session->media.pipefd[0]);
+		session->media.pipefd[0] = -1;
+	}
+	if(session->media.pipefd[1] > 0) {
+		close(session->media.pipefd[1]);
+		session->media.pipefd[1] = -1;
+	}
+	/* Clean up SRTP stuff, if needed */
+	janus_sipre_srtp_cleanup(session);
+}
+
 /* Thread to relay RTP/RTCP frames coming from the SIPre peer */
 static void *janus_sipre_relay_thread(void *data) {
 	janus_sipre_session *session = (janus_sipre_session *)data;
@@ -3394,38 +3434,8 @@ static void *janus_sipre_relay_thread(void *data) {
 			}
 		}
 	}
-	if(session->media.audio_rtp_fd != -1) {
-		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
-	}
-	if(session->media.audio_rtcp_fd != -1) {
-		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
-	}
-	session->media.local_audio_rtp_port = 0;
-	session->media.local_audio_rtcp_port = 0;
-	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd != -1) {
-		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
-	}
-	if(session->media.video_rtcp_fd != -1) {
-		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
-	}
-	session->media.local_video_rtp_port = 0;
-	session->media.local_video_rtcp_port = 0;
-	session->media.video_ssrc = 0;
-	if(session->media.pipefd[0] > 0) {
-		close(session->media.pipefd[0]);
-		session->media.pipefd[0] = -1;
-	}
-	if(session->media.pipefd[1] > 0) {
-		close(session->media.pipefd[1]);
-		session->media.pipefd[1] = -1;
-	}
-	/* Clean up SRTP stuff, if needed */
-	janus_sipre_srtp_cleanup(session);
+	/* Cleanup the media session */
+	janus_sipre_media_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "Leaving SIPre relay thread\n");
 	janus_refcount_decrease(&session->ref);

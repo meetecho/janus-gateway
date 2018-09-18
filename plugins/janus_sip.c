@@ -720,7 +720,7 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	if(session->account.identity) {
-	    g_hash_table_remove(identities, session->account.identity);
+		g_hash_table_remove(identities, session->account.identity);
 		g_free(session->account.identity);
 		session->account.identity = NULL;
 	}
@@ -1035,6 +1035,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 /* Media */
 static int janus_sip_allocate_local_ports(janus_sip_session *session);
 static void *janus_sip_relay_thread(void *data);
+static void janus_sip_media_cleanup(janus_sip_session *session);
 
 
 /* URI parsing utilies */
@@ -1857,6 +1858,10 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		 session->status == janus_sip_call_status_incall))
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
+	/* Do cleanup if media thread has not been created */
+	if(!session->media.ready) {
+		janus_sip_media_cleanup(session);
+	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sip_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
@@ -3276,7 +3281,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
 			if(callstate == nua_callstate_proceeding &&
-				    (session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
+					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
 				json_t *calling = json_object();
@@ -4298,6 +4303,42 @@ static void janus_sip_connect_sockets(janus_sip_session *session, struct sockadd
 
 }
 
+static void janus_sip_media_cleanup(janus_sip_session *session) {
+	if(session->media.audio_rtp_fd != -1) {
+		close(session->media.audio_rtp_fd);
+		session->media.audio_rtp_fd = -1;
+	}
+	if(session->media.audio_rtcp_fd != -1) {
+		close(session->media.audio_rtcp_fd);
+		session->media.audio_rtcp_fd = -1;
+	}
+	session->media.local_audio_rtp_port = 0;
+	session->media.local_audio_rtcp_port = 0;
+	session->media.audio_ssrc = 0;
+	if(session->media.video_rtp_fd != -1) {
+		close(session->media.video_rtp_fd);
+		session->media.video_rtp_fd = -1;
+	}
+	if(session->media.video_rtcp_fd != -1) {
+		close(session->media.video_rtcp_fd);
+		session->media.video_rtcp_fd = -1;
+	}
+	session->media.local_video_rtp_port = 0;
+	session->media.local_video_rtcp_port = 0;
+	session->media.video_ssrc = 0;
+	session->media.simulcast_ssrc = 0;
+	if(session->media.pipefd[0] > 0) {
+		close(session->media.pipefd[0]);
+		session->media.pipefd[0] = -1;
+	}
+	if(session->media.pipefd[1] > 0) {
+		close(session->media.pipefd[1]);
+		session->media.pipefd[1] = -1;
+	}
+	/* Clean up SRTP stuff, if needed */
+	janus_sip_srtp_cleanup(session);
+}
+
 /* Thread to relay RTP/RTCP frames coming from the SIP peer */
 static void *janus_sip_relay_thread(void *data) {
 	janus_sip_session *session = (janus_sip_session *)data;
@@ -4599,39 +4640,8 @@ static void *janus_sip_relay_thread(void *data) {
 			}
 		}
 	}
-	if(session->media.audio_rtp_fd != -1) {
-		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
-	}
-	if(session->media.audio_rtcp_fd != -1) {
-		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
-	}
-	session->media.local_audio_rtp_port = 0;
-	session->media.local_audio_rtcp_port = 0;
-	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd != -1) {
-		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
-	}
-	if(session->media.video_rtcp_fd != -1) {
-		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
-	}
-	session->media.local_video_rtp_port = 0;
-	session->media.local_video_rtcp_port = 0;
-	session->media.video_ssrc = 0;
-	session->media.simulcast_ssrc = 0;
-	if(session->media.pipefd[0] > 0) {
-		close(session->media.pipefd[0]);
-		session->media.pipefd[0] = -1;
-	}
-	if(session->media.pipefd[1] > 0) {
-		close(session->media.pipefd[1]);
-		session->media.pipefd[1] = -1;
-	}
-	/* Clean up SRTP stuff, if needed */
-	janus_sip_srtp_cleanup(session);
+	/* Cleanup the media session */
+	janus_sip_media_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
 	janus_refcount_decrease(&session->ref);

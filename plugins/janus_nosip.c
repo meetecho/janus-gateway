@@ -2235,6 +2235,7 @@ static void *janus_nosip_relay_thread(void *data) {
 			}
 		}
 	}
+	/* Cleanup the media session */
 	janus_nosip_media_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Leaving NoSIP relay thread\n");
