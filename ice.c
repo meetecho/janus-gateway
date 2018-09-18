@@ -4126,6 +4126,9 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "janus", json_string("webrtcup"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(component->selected_pair) {
+		json_object_set_new(event, "selected-pair", json_string(component->selected_pair));
+	}
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
