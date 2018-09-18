@@ -582,9 +582,9 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
 	}
-	char rfoundation[33], rtransport[4], rip[40], rtype[6], rrelip[40];
+	char rfoundation[33], rtransport[4], rip[50], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
-	int res = sscanf(candidate, "%32s %30u %3s %30u %39s %30u typ %5s %*s %39s %*s %30u",
+	int res = sscanf(candidate, "%32s %30u %3s %30u %49s %30u typ %5s %*s %39s %*s %30u",
 		rfoundation, &rcomponent, rtransport, &rpriority,
 			rip, &rport, rtype, rrelip, &rrelport);
 	if(res < 7) {
