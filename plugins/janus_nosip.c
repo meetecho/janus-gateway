@@ -664,8 +664,10 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			if(rtp_range_min % 2)
 				rtp_range_min++;	/* Pick an even port for RTP */
 			if(rtp_range_min > rtp_range_max) {
-				JANUS_LOG(LOG_WARN, "Wrong port range: %u -- %u\n", rtp_range_min, rtp_range_max);
+				JANUS_LOG(LOG_WARN, "Incorrect port range (%u -- %u), switching min and max\n", rtp_range_min, rtp_range_max);
+				uint16_t range_temp = rtp_range_max;
 				rtp_range_max = rtp_range_min;
+				rtp_range_min = range_temp;
 			}
 			if(rtp_range_max == 0)
 				rtp_range_max = 65535;
@@ -1781,7 +1783,7 @@ static int janus_nosip_bind_socket(int fd, int port) {
 	rtp_address.sin_port = htons(port);
 	inet_pton(AF_INET, local_ip, &rtp_address.sin_addr.s_addr);
 	if(bind(fd, (struct sockaddr *)(&rtp_address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_VERB, "Bind failed (port %d)\n", port);
+		JANUS_LOG(LOG_ERR, "Bind failed (port %d)\n", port);
 		return -1;
 	}
 	return 0;
@@ -1796,8 +1798,8 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 	int rtp_fd = -1, rtcp_fd = -1;
 	while(1) {
 		if(rtp_port_wrap && rtp_port_next >= rtp_port_start) {	/* Full range scanned */
-			JANUS_LOG(LOG_ERR, "No ports available for audio channel in range: %u -- %u\n",
-					  rtp_range_min, rtp_range_max);
+			JANUS_LOG(LOG_ERR, "No ports available for audio/video channel in range: %u -- %u\n",
+				  rtp_range_min, rtp_range_max);
 			break;
 		}
 		if(rtp_fd == -1) {
@@ -1807,29 +1809,30 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 			rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		}
 		if(rtp_fd == -1 || rtcp_fd == -1) {
-			JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
+			JANUS_LOG(LOG_ERR, "Error creating audio/video sockets...\n");
 			break;
 		}
 	 	int rtp_port = rtp_port_next;
 		int rtcp_port = rtp_port+1;
-		if((uint32_t)(rtp_port_next + 2UL) < rtp_range_max) {	/* Advance to next pair */
+		if((uint32_t)(rtp_port_next + 2UL) < rtp_range_max) {
+			/* Advance to next pair */
 			rtp_port_next += 2;
 		} else {
 			rtp_port_next = rtp_range_min;
 			rtp_port_wrap = TRUE;
 		}
 		if(janus_nosip_bind_socket(rtp_fd, rtp_port)) { 
-			/* rtp_fd still unbind, reuse it */
+			/* rtp_fd still unbound, reuse it */
 		} else if(janus_nosip_bind_socket(rtcp_fd, rtcp_port)) {
 			close(rtp_fd);
 			rtp_fd = -1;
-			/* rtcp_fd still unbind, reuse it */
+			/* rtcp_fd still unbound, reuse it */
 		} else {
 			fds[0] = rtp_fd;
 			fds[1] = rtcp_fd;
 			ports[0] = rtp_port;
 			ports[1] = rtcp_port;
-			rtp_range_slider = rtp_port_next; 					/* Write global slider */
+			rtp_range_slider = rtp_port_next;		/* Write global slider */
 			return 0;
 		}
 	}
@@ -1884,12 +1887,12 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 	if(session->media.has_audio && 
 			(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0)) {
 		if(session->media.audio_rtp_fd != -1) {
-			JANUS_LOG(LOG_WARN, "Audio RTP unbind socket detected, closing ...\n");
+			JANUS_LOG(LOG_WARN, "Audio RTP unbound socket detected, closing ...\n");
 			close(session->media.audio_rtp_fd);
 			session->media.audio_rtp_fd = -1;
 		}
 		if(session->media.audio_rtcp_fd != -1) {
-			JANUS_LOG(LOG_WARN, "Audio RTCP unbind socket detected, closing ...\n");
+			JANUS_LOG(LOG_WARN, "Audio RTCP unbound socket detected, closing ...\n");
 			close(session->media.audio_rtcp_fd);
 			session->media.audio_rtcp_fd = -1;
 		}
@@ -1908,12 +1911,12 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 	if(session->media.has_video && 
 			(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0)) {
 		if(session->media.video_rtp_fd != -1) {
-			JANUS_LOG(LOG_WARN, "Video RTP unbind socket detected, closing ...\n");
+			JANUS_LOG(LOG_WARN, "Video RTP unbound socket detected, closing ...\n");
 			close(session->media.video_rtp_fd);
 			session->media.video_rtp_fd = -1;
 		}
 		if(session->media.video_rtcp_fd != -1) {
-			JANUS_LOG(LOG_WARN, "Video RTCP unbind socket detected, closing ...\n");
+			JANUS_LOG(LOG_WARN, "Video RTCP unbound socket detected, closing ...\n");
 			close(session->media.video_rtcp_fd);
 			session->media.video_rtcp_fd = -1;
 		}
