@@ -4430,11 +4430,11 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 }
 
 static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
-	/* already hangup */
+	/* Already hung up */
 	if (!s->feed) {
 		return;
 	}
-	/* check if the owner needs to be cleaned up */
+	/* Check if the owner needs to be cleaned up */
 	if(s->pvt_id > 0 && s->room != NULL) {
 		janus_mutex_lock(&s->room->mutex);
 		janus_videoroom_publisher *owner = g_hash_table_lookup(s->room->private_ids, GUINT_TO_POINTER(s->pvt_id));
@@ -4517,7 +4517,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			janus_videoroom_publisher *publisher = subscriber->feed;
 			/* It is safe to use feed as the only other place sets feed to NULL
 			   is in this function and accessing to this function is synchronized
-			   by sesssions_mutex */
+			   by sessions_mutex */
 			if(publisher != NULL) {
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
