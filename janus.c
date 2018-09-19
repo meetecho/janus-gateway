@@ -3543,7 +3543,7 @@ gint main(int argc, char *argv[])
 		struct ifaddrs *ifas = NULL;
 		janus_network_address iface;
 		janus_network_address_string_buffer ibuf;
-		if(getifaddrs(&ifas) || ifas == NULL) {
+		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		} else {
 			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
@@ -3555,6 +3555,7 @@ gint main(int argc, char *argv[])
 					local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 				}
 			}
+			freeifaddrs(ifas);
 		}
 	}
 	if(local_ip == NULL) {
