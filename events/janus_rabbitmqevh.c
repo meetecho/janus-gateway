@@ -118,6 +118,7 @@ static struct janus_json_parameter tweak_parameters[] = {
 
 /* Plugin implementation */
 int janus_rabbitmqevh_init(const char *config_path) {
+	gboolean success = TRUE;
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
@@ -195,7 +196,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
-	vhost = g_strdup("/");
+		vhost = g_strdup("/");
 	item = janus_config_get_item_drilldown(config, "general", "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
@@ -346,17 +347,17 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Setup of RabbitMQ event handler completed\n");
-
-	if(rmqhost)
-		g_free((char *)rmqhost);
-	if(config)
-		janus_config_destroy(config);
-
-	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
-	return 0;
+	goto done;
 
 error:
 	/* If we got here, something went wrong */
+	success = FALSE;
+	if(route_key)
+		g_free((char *)route_key);
+	if(exchange)
+		g_free((char *)exchange);
+	/* Fall through */
+done:
 	if(rmqhost)
 		g_free((char *)rmqhost);
 	if(vhost)
@@ -365,10 +366,6 @@ error:
 		g_free((char *)username);
 	if(password)
 		g_free((char *)password);
-	if(route_key)
-		g_free((char *)route_key);
-	if(exchange)
-		g_free((char *)exchange);
 	if(ssl_cacert_file)
 		g_free((char *)ssl_cacert_file);
 	if(ssl_cert_file)
@@ -377,7 +374,11 @@ error:
 		g_free((char *)ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
-	return -1;
+	if(!success) {
+		return -1;
+	}
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
+	return 0;
 }
 
 void janus_rabbitmqevh_destroy(void) {
