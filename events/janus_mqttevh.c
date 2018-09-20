@@ -796,8 +796,7 @@ static void janus_mqttevh_destroy(void) {
 
 static void janus_mqttevh_incoming_event(json_t *event) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
-		/* Janus is closing or the plugin is: unref the event as we won't handle it */
-		json_decref(event);
+		/* Janus is closing or the plugin is */
 		return;
 	}
 	json_incref(event);
