@@ -1317,7 +1317,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	}
 
 	struct ifaddrs *ifas = NULL;
-	if(getifaddrs(&ifas) || ifas == NULL) {
+	if(getifaddrs(&ifas) == -1) {
 		JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 	}
 
@@ -2241,7 +2241,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				goto plugin_response;
 		}
 
-		if(getifaddrs(&ifas) || ifas == NULL) {
+		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		}
 
