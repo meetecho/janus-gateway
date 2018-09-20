@@ -562,7 +562,6 @@ jsmodules_DATA += npm/bundles/janus.cjs.js
 endif
 
 EXTRA_DIST += $(jsmodules_DATA)
-CLEANFILES += $(jsmodules_DATA)
 
 if ENABLE_JAVASCRIPT_MODULES
 
