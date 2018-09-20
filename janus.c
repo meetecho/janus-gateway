@@ -3842,7 +3842,11 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	if(janus_dtls_srtp_init(server_pem, server_key, password) < 0) {
+	guint dtls_timeout = 1000;
+	item = janus_config_get_item_drilldown(config, "media", "dtls_timeout");
+	if(item && item->value)
+		dtls_timeout = atoi(item->value);
+	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout) < 0) {
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */

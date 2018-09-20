@@ -105,6 +105,10 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
+/* DTLS timeout base to enforce: notice that this can currently only be
+ * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
+ * that value cannot be modified (it will in OpenSSL v1.1.1) */
+static guint dtls_timeout_base = 1000;
 
 static SSL_CTX *ssl_ctx = NULL;
 static X509 *ssl_cert = NULL;
@@ -318,7 +322,7 @@ error:
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint timeout) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -410,6 +414,13 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 		JANUS_LOG(LOG_FATAL, "Error initializing BIO filter\n");
 		return -8;
 	}
+
+	dtls_timeout_base = timeout;
+#ifndef HAVE_BORINGSSL
+	if(dtls_timeout_base != 1000) {
+		JANUS_LOG(LOG_WARN, "DTLS timeout set to %u ms, but not using BoringSSL: ignoring\n", timeout);
+	}
+#endif
 
 	/* Initialize libsrtp */
 	if(srtp_init() != srtp_err_status_ok) {
@@ -542,9 +553,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
 #ifdef HAVE_DTLS_SETTIMEOUT
-	guint ms = 100;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %u\n", handle->handle_id, ms);
-	DTLSv1_set_initial_timeout_duration(dtls->ssl, ms);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %u\n", handle->handle_id, dtls_timeout_base);
+	DTLSv1_set_initial_timeout_duration(dtls->ssl, dtls_timeout_base);
 #endif
 	dtls->ready = 0;
 	dtls->retransmissions = 0;
