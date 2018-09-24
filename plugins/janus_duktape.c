@@ -1309,10 +1309,14 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_free(duktape_file);
 		return -1;
 	}
-    char buf[16384];
-    size_t len = fread((void *) buf, 1, sizeof(buf), f);
+	fseek(f, 0, SEEK_END);
+	size_t len = ftell(f);
+    char *buf = (char*)malloc(len);
+	fseek(f, 0, SEEK_SET);
+    fread((void *) buf, 1, len, f);
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
+	free(buf);
 	if(duk_peval(duktape_ctx) != 0) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: %s\n", duktape_file, duk_safe_to_string(duktape_ctx, -1));
 		duk_destroy_heap(duktape_ctx);
