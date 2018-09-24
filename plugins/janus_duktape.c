@@ -1311,9 +1311,9 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	}
 	fseek(f, 0, SEEK_END);
 	size_t len = ftell(f);
-    char *buf = (char*)malloc(len);
+	char *buf = (char*)malloc(len);
 	fseek(f, 0, SEEK_SET);
-    fread((void *) buf, 1, len, f);
+	fread((void *) buf, 1, len, f);
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
 	free(buf);
