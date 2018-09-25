@@ -314,7 +314,7 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									if(videocall.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -358,7 +358,7 @@ $(document).ready(function() {
 									var addButtons = false;
 									if($('#remotevideo').length === 0) {
 										addButtons = true;
-										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
 										// Show the video, hide the spinner and show the resolution when we get a playing event
 										$("#remotevideo").bind("playing", function () {
 											$('#waitingvideo').remove();

@@ -234,7 +234,7 @@ $(document).ready(function() {
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
 									if(recordplay.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -273,7 +273,7 @@ $(document).ready(function() {
 										$('#videotitle').html(selectedRecordingInfo);
 										$('#stop').unbind('click').click(stop);
 										$('#video').removeClass('hide').show();
-										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay playsinline/>');
 										// No remote video yet
 										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 										if(spinner == null) {

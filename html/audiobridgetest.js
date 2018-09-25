@@ -284,7 +284,7 @@ $(document).ready(function() {
 									var addButtons = false;
 									if($('#roomaudio').length === 0) {
 										addButtons = true;
-										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
+										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay playsinline/>');
 									}
 									Janus.attachMediaStream($('#roomaudio').get(0), stream);
 									if(!addButtons)

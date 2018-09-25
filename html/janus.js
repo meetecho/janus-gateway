@@ -319,8 +319,12 @@ Janus.init = function(options) {
 			}
 		};
 		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
-		var oldOBF = window.onbeforeunload;
-		window.onbeforeunload = function() {
+		// (note: for iOS we need to subscribe to a different event, 'pagehide', see
+		// https://gist.github.com/thehunmonkgroup/6bee8941a49b86be31a787fe8f4b8cfe)
+		var iOS = ['iPad', 'iPhone', 'iPod'].indexOf(navigator.platform) >= 0;
+		var eventName = iOS ? 'pagehide' : 'beforeunload';
+		var oldOBF = window["on" + eventName];
+		window.addEventListener(eventName, function(event) {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
@@ -331,7 +335,7 @@ Janus.init = function(options) {
 			}
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
-		}
+		});
 		Janus.initDone = true;
 		options.callback();
 	}
