@@ -144,7 +144,7 @@ $(document).ready(function() {
 													$('#listen').click(function() {
 														$('#rec').remove();
 														$('#done').parent().append(
-															'<audio id="rec" style="width:100%;height:100%;" autoplay playsinline controls preload="auto">' +
+															'<audio id="rec" style="width:100%;height:100%;" autoplay controls preload="auto">' +
 																'<source id="opusrec" src="' + msg["recording"] + '" type="audio/ogg""></source>' +
 																'Your browser doesn\'t support the playout of Opus files' +
 															'</audio>'
