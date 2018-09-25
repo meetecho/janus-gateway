@@ -1856,9 +1856,10 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	session->media.simulcast_ssrc = 0;
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
-		 session->status == janus_sip_call_status_incall))
+		 session->status == janus_sip_call_status_incall)) {
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
+	}
 	/* Do cleanup if media thread has not been created */
 	if(!session->media.ready) {
 		janus_sip_media_cleanup(session);
@@ -4492,12 +4493,7 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
 				/* FIXME Simulate a "hangup" coming from the browser */
-				janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
-				msg->handle = session->handle;
-				msg->message = json_pack("{ss}", "request", "hangup");
-				msg->transaction = NULL;
-				msg->jsep = NULL;
-				g_async_queue_push(messages, msg);
+				janus_sip_hangup_media(session->handle);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				if(pipe_fd != -1 && fds[i].fd == pipe_fd) {
