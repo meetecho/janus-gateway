@@ -145,6 +145,10 @@ static int janus_dtls_bio_agent_write(BIO *bio, const char *in, int inl) {
 		return -1;
 	}
 
+	if(inl > 1500) {
+		/* FIXME Just a warning for now, this will need to be solved with proper fragmentation */
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] The DTLS stack is trying to send a packet of %d bytes, this may be larger than the MTU and get dropped!\n", handle->handle_id, inl);
+	}
 	int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, inl, in);
 	if(bytes < inl) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, component->component_id, stream->stream_id, bytes);
