@@ -36,7 +36,9 @@
 \verbatim
 {
 	"audio" : true|false,
+	"audiocodec" : "<optional codec name; only used when creating a PeerConnection>",
 	"video" : true|false,
+	"videocodec" : "<optional codec name; only used when creating a PeerConnection>",
 	"bitrate" : <numeric bitrate value>,
 	"record" : true|false,
 	"filename" : <base path/filename to use for the recording>,
@@ -45,6 +47,13 @@
 }
 \endverbatim
  *
+ * When negotiating a new PeerConnection, by default the EchoTest tries to
+ * use the preferred audio codecs as set by the user; if for any reason you
+ * want to override what the browsers offered first and use a different
+ * codec instead (e.g., to try VP9 instead of VP8), you can use the
+ * \c audiocodec property for audio, and \c videocodec for video.
+ *
+ * All the other settings can be applied dynamically during the session:
  * \c audio instructs the plugin to do or do not bounce back audio
  * frames; \c video does the same for video; \c bitrate caps the
  * bandwidth to force on the browser encoding side (e.g., 128000 for
@@ -879,6 +888,20 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
 			goto error;
 		}
+		json_t *audiocodec = json_object_get(root, "audiocodec");
+		if(audiocodec && !json_is_string(audiocodec)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (audiocodec should be a string)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (audiocodec should be a string)");
+			goto error;
+		}
+		json_t *videocodec = json_object_get(root, "videocodec");
+		if(videocodec && !json_is_string(videocodec)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (videocodec should be a string)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (videocodec should be a string)");
+			goto error;
+		}
 		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
@@ -1101,7 +1124,10 @@ static void *janus_echotest_handler(void *data) {
 				}
 				temp = temp->next;
 			}
-			janus_sdp *answer = janus_sdp_generate_answer(offer, JANUS_SDP_OA_DONE);
+			janus_sdp *answer = janus_sdp_generate_answer(offer,
+				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
+				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
+				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
 			if(m && m->direction == JANUS_SDP_SENDONLY)
