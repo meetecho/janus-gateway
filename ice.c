@@ -1315,7 +1315,6 @@ void janus_ice_component_free(const janus_refcount *component_ref) {
 	}
 	if(component->dtls != NULL) {
 		janus_dtls_srtp_destroy(component->dtls);
-		janus_refcount_decrease(&component->dtls->ref);
 		component->dtls = NULL;
 	}
 	if(component->audio_retransmit_buffer != NULL) {
@@ -3183,7 +3182,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_refcount_decrease(&handle->ref);
 		return -1;
 	}
-	janus_refcount_increase(&component->dtls->ref);
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
