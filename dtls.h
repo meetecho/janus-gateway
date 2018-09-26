@@ -70,8 +70,6 @@ typedef struct janus_dtls_srtp {
 	BIO *read_bio;
 	/*! \brief Write BIO (outgoing DTLS data) */
 	BIO *write_bio;
-	/*! \brief Filter BIO (fix MTU fragmentation on outgoing DTLS data, if required) */
-	BIO *filter_bio;
 	/*! \brief Whether SRTP has been correctly set up for this component or not */
 	gint srtp_valid;
 	/*! \brief The SRTP profile currently in use */
@@ -137,11 +135,6 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret);
  * @param[in] preverify_ok Whether the verification of the certificate was passed
  * @param[in] ctx context used for the certificate verification */
 int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
-
-/*! \brief DTLS BIOs to/from socket bridge
- * \details As libnice is going to actually send and receive data, and not OpenSSL, a read/write BIO is used to "bridge" the data between the crypto stuff and the network.
- * @param[in] dtls The janus_dtls_srtp instance to use */
-void janus_dtls_fd_bridge(janus_dtls_srtp *dtls);
 
 #ifdef HAVE_SCTP
 /*! \brief Callback (called from the ICE handle) to encapsulate in DTLS outgoing SCTP data (DataChannel)

@@ -3852,7 +3852,7 @@ gint main(int argc, char *argv[])
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
 	item = janus_config_get_item_drilldown(config, "media", "dtls_mtu");
 	if(item && item->value)
-		janus_dtls_bio_filter_set_mtu(atoi(item->value));
+		janus_dtls_bio_agent_set_mtu(atoi(item->value));
 
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
