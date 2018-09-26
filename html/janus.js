@@ -1848,6 +1848,12 @@ function Janus(gatewayCallbacks) {
 				if(media.addData)
 					media.data = true;
 			}
+			// If we're updating and keeping all tracks, let's skip the getUserMedia part
+			if((isAudioSendEnabled(media) && media.keepAudio) &&
+					(isVideoSendEnabled(media) && media.keepVideo)) {
+				streamsDone(handleId, jsep, media, callbacks, config.myStream);
+				return;
+			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
 		if(media.update && !config.streamExternal) {
