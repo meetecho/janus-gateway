@@ -1850,7 +1850,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		audiobridge->recording = NULL;
 		audiobridge->destroy = 0;
-		audiobridge->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+		audiobridge->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+			(GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_participant_unref);
 		audiobridge->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 		if(allowed != NULL) {
 			/* Populate the "allowed" list as an ACL for people trying to join */
