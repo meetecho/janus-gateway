@@ -1413,7 +1413,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			/* Write chunk */
 			word = janus_push_bits(word, 1, 1);
 			word = janus_push_bits(word, 1, 1);
-			/* Write rest statuses  */
+			/* Write all the statuses */
 			unsigned int i = 0;
 			for (i=0;i<statuses_len;i++) {
 				/* Get each status */
@@ -1431,7 +1431,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			/* Write chunck */
 			word = janus_push_bits(word, 1, 1);
 			word = janus_push_bits(word, 1, 0);
-			/* Write rest statuses  */
+			/* Write all the statuses */
 			unsigned int i = 0;
 			for (i=0;i<statuses_len;i++) {
 				/* Get each status */
