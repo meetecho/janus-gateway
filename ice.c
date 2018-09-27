@@ -1947,17 +1947,10 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 #endif
 	}
 
-	/* Save for the summary, in case we need it */
-	component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(buffer));
-
-	/* Notify event handlers */
-	if(janus_events_is_enabled()) {
-		janus_session *session = (janus_session *)handle->session;
-		json_t *info = json_object();
-		json_object_set_new(info, "remote-candidate", json_string(buffer));
-		json_object_set_new(info, "stream_id", json_integer(stream_id));
-		json_object_set_new(info, "component_id", json_integer(component_id));
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
+	/* Now parse the candidate as if we received it from the Janus API */
+	int res = janus_sdp_parse_candidate(stream, buffer, 1);
+	if(res != 0) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse prflx candidate... (%d)\n", handle->handle_id, res);
 	}
 
 candidatedone:

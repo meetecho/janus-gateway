@@ -2976,7 +2976,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* We set the flag to wait for an answer before handling trickle candidates */
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		} else {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending answer, ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 			janus_request_ice_handle_answer(ice_handle, audio, video, data, NULL);
 		}
 	}
