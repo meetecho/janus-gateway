@@ -3404,13 +3404,13 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Free and reset stats list */
 		g_slist_free(stream->transport_wide_received_seq_nums);
 		stream->transport_wide_received_seq_nums = NULL;
-
+		/* Create and enqueue rtcp packets */
 		guint packets_len = 0;
 		while ((packets_len = g_queue_get_length(packets)) > 0) {
 			GQueue *packets_to_process;
-			// if packets_len > 400, transport_wide_cc packet could be overflow the buffer
+			/* if packets_len > 400, transport_wide_cc packet could be overflow the buffer */
 			if (packets_len > 400) {
-				// split the queue into two
+				/* split the queue into two */
 				GList *new_head = g_queue_peek_nth_link(packets, 400);
 				GList *new_tail = new_head->prev;
 				new_head->prev = NULL;
@@ -3420,20 +3420,18 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				packets_to_process->tail = new_tail;
 				packets_to_process->length = 400;
 				packets->head = new_head;
-				// packets->tail is unchanged
+				/* packets->tail is unchanged */
 				packets->length = packets_len - 400;
 			} else {
 				packets_to_process = packets;
 			}
-
 			/* Get feedback packet count and increase it for next one */
 			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
 			/* Create rtcp packet */
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-					stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
+				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
-
 			if (packets_to_process != packets) {
 				g_queue_free(packets_to_process);
 			}
