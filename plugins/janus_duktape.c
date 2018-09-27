@@ -490,7 +490,8 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 0)));
 		return duk_throw(ctx);
 	}
-	if(duk_get_type(ctx, 1) != DUK_TYPE_STRING && duk_get_type(ctx, 1) != DUK_TYPE_UNDEFINED) {
+	if(duk_get_type(ctx, 1) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 1) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 1) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 1)));
 		return duk_throw(ctx);
@@ -500,7 +501,8 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING && duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED) {
+	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 3) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
 		return duk_throw(ctx);
