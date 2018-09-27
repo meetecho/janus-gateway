@@ -371,7 +371,8 @@ static void *janus_duktape_async_event_helper(void *data) {
 		janus_core->push_event(asev->session->handle, &janus_duktape_plugin, asev->transaction, asev->event, asev->jsep);
 	}
 	json_decref(asev->event);
-	json_decref(asev->jsep);
+	if(asev->jsep)
+		json_decref(asev->jsep);
 	g_free(asev->transaction);
 	janus_refcount_decrease(&asev->session->ref);
 	g_free(asev);
@@ -500,7 +501,7 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING && duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED) {
+	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING && duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 3) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
 		return duk_throw(ctx);
@@ -538,40 +539,34 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
-	/* If there's an SDP attached, create a thread to send the event asynchronously:
-	 * sending it here would keep the locked Duktape context busy much longer than intended */
-	if(jsep != NULL) {
-		janus_duktape_async_event *asev = g_malloc0(sizeof(janus_duktape_async_event));
-		asev->session = session;
-		asev->type = janus_duktape_async_event_type_pushevent;
-		asev->transaction = transaction ? g_strdup(transaction) : NULL;
-		asev->event = event;
-		asev->jsep = jsep;
-		GError *error = NULL;
-		g_thread_try_new("duktape pushevent", janus_duktape_async_event_helper, asev, &error);
-		if(error != NULL) {
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Duktape pushevent thread...\n",
-				error->code, error->message ? error->message : "??");
-			json_decref(event);
+	/* Create a separate thread to allow the duktape plugin unlock  duktape_sessions_mutex and alow core to query this plugin without entering a deadlock*/
+	
+	janus_duktape_async_event *asev = g_malloc0(sizeof(janus_duktape_async_event));
+	asev->session = session;
+	asev->type = janus_duktape_async_event_type_pushevent;
+	asev->transaction = transaction ? g_strdup(transaction) : NULL;
+	asev->event = event;
+	asev->jsep = jsep;
+	GError *gerror = NULL;
+	g_thread_try_new("duktape pushevent", janus_duktape_async_event_helper, asev, &gerror);
+	if(gerror != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Duktape pushevent thread...\n",
+			gerror->code, gerror->message ? gerror->message : "??");
+		json_decref(event);
+		if(jsep)
 			json_decref(jsep);
-			g_free(asev->transaction);
-			janus_refcount_decrease(&session->ref);
-			g_free(asev);
-		}
-		/* Return a success/error right away */
-		if(error) {
-			duk_push_error_object(ctx, DUK_ERR_ERROR, "Error spawning pushevent thread");
-			return duk_throw(ctx);
-		}
-		duk_push_int(ctx, 0);
-		return 1;
+		g_free(asev->transaction);
+		janus_refcount_decrease(&session->ref);
+		g_free(asev);
 	}
-	/* No SDP, send the event now */
-	int res = janus_core->push_event(session->handle, &janus_duktape_plugin, transaction, event, NULL);
-	janus_refcount_decrease(&session->ref);
-	json_decref(event);
-	duk_push_int(ctx, res);
+	/* Return a success/error right away */
+	if(gerror) {
+		duk_push_error_object(ctx, DUK_ERR_ERROR, "Error spawning pushevent thread");
+		return duk_throw(ctx);
+	}
+	duk_push_int(ctx, 0);
 	return 1;
+	
 }
 
 static duk_ret_t janus_duktape_method_notifyevent(duk_context *ctx) {
