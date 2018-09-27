@@ -227,7 +227,7 @@ $(document).ready(function() {
 									$('#screenmenu').hide();
 									$('#room').removeClass('hide').show();
 									if($('#screenvideo').length === 0) {
-										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 									}
 									Janus.attachMediaStream($('#screenvideo').get(0), stream);
 									if(screentest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -453,7 +453,7 @@ function newRemoteFeed(id, display) {
 				if($('#screenvideo').length === 0) {
 					// No remote video yet
 					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
-					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay/>');
+					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay playsinline/>');
 					// Show the video, hide the spinner and show the resolution when we get a playing event
 					$("#screenvideo").bind("playing", function () {
 						$('#waitingvideo').remove();

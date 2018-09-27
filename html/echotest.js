@@ -215,7 +215,7 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									if($('#myvideo').length === 0) {
 										$('#videos').removeClass('hide').show();
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									}
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
@@ -261,7 +261,7 @@ $(document).ready(function() {
 									if($('#peervideo').length === 0) {
 										addButtons = true;
 										$('#videos').removeClass('hide').show();
-										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
+										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay playsinline/>');
 										// Show the video, hide the spinner and show the resolution when we get a playing event
 										$("#peervideo").bind("playing", function () {
 											$('#waitingvideo').remove();
