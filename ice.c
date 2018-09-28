@@ -3397,13 +3397,13 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Free and reset stats list */
 		g_slist_free(stream->transport_wide_received_seq_nums);
 		stream->transport_wide_received_seq_nums = NULL;
-		/* Create and enqueue rtcp packets */
+		/* Create and enqueue RTCP packets */
 		guint packets_len = 0;
 		while ((packets_len = g_queue_get_length(packets)) > 0) {
 			GQueue *packets_to_process;
-			/* if packets_len > 400, transport_wide_cc packet could be overflow the buffer */
+			/* If we have more than 400 packets to acknowledge, let's send more than one message */
 			if (packets_len > 400) {
-				/* split the queue into two */
+				/* Split the queue into two */
 				GList *new_head = g_queue_peek_nth_link(packets, 400);
 				GList *new_tail = new_head->prev;
 				new_head->prev = NULL;
@@ -3420,7 +3420,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			}
 			/* Get feedback packet count and increase it for next one */
 			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
-			/* Create rtcp packet */
+			/* Create RTCP packet */
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
 				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
