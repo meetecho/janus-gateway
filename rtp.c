@@ -247,7 +247,7 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->a_new_ssrc) {
-		JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" resetting status\n", context->a_last_ssrc);
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" resetting status\n", context->a_last_ssrc);
 		context->a_reference_time = now;
 		context->a_start_time = 0;
 		context->a_evaluating_start_time = 0;
@@ -363,9 +363,11 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->v_new_ssrc) {
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" resetting status\n", context->v_last_ssrc);
 		context->v_reference_time = now;
-		context->v_start_ts = 0;
 		context->v_start_time = 0;
+		context->v_evaluating_start_time = 0;
+		context->v_start_ts = 0;
 		context->v_active_delay = 0;
 		context->v_prev_delay = 0;
 		context->v_seq_offset = 0;
@@ -380,7 +382,7 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	int exit_status = 0;
 
 	/* Do not execute skew analysis in the first seconds */
-	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 *G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->v_start_time) {
 		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase start\n", context->v_last_ssrc);
