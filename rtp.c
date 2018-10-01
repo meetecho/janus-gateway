@@ -413,7 +413,6 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint32 offset = context->v_active_delay - delay_estimate;
 			JANUS_LOG(LOG_HUGE, "video skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->v_last_ssrc, context->v_last_ts, expected_ts, offset, context->v_ts_offset, context->v_seq_offset);
-			/* Check if the offset has surpassed the threshold */
 			gint32 skew_th = RTP_VIDEO_SKEW_TH_MS*vkhz;
 			/* Evaluation phase */
 			if (context->v_evaluating_start_time > 0) {
@@ -433,6 +432,7 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 				}
 				return 0;
 			}
+			/* Check if the offset has surpassed the threshold */
 			if (offset >= skew_th) {
 				/* The source is slowing down */
 				/* Update active delay */
