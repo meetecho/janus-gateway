@@ -247,9 +247,11 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->a_new_ssrc) {
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" resetting status\n", context->a_last_ssrc);
 		context->a_reference_time = now;
-		context->a_start_ts = 0;
 		context->a_start_time = 0;
+		context->a_evaluating_start_time = 0;
+		context->a_start_ts = 0;
 		context->a_active_delay = 0;
 		context->a_prev_delay = 0;
 		context->a_seq_offset = 0;
@@ -264,10 +266,12 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 	int exit_status = 0;
 
 	/* Do not execute skew analysis in the first seconds */
-	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->a_start_time) {
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase start\n", context->a_last_ssrc);
 		context->a_start_time = now;
+		context->a_evaluating_start_time = now;
 		context->a_start_ts = context->a_last_ts;
 	}
 
@@ -295,8 +299,26 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint32 offset = context->a_active_delay - delay_estimate;
 			JANUS_LOG(LOG_HUGE, "audio skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->a_last_ssrc, context->a_last_ts, expected_ts, offset, context->a_ts_offset, context->a_seq_offset);
-			/* Check if the offset has surpassed the threshold */
 			gint32 skew_th = RTP_AUDIO_SKEW_TH_MS*akhz;
+			/* Evaluation phase */
+			if (context->a_evaluating_start_time > 0) {
+				/* Check if the offset has surpassed half the threshold during the evaluating phase */
+				if (now-context->a_evaluating_start_time <= SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
+					if (abs(offset) <= skew_th/2) {
+						JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" evaluation phase continue\n", context->a_last_ssrc);
+					} else {
+						JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase reset\n", context->a_last_ssrc);
+						context->a_start_time = now;
+						context->a_evaluating_start_time = now;
+						context->a_start_ts = context->a_last_ts;
+					}
+				} else {
+					JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase stop\n", context->a_last_ssrc);
+					context->a_evaluating_start_time = 0;
+				}
+				return 0;
+			}
+			/* Check if the offset has surpassed the threshold */
 			if (offset >= skew_th) {
 				/* The source is slowing down */
 				/* Update active delay */
@@ -341,9 +363,11 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->v_new_ssrc) {
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" resetting status\n", context->v_last_ssrc);
 		context->v_reference_time = now;
-		context->v_start_ts = 0;
 		context->v_start_time = 0;
+		context->v_evaluating_start_time = 0;
+		context->v_start_ts = 0;
 		context->v_active_delay = 0;
 		context->v_prev_delay = 0;
 		context->v_seq_offset = 0;
@@ -358,10 +382,12 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	int exit_status = 0;
 
 	/* Do not execute skew analysis in the first seconds */
-	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 *G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->v_start_time) {
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase start\n", context->v_last_ssrc);
 		context->v_start_time = now;
+		context->v_evaluating_start_time = now;
 		context->v_start_ts = context->v_last_ts;
 	}
 
@@ -381,14 +407,32 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate current delay */
 			gint32 delay_now = context->v_last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (31*context->v_prev_delay + delay_now)/32;
+			gint32 delay_estimate = (63*context->v_prev_delay + delay_now)/64;
 			/* Save previous delay for the next iteration*/
 			context->v_prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint32 offset = context->v_active_delay - delay_estimate;
 			JANUS_LOG(LOG_HUGE, "video skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->v_last_ssrc, context->v_last_ts, expected_ts, offset, context->v_ts_offset, context->v_seq_offset);
-			/* Check if the offset has surpassed the threshold */
 			gint32 skew_th = RTP_VIDEO_SKEW_TH_MS*vkhz;
+			/* Evaluation phase */
+			if (context->v_evaluating_start_time > 0) {
+				/* Check if the offset has surpassed half the threshold during the evaluating phase */
+				if (now-context->v_evaluating_start_time <= SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
+					if (abs(offset) <= skew_th/2) {
+						JANUS_LOG(LOG_HUGE, "video skew SSRC=%"SCNu32" evaluation phase continue\n", context->v_last_ssrc);
+					} else {
+						JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase reset\n", context->v_last_ssrc);
+						context->v_start_time = now;
+						context->v_evaluating_start_time = now;
+						context->v_start_ts = context->v_last_ts;
+					}
+				} else {
+					JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase stop\n", context->v_last_ssrc);
+					context->v_evaluating_start_time = 0;
+				}
+				return 0;
+			}
+			/* Check if the offset has surpassed the threshold */
 			if (offset >= skew_th) {
 				/* The source is slowing down */
 				/* Update active delay */
