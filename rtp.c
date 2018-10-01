@@ -269,7 +269,7 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->a_start_time) {
-		JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" evaluation phase start\n", context->a_last_ssrc);
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase start\n", context->a_last_ssrc);
 		context->a_start_time = now;
 		context->a_evaluating_start_time = now;
 		context->a_start_ts = context->a_last_ts;
@@ -307,13 +307,13 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 					if (abs(offset) <= skew_th/2) {
 						JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" evaluation phase continue\n", context->a_last_ssrc);
 					} else {
-						JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" evaluation phase reset\n", context->a_last_ssrc);
+						JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase reset\n", context->a_last_ssrc);
 						context->a_start_time = now;
 						context->a_evaluating_start_time = now;
 						context->a_start_ts = context->a_last_ts;
 					}
 				} else {
-					JANUS_LOG(LOG_WARN, "audio skew SSRC=%"SCNu32" evaluation phase stop\n", context->a_last_ssrc);
+					JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase stop\n", context->a_last_ssrc);
 					context->a_evaluating_start_time = 0;
 				}
 				return 0;
@@ -383,7 +383,7 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->v_start_time) {
-		JANUS_LOG(LOG_WARN, "video skew SSRC=%"SCNu32" evaluation phase start\n", context->v_last_ssrc);
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase start\n", context->v_last_ssrc);
 		context->v_start_time = now;
 		context->v_evaluating_start_time = now;
 		context->v_start_ts = context->v_last_ts;
@@ -420,13 +420,13 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 					if (abs(offset) <= skew_th/2) {
 						JANUS_LOG(LOG_HUGE, "video skew SSRC=%"SCNu32" evaluation phase continue\n", context->v_last_ssrc);
 					} else {
-						JANUS_LOG(LOG_WARN, "video skew SSRC=%"SCNu32" evaluation phase reset\n", context->v_last_ssrc);
+						JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase reset\n", context->v_last_ssrc);
 						context->v_start_time = now;
 						context->v_evaluating_start_time = now;
 						context->v_start_ts = context->v_last_ts;
 					}
 				} else {
-					JANUS_LOG(LOG_WARN, "video skew SSRC=%"SCNu32" evaluation phase stop\n", context->v_last_ssrc);
+					JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase stop\n", context->v_last_ssrc);
 					context->v_evaluating_start_time = 0;
 				}
 				return 0;
