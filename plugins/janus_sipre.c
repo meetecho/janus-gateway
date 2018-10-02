@@ -166,7 +166,6 @@ static struct janus_json_parameter proxy_parameters[] = {
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"srtp", JANUS_JSON_STRING, 0},
 	{"srtp_profile", JSON_STRING, 0},
@@ -459,7 +458,6 @@ typedef struct janus_sipre_media {
 	gboolean earlymedia;
 	gboolean update;
 	gboolean ready;
-	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	janus_srtp_profile srtp_profile;
 	gboolean on_hold;
@@ -805,7 +803,6 @@ static int janus_sipre_srtp_set_remote(janus_sipre_session *session, gboolean vi
 static void janus_sipre_srtp_cleanup(janus_sipre_session *session) {
 	if(session == NULL)
 		return;
-	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -1217,7 +1214,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.earlymedia = FALSE;
 	session->media.update = FALSE;
 	session->media.ready = FALSE;
-	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -1316,7 +1312,6 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "call_status", json_string(janus_sipre_call_status_string(session->status)));
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
-		json_object_set_new(info, "auto-ack", json_string(session->media.autoack ? "yes" : "no"));
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
 		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
@@ -1931,9 +1926,6 @@ static void *janus_sipre_handler(void *data) {
 			json_t *uri = json_object_get(root, "uri");
 			json_t *secret = json_object_get(root, "secret");
 			json_t *authuser = json_object_get(root, "authuser");
-			/* Check if we need to ACK manually (e.g., for the Record-Route hack) */
-			json_t *autoack = json_object_get(root, "autoack");
-			gboolean do_autoack = autoack ? json_is_true(autoack) : TRUE;
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
 			custom_headers[0] = '\0';
@@ -2114,7 +2106,6 @@ static void *janus_sipre_handler(void *data) {
 			session->callee = g_strdup(uri_text);
 			session->callid = g_strdup(callid);
 			g_hash_table_insert(callids, session->callid, session);
-			session->media.autoack = do_autoack;
 			session->temp_sdp = sdp;
 			mqueue_push(mq, janus_sipre_mqueue_event_do_call, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
 			/* Done for now */
