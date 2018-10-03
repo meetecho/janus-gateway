@@ -310,6 +310,14 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		max_width = 640;
 		max_height = 480;
 	}
+	if(max_width < 160) {
+		JANUS_LOG(LOG_WARN, "Width seems weirdly low (%d), setting 640 instead...\n", max_width);
+		max_width = 640;
+	}
+	if(max_height < 120) {
+		JANUS_LOG(LOG_WARN, "Height seems weirdly low (%d), setting 480 instead...\n", max_height);
+		max_height = 480;
+	}
 	if(fps == 0) {
 		JANUS_LOG(LOG_WARN, "No fps?? assuming 1...\n");
 		fps = 1;	/* Prevent divide by zero error */
