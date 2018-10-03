@@ -170,8 +170,21 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	index += 3;
 	uint32_t offset = 0;
 	uint8_t *base = (uint8_t *)(buffer+index);
-	/* Skip seq_parameter_set_id and log2_max_frame_num_minus4 */
+	/* Skip seq_parameter_set_id */
 	janus_pp_h264_eg_decode(base, &offset);
+	if(profile_idc >= 100) {
+		/* Skip chroma_format_idc */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip bit_depth_luma_minus8 */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip bit_depth_chroma_minus8 */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip qpprime_y_zero_transform_bypass_flag */
+		janus_pp_h264_eg_getbit(base, offset++);
+		/* Skip seq_scaling_matrix_present_flag */
+		janus_pp_h264_eg_getbit(base, offset++);
+	}
+	/* Skip log2_max_frame_num_minus4 */
 	janus_pp_h264_eg_decode(base, &offset);
 	/* Evaluate pic_order_cnt_type */
 	int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
