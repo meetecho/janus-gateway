@@ -455,6 +455,8 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 static GHashTable *plugin_sessions;
 static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
+	if(plugin_session == NULL)
+		return FALSE;
 	/* Make sure this plugin session is still alive */
 	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
 	janus_plugin_session *result = g_hash_table_lookup(plugin_sessions, plugin_session);
@@ -2224,7 +2226,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtp &&
+				if(plugin && plugin->incoming_rtp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
@@ -2580,7 +2582,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtcp &&
+				if(plugin && plugin->incoming_rtcp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
@@ -2603,7 +2605,7 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin && plugin->incoming_data &&
+	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
 		plugin->incoming_data(handle->app_handle, buffer, length);
