@@ -559,6 +559,11 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_VERB, "  -- All padding, marking packet as dropped\n");
 			}
 		}
+		if(p->len <= 12) {
+			/* Only header? take note that we should drop the packet later */
+			p->drop = 1;
+			JANUS_LOG(LOG_VERB, "  -- Only RTP header, marking packet as dropped\n");
+		}
 		last_ts = ntohl(rtp->timestamp);
 		post_reset_pkts++;
 		/* Fill in the rest of the details */

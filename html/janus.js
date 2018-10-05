@@ -319,8 +319,12 @@ Janus.init = function(options) {
 			}
 		};
 		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
-		var oldOBF = window.onbeforeunload;
-		window.onbeforeunload = function() {
+		// (note: for iOS we need to subscribe to a different event, 'pagehide', see
+		// https://gist.github.com/thehunmonkgroup/6bee8941a49b86be31a787fe8f4b8cfe)
+		var iOS = ['iPad', 'iPhone', 'iPod'].indexOf(navigator.platform) >= 0;
+		var eventName = iOS ? 'pagehide' : 'beforeunload';
+		var oldOBF = window["on" + eventName];
+		window.addEventListener(eventName, function(event) {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
@@ -331,7 +335,7 @@ Janus.init = function(options) {
 			}
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
-		}
+		});
 		Janus.initDone = true;
 		options.callback();
 	}
@@ -1713,10 +1717,12 @@ function Janus(gatewayCallbacks) {
 		if(config.pc === undefined || config.pc === null) {
 			// Nope, new PeerConnection
 			media.update = false;
+			media.keepAudio = false;
+			media.keepVideo = false;
 		} else if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
 			media.update = true;
-			// Check if there's anything do add/remove/replace, or if we
+			// Check if there's anything to add/remove/replace, or if we
 			// can go directly to preparing the new SDP offer or answer
 			if(callbacks.stream !== null && callbacks.stream !== undefined) {
 				// External stream: is this the same as the one we were using before?
@@ -1726,6 +1732,7 @@ function Janus(gatewayCallbacks) {
 			} else {
 				// Check if there are changes on audio
 				if(media.addAudio) {
+					media.keepAudio = false;
 					media.replaceAudio = false;
 					media.removeAudio = false;
 					media.audioSend = true;
@@ -1735,10 +1742,12 @@ function Janus(gatewayCallbacks) {
 						return;
 					}
 				} else if(media.removeAudio) {
+					media.keepAudio = false;
 					media.replaceAudio = false;
 					media.addAudio = false;
 					media.audioSend = false;
 				} else if(media.replaceAudio) {
+					media.keepAudio = false;
 					media.addAudio = false;
 					media.removeAudio = false;
 					media.audioSend = true;
@@ -1746,28 +1755,41 @@ function Janus(gatewayCallbacks) {
 				if(config.myStream === null || config.myStream === undefined) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceAudio) {
+						media.keepAudio = false;
 						media.replaceAudio = false;
 						media.addAudio = true;
 						media.audioSend = true;
 					}
-					if(isAudioSendEnabled(media))
+					if(isAudioSendEnabled(media)) {
+						media.keepAudio = false;
 						media.addAudio = true;
+					}
 				} else {
 					if(config.myStream.getAudioTracks() === null
 							|| config.myStream.getAudioTracks() === undefined
 							|| config.myStream.getAudioTracks().length === 0) {
 						// No audio track: if we were asked to replace, it's actually an "add"
 						if(media.replaceAudio) {
+							media.keepAudio = false;
 							media.replaceAudio = false;
 							media.addAudio = true;
 							media.audioSend = true;
 						}
-						if(isAudioSendEnabled(media))
+						if(isAudioSendEnabled(media)) {
+							media.keepVideo = false;
 							media.addAudio = true;
+						}
+					} else {
+						// We have an audio track: should we keep it as it is?
+						if(isAudioSendEnabled(media) &&
+								!media.removeAudio && !media.replaceAudio) {
+							media.keepAudio = true;
+						}
 					}
 				}
 				// Check if there are changes on video
 				if(media.addVideo) {
+					media.keepVideo = false;
 					media.replaceVideo = false;
 					media.removeVideo = false;
 					media.videoSend = true;
@@ -1777,10 +1799,12 @@ function Janus(gatewayCallbacks) {
 						return;
 					}
 				} else if(media.removeVideo) {
+					media.keepVideo = false;
 					media.replaceVideo = false;
 					media.addVideo = false;
 					media.videoSend = false;
 				} else if(media.replaceVideo) {
+					media.keepVideo = false;
 					media.addVideo = false;
 					media.removeVideo = false;
 					media.videoSend = true;
@@ -1788,29 +1812,47 @@ function Janus(gatewayCallbacks) {
 				if(config.myStream === null || config.myStream === undefined) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceVideo) {
+						media.keepVideo = false;
 						media.replaceVideo = false;
 						media.addVideo = true;
 						media.videoSend = true;
 					}
-					if(isVideoSendEnabled(media))
+					if(isVideoSendEnabled(media)) {
+						media.keepVideo = false;
 						media.addVideo = true;
+					}
 				} else {
 					if(config.myStream.getVideoTracks() === null
 							|| config.myStream.getVideoTracks() === undefined
 							|| config.myStream.getVideoTracks().length === 0) {
 						// No video track: if we were asked to replace, it's actually an "add"
 						if(media.replaceVideo) {
+							media.keepVideo = false;
 							media.replaceVideo = false;
 							media.addVideo = true;
 							media.videoSend = true;
 						}
-						if(isVideoSendEnabled(media))
+						if(isVideoSendEnabled(media)) {
+							media.keepVideo = false;
 							media.addVideo = true;
+						}
+					} else {
+						// We have a video track: should we keep it as it is?
+						if(isVideoSendEnabled(media) &&
+								!media.removeVideo && !media.replaceVideo) {
+							media.keepVideo = true;
+						}
 					}
 				}
 				// Data channels can only be added
 				if(media.addData)
 					media.data = true;
+			}
+			// If we're updating and keeping all tracks, let's skip the getUserMedia part
+			if((isAudioSendEnabled(media) && media.keepAudio) &&
+					(isVideoSendEnabled(media) && media.keepVideo)) {
+				streamsDone(handleId, jsep, media, callbacks, config.myStream);
+				return;
 			}
 		}
 		// If we're updating, check if we need to remove/replace one of the tracks
@@ -1976,7 +2018,7 @@ function Janus(gatewayCallbacks) {
 						navigator.getDisplayMedia({ video: true })
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
-								if(isAudioSendEnabled(media)){
+								if(isAudioSendEnabled(media) && !media.keepAudio) {
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
 										stream.addTrack(audioStream.getAudioTracks()[0]);
@@ -2006,7 +2048,7 @@ function Janus(gatewayCallbacks) {
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
 							.then(function(stream) {
-								if(useAudio){
+								if(useAudio) {
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
 										stream.addTrack(audioStream.getAudioTracks()[0]);
@@ -2036,7 +2078,7 @@ function Janus(gatewayCallbacks) {
 										chromeMediaSource: 'screen'
 									}
 								},
-								audio: isAudioSendEnabled(media)
+								audio: isAudioSendEnabled(media) && !media.keepAudio
 							};
 							getScreenMedia(constraints, callbackUserMedia);
 						} else {
@@ -2063,7 +2105,8 @@ function Janus(gatewayCallbacks) {
 									}
 								};
 								constraints.video.mandatory.chromeMediaSourceId = sourceId;
-								getScreenMedia(constraints, callbackUserMedia, isAudioSendEnabled(media));
+								getScreenMedia(constraints, callbackUserMedia,
+									isAudioSendEnabled(media) && !media.keepAudio);
 							});
 						}
 					} else if (window.navigator.userAgent.match('Firefox')) {
@@ -2075,7 +2118,7 @@ function Janus(gatewayCallbacks) {
 									mozMediaSource: media.video,
 									mediaSource: media.video
 								},
-								audio: isAudioSendEnabled(media)
+								audio: isAudioSendEnabled(media) && !media.keepAudio
 							};
 							getScreenMedia(constraints, function (err, stream) {
 								callbackUserMedia(err, stream);
@@ -2143,13 +2186,18 @@ function Janus(gatewayCallbacks) {
 					}
 
 					var gumConstraints = {
-						audio: audioExist ? audioSupport : false,
-						video: videoExist ? videoSupport : false
+						audio: (audioExist && !media.keepAudio) ? audioSupport : false,
+						video: (videoExist && !media.keepVideo) ? videoSupport : false
 					};
 					Janus.debug("getUserMedia constraints", gumConstraints);
 					navigator.mediaDevices.getUserMedia(gumConstraints)
-					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
-					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+						.then(function(stream) {
+							pluginHandle.consentDialog(false);
+							streamsDone(handleId, jsep, media, callbacks, stream);
+						}).catch(function(error) {
+							pluginHandle.consentDialog(false);
+							callbacks.error({code: error.code, name: error.name, message: error.message});
+						});
 				})
 				.catch(function(error) {
 					pluginHandle.consentDialog(false);

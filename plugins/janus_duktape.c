@@ -490,7 +490,8 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_NUMBER), janus_duktape_type_string(duk_get_type(ctx, 0)));
 		return duk_throw(ctx);
 	}
-	if(duk_get_type(ctx, 1) != DUK_TYPE_STRING && duk_get_type(ctx, 1) != DUK_TYPE_UNDEFINED) {
+	if(duk_get_type(ctx, 1) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 1) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 1) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 1)));
 		return duk_throw(ctx);
@@ -500,7 +501,8 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 2)));
 		return duk_throw(ctx);
 	}
-	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING && duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED) {
+	if(duk_get_type(ctx, 3) != DUK_TYPE_STRING &&
+			duk_get_type(ctx, 3) != DUK_TYPE_UNDEFINED && duk_get_type(ctx, 3) != DUK_TYPE_NULL) {
 		duk_push_error_object(ctx, DUK_RET_TYPE_ERROR, "Invalid argument (expected %s, got %s)\n",
 			janus_duktape_type_string(DUK_TYPE_STRING), janus_duktape_type_string(duk_get_type(ctx, 3)));
 		return duk_throw(ctx);
@@ -1309,10 +1311,22 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_free(duktape_file);
 		return -1;
 	}
-    char buf[16384];
-    size_t len = fread((void *) buf, 1, sizeof(buf), f);
+	fseek(f, 0, SEEK_END);
+	size_t len = ftell(f);
+	if(len < 1) {
+		JANUS_LOG(LOG_ERR, "Error loading JS script %s: empty file\n", duktape_file);
+		fclose(f);
+		duk_destroy_heap(duktape_ctx);
+		g_free(duktape_folder);
+		g_free(duktape_file);
+		return -1;
+	}
+	char *buf = (char *)g_malloc0(len);
+	fseek(f, 0, SEEK_SET);
+	fread((void *)buf, 1, len, f);
 	fclose(f);
 	duk_push_lstring(duktape_ctx, (const char *)buf, (duk_size_t)len);
+	g_free(buf);
 	if(duk_peval(duktape_ctx) != 0) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: %s\n", duktape_file, duk_safe_to_string(duktape_ctx, -1));
 		duk_destroy_heap(duktape_ctx);
@@ -1505,12 +1519,11 @@ int janus_duktape_get_version(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_version) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_version != -1) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_version;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getVersion");
@@ -1535,12 +1548,11 @@ const char *janus_duktape_get_version_string(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_version_string) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_version_string != NULL) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_version_string;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getVersionString");
@@ -1567,12 +1579,11 @@ const char *janus_duktape_get_description(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_description) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_description != NULL) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_description;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getDescription");
@@ -1599,12 +1610,11 @@ const char *janus_duktape_get_name(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_name) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_name != NULL) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_name;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getName");
@@ -1631,12 +1641,11 @@ const char *janus_duktape_get_author(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_author) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_author != NULL) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_author;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getAuthor");
@@ -1663,12 +1672,11 @@ const char *janus_duktape_get_package(void) {
 	/* Check if the JS script wants to override this method and return info itself */
 	if(has_get_package) {
 		/* Yep, pass the request to the JS script and return the info */
-		janus_mutex_lock(&duktape_mutex);
-		/* Unless we asked already */
 		if(duktape_script_package != NULL) {
-			janus_mutex_unlock(&duktape_mutex);
+			/* Unless we asked already */
 			return duktape_script_package;
 		}
+		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
 		duk_get_global_string(t, "getPackage");
