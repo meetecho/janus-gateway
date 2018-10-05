@@ -94,7 +94,12 @@ cert_key = @certdir@/mycert.key
 ; starting MTU for DTLS (1200 by default, it adapts automatically), and
 ; finally how much time, in seconds, should pass with no media (audio or
 ; video) being received before Janus notifies you about this (default=1s,
-; 0 disables these events entirely).
+; 0 disables these events entirely). Finally, if you're using BoringSSL
+; you can customize the frequency of retransmissions: OpenSSL has a fixed
+; value of 1 second (the default), while BoringSSL can override that. Notice
+; that lower values (e.g., 100ms) will typically get you faster connection
+; times, but may not work in case the RTT of the user is high: as such,
+; you should pick a reasonable trade-off (usually 2*max expected RTT).
 [media]
 ;ipv6 = true
 ;max_nack_queue = 500
@@ -102,6 +107,7 @@ cert_key = @certdir@/mycert.key
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
 ;no_media_timer = 1
+;dtls_timeout = 500
 
 
 ; NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -134,8 +140,8 @@ nice_debug = false
 ; all host candidates (which normally have a private IP address) to
 ; be rewritten with the public address provided in the settings. As
 ; such, use the option with caution and only if you know what you're doing.
-; Besides, it's still recommended to also enable STUN in those cases,
-; and keep ICE Lite disabled as it's not strictly speaking a public server.
+; Make sure you keep ICE Lite disabled, though, as it's not strictly
+; speaking a publicly reachable server, and a NAT is still involved.
 ;nat_1_1_mapping = 1.2.3.4
 
 ; You can configure a TURN server in two different ways: specifying a

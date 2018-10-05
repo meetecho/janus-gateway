@@ -715,3 +715,104 @@ int janus_videocodec_pt(janus_videocodec vcodec) {
 			return VP8_PT;
 	}
 }
+
+void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	memset(context, 0, sizeof(*context));
+	context->substream = -1;
+	context->templayer = -1;
+}
+
+gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
+		char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc) {
+	if(!context || !buf || len < 1)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	uint32_t ssrc = ntohl(header->ssrc);
+	/* Reset the flags */
+	context->changed_substream = FALSE;
+	context->changed_temporal = FALSE;
+	context->need_pli = FALSE;
+	/* Access the packet payload */
+	int plen = 0;
+	char *payload = janus_rtp_payload(buf, len, &plen);
+	if(payload == NULL)
+		return FALSE;
+	if(context->substream != context->substream_target) {
+		/* There has been a change: let's wait for a keyframe on the target */
+		int step = (context->substream < 1 && context->substream_target == 2);
+		if((ssrc == *(ssrcs + context->substream_target)) || (step && ssrc == *(ssrcs + step))) {
+			if(janus_vp8_is_keyframe(payload, plen)) {
+				uint32_t ssrc_old = 0;
+				if(context->substream != -1)
+					ssrc_old = *(ssrcs + context->substream);
+				JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
+				context->substream = (ssrc == *(ssrcs + context->substream_target) ? context->substream_target : step);
+				/* Notify the caller that the substream changed */
+				context->changed_substream = TRUE;
+			//~ } else {
+				//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+			}
+		}
+	}
+	/* If we haven't received our desired substream yet, let's drop temporarily */
+	if(context->last_relayed == 0) {
+		/* Let's start slow */
+		context->last_relayed = janus_get_monotonic_time();
+	} else {
+		/* Check if 250ms went by with no packet relayed */
+		gint64 now = janus_get_monotonic_time();
+		if(now-context->last_relayed >= 250000) {
+			context->last_relayed = now;
+			int substream = context->substream-1;
+			if(substream < 0)
+				substream = 0;
+			if(context->substream != substream) {
+				JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+					context->substream, substream);
+				context->substream = substream;
+				/* Notify the caller that we need a PLI */
+				context->need_pli = TRUE;
+				/* Notify the caller that the substream changed as well */
+				context->changed_substream = TRUE;
+			}
+		}
+	}
+	/* Do we need to drop this? */
+	if(ssrc != *(ssrcs + context->substream)) {
+		JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
+			ssrc, *(ssrcs + context->substream));
+		return FALSE;
+	}
+	context->last_relayed = janus_get_monotonic_time();
+	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	if(vcodec == JANUS_VIDEOCODEC_VP8) {
+		/* Check if there's any temporal scalability to take into account */
+		uint16_t picid = 0;
+		uint8_t tlzi = 0;
+		uint8_t tid = 0;
+		uint8_t ybit = 0;
+		uint8_t keyidx = 0;
+		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+			if(context->templayer != context->templayer_target) {
+				/* FIXME We should be smarter in deciding when to switch */
+				context->templayer = context->templayer_target;
+				/* Notify the caller that the temporal layer changed */
+				context->changed_temporal = TRUE;
+			}
+			if(tid > context->templayer) {
+				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+					tid, context->templayer);
+				/* We increase the base sequence number, or there will be gaps when delivering later */
+				if(sc)
+					sc->v_base_seq++;
+				return FALSE;
+			}
+		}
+	}
+	/* If we got here, the packet can be relayed */
+	return TRUE;
+}

@@ -835,8 +835,8 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
 			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 			janus_set_public_ip(public_ip);
-			close(fd);
 		}
+		close(fd);
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
@@ -849,8 +849,8 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
 			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 			janus_set_public_ip(public_ip);
-			close(fd);
 		}
+		close(fd);
 		return 0;
 	}
 	close(fd);
@@ -1000,7 +1000,6 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
 		g_free(session_handle);
-		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
 	janus_refcount_init(&session_handle->ref, janus_ice_plugin_session_free);
@@ -1159,7 +1158,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
 	janus_mutex_lock(&handle->mutex);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	if(handle->iceloop != NULL) {
 		g_main_loop_unref (handle->iceloop);
 		handle->iceloop = NULL;
@@ -1949,17 +1947,10 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 #endif
 	}
 
-	/* Save for the summary, in case we need it */
-	component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(buffer));
-
-	/* Notify event handlers */
-	if(janus_events_is_enabled()) {
-		janus_session *session = (janus_session *)handle->session;
-		json_t *info = json_object();
-		json_object_set_new(info, "remote-candidate", json_string(buffer));
-		json_object_set_new(info, "stream_id", json_integer(stream_id));
-		json_object_set_new(info, "component_id", json_integer(component_id));
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
+	/* Now parse the candidate as if we received it from the Janus API */
+	int res = janus_sdp_parse_candidate(stream, buffer, 1);
+	if(res != 0) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse prflx candidate... (%d)\n", handle->handle_id, res);
 	}
 
 candidatedone:
@@ -2357,7 +2348,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								/* We don't track it forever, though: add a timed source to remove it in a few seconds */
 								janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
 								np->handle = handle;
-								np->seq_number = new_seqn;
+								np->seq_number = cur_seq->seq;
 								np->vindex = vindex;
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
@@ -2502,7 +2493,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(nacks_count && ((!video && component->do_audio_nacks) || (video && component->do_video_nacks))) {
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
-					GSList *list = nacks;
+					GHashTable *retransmit_seqs = (video ? component->video_retransmit_seqs : component->audio_retransmit_seqs);
+					GSList *list = (retransmit_seqs != NULL ? nacks : NULL);
 					int retransmits_cnt = 0;
 					janus_mutex_lock(&component->mutex);
 					while(list) {
@@ -2510,8 +2502,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
 						/* Check if we have the packet */
-						janus_rtp_packet *p = g_hash_table_lookup(video ?
-							component->video_retransmit_seqs : component->audio_retransmit_seqs, GUINT_TO_POINTER(seqnr));
+						janus_rtp_packet *p = g_hash_table_lookup(retransmit_seqs, GUINT_TO_POINTER(seqnr));
 						if(p == NULL) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
 						} else {
@@ -3406,13 +3397,38 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Free and reset stats list */
 		g_slist_free(stream->transport_wide_received_seq_nums);
 		stream->transport_wide_received_seq_nums = NULL;
-		/* Get feedback packet count and increase it for next one */
-		guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
-		/* Create rtcp packet */
-		int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-			stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets);
-		/* Enqueue it, we'll send it later */
-		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
+		/* Create and enqueue RTCP packets */
+		guint packets_len = 0;
+		while ((packets_len = g_queue_get_length(packets)) > 0) {
+			GQueue *packets_to_process;
+			/* If we have more than 400 packets to acknowledge, let's send more than one message */
+			if (packets_len > 400) {
+				/* Split the queue into two */
+				GList *new_head = g_queue_peek_nth_link(packets, 400);
+				GList *new_tail = new_head->prev;
+				new_head->prev = NULL;
+				new_tail->next = NULL;
+				packets_to_process = g_queue_new();
+				packets_to_process->head = packets->head;
+				packets_to_process->tail = new_tail;
+				packets_to_process->length = 400;
+				packets->head = new_head;
+				/* packets->tail is unchanged */
+				packets->length = packets_len - 400;
+			} else {
+				packets_to_process = packets;
+			}
+			/* Get feedback packet count and increase it for next one */
+			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
+			/* Create RTCP packet */
+			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
+				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
+			/* Enqueue it, we'll send it later */
+			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
+			if (packets_to_process != packets) {
+				g_queue_free(packets_to_process);
+			}
+		}
 		/* Free mem */
 		g_queue_free(packets);
 	}

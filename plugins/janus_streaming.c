@@ -1317,7 +1317,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	}
 
 	struct ifaddrs *ifas = NULL;
-	if(getifaddrs(&ifas) || ifas == NULL) {
+	if(getifaddrs(&ifas) == -1) {
 		JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 	}
 
@@ -2241,7 +2241,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				goto plugin_response;
 		}
 
-		if(getifaddrs(&ifas) || ifas == NULL) {
+		if(getifaddrs(&ifas) == -1) {
 			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		}
 
@@ -5034,6 +5034,11 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			return -1;
 		}
 		port = ntohs(address.sin_port);
+		if (port & 1) {
+			close(fds->fd);
+			port = -1;
+			continue;
+		}
 		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
 		if(fds->rtcp_fd < 0) {
 			close(fds->fd);
@@ -5173,6 +5178,20 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
+			return -5;
+		} else if(code != 200) {
+			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+			curl_easy_cleanup(curl);
+			g_free(curldata->buffer);
+			g_free(curldata);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -5;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
@@ -5215,6 +5234,20 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
+			return -6;
+		} else if(code != 200) {
+			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+			curl_easy_cleanup(curl);
+			g_free(curldata->buffer);
+			g_free(curldata);
+			if(video_fds.fd != -1) close(video_fds.fd);
+			if(video_fds.rtcp_fd != -1) close(video_fds.rtcp_fd);
+			if(audio_fds.fd != -1) close(audio_fds.fd);
+			if(audio_fds.rtcp_fd != -1) close(audio_fds.rtcp_fd);
 			return -6;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);

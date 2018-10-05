@@ -248,9 +248,16 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		/* Parse H264 header now */
 		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 		int len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(prebuffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if((prebuffer[0] & 0x1F) == 7) {
 			/* SPS, see if we can extract the width/height as well */
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
@@ -338,9 +345,16 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			buffer = start;
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			len = tmp->len-12-tmp->skip;
+			if(len < 1) {
+				tmp = tmp->next;
+				continue;
+			}
 			bytes = fread(buffer, sizeof(char), len, file);
-			if(bytes != len)
+			if(bytes != len) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				tmp = tmp->next;
+				continue;
+			}
 			/* H.264 depay */
 			int jump = 0;
 			uint8_t fragment = *buffer & 0x1F;

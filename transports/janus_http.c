@@ -1403,13 +1403,31 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
 		500, &janus_http_response_callback, msg, NULL);
@@ -1628,13 +1646,31 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN,
 		500, &janus_http_response_callback, msg, NULL);

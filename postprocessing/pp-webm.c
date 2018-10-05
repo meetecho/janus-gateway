@@ -201,8 +201,11 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			/* Read the first bytes of the payload, and get the first octet (VP8 Payload Descriptor) */
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			bytes = fread(prebuffer, sizeof(char), 16, file);
-			if(bytes != 16)
+			if(bytes != 16) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < 16)...\n", bytes);
+				tmp = tmp->next;
+				continue;
+			}
 			char *buffer = (char *)&prebuffer;
 			uint8_t vp8pd = *buffer;
 			uint8_t xbit = (vp8pd & 0x80);
@@ -269,8 +272,11 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			/* Read the first bytes of the payload, and get the first octet (VP9 Payload Descriptor) */
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			bytes = fread(prebuffer, sizeof(char), 16, file);
-			if(bytes != 16)
+			if(bytes != 16) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < 16)...\n", bytes);
+				tmp = tmp->next;
+				continue;
+			}
 			char *buffer = (char *)&prebuffer;
 			uint8_t vp9pd = *buffer;
 			uint8_t ibit = (vp9pd & 0x80);
@@ -381,9 +387,16 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 			buffer = start;
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			len = tmp->len-12-tmp->skip;
+			if(len < 1) {
+				tmp = tmp->next;
+				continue;
+			}
 			bytes = fread(buffer, sizeof(char), len, file);
-			if(bytes != len)
+			if(bytes != len) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				tmp = tmp->next;
+				continue;
+			}
 			if(vp8) {
 				/* VP8 depay */
 					/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */

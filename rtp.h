@@ -218,4 +218,42 @@ const char *janus_videocodec_name(janus_videocodec vcodec);
 janus_videocodec janus_videocodec_from_name(const char *name);
 int janus_videocodec_pt(janus_videocodec vcodec);
 
+
+/*! \brief Helper struct for processing and tracking simulcast streams */
+typedef struct janus_rtp_simulcasting_context {
+	/*! \brief Which simulcast substream we should forward back */
+	int substream;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
+	int substream_target;
+	/*! \brief Which simulcast temporal layer we should forward back */
+	int templayer;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
+	int templayer_target;
+	/*! \brief When we relayed the last packet (used to detect when substreams become unavailable) */
+	gint64 last_relayed;
+	/*! \brief Whether the substream has changed after processing a packet */
+	gboolean changed_substream;
+	/*! \brief Whether the temporal layer has changed after processing a packet */
+	gboolean changed_temporal;
+	/*! \brief Whether we need to send the user a keyframe request (PLI) */
+	gboolean need_pli;
+} janus_rtp_simulcasting_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context);
+
+/*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
+ * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
+ * properties, and updates them according to the decisions made after processinf the packet
+ * @param[in] context The simulcasting context to use
+ * @param[in] buf The RTP packet to process
+ * @param[in] len The length of the RTP packet (header, extension and payload)
+ * @param[in] ssrcs The simulcast SSRCs to refer to
+ * @param[in] vcodec Video codec of the RTP payload
+ * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
+ * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
+gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
+	char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc);
+
 #endif

@@ -21,6 +21,7 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../utils.h"
+#include "../events.h"
 
 
 /* Plugin information */
@@ -115,65 +116,9 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_RABBITMQEVH_ERROR_UNKNOWN_ERROR			499
 
 
-/* Helper method to change the events mask */
-static void janus_rabbitmqevh_edit_events_mask(const char *list) {
-	if(!list)
-		return;
-	janus_flags mask;
-	janus_flags_reset(&mask);
-	if(!strcasecmp(list, "none")) {
-		/* Don't subscribe to anything at all */
-		janus_flags_reset(&mask);
-	} else if(!strcasecmp(list, "all")) {
-		/* Subscribe to everything */
-		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
-	} else {
-		/* Check what we need to subscribe to */
-		janus_flags_reset(&mask);
-		gchar **subscribe = g_strsplit(list, ",", -1);
-		if(subscribe != NULL) {
-			gchar *index = subscribe[0];
-			if(index != NULL) {
-				int i=0;
-				while(index != NULL) {
-					while(isspace(*index))
-						index++;
-					if(strlen(index)) {
-						if(!strcasecmp(index, "sessions")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_SESSION);
-						} else if(!strcasecmp(index, "handles")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_HANDLE);
-						} else if(!strcasecmp(index, "jsep")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_JSEP);
-						} else if(!strcasecmp(index, "webrtc")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_WEBRTC);
-						} else if(!strcasecmp(index, "media")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_MEDIA);
-						} else if(!strcasecmp(index, "plugins")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_PLUGIN);
-						} else if(!strcasecmp(index, "transports")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_TRANSPORT);
-						} else if(!strcasecmp(index, "core")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_CORE);
-						} else if(!strcasecmp(index, "external")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_EXTERNAL);
-						} else {
-							JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
-						}
-					}
-					i++;
-					index = subscribe[i];
-				}
-			}
-			g_strfreev(subscribe);
-		}
-	}
-	memcpy(&janus_rabbitmqevh.events_mask, &mask, sizeof(janus_flags));
-}
-
-
 /* Plugin implementation */
 int janus_rabbitmqevh_init(const char *config_path) {
+	gboolean success = TRUE;
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
@@ -228,7 +173,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	/* Which events should we subscribe to? */
 	item = janus_config_get_item_drilldown(config, "general", "events");
 	if(item && item->value)
-		janus_rabbitmqevh_edit_events_mask(item->value);
+		janus_events_edit_events_mask(item->value, &janus_rabbitmqevh.events_mask);
 
 	/* Is grouping of events ok? */
 	item = janus_config_get_item_drilldown(config, "general", "grouping");
@@ -251,7 +196,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
-	vhost = g_strdup("/");
+		vhost = g_strdup("/");
 	item = janus_config_get_item_drilldown(config, "general", "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
@@ -402,17 +347,17 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Setup of RabbitMQ event handler completed\n");
-
-	if(rmqhost)
-		g_free((char *)rmqhost);
-	if(config)
-		janus_config_destroy(config);
-
-	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
-	return 0;
+	goto done;
 
 error:
 	/* If we got here, something went wrong */
+	success = FALSE;
+	if(route_key)
+		g_free((char *)route_key);
+	if(exchange)
+		g_free((char *)exchange);
+	/* Fall through */
+done:
 	if(rmqhost)
 		g_free((char *)rmqhost);
 	if(vhost)
@@ -421,10 +366,6 @@ error:
 		g_free((char *)username);
 	if(password)
 		g_free((char *)password);
-	if(route_key)
-		g_free((char *)route_key);
-	if(exchange)
-		g_free((char *)exchange);
 	if(ssl_cacert_file)
 		g_free((char *)ssl_cacert_file);
 	if(ssl_cert_file)
@@ -433,7 +374,11 @@ error:
 		g_free((char *)ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
-	return -1;
+	if(!success) {
+		return -1;
+	}
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
+	return 0;
 }
 
 void janus_rabbitmqevh_destroy(void) {
@@ -496,8 +441,7 @@ const char *janus_rabbitmqevh_get_package(void) {
 
 void janus_rabbitmqevh_incoming_event(json_t *event) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
-		/* Janus is closing or the plugin is: unref the event as we won't handle it */
-		json_decref(event);
+		/* Janus is closing or the plugin is */
 		return;
 	}
 
@@ -535,7 +479,7 @@ json_t *janus_rabbitmqevh_handle_request(json_t *request) {
 			goto plugin_response;
 		/* Events */
 		if(json_object_get(request, "events"))
-			janus_rabbitmqevh_edit_events_mask(json_string_value(json_object_get(request, "events")));
+			janus_events_edit_events_mask(json_string_value(json_object_get(request, "events")), &janus_rabbitmqevh.events_mask);
 		/* Grouping */
 		if(json_object_get(request, "grouping"))
 			group_events = json_is_true(json_object_get(request, "grouping"));
