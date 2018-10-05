@@ -286,7 +286,6 @@ static janus_nosip_message exit_message;
 typedef struct janus_nosip_media {
 	char *remote_ip;
 	int ready:1;
-	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	janus_srtp_profile srtp_profile;
 	int has_audio:1;
@@ -550,7 +549,6 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	if(session == NULL)
 		return;
-	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -792,7 +790,6 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
-	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;

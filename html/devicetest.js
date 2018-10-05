@@ -83,7 +83,7 @@ function initDevices(devices) {
 			$('#audio-device').append(option);
 		} else if(device.kind === 'videoinput') {
 			$('#video-device').append(option);
-		} else if(device.kind === 'audiooutput' && setSinkId in HTMLMediaElement.prototype) {
+		} else if(device.kind === 'audiooutput') {
 			// Apparently only available from Chrome 49 on?
 			// https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId
 			// Definitely missing in Safari at the moment: https://bugs.webkit.org/show_bug.cgi?id=179415
@@ -97,6 +97,11 @@ function initDevices(devices) {
 					if($('#peervideo').length === 0) {
 						Janus.error("No remote video element available");
 						bootbox.alert("No remote video element available");
+						return false;
+					}
+					if(!$('#peervideo').get(0).setSinkId) {
+						Janus.error("SetSinkId not supported");
+						bootbox.warn("SetSinkId not supported");
 						return false;
 					}
 					$('#peervideo').get(0).setSinkId(deviceId)

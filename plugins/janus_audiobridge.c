@@ -34,6 +34,9 @@ pin = <optional password needed for joining the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 	negotiated/used or not for new joins, default=yes)
+audiolevel_event = yes|no (whether to emit event to other users or not, default=no)
+audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
+audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
 
@@ -2818,15 +2821,16 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
 				/* Is this silence? */
 				pkt->silence = (level == 127);
-				if(participant->room->audiolevel_event) {
+				if(participant->room && participant->room->audiolevel_event) {
 					/* We also need to detect who's talking: update our monitoring stuff */
+					int audio_active_packets = participant->room ? participant->room->audio_active_packets : 100;
+					int audio_level_average = participant->room ? participant->room->audio_level_average : 25;
 					participant->audio_dBov_sum += level;
 					participant->audio_active_packets++;
 					participant->dBov_level = level;
-					if(participant->audio_active_packets > 0 && participant->audio_active_packets == participant->room->audio_active_packets) {
+					if(participant->audio_active_packets > 0 && participant->audio_active_packets == audio_active_packets) {
 						gboolean notify_talk_event = FALSE;
-						if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets <
-								participant->room->audio_level_average) {
+						if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets < audio_level_average) {
 							/* Participant talking, should we notify all participants? */
 							if(!participant->talking)
 								notify_talk_event = TRUE;
@@ -2840,11 +2844,11 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 						participant->audio_active_packets = 0;
 						participant->audio_dBov_sum = 0;
 						/* Only notify in case of state changes */
-						if(notify_talk_event) {
+						if(participant->room && notify_talk_event) {
 							janus_mutex_lock(&participant->room->mutex);
 							json_t *event = json_object();
 							json_object_set_new(event, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
-							json_object_set_new(event, "room", json_integer(participant->room->room_id));
+							json_object_set_new(event, "room", json_integer(participant->room ? participant->room->room_id : 0));
 							json_object_set_new(event, "id", json_integer(participant->user_id));
 							janus_audiobridge_notify_participants(participant, event);
 							json_decref(event);
@@ -2853,7 +2857,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							if(notify_events && gateway->events_is_enabled()) {
 								json_t *info = json_object();
 								json_object_set_new(info, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
-								json_object_set_new(info, "room", json_integer(participant->room->room_id));
+								json_object_set_new(info, "room", json_integer(participant->room ? participant->room->room_id : 0));
 								json_object_set_new(info, "id", json_integer(participant->user_id));
 								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 							}
