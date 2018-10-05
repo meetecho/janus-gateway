@@ -176,7 +176,7 @@ WebSockets support. If you're interested in supporting WebSockets to
 control Janus, as an alternative (or replacement) to the default plain
 HTTP REST API, you'll have to install it manually:
 
-	git clone git://git.libwebsockets.org/libwebsockets
+	git clone https://libwebsockets.org/repo/libwebsockets
 	cd libwebsockets
 	# If you want the stable version of libwebsockets, uncomment the next line
 	# git checkout v2.4-stable
