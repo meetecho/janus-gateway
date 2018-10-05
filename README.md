@@ -21,7 +21,7 @@ on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
-* [libnice](http://nice.freedesktop.org/wiki/)
+* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
@@ -33,9 +33,9 @@ you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in
 WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
-you are interested in RabbitMQ support for the Janus API)
+you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
-you are interested in MQTT support for the Janus API)
+you are interested in MQTT support for the Janus API or events)
 * [nanomsg](https://nanomsg.org/) (only needed if
 you are interested in Nanomsg support for the Janus API)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
@@ -80,10 +80,16 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
-* *Note:* For custom installations of libnice, you can run
-`pkg-config --cflags --libs nice` to make sure Janus can find the
-installation. If not, you may need to set the `PKG_CONFIG_PATH`
-environment variable prior to compiling Janus, eg.
+* *Note:* We always recommend the master version of libnice (or even the
+experimental patch that optimize its performances), or at the very least
+version 0.1.13, which should be available out of the box on most distros.
+If you're on an older version, consider upgrading it manually as they're
+known to cause trouble. Ideally, you'll want to remove the distro version
+and install the newer one manually. In case you want to keep both for
+some reason, for custom installations of libnice, you can run
+`pkg-config --cflags --libs nice` to make sure Janus can find the right
+installation. If that fails, you may need to set the `PKG_CONFIG_PATH`
+environment variable prior to compiling Janus, e.g.,
 `export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig`
 
 In case you're interested in compiling the sample Event Handler plugin,
@@ -187,9 +193,9 @@ the first line with this:
 
 The same applies for Eclipse Paho MQTT C client library, which is needed
 for the optional MQTT support. If you're interested in integrating MQTT
-queues as an alternative (or replacement) to HTTP and/or WebSockets
-to control Janus, you can install the latest version with the
-following steps:
+channels as an alternative (or replacement) to HTTP and/or WebSockets
+to control Janus, or as a carrier of Janus Events, you can install the
+latest version with the following steps:
 
 	git clone https://github.com/eclipse/paho.mqtt.c.git
 	cd paho.mqtt.c
@@ -325,7 +331,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.4.4
+	janus 0.4.5
 
 	Usage: janus [OPTIONS]...
 

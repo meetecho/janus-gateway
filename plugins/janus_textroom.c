@@ -1904,7 +1904,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_LOG(LOG_WARN, "HTTP backend specified, but libcurl support was not built in...\n");
 #endif
 		}
-		textroom->participants = g_hash_table_new(g_str_hash, g_str_equal);
+		textroom->participants = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_textroom_participant_dereference);
 		textroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 		if(allowed != NULL) {
 			/* Populate the "allowed" list as an ACL for people trying to join */
