@@ -18,6 +18,9 @@ general: {
 						# requests with an application/json payload. In case
 						# authentication is required to contact the backend, set
 						# the credentials as well (basic authentication only).
+	json = "indented"	# Whether the JSON messages should be indented (default),
+						# plain (no indentation) or compact (no indentation and no spaces)
+
 	backend = "http://your.webserver.here/and/a/path"
 	#backend_user = "myuser"
 	#backend_pwd = "mypwd"

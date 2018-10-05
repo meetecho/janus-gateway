@@ -1,11 +1,8 @@
 /*! \file    dtls-bio.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    OpenSSL BIO filter for fragmentation (headers)
- * \details  Implementation of an OpenSSL BIO filter to fix the broken
- * behaviour of fragmented packets when using mem BIOs (as we do in
- * Janus). See https://mta.openssl.org/pipermail/openssl-users/2015-June/001503.html
- * and https://github.com/meetecho/janus-gateway/issues/252 for more details. 
+ * \brief    OpenSSL BIO agent writer
+ * \details  OpenSSL BIO that writes packets to a libnice agent.
  * 
  * \ingroup protocols
  * \ref protocols
@@ -18,13 +15,15 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
-/*! \brief OpenSSL BIO filter for fragmentation initialization */
-int janus_dtls_bio_filter_init(void);
+#include "dtls.h"
 
-/*! \brief OpenSSL BIO filter for fragmentation constructor */
-BIO_METHOD *BIO_janus_dtls_filter(void);
+/*! \brief OpenSSL BIO agent writer initialization */
+int janus_dtls_bio_agent_init(void);
 
-/*! \brief Set the MTU for the BIO filter
+/*! \brief OpenSSL BIO agent writer constructor */
+BIO *BIO_janus_dtls_agent_new(struct janus_dtls_srtp *dtls);
+
+/*! \brief Set the MTU for the BIO agent writer
  * \note The default starting MTU is 1472, in case fragmentation is needed
  * the OpenSSL DTLS stack automatically decreases it. That said, if
  * you know for sure the MTU in the network Janus is deployed in is
@@ -32,7 +31,7 @@ BIO_METHOD *BIO_janus_dtls_filter(void);
  * start from
  * @param start_mtu The MTU to start from (1472 by default)
  */
-void janus_dtls_bio_filter_set_mtu(int start_mtu);
+void janus_dtls_bio_agent_set_mtu(int start_mtu);
 
 #if defined(LIBRESSL_VERSION_NUMBER)
 #define JANUS_USE_OPENSSL_PRE_1_1_API (1)

@@ -268,7 +268,8 @@ static const char *janus_websockets_reason_string(enum lws_callback_reasons reas
 /* Helper method to return the interface associated with a local IP address */
 static char *janus_websockets_get_interface_name(const char *ip) {
 	struct ifaddrs *addrs = NULL, *iap = NULL;
-	getifaddrs(&addrs);
+	if(getifaddrs(&addrs) == -1)
+		return NULL;
 	for(iap = addrs; iap != NULL; iap = iap->ifa_next) {
 		if(iap->ifa_addr && (iap->ifa_flags & IFF_UP)) {
 			if(iap->ifa_addr->sa_family == AF_INET) {
