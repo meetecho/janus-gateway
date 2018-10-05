@@ -16,10 +16,13 @@
  * \ref protocols
  */
 
+#include <netdb.h>
+
 #include "janus.h"
 #include "ice.h"
 #include "sdp.h"
 #include "utils.h"
+#include "ip-utils.h"
 #include "debug.h"
 #include "events.h"
 
@@ -579,9 +582,9 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
 	}
-	char rfoundation[33], rtransport[4], rip[40], rtype[6], rrelip[40];
+	char rfoundation[33], rtransport[4], rip[50], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
-	int res = sscanf(candidate, "%32s %30u %3s %30u %39s %30u typ %5s %*s %39s %*s %30u",
+	int res = sscanf(candidate, "%32s %30u %3s %30u %49s %30u typ %5s %*s %39s %*s %30u",
 		rfoundation, &rcomponent, rtransport, &rpriority,
 			rip, &rport, rtype, rrelip, &rrelport);
 	if(res < 7) {
@@ -592,6 +595,26 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 		}
 	}
 	if(res >= 7) {
+		if(strstr(rip, ".local")) {
+			/* The IP is actually an mDNS address, try to resolve it
+			 * https://tools.ietf.org/html/draft-ietf-rtcweb-mdns-ice-candidates-00 */
+			struct addrinfo *info = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			if(getaddrinfo(rip, NULL, NULL, &info) != 0 ||
+					janus_network_address_from_sockaddr(info->ai_addr, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Couldn't resolve mDNS address (%s), dropping candidate\n",
+					handle->handle_id, rip);
+				if(info)
+					freeaddrinfo(info);
+				return res;
+			}
+			freeaddrinfo(info);
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
+				handle->handle_id, rip, janus_network_address_string_from_buffer(&addr_buf));
+			g_strlcpy(rip, janus_network_address_string_from_buffer(&addr_buf), sizeof(rip));
+		}
 		/* Add remote candidate */
 		component = stream->component;
 		if(component == NULL || rcomponent > 1) {

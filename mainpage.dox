@@ -79,7 +79,7 @@
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
@@ -3214,16 +3214,22 @@ ldd janus | grep asan
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
- * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
- * - \b libwebsockets: https://libwebsockets.org/ (WebSockets)
- * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (RabbitMQ)
- * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (only needed for the SIP plugin)
- * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
- * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
+ * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
+ * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
+ * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
+ * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
+ * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
+ * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
+ * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
+ * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
   

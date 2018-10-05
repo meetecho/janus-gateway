@@ -103,9 +103,16 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		offset = tmp->offset+12+tmp->skip;
 		fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(buffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {

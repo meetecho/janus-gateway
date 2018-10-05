@@ -4,16 +4,33 @@
  * \brief    Event handler notifications
  * \details  Event handler plugins can receive events from the Janus core
  * and other plugins, in order to handle them somehow. This methods
- * provide helpers to notify events to such handlers. 
- * 
+ * provide helpers to notify events to such handlers.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #include <stdarg.h>
 
 #include "events.h"
 #include "utils.h"
+
+static struct janus_event_types {
+	int type;
+	const char *label;
+	const char *name;
+} event_types_string[] = {
+	{ JANUS_EVENT_TYPE_NONE, "no_events", "No events"},
+	{ JANUS_EVENT_TYPE_SESSION, "sessions", "Sessions"},
+	{ JANUS_EVENT_TYPE_HANDLE, "handles", "Handles"},
+	{ JANUS_EVENT_TYPE_EXTERNAL, "external", "External"},
+	{ JANUS_EVENT_TYPE_JSEP, "jsep", "Jsep"},
+	{ JANUS_EVENT_TYPE_WEBRTC, "webrtc", "WebRTC"},
+	{ JANUS_EVENT_TYPE_MEDIA, "media", "Media"},
+	{ JANUS_EVENT_TYPE_PLUGIN, "plugins", "Plugins"},
+	{ JANUS_EVENT_TYPE_TRANSPORT, "transports", "Transports"},
+	{ JANUS_EVENT_TYPE_CORE, "core", "Core"}
+};
 
 static gboolean eventsenabled = FALSE;
 static char *server = NULL;
@@ -43,6 +60,24 @@ int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers)
 			return -1;
 		}
 	}
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_CORE),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_CORE));
 	return 0;
 }
 
@@ -284,4 +319,69 @@ void *janus_events_thread(void *data) {
 
 	JANUS_LOG(LOG_VERB, "Leaving Events handler thread\n");
 	return NULL;
+}
+
+/* Helper method to change the events mask */
+void janus_events_edit_events_mask(const char *list, janus_flags *target) {
+	if(!list)
+		return;
+	janus_flags mask;
+	janus_flags_reset(&mask);
+	if(!strcasecmp(list, "none")) {
+		/* Don't subscribe to anything at all */
+		janus_flags_reset(&mask);
+	} else if(!strcasecmp(list, "all")) {
+		/* Subscribe to everything */
+		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
+	} else {
+		/* Check what we need to subscribe to */
+		janus_flags_reset(&mask);
+		gchar **subscribe = g_strsplit(list, ",", -1);
+		if(subscribe != NULL) {
+			gchar *index = subscribe[0];
+			if(index != NULL) {
+				int i=0;
+				while(index != NULL) {
+					while(isspace(*index))
+						index++;
+					if(strlen(index)) {
+						struct janus_event_types *ev = event_types_string;
+						while(ev) {
+							if(!strcasecmp(index, ev->label)) {
+								janus_flags_set(&mask, ev->type);
+								break;
+							}
+							ev++;
+						}
+					}
+					i++;
+					index = subscribe[i];
+				}
+			}
+			g_strfreev(subscribe);
+		}
+	}
+	if(target)
+		memcpy(target, &mask, sizeof(janus_flags));
+}
+
+/* Helpers to convert an event type to a string label or a more verbose name */
+const char *janus_events_type_to_label(int type) {
+	struct janus_event_types *ev = event_types_string;
+	while(ev) {
+		if(type == ev->type)
+			return ev->label;
+		ev++;
+	}
+	return (char *)NULL;
+}
+
+const char *janus_events_type_to_name(int type) {
+	struct janus_event_types *ev = event_types_string;
+	while(ev) {
+		if(type == ev->type)
+			return ev->name;
+		ev++;
+	}
+	return (char *)NULL;
 }
