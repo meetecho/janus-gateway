@@ -455,6 +455,8 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 static GHashTable *plugin_sessions;
 static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
+	if(plugin_session == NULL)
+		return FALSE;
 	/* Make sure this plugin session is still alive */
 	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
 	janus_plugin_session *result = g_hash_table_lookup(plugin_sessions, plugin_session);
@@ -463,6 +465,10 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
 	}
 	return (result != NULL);
+}
+static void janus_plugin_session_dereference(janus_plugin_session *plugin_session) {
+	if(plugin_session)
+		janus_refcount_decrease(&plugin_session->ref);
 }
 
 
@@ -697,7 +703,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 	}
 
 	/* We keep track of plugin sessions to avoid problems */
-	plugin_sessions = g_hash_table_new(NULL, NULL);
+	plugin_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_plugin_session_dereference);
 	janus_mutex_init(&plugin_sessions_mutex);
 
 #ifdef HAVE_LIBCURL
@@ -1005,7 +1011,7 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	janus_refcount_init(&session_handle->ref, janus_ice_plugin_session_free);
 	/* Handle and plugin session reference each other */
 	janus_refcount_increase(&session_handle->ref);
-	//~ janus_refcount_increase(&handle->ref);
+	janus_refcount_increase(&handle->ref);
 	handle->app = plugin;
 	handle->app_handle = session_handle;
 	/* Add this plugin session to active sessions map */
@@ -1060,10 +1066,10 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	/* Actually detach handle... */
 	int error = 0;
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
-		handle->app_handle->gateway_handle = NULL;
-		/* Notify the plugin that the session's over */
+		/* Notify the plugin that the session's over (the plugin will
+		 * remove the other reference to the plugin session handle) */
 		plugin_t->destroy_session(handle->app_handle, &error);
-		/* We only unref when actually freeing the ICE handle */
+		handle->app_handle = NULL;
 	}
 	/* Get rid of the handle now */
 	if(g_atomic_int_compare_and_exchange(&handle->dump_packets, 1, 0)) {
@@ -1098,8 +1104,6 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 		janus_ice_clear_queued_packets(handle);
 		g_async_queue_unref(handle->queued_packets);
 	}
-	if(handle->app_handle != NULL)
-		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed; %p %p\n", handle->handle_id, handle, handle->session);
@@ -1115,6 +1119,11 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
 	janus_plugin_session *app_handle = janus_refcount_containerof(app_handle_ref, janus_plugin_session, ref);
 	/* This app handle can be destroyed, free all the resources */
+	if(app_handle->gateway_handle != NULL) {
+		janus_ice_handle *handle = (janus_ice_handle *)app_handle->gateway_handle;
+		app_handle->gateway_handle = NULL;
+		janus_refcount_decrease(&handle->ref);
+	}
 	g_free(app_handle);
 }
 
@@ -2217,7 +2226,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtp &&
+				if(plugin && plugin->incoming_rtp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
@@ -2573,7 +2582,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtcp &&
+				if(plugin && plugin->incoming_rtcp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
@@ -2596,7 +2605,7 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin && plugin->incoming_data &&
+	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
 		plugin->incoming_data(handle->app_handle, buffer, length);
