@@ -1463,6 +1463,7 @@ parsingdone:
 	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", ts);
 	gateway->incoming_request(&janus_http_transport, ts, ts, FALSE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
 	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
@@ -1471,6 +1472,20 @@ parsingdone:
 			break;
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
+#else
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec wakeup;
+	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
+	wakeup.tv_nsec = now.tv_usec*1000UL;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1701,6 +1716,7 @@ parsingdone:
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, ts, ts, TRUE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
 	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
@@ -1709,6 +1725,20 @@ parsingdone:
 			break;
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
+#else
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec wakeup;
+	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
+	wakeup.tv_nsec = now.tv_usec*1000UL;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
