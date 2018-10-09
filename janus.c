@@ -2691,7 +2691,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	if(!plugin || !message)
 		return -1;
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
-			!janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
+			g_atomic_int_get(&plugin_session->stopped) || !janus_plugin_session_is_alive(plugin_session))
 		return -2;
 	janus_refcount_increase(&plugin_session->ref);
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
@@ -2769,7 +2769,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart) {
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
-			!janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped) ||
+			g_atomic_int_get(&plugin_session->stopped) || !janus_plugin_session_is_alive(plugin_session) ||
 			plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
