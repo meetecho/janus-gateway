@@ -457,7 +457,8 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 static GHashTable *plugin_sessions;
 static janus_mutex plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
-	if(plugin_session == NULL)
+	if(plugin_session == NULL || plugin_session < (janus_plugin_session *)0x1000 ||
+			g_atomic_int_get(&plugin_session->stopped))
 		return FALSE;
 	/* Make sure this plugin session is still alive */
 	janus_mutex_lock_nodebug(&plugin_sessions_mutex);
@@ -1452,7 +1453,6 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
-				!g_atomic_int_get(&handle->app_handle->stopped) &&
 				!g_atomic_int_get(&handle->destroyed))
 			plugin->slow_link(handle->app_handle, uplink, video);
 		/* Notify the user/application too */
