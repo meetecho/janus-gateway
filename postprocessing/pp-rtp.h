@@ -22,6 +22,10 @@
 #include <endian.h>
 #endif
 
+#define RTP_HEADER_EXT_TYPE_SINGLE_BYTE 0xBEDE
+
+#define RTP_HEADER_EXT_ID_CVO 4
+
 typedef struct janus_pp_rtp_header
 {
 #if __BYTE_ORDER == __BIG_ENDIAN
