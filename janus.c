@@ -2139,6 +2139,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
+		json_object_set_new(info, "loop-running", (handle->mainloop != NULL &&
+			g_main_loop_is_running(handle->mainloop)) ? json_true() : json_false());
 		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
@@ -2183,7 +2185,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
-			json_object_set_new(info, "ice-loop-running", g_atomic_int_get(&handle->looprunning) ? json_true() : json_false());
 		}
 		json_t *sdps = json_object();
 		if(handle->rtp_profile)

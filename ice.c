@@ -279,7 +279,7 @@ static gboolean janus_ice_outgoing_traffic_dispatch(GSource *source, GSourceFunc
 static void janus_ice_outgoing_traffic_finalize(GSource *source) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Finalizing loop source\n", t->handle->handle_id);
-	if(g_main_loop_is_running(t->handle->mainloop) && g_atomic_int_compare_and_exchange(&t->handle->looprunning, 1, 0))
+	if(t->handle->mainloop != NULL && g_main_loop_is_running(t->handle->mainloop))
 		g_main_loop_quit(t->handle->mainloop);
 	janus_refcount_decrease(&t->handle->ref);
 }
@@ -1045,7 +1045,6 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	/* Create a new context, loop, and source */
 	handle->mainctx = g_main_context_new();
 	handle->mainloop = g_main_loop_new(handle->mainctx, FALSE);
-	g_atomic_int_set(&handle->looprunning, 1);
 	handle->rtp_source = janus_ice_outgoing_traffic_create(handle, (GDestroyNotify)g_free);
 	g_source_set_priority(handle->rtp_source, G_PRIORITY_DEFAULT);
 	g_source_attach(handle->rtp_source, handle->mainctx);
@@ -1100,8 +1099,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->stream_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->mainloop), NULL, NULL);
 			}
-			if(handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop) &&
-					g_atomic_int_compare_and_exchange(&handle->looprunning, 1, 0)) {
+			if(handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop)) {
 				g_main_loop_quit(handle->mainloop);
 			}
 		}
@@ -1136,11 +1134,11 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 		g_async_queue_unref(handle->queued_packets);
 	}
 	if(handle->mainloop != NULL) {
-		g_main_loop_unref (handle->mainloop);
+		g_main_loop_unref(handle->mainloop);
 		handle->mainloop = NULL;
 	}
 	if(handle->mainctx != NULL) {
-		g_main_context_unref (handle->mainctx);
+		g_main_context_unref(handle->mainctx);
 		handle->mainctx = NULL;
 	}
 	janus_mutex_unlock(&handle->mutex);
