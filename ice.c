@@ -1194,6 +1194,11 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
 	janus_mutex_lock(&handle->mutex);
+	if(!handle->agent_created) {
+		janus_mutex_unlock(&handle->mutex);
+		return;
+	}
+	handle->agent_created = 0;
 	if(handle->stream != NULL) {
 		janus_ice_stream_destroy(handle->stream);
 		handle->stream = NULL;
@@ -1203,7 +1208,6 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 			g_object_unref(handle->agent);
 		handle->agent = NULL;
 	}
-	handle->agent_created = 0;
 	if(handle->pending_trickles) {
 		while(handle->pending_trickles) {
 			GList *temp = g_list_first(handle->pending_trickles);
