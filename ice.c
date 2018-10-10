@@ -2158,6 +2158,34 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					buf += 2;
 					header = (janus_rtp_header *)buf;
 				}
+				/* Check if we need to handle transport wide cc */
+				if(stream->do_transport_wide_cc) {
+					guint16 transport_seq_num;
+					/* Get transport wide seq num */
+					if(janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, stream->transport_wide_cc_ext_id, &transport_seq_num)==0) {
+						/* Get current timestamp */
+						struct timeval now;
+						gettimeofday(&now,0);
+						/* Create <seq num, time> pair */
+						janus_rtcp_transport_wide_cc_stats *stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
+						/* Check if we have a sequence wrap */
+						if(transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000) {
+							/* Increase cycles */
+							stream->transport_wide_cc_cycles++;
+						}
+						/* Get extended value */
+						guint32 transport_ext_seq_num = stream->transport_wide_cc_cycles<<16 | transport_seq_num;
+						/* Store last received transport seq num */
+						stream->transport_wide_cc_last_seq_num = transport_seq_num;
+						/* Set stats values */
+						stats->transport_seq_num = transport_ext_seq_num;
+						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
+						/* Lock and append to received list */
+						janus_mutex_lock(&stream->mutex);
+						stream->transport_wide_received_seq_nums = g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
+						janus_mutex_unlock(&stream->mutex);
+					}
+				}
 				if(video && stream->rtx_nacked[vindex] != NULL) {
 					/* Check if this packet is a duplicate: can happen with RFC4588 */
 					guint16 seqno = ntohs(header->seq_number);
@@ -2215,34 +2243,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_vp9_is_keyframe;
 						else if(!strcasecmp(stream->video_codec, "h264"))
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
-					}
-				}
-				/* Check if we need to handle transport wide cc */
-				if(stream->do_transport_wide_cc) {
-					guint16 transport_seq_num;
-					/* Get transport wide seq num */
-					if(janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, stream->transport_wide_cc_ext_id, &transport_seq_num)==0) {
-						/* Get current timestamp */
-						struct timeval now;
-						gettimeofday(&now,0);
-						/* Create <seq num, time> pair */
-						janus_rtcp_transport_wide_cc_stats *stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
-						/* Check if we have a sequence wrap */
-						if(transport_seq_num<0x0FFF && (stream->transport_wide_cc_last_seq_num&0xFFFF)>0xF000) {
-							/* Increase cycles */
-							stream->transport_wide_cc_cycles++;
-						}
-						/* Get extended value */
-						guint32 transport_ext_seq_num = stream->transport_wide_cc_cycles<<16 | transport_seq_num;
-						/* Store last received transport seq num */
-						stream->transport_wide_cc_last_seq_num = transport_seq_num;
-						/* Set stats values */
-						stats->transport_seq_num = transport_ext_seq_num;
-						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
-						/* Lock and append to received list */
-						janus_mutex_lock(&stream->mutex);
-						stream->transport_wide_received_seq_nums = g_slist_prepend(stream->transport_wide_received_seq_nums, stats);
-						janus_mutex_unlock(&stream->mutex);
 					}
 				}
 				/* Pass the data to the responsible plugin */
