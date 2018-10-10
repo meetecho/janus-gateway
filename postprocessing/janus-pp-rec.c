@@ -87,6 +87,7 @@ static int working = 0;
 
 static int post_reset_trigger = 200;
 static int ignore_first_packets = 0;
+static int rtp_header_ext_id_cvo = -1;
 
 
 /* Signal handler */
@@ -130,6 +131,12 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			ignore_first_packets = val;
 		JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
+	}
+	if(g_getenv("JANUS_RTP_HEADER_EXT_ID_CVO") != NULL) {
+		int val = atoi(g_getenv("JANUS_RTP_HEADER_EXT_ID_CVO"));
+		if(val >= 0)
+			rtp_header_ext_id_cvo = val;
+		JANUS_LOG(LOG_INFO, "RTP header extension ID CVO: %d\n", rtp_header_ext_id_cvo);
 	}
 	
 	/* Evaluate arguments */
@@ -665,6 +672,55 @@ int main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
 
 	if(video) {
+		if (rtp_header_ext_id_cvo != -1) {
+			/* Parse RTP header extension now */
+			int rotation = 0, got_rotation = 0;
+			janus_pp_frame_packet *tmp = list;
+			while(tmp) {
+				fseek(file, tmp->offset, SEEK_SET);
+				int header_len = 12+tmp->skip;
+				bytes = fread(prebuffer, sizeof(char), header_len, file);
+				if(bytes != header_len) {
+					JANUS_LOG(LOG_WARN, "Didn't manage to read all the header bytes we needed (%d < %d)...\n", bytes, header_len);
+					tmp = tmp->next;
+					continue;
+				}
+				janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
+				if (rtp->extension && header_len > 12 && !got_rotation) {
+					int pos = 12+rtp->csrccount*4;
+					janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+pos);
+					pos += 4;
+					if (ntohs(ext->type) == RTP_HEADER_EXT_TYPE_SINGLE_BYTE) {
+						while (pos < header_len) {
+							char ext_header = *(prebuffer+pos);
+							pos += 1;
+							uint8_t ext_id = (ext_header & 0xF0) >> 4;
+							uint8_t ext_len = ext_header & 0x0F;
+							if (ext_id == rtp_header_ext_id_cvo && ext_len == 0) {
+								char ext_data = *(prebuffer+pos);
+								uint8_t R0 = ext_data & 0x1;
+								uint8_t R1 = ext_data & 0x2;
+								if (R0 && R1) {
+									rotation = 270;
+								} else if (R0) {
+									rotation = 90;
+								} else if (R1) {
+									rotation = 180;
+								} else {
+									rotation = 0;
+								}
+								got_rotation = 1;
+								JANUS_LOG(LOG_INFO, "Got rotation: CW %d degree\n", rotation);
+								break;
+							}
+							pos += ext_len + 1;
+						}
+					}
+				}
+				tmp = tmp->next;
+			}
+		}
+
 		/* Look for maximum width and height, if possible, and for the average framerate */
 		if(vp8 || vp9) {
 			if(janus_pp_webm_preprocess(file, list, vp8) < 0) {

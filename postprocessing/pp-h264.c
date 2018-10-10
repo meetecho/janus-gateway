@@ -55,7 +55,7 @@ static AVStream *vStream;
 #ifdef USE_CODECPAR
 static AVCodecContext *vEncoder;
 #endif
-static int max_width = 0, max_height = 0, fps = 0, rotation = 0, got_rotation = 0;
+static int max_width = 0, max_height = 0, fps = 0;
 
 
 int janus_pp_h264_create(char *destination) {
@@ -258,49 +258,6 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
 			}
 		}
-
-		/* Parse RTP header extension now */
-		fseek(file, tmp->offset, SEEK_SET);
-		int header_len = 12+tmp->skip;
-		bytes = fread(prebuffer, sizeof(char), header_len, file);
-		if(bytes != header_len) {
-			JANUS_LOG(LOG_WARN, "Didn't manage to read all the header bytes we needed (%d < %d)...\n", bytes, header_len);
-			tmp = tmp->next;
-			continue;
-		}
-		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
-		if (rtp->extension && header_len > 12 && !got_rotation) {
-			int pos = 12+rtp->csrccount*4;
-			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+pos);
-			pos += 4;
-			if (ntohs(ext->type) == RTP_HEADER_EXT_TYPE_SINGLE_BYTE) {
-				while (pos < header_len) {
-					char ext_header = *(prebuffer+pos);
-					pos += 1;
-					uint8_t ext_id = (ext_header & 0xF0) >> 4;
-					uint8_t ext_len = ext_header & 0x0F;
-					if (ext_id == RTP_HEADER_EXT_ID_CVO && ext_len == 0) {
-						char ext_data = *(prebuffer+pos);
-						uint8_t R0 = ext_data & 0x1;
-						uint8_t R1 = ext_data & 0x2;
-						if (R0 && R1) {
-							rotation = 270;
-						} else if (R0) {
-							rotation = 90;
-						} else if (R1) {
-							rotation = 180;
-						} else {
-							rotation = 0;
-						}
-						got_rotation = 1;
-						JANUS_LOG(LOG_INFO, "Got rotation: CW %d degree\n", rotation);
-						break;
-					}
-					pos += ext_len + 1;
-				}
-			}
-		}
-
 		/* Parse H264 header now */
 		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 		int len = tmp->len-12-tmp->skip;
