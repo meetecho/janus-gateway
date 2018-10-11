@@ -17,8 +17,6 @@
  * is adding new \c lua_register calls to register their own functions
  * there, and they'll be added to the stack.
  *
-\endverbatim
- *
  * \ingroup luapapi
  * \ref luapapi
  */
@@ -41,6 +39,7 @@ static int janus_lua_extra_sample(lua_State *s) {
 void janus_lua_register_extra_functions(lua_State *state) {
 	if(state == NULL)
 		return;
+	JANUS_LOG(LOG_VERB, "Registering extra Lua functions\n");
 	/* Register all extra functions here */
 	lua_register(state, "testExtraFunction", janus_lua_extra_sample);
 }

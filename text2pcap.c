@@ -115,7 +115,7 @@ int janus_text2pcap_dump(janus_text2pcap *instance,
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm);
-	g_snprintf(usec, sizeof(usec), ".%ld", tv.tv_usec);
+	g_snprintf(usec, sizeof(usec), ".%06ld", tv.tv_usec);
 	g_strlcat(timestamp, usec, sizeof(timestamp));
 	memset(buffer, 0, sizeof(buffer));
 	g_snprintf(buffer, sizeof(buffer), "%s %s 000000 ", incoming ? "I" : "O", timestamp);

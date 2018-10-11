@@ -8,7 +8,7 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
+ * relay_rtcp core callbacks instead. 
  * 
  * \ingroup protocols
  * \ref protocols
@@ -79,7 +79,7 @@ char *janus_ice_get_turn_rest_api(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
 void janus_ice_enable_nat_1_1(void);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
  * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
  * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
@@ -90,7 +90,7 @@ void janus_ice_enforce_interface(const char *ip);
  * @returns true if the interface/IP is in the enforce list, false otherwise */
 gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
- * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
  * adding it to the ignore list will prevent libnice from gathering a candidate for it.
  * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
@@ -132,7 +132,7 @@ void janus_set_rfc4588_enabled(gboolean enabled);
  * @returns TRUE if it's enabled, FALSE otherwise */
 gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
- * @param[in] timer The new timer value, in seconds */
+ * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
 /*! \brief Method to get the current event handler statistics period (see above)
  * @returns The current event handler stats period */
@@ -179,6 +179,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
 #define JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES		(1 << 18)
 #define JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX			(1 << 19)
+#define JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP	(1 << 20)
 
 
 /*! \brief Janus media statistics
@@ -246,7 +247,7 @@ enum {
 
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
-	/*! \brief Opaque pointer to the gateway/peer session */
+	/*! \brief Opaque pointer to the core/peer session */
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
@@ -256,7 +257,7 @@ struct janus_ice_handle {
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
 	void *app;
-	/*! \brief Opaque gateway/plugin session pointer */
+	/*! \brief Opaque core/plugin session pointer */
 	janus_plugin_session *app_handle;
 	/*! \brief Mask of WebRTC-related flags for this handle */
 	janus_flags webrtc_flags;
@@ -268,6 +269,10 @@ struct janus_ice_handle {
 	GMainLoop *iceloop;
 	/*! \brief GLib thread for libnice */
 	GThread *icethread;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
+	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief Atomic flag to check if the ICE loop is still running */
+	volatile gint looprunning;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -298,14 +303,12 @@ struct janus_ice_handle {
 	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */
 	GAsyncQueue *queued_packets;
-	/*! \brief GLib thread for sending outgoing packets */
-	GThread *send_thread;
-	/*! \brief Atomic flag to make sure we only create the thread once */
-	volatile gint send_thread_created;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
 	guint srtp_errors_count;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
-	gint last_srtp_error;
+	gint last_srtp_error, last_srtp_summary;
+	/*! \brief Count of how many seconds passed since the last stats passed to event handlers */
+	gint last_event_stats;
 	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
 	volatile gint dump_packets;
 	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
@@ -326,9 +329,9 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
-	/*! \brief Audio SSRC of the gateway for this stream */
+	/*! \brief Audio SSRC of the server for this stream */
 	guint32 audio_ssrc;
-	/*! \brief Video SSRC of the gateway for this stream */
+	/*! \brief Video SSRC of the server for this stream */
 	guint32 video_ssrc;
 	/*! \brief Video retransmission SSRC of the peer for this stream */
 	guint32 video_ssrc_rtx;
@@ -388,7 +391,7 @@ struct janus_ice_stream {
 	guint transport_wide_cc_feedback_count;
 	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
-	/*! \brief DTLS role of the gateway for this stream */
+	/*! \brief DTLS role of the server for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
@@ -495,7 +498,6 @@ struct janus_ice_trickle {
  */
 ///@{
 /*! \brief Helper method to allocate a janus_ice_trickle instance
- * @param[in] handle The Janus ICE handle this trickle candidate belongs to
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
@@ -523,13 +525,13 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
  * @param[in] core_session The core/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID
+ * @param[in] handle The Janus ICE handle
  * @param[in] plugin The plugin the ICE handle needs to be attached to
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
 /*! \brief Method to destroy a Janus ICE handle
  * @param[in] core_session The core/peer session this ICE handle belongs to
- * @param[in] handle_id The Janus ICE handle ID to destroy
+ * @param[in] handle The Janus ICE handle to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
@@ -551,19 +553,19 @@ void janus_ice_component_destroy(janus_ice_component *component);
 /** @name Janus ICE media relaying callbacks
  */
 ///@{
-/*! \brief Gateway RTP callback, called when a plugin has an RTP packet to send to a peer
+/*! \brief Core RTP callback, called when a plugin has an RTP packet to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is an audio or a video frame
  * @param[in] buf The packet data (buffer)
  * @param[in] len The buffer lenght */
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len);
-/*! \brief Gateway RTCP callback, called when a plugin has an RTCP message to send to a peer
+/*! \brief Core RTCP callback, called when a plugin has an RTCP message to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is related to an audio or a video stream
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
-/*! \brief Gateway SCTP/DataChannel callback, called when a plugin has data to send to a peer
+/*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
@@ -573,16 +575,17 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buffer The message data (buffer)
+ * @param[in] length The buffer lenght */
+void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
 /** @name Janus ICE handle helpers
  */
 ///@{
-/*! \brief Janus ICE handle thread */
-void *janus_ice_thread(void *data);
-/*! \brief Janus ICE thread for sending outgoing packets */
-void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER

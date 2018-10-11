@@ -21,6 +21,7 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../utils.h"
+#include "../events.h"
 
 
 /* Plugin information */
@@ -115,63 +116,9 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_RABBITMQEVH_ERROR_UNKNOWN_ERROR			499
 
 
-/* Helper method to change the events mask */
-static void janus_rabbitmqevh_edit_events_mask(const char *list) {
-	if(!list)
-		return;
-	janus_flags mask;
-	janus_flags_reset(&mask);
-	if(!strcasecmp(list, "none")) {
-		/* Don't subscribe to anything at all */
-		janus_flags_reset(&mask);
-	} else if(!strcasecmp(list, "all")) {
-		/* Subscribe to everything */
-		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
-	} else {
-		/* Check what we need to subscribe to */
-		janus_flags_reset(&mask);
-		gchar **subscribe = g_strsplit(list, ",", -1);
-		if(subscribe != NULL) {
-			gchar *index = subscribe[0];
-			if(index != NULL) {
-				int i=0;
-				while(index != NULL) {
-					while(isspace(*index))
-						index++;
-					if(strlen(index)) {
-						if(!strcasecmp(index, "sessions")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_SESSION);
-						} else if(!strcasecmp(index, "handles")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_HANDLE);
-						} else if(!strcasecmp(index, "jsep")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_JSEP);
-						} else if(!strcasecmp(index, "webrtc")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_WEBRTC);
-						} else if(!strcasecmp(index, "media")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_MEDIA);
-						} else if(!strcasecmp(index, "plugins")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_PLUGIN);
-						} else if(!strcasecmp(index, "transports")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_TRANSPORT);
-						} else if(!strcasecmp(index, "core")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_CORE);
-						} else {
-							JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
-						}
-					}
-					i++;
-					index = subscribe[i];
-				}
-			}
-			g_strfreev(subscribe);
-		}
-	}
-	memcpy(&janus_rabbitmqevh.events_mask, &mask, sizeof(janus_flags));
-}
-
-
 /* Plugin implementation */
 int janus_rabbitmqevh_init(const char *config_path) {
+	gboolean success = TRUE;
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
@@ -226,7 +173,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	/* Which events should we subscribe to? */
 	item = janus_config_get_item_drilldown(config, "general", "events");
 	if(item && item->value)
-		janus_rabbitmqevh_edit_events_mask(item->value);
+		janus_events_edit_events_mask(item->value, &janus_rabbitmqevh.events_mask);
 
 	/* Is grouping of events ok? */
 	item = janus_config_get_item_drilldown(config, "general", "grouping");
@@ -249,7 +196,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
-	vhost = g_strdup("/");
+		vhost = g_strdup("/");
 	item = janus_config_get_item_drilldown(config, "general", "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
@@ -400,17 +347,17 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Setup of RabbitMQ event handler completed\n");
-
-	if(rmqhost)
-		g_free((char *)rmqhost);
-	if(config)
-		janus_config_destroy(config);
-
-	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
-	return 0;
+	goto done;
 
 error:
 	/* If we got here, something went wrong */
+	success = FALSE;
+	if(route_key)
+		g_free((char *)route_key);
+	if(exchange)
+		g_free((char *)exchange);
+	/* Fall through */
+done:
 	if(rmqhost)
 		g_free((char *)rmqhost);
 	if(vhost)
@@ -419,10 +366,6 @@ error:
 		g_free((char *)username);
 	if(password)
 		g_free((char *)password);
-	if(route_key)
-		g_free((char *)route_key);
-	if(exchange)
-		g_free((char *)exchange);
 	if(ssl_cacert_file)
 		g_free((char *)ssl_cacert_file);
 	if(ssl_cert_file)
@@ -431,7 +374,11 @@ error:
 		g_free((char *)ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
-	return -1;
+	if(!success) {
+		return -1;
+	}
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_RABBITMQEVH_NAME);
+	return 0;
 }
 
 void janus_rabbitmqevh_destroy(void) {
@@ -494,8 +441,7 @@ const char *janus_rabbitmqevh_get_package(void) {
 
 void janus_rabbitmqevh_incoming_event(json_t *event) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
-		/* Janus is closing or the plugin is: unref the event as we won't handle it */
-		json_decref(event);
+		/* Janus is closing or the plugin is */
 		return;
 	}
 
@@ -533,7 +479,7 @@ json_t *janus_rabbitmqevh_handle_request(json_t *request) {
 			goto plugin_response;
 		/* Events */
 		if(json_object_get(request, "events"))
-			janus_rabbitmqevh_edit_events_mask(json_string_value(json_object_get(request, "events")));
+			janus_events_edit_events_mask(json_string_value(json_object_get(request, "events")), &janus_rabbitmqevh.events_mask);
 		/* Grouping */
 		if(json_object_get(request, "grouping"))
 			group_events = json_is_true(json_object_get(request, "grouping"));
@@ -583,207 +529,6 @@ static void *janus_rabbitmqevh_handler(void *data) {
 				gint64 now = janus_get_monotonic_time();
 				JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
 			}
-
-			/* Let's check what kind of event this is: we don't really do anything
-			 * with it in this plugin, it's just to show how you can handle
-			 * different types of events in an event handler. */
-			int type = json_integer_value(json_object_get(event, "type"));
-			switch(type) {
-				case JANUS_EVENT_TYPE_SESSION:
-					/* This is a session related event. The only info that is
-					 * required is a name for the event itself: a "created"
-					 * event may also contain transport info, in the form of
-					 * the transport module that originated the session
-					 * (e.g., "janus.transport.http") and an internal unique
-					 * ID for the transport instance (which may be associated
-					 * to a connection or anything else within the specifics
-					 * of the transport module itself). Here's an example of
-					 * a new session being created:
-						{
-						   "type": 1,
-						   "timestamp": 3583879627,
-						   "session_id": 2004798115,
-						   "event": {
-							  "name": "created"
-						   },
-						   "transport": {
-						      "transport": "janus.transport.http",
-						      "id": "0x7fcb100008c0"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_HANDLE:
-					/* This is a handle related event. The only info that is provided
-					 * are the name for the event itself and the package name of the
-					 * plugin this handle refers to (e.g., "janus.plugin.echotest").
-					 * Here's an example of a new handled being attached in a session
-					 * to the EchoTest plugin:
-						{
-						   "type": 2,
-						   "timestamp": 3570304977,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "name": "attached",
-							  "plugin: "janus.plugin.echotest"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_JSEP:
-					/* This is a JSEP/SDP related event. It provides information
-					 * about an ongoing WebRTC negotiation, and so tells you
-					 * about the SDP being sent/received, and who's sending it
-					 * ("local" means Janus, "remote" means the user). Here's an
-					 * example, where the user originated an offer towards Janus:
-						{
-						   "type": 8,
-						   "timestamp": 3570400208,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "owner": "remote",
-							  "jsep": {
-								 "type": "offer",
-								 "sdp": "v=0[..]\r\n"
-							  }
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_WEBRTC:
-					/* This is a WebRTC related event, and so the content of
-					 * the event may vary quite a bit. In fact, you may be notified
-					 * about ICE or DTLS states, or when a WebRTC PeerConnection
-					 * goes up or down. Here are some examples, in no particular order:
-						{
-						   "type": 16,
-						   "timestamp": 3570416659,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "ice": "connecting",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570637554,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "selected-pair": "[..]",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570656112,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "dtls": "connected",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570657237,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "connection": "webrtcup"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_MEDIA:
-					/* This is a media related event. This can contain different
-					 * information about the health of a media session, or about
-					 * what's going on in general (e.g., when Janus started/stopped
-					 * receiving media of a certain type, or (TODO) when some media related
-					 * statistics are available). Here's an example of Janus getting
-					 * video from the peer for the first time, or after a second
-					 * of no video at all (which would have triggered a "receiving": false):
-						{
-						   "type": 32,
-						   "timestamp": 3571078797,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "media": "video",
-							  "receiving": "true"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_PLUGIN:
-					/* This is a plugin related event. Since each plugin may
-					 * provide info in a very custom way, the format of this event
-					 * is in general very dynamic. You'll always find, though,
-					 * an "event" object containing the package name of the
-					 * plugin (e.g., "janus.plugin.echotest") and a "data"
-					 * object that contains whatever the plugin decided to
-					 * notify you about, that will always vary from plugin to
-					 * plugin. Besides, notice that "session_id" and "handle_id"
-					 * may or may not be present: when they are, you'll know
-					 * the event has been triggered within the context of a
-					 * specific handle session with the plugin; when they're
-					 * not, the plugin sent an event out of context of a
-					 * specific session it is handling. Here's an example:
-						{
-						   "type": 64,
-						   "timestamp": 3570336031,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "plugin": "janus.plugin.echotest",
-							  "data": {
-								 "audio_active": "true",
-								 "video_active": "true",
-								 "bitrate": 0
-							  }
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_TRANSPORT:
-					/* This is a transport related event (TODO). The syntax of
-					 * the common format (transport specific data aside) is
-					 * exactly the same as that of the plugin related events
-					 * above, with a "transport" property instead of "plugin"
-					 * to contain the transport package name. */
-					break;
-				case JANUS_EVENT_TYPE_CORE:
-					/* This is a core related event. This can contain different
-					 * information about the health of the Janus instance, or
-					 * more generically on some events in the Janus life cycle
-					 * (e.g., when it's just been started or when a shutdown
-					 * has been requested). Considering the heterogeneous nature
-					 * of the information being reported, the content is always
-					 * a JSON object (event). Core events are the only ones
-					 * missing a session_id. Here's an example:
-						{
-						   "type": 256,
-						   "timestamp": 28381185382,
-						   "event": {
-							  "status": "started"
-						   }
-						}
-					*/
-					break;
-				default:
-					JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
-					break;
-			}
-
 			if(!group_events) {
 				/* We're done here, we just need a single event */
 				output = event;

@@ -4,11 +4,14 @@
 enabled = no				; By default the module is not enabled
 events = all				; Comma separated list of the events mask you're interested
 							; in. Valid values are none, sessions, handles, jsep, webrtc,
-							; media, plugins, transports, core and all. By default we
-							; subscribe to everything (all)
+							; media, plugins, transports, core, external and all. By
+							; default we subscribe to everything (all)
 grouping = yes				; Whether events should be sent individually , or if it's ok
 							; to group them. The default is 'yes' to limit the number of
 							; messages
+json = indented				; Whether the JSON messages should be indented (default),
+							; plain (no indentation) or compact (no indentation and no spaces)
+
 host = localhost			; The address of the RabbitMQ server
 ;port = 5672				; The port of the RabbitMQ server (5672 by default)
 ;username = guest			; Username to use to authenticate, if needed

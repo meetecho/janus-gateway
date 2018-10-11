@@ -4,14 +4,14 @@
  * \brief  Janus RESTs transport plugin
  * \details  This is an implementation of a RESTs transport for the
  * Janus API, using the libmicrohttpd library (http://www.gnu.org/software/libmicrohttpd/).
- * This module allows browsers to make use of HTTP to talk to the gateway.
- * Since the gateway may be deployed on a different domain than the web
- * server hosting the web applications using it, the gateway automatically
+ * This module allows browsers to make use of HTTP to talk to the Janus core.
+ * Since a Janus instance may be deployed on a different domain than the web
+ * server hosting the web applications using it, the plugin automatically
  * handles OPTIONS request to comply with the CORS specification.
  * POST requests can be used to ask for the management of a session with
- * the gateway, to attach to a plugin, to send messages to the plugin
+ * the server, to attach to a plugin, to send messages to the plugin
  * itself and so on. GET requests instead are used for getting events
- * associated to a gateway session (and as such to all its plugin handles
+ * associated to a Janus session (and as such to all its plugin handles
  * and the events plugins push in the session itself), using a long poll
  * approach. A JavaScript library (janus.js) implements all of this on
  * the client side automatically.
@@ -20,7 +20,7 @@
  * case you're interested in HTTPS support, it's better to just rely on
  * HTTP in Janus, and put a frontend like Apache HTTPD or nginx to take
  * care of securing the traffic. More details are available in \ref deploy.
- * 
+ *
  * \ingroup transports
  * \ref transports
  */
@@ -67,7 +67,8 @@ gboolean janus_http_is_janus_api_enabled(void);
 gboolean janus_http_is_admin_api_enabled(void);
 int janus_http_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
 void janus_http_session_created(janus_transport_session *transport, guint64 session_id);
-void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id);
 
 
 /* Transport setup */
@@ -90,6 +91,7 @@ static janus_transport janus_http_transport =
 		.send_message = janus_http_send_message,
 		.session_created = janus_http_session_created,
 		.session_over = janus_http_session_over,
+		.session_claimed = janus_http_session_claimed,
 	);
 
 /* Transport creator */
@@ -118,7 +120,7 @@ typedef struct janus_http_msg {
 	gchar *contenttype;					/* Content-Type of the payload */
 	gchar *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
-	gint64 session_id;					/* Gateway-Client session identifier this message belongs to */
+	gint64 session_id;					/* Janus-Client session identifier this message belongs to */
 	janus_mutex wait_mutex;				/* Mutex to wait on the response condition */
 	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
@@ -196,7 +198,7 @@ int janus_http_return_error(janus_transport_session *ts, uint64_t session_id, co
 /* MHD Web Server */
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
-static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
+static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL;
 
 /* Admin/Monitor MHD Web Server */
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
@@ -279,7 +281,7 @@ static void janus_http_random_string(int length, char *buffer) {
 /* Helper to create a MHD daemon */
 static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		const char *interface, const char *ip, int port, gint64 threads,
-		const char *server_pem, const char *server_key, const char *password) {
+		const char *server_pem, const char *server_key, const char *password, const char *ciphers) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
 	/* Any interface or IP address we need to limit ourselves to?
@@ -493,6 +495,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -516,6 +519,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -540,6 +544,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -560,6 +565,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -611,7 +617,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	JANUS_LOG(LOG_VERB, "The installed libmicrohttpd version supports MHD_USE_AUTO\n");
 #endif
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Register a function to detect problems for which MHD would typically abort */
@@ -762,7 +768,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "general", "ip");
 			if(item && item->value)
 				ip = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -782,6 +789,10 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
 		if(item && item->value)
 			password = (char *)item->value;
+		const char *ciphers = "NORMAL";
+		item = janus_config_get_item_drilldown(config, "certificates", "ciphers");
+		if(item && item->value)
+			ciphers = item->value;
 		if(server_key)
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 		item = janus_config_get_item_drilldown(config, "general", "https");
@@ -803,7 +814,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -845,7 +857,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
 			if(item && item->value)
 				ip = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -872,7 +885,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {
@@ -892,7 +906,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	messages = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_transport_session_destroy);
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_http_session_destroy);
-	
+
 	/* Done */
 	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_REST_NAME);
@@ -1053,12 +1067,26 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
-	JANUS_LOG(LOG_VERB, "Session %s (%"SCNu64"), getting rid of the queue for the long poll\n",
-		timeout ? "has timed out" : "is over", session_id);
+void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed) {
+	JANUS_LOG(LOG_VERB, "Session %s %s (%"SCNu64"), getting rid of the queue for the long poll\n",
+		timeout ? "has timed out" : "is over",
+		claimed ? "but has been claimed" : "and has not been claimed", session_id);
 	/* Get rid of the session's queue of events */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, &session_id);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
+void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
+	/* Session has been claimed -- is there anything to do here? */
+	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), adding to hash table\n", session_id);
+	janus_http_session *session = g_malloc(sizeof(janus_http_session));
+	session->session_id = session_id;
+	session->events = g_async_queue_new();
+	g_atomic_int_set(&session->destroyed, 0);
+	janus_refcount_init(&session->ref, janus_http_session_free);
+	janus_mutex_lock(&sessions_mutex);
+	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
 
@@ -1247,7 +1275,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
@@ -1258,13 +1286,13 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {
 		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
@@ -1310,7 +1338,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		/* Ok, go on with the keepalive */
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("keepalive"));
 		json_object_set_new(root, "session_id", json_integer(session_id));
@@ -1390,7 +1418,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		janus_refcount_decrease(&ts->ref);
 		goto done;
 	}
-	
+
 	json_error_t error;
 	/* Parse the JSON payload */
 	root = json_loads(payload, 0, &error);
@@ -1405,30 +1433,59 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", ts);
 	gateway->incoming_request(&janus_http_transport, ts, ts, FALSE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
+	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#else
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	struct timespec wakeup;
 	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
 	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
+	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
 		if(msg->got_response || res == ETIMEDOUT)
 			break;
 	}
-	pthread_mutex_unlock(&msg->wait_mutex);
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1595,7 +1652,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Use GET for the info endpoint");
 			goto done;
@@ -1603,13 +1660,13 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		/* Turn this into a fake "info" request */
 		method = "POST";
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		root = json_object();
 		json_object_set_new(root, "janus", json_string("info"));
 		json_object_set_new(root, "transaction", json_string(tr));
 		goto parsingdone;
 	}
-	
+
 	/* Without a payload we don't know what to do */
 	if(!payload) {
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_JSON, "Request payload missing");
@@ -1629,30 +1686,59 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, ts, ts, TRUE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
+	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#else
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	struct timespec wakeup;
 	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
 	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
+	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
 		if(msg->got_response || res == ETIMEDOUT)
 			break;
 	}
-	pthread_mutex_unlock(&msg->wait_mutex);
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1693,7 +1779,7 @@ void janus_http_request_completed(void *cls, struct MHD_Connection *connection, 
 	janus_mutex_lock(&messages_mutex);
 	g_hash_table_remove(messages, ts);
 	janus_mutex_unlock(&messages_mutex);
-	*con_cls = NULL;   
+	*con_cls = NULL;
 }
 
 /* Worker to handle notifications */
@@ -1725,7 +1811,8 @@ int janus_http_notifier(janus_transport_session *ts, janus_http_session *session
 				break;
 			} else {
 				/* The application is willing to receive more events at the same time, anything to report? */
-				list = json_array();
+				if(list == NULL)
+					list = json_array();
 				json_array_append_new(list, event);
 				int events = 1;
 				while(events < max_events) {

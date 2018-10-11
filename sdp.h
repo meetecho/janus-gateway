@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    SDP processing (headers)
  * \details  Implementation of an SDP
- * parser/merger/generator in the gateway. Each SDP coming from peers is
+ * parser/merger/generator in the server. Each SDP coming from peers is
  * stripped/anonymized before it is passed to the plugins: all
  * DTLS/ICE/transport related information is removed, only leaving the
  * relevant information in place. SDP coming from plugins is stripped/anonymized
@@ -14,7 +14,7 @@
  * 
  * \todo Right now, we only support sessions with up to a single audio
  * and/or a single video stream (as in, a single audio and/or video
- * m-line) plus an optional DataChannel. Later versions of the gateway
+ * m-line) plus an optional DataChannel. Later versions of the server
  * will add support for more media streams of the same type in a session.
  * 
  * \ingroup protocols
@@ -35,6 +35,7 @@
 ///@{
 /*! \brief Method to pre-parse a session description
  * \details This method is only used to quickly check how many audio and video lines are in an SDP, and to generate a Janus SDP instance
+ * @param[in] handle Opaque pointer to the ICE handle this session description will modify
  * @param[in] jsep_sdp The SDP that the browser peer originated
  * @param[in,out] error_str Buffer to receive a reason for an error, if any
  * @param[in] errlen The length of the error buffer
@@ -42,7 +43,7 @@
  * @param[out] video The number of video m-lines
  * @param[out] data The number of SCTP m-lines
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
+janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
 
 /*! \brief Method to process a parsed session description
  * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly

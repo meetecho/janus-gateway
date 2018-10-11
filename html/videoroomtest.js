@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -279,7 +279,7 @@ $(document).ready(function() {
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
-										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
 										$('#mute').click(toggleMute);
@@ -469,6 +469,7 @@ function newRemoteFeed(id, display, audio, video) {
 					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
 					listen["offer_video"] = false;
 				}
+				remoteFeed.videoCodec = video;
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -510,7 +511,7 @@ function newRemoteFeed(id, display, audio, video) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex);
+								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
 							}
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
@@ -555,7 +556,7 @@ function newRemoteFeed(id, display, audio, video) {
 					addButtons = true;
 					// No remote video yet
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
 						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
@@ -585,15 +586,15 @@ function newRemoteFeed(id, display, audio, video) {
 				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
-					if($('#remotevideo'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-						$('#remotevideo'+remoteFeed.rfindex).append(
+					if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+						$('#videoremote'+remoteFeed.rfindex).append(
 							'<div class="no-video-container">' +
 								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 								'<span class="no-video-text">No remote video available</span>' +
 							'</div>');
 					}
 				} else {
-					$('#remotevideo'+remoteFeed.rfindex+ ' .no-video-container').remove();
+					$('#videoremote'+remoteFeed.rfindex+ ' .no-video-container').remove();
 					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
 				}
 				if(!addButtons)
@@ -641,7 +642,7 @@ function getQueryStringValue(name) {
 }
 
 // Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons(feed) {
+function addSimulcastButtons(feed, temporal) {
 	var index = feed;
 	$('#remote'+index).parent().append(
 		'<div id="simulcast'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
@@ -653,7 +654,7 @@ function addSimulcastButtons(feed) {
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
 		'			<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
 		'			<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
 		'			<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
@@ -661,7 +662,7 @@ function addSimulcastButtons(feed) {
 		'	</div>' +
 		'</div>'
 	);
-	// Enable the VP8 simulcast selection buttons
+	// Enable the simulcast selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
@@ -692,6 +693,9 @@ function addSimulcastButtons(feed) {
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			feeds[index].send({message: { request: "configure", substream: 2 }});
 		});
+	if(!temporal)	// No temporal layer support
+		return;
+	$('#tl' + index + '-0').parent().removeClass('hide');
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});

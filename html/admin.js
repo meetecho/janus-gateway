@@ -100,10 +100,12 @@ function updateServerInfo() {
 			console.log(json);
 			var pluginsJson = json.plugins;
 			var transportsJson = json.transports;
+			var eventsJson = json.events;
 			delete json.janus;
 			delete json.transaction;
 			delete json.plugins;
 			delete json.transports;
+			delete json.events;
 			for(var k in json) {
 				var v = json[k];
 				$('#server-details').append(
@@ -123,10 +125,19 @@ function updateServerInfo() {
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
 			}
-			console.log(plugins);
 			for(var t in transportsJson) {
 				var v = transportsJson[t];
 				$('#server-transports').append(
+					'<tr>' +
+					'	<td>' + v.name + '</td>' +
+					'	<td>' + v.author + '</td>' +
+					'	<td>' + v.description + '</td>' +
+					'	<td>' + v.version_string + '</td>' +
+					'</tr>');
+			}
+			for(var e in eventsJson) {
+				var v = eventsJson[e];
+				$('#server-handlers').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
 					'	<td>' + v.author + '</td>' +
