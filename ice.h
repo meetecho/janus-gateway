@@ -8,12 +8,12 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp core callbacks instead. 
- * 
+ * relay_rtcp core callbacks instead.
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_ICE_H
 #define _JANUS_ICE_H
 
@@ -613,5 +613,18 @@ void janus_ice_restart(janus_ice_handle *handle);
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_resend_trickles(janus_ice_handle *handle);
 ///@}
+
+
+/*! \brief Method to configure the static event loops mechanism at startup
+ * @note Check the \c event_loops property in the \c janus.cfg configuration
+ * for an explanation of this feature, and the possible impact on Janus and users
+ * @param[in] loops The number of static event loops to start (0 to disable the feature) */
+void janus_ice_set_static_event_loops(int loops);
+/*! \brief Method to return the number of static event loops, if enabled
+ * @returns The number of static event loops, if configured, or 0 if the feature is disabled */
+int janus_ice_get_static_event_loops(void);
+/*! \brief Method to stop all the static event loops, if enabled
+ * @note This will wait for the related threads to exit, and so may delay the shutdown process */
+void janus_ice_stop_static_event_loops(void);
 
 #endif
