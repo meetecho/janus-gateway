@@ -166,8 +166,6 @@ void janus_ice_stop_static_event_loops(void) {
 	GSList *l = event_loops;
 	while(l) {
 		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)l->data;
-		JANUS_LOG(LOG_WARN, "[loop#%d] Pending events: %s\n", loop->id,
-			g_main_context_pending(loop->mainctx) ? "true" : "false");
 		if(loop->mainloop != NULL && g_main_loop_is_running(loop->mainloop))
 			g_main_loop_quit(loop->mainloop);
 		g_thread_join(loop->thread);
