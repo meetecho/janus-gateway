@@ -5224,7 +5224,13 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
+		if(strstr(acontrol, source->rtsp_url) == acontrol) {
+			/* The control attribute already contains the whole URL? */
+			g_snprintf(uri, sizeof(uri), "%s", acontrol);
+		} else {
+			/* Append the control attribute to the URL */
+			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
+		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
