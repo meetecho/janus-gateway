@@ -132,8 +132,8 @@ int main(int argc, char *argv[])
 			ignore_first_packets = val;
 		JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
 	}
-	if(g_getenv("JANUS_RTP_HEADER_EXT_ID_CVO") != NULL) {
-		int val = atoi(g_getenv("JANUS_RTP_HEADER_EXT_ID_CVO"));
+	if(g_getenv("JANUS_PPREC_EXT_CVO") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_EXT_CVO"));
 		if(val >= 0)
 			rtp_header_ext_id_cvo = val;
 		JANUS_LOG(LOG_INFO, "RTP header extension ID CVO: %d\n", rtp_header_ext_id_cvo);
