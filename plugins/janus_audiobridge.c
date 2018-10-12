@@ -4241,6 +4241,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		while(ps) {
 			janus_audiobridge_participant *p = (janus_audiobridge_participant *)ps->data;
 			janus_refcount_increase(&p->ref);
+			ps = ps->next;
 		}
 		janus_mutex_unlock_nodebug(&audiobridge->mutex);
 		for(i=0; i<samples; i++)

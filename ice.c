@@ -681,7 +681,7 @@ janus_ice_trickle *janus_ice_trickle_new(const char *transaction, json_t *candid
 
 gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error) {
 	const char *ignore_error = NULL;
-	if (error == NULL) {
+	if(error == NULL) {
 		error = &ignore_error;
 	}
 	if(handle == NULL) {
@@ -1198,7 +1198,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 		if(handle->mainloop != NULL) {
 			if(handle->stream_id > 0) {
-				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context (handle->mainloop), NULL, NULL);
+				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop), NULL, NULL);
 			}
 			if(static_event_loops == 0 && handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop)) {
 				g_main_loop_quit(handle->mainloop);
@@ -1479,7 +1479,7 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
-		for (i = candidates; i; i = i->next) {
+		for(i = candidates; i; i = i->next) {
 			NiceCandidate *c = (NiceCandidate *) i->data;
 			if(c != NULL) {
 				nice_candidate_free(c);
@@ -1492,7 +1492,7 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 	component->candidates = NULL;
 	if(component->local_candidates != NULL) {
 		GSList *i = NULL, *candidates = component->local_candidates;
-		for (i = candidates; i; i = i->next) {
+		for(i = candidates; i; i = i->next) {
 			gchar *c = (gchar *) i->data;
 			g_free(c);
 		}
@@ -1502,7 +1502,7 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 	component->local_candidates = NULL;
 	if(component->remote_candidates != NULL) {
 		GSList *i = NULL, *candidates = component->remote_candidates;
-		for (i = candidates; i; i = i->next) {
+		for(i = candidates; i; i = i->next) {
 			gchar *c = (gchar *) i->data;
 			g_free(c);
 		}
@@ -2112,7 +2112,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* What is this? */
-	if (janus_is_dtls(buf) || (!janus_is_rtp(buf) && !janus_is_rtcp(buf))) {
+	if(janus_is_dtls(buf) || (!janus_is_rtp(buf) && !janus_is_rtcp(buf))) {
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
@@ -2528,7 +2528,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Inform the plugin about the slow downlink in case it's needed */
 					janus_slow_link_update(component, handle, nacks_count, video, 0, now);
 				}
-				if (component->nack_sent_recent_cnt &&
+				if(component->nack_sent_recent_cnt &&
 						(now - component->nack_sent_log_ts) > 5*G_USEC_PER_SEC) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sent NACKs for %u missing packets (%s stream #%d)\n",
 						handle->handle_id, component->nack_sent_recent_cnt, video ? "video" : "audio", vindex);
@@ -2674,7 +2674,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								g_async_queue_push(handle->queued_packets, pkt);
 #endif
 						}
-						if (rtcp_ctx != NULL && in_rb) {
+						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
 						}
 						list = list->next;
@@ -2911,7 +2911,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 	candidates = nice_agent_get_local_candidates (agent, stream_id, component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n", handle->handle_id, g_slist_length(candidates), stream_id, component_id);
 	gboolean log_candidates = (component->local_candidates == NULL);
-	for (i = candidates; i; i = i->next) {
+	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
 		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates) == 0) {
 			/* Candidate encoded, add to the SDP (but only if it's not a 'prflx') */
@@ -3116,10 +3116,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			if(ifa->ifa_addr == NULL)
 				continue;
 			/* Skip interfaces which are not up and running */
-			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
+			if(!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
 				continue;
 			/* Skip loopback interfaces */
-			if (ifa->ifa_flags & IFF_LOOPBACK)
+			if(ifa->ifa_flags & IFF_LOOPBACK)
 				continue;
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
@@ -3304,7 +3304,7 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 	candidates = nice_agent_get_local_candidates (agent, stream->stream_id, component->component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n",
 		handle->handle_id, g_slist_length(candidates), stream->stream_id, component->component_id);
-	for (i = candidates; i; i = i->next) {
+	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
 		if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE)
 			continue;
@@ -3484,10 +3484,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		stream->transport_wide_received_seq_nums = NULL;
 		/* Create and enqueue RTCP packets */
 		guint packets_len = 0;
-		while ((packets_len = g_queue_get_length(packets)) > 0) {
+		while((packets_len = g_queue_get_length(packets)) > 0) {
 			GQueue *packets_to_process;
 			/* If we have more than 400 packets to acknowledge, let's send more than one message */
-			if (packets_len > 400) {
+			if(packets_len > 400) {
 				/* Split the queue into two */
 				GList *new_head = g_queue_peek_nth_link(packets, 400);
 				GList *new_tail = new_head->prev;
@@ -3510,7 +3510,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
 			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
-			if (packets_to_process != packets) {
+			if(packets_to_process != packets) {
 				g_queue_free(packets_to_process);
 			}
 		}
