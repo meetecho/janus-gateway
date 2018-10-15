@@ -87,6 +87,7 @@ static int working = 0;
 
 static int post_reset_trigger = 200;
 static int ignore_first_packets = 0;
+static int rtp_header_ext_id_cvo = -1;
 
 
 /* Signal handler */
@@ -94,6 +95,36 @@ static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
+int janus_pp_parse_rtp_header_ext_cvo(char *buf, int ext_id_cvo) {
+	janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)buf;
+	if (ntohs(ext->type) != RTP_HEADER_EXT_TYPE_SINGLE_BYTE) {
+		return -1;
+	}
+	int header_len = 4+ntohs(ext->length)*4;
+	int pos = 4;
+	while (pos < header_len) {
+		char ext_header = *(buf+pos);
+		pos += 1;
+		uint8_t ext_id = (ext_header & 0xF0) >> 4;
+		uint8_t ext_len = ext_header & 0x0F;
+		if (ext_id == ext_id_cvo && ext_len == 0) {
+			char ext_data = *(buf+pos);
+			uint8_t R0 = ext_data & 0x1;
+			uint8_t R1 = ext_data & 0x2;
+			if (R0 && R1) {
+				return 270;
+			} else if (R0) {
+				return 90;
+			} else if (R1) {
+				return 180;
+			} else {
+				return 0;
+			}
+		}
+		pos += ext_len + 1;
+	}
+	return -1;
+}
 
 /* Main Code */
 int main(int argc, char *argv[])
@@ -130,6 +161,12 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			ignore_first_packets = val;
 		JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
+	}
+	if(g_getenv("JANUS_PPREC_EXT_CVO") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_EXT_CVO"));
+		if(val >= 0)
+			rtp_header_ext_id_cvo = val;
+		JANUS_LOG(LOG_INFO, "RTP header extension ID CVO: %d\n", rtp_header_ext_id_cvo);
 	}
 	
 	/* Evaluate arguments */
@@ -195,6 +232,8 @@ int main(int argc, char *argv[])
 	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	char prebuffer2[1500];
+	memset(prebuffer2, 0, 1500);
 	/* Let's look for timestamp resets first */
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
@@ -404,6 +443,7 @@ int main(int argc, char *argv[])
 	int times_resetted = 0;
 	int post_reset_pkts = 0;
 	int ignored = 0;
+	int got_rotation = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -485,10 +525,29 @@ int main(int argc, char *argv[])
 			skip += rtp->csrccount*4;
 		}
 		if(rtp->extension) {
-			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
-			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
+			janus_pp_rtp_header_extension *ext = NULL;
+			if (rtp->csrccount) {
+				fseek(file, offset+12+rtp->csrccount*4, SEEK_SET);
+				bytes = fread(prebuffer2, sizeof(char), 4, file);
+				ext = (janus_pp_rtp_header_extension *)(prebuffer2);
+			} else {
+				ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
+			}
+			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
+
+			/* Parse RTP header extension now */
+			if (rtp_header_ext_id_cvo != -1) {
+				int header_len = 4+ntohs(ext->length)*4;
+				fseek(file, offset+12+rtp->csrccount*4, SEEK_SET);
+				bytes = fread(prebuffer2, sizeof(char), header_len, file);
+				int rotation = janus_pp_parse_rtp_header_ext_cvo(prebuffer2, rtp_header_ext_id_cvo);
+				if (rotation >= 0 && !got_rotation) {
+					got_rotation = 1;
+					JANUS_LOG(LOG_INFO, "Got rotation: CW %d degree\n", rotation);
+				}
+			}
 		}
 		if(ssrc == 0) {
 			ssrc = ntohl(rtp->ssrc);
@@ -548,8 +607,8 @@ int main(int argc, char *argv[])
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
-			bytes = fread(prebuffer, sizeof(char), 1, file);
-			uint8_t padlen = (uint8_t)prebuffer[0];
+			bytes = fread(prebuffer2, sizeof(char), 1, file);
+			uint8_t padlen = (uint8_t)prebuffer2[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
 			p->len -= padlen;

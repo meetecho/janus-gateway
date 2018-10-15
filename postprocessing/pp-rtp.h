@@ -22,6 +22,8 @@
 #include <endian.h>
 #endif
 
+#define RTP_HEADER_EXT_TYPE_SINGLE_BYTE 0xBEDE
+
 typedef struct janus_pp_rtp_header
 {
 #if __BYTE_ORDER == __BIG_ENDIAN
@@ -62,5 +64,6 @@ typedef struct janus_pp_frame_packet {
 	struct janus_pp_frame_packet *prev;
 } janus_pp_frame_packet;
 
+int janus_pp_parse_rtp_header_ext_cvo(char *buf, int ext_id_cvo);
 
 #endif
