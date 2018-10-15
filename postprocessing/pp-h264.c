@@ -348,7 +348,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
-	uint32_t keyframe_ts = 0;
+	gboolean keyframe_found = FALSE;
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -390,8 +390,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
 				keyFrame = 1;
 				/* Is this the first keyframe we find? */
-				if(keyframe_ts == 0) {
-					keyframe_ts = tmp->ts;
+				if(!keyframe_found) {
+					keyframe_found = TRUE;
 					JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 				}
 			}
