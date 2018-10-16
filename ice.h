@@ -263,16 +263,14 @@ struct janus_ice_handle {
 	janus_flags webrtc_flags;
 	/*! \brief Number of gathered candidates */
 	gint cdone;
-	/*! \brief GLib context for libnice */
-	GMainContext *icectx;
-	/*! \brief GLib loop for libnice */
-	GMainLoop *iceloop;
-	/*! \brief GLib thread for libnice */
-	GThread *icethread;
+	/*! \brief GLib context for the handle and libnice */
+	GMainContext *mainctx;
+	/*! \brief GLib loop for the handle and libnice */
+	GMainLoop *mainloop;
+	/*! \brief GLib thread for the handle and libnice */
+	GThread *thread;
 	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
 	GSource *rtp_source, *rtcp_source, *stats_source;
-	/*! \brief Atomic flag to check if the ICE loop is still running */
-	volatile gint looprunning;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -301,7 +299,7 @@ struct janus_ice_handle {
 	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
-	/*! \brief Queue of outgoing packets to send */
+	/*! \brief Queue of events in the loop and outgoing packets to send */
 	GAsyncQueue *queued_packets;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
 	guint srtp_errors_count;
@@ -538,9 +536,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup
  * @param[in] reason A description of why this happened */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
-/*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
- * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
-void janus_ice_webrtc_free(janus_ice_handle *handle);
 /*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
  * @param[in] stream The Janus ICE stream instance to free */
 void janus_ice_stream_destroy(janus_ice_stream *stream);
