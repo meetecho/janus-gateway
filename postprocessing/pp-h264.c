@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .mp4 files
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -242,6 +242,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
+	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	while(tmp) {
@@ -255,7 +256,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			}
 			if(tmp->seq - tmp->prev->seq > 1) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
 		/* Parse H264 header now */
@@ -312,6 +313,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
 			tmp = tmp->next;
 			continue;
+		}
+		if(tmp->rotation != -1 && tmp->rotation != rotation) {
+			rotation = tmp->rotation;
+			JANUS_LOG(LOG_INFO, "Video rotation: %d degrees\n", rotation);
 		}
 		tmp = tmp->next;
 	}
