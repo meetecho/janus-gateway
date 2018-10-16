@@ -17,15 +17,15 @@
  * G.711 (mu-law or a-law) frames. In case the recording contains text
  * frames as received via data channels, instead, a .srt file will be
  * generated with the text content and the related timing information.
- * 
+ *
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the path to the .mjr source file you want to post-process, and the
  * path to the destination file, e.g.:
- * 
+ *
 \verbatim
 ./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|wav|webm|h264|srt]
-\endverbatim 
- * 
+\endverbatim
+ *
  * An attempt to specify an output format that is not compliant with the
  * recording content (e.g., a .webm for H.264 frames) will result in an
  * error since, again, no transcoding is involved.
@@ -45,7 +45,7 @@
  * the frames in a valid container. Any further post-processing (e.g.,
  * muxing audio and video belonging to the same media session in a single
  * .webm file) is up to third-party applications.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -94,6 +94,13 @@ static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
+/* Helper method to return an audio level from the related RTP extension, if any */
+static int audio_level_extmap_id = -1;
+static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level);
+/* Helper method to return the video rotation from the related RTP extension, if any */
+static int video_orient_extmap_id = -1;
+static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int len, int id, int *rotation);
+
 
 /* Main Code */
 int main(int argc, char *argv[])
@@ -131,7 +138,19 @@ int main(int argc, char *argv[])
 			ignore_first_packets = val;
 		JANUS_LOG(LOG_INFO, "Ignoring first packets: %d\n", ignore_first_packets);
 	}
-	
+	if(g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT"));
+		if(val >= 0)
+			audio_level_extmap_id = val;
+		JANUS_LOG(LOG_INFO, "Audio level extension ID: %d\n", audio_level_extmap_id);
+	}
+	if(g_getenv("JANUS_PPREC_VIDEOORIENTEXT") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_VIDEOORIENTEXT"));
+		if(val >= 0)
+			video_orient_extmap_id = val;
+		JANUS_LOG(LOG_INFO, "Video orientation extension ID: %d\n", video_orient_extmap_id);
+	}
+
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|wav|webm|mp4|srt]\n", argv[0]);
@@ -405,6 +424,8 @@ int main(int argc, char *argv[])
 	int post_reset_pkts = 0;
 	int ignored = 0;
 	offset = 0;
+	/* Extensions, if any */
+	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
 	reset = 0;
@@ -463,6 +484,8 @@ int main(int argc, char *argv[])
 			p->drop = 0;
 			p->offset = offset;
 			p->skip = 0;
+			p->audiolevel = -1;
+			p->rotation = -1;
 			p->next = NULL;
 			p->prev = NULL;
 			if(list == NULL) {
@@ -476,7 +499,7 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), 16, file);
+		bytes = fread(prebuffer, sizeof(char), len > 24 ? 24: len, file);
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
@@ -484,11 +507,22 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "  -- -- Skipping CSRC list\n");
 			skip += rtp->csrccount*4;
 		}
+		audiolevel = -1;
+		rotation = -1;
 		if(rtp->extension) {
-			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
+			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
+			if(audio_level_extmap_id > 0)
+				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len > 24 ? 24 : len, audio_level_extmap_id, &audiolevel);
+			if(video_orient_extmap_id > 0) {
+				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len > 24 ? 24 : len, video_orient_extmap_id, &rotation);
+				if(rotation != -1 && rotation != last_rotation) {
+					last_rotation = rotation;
+					rotated++;
+				}
+			}
 		}
 		if(ssrc == 0) {
 			ssrc = ntohl(rtp->ssrc);
@@ -569,6 +603,8 @@ int main(int argc, char *argv[])
 		/* Fill in the rest of the details */
 		p->offset = offset;
 		p->skip = skip;
+		p->audiolevel = audiolevel;
+		p->rotation = rotation;
 		p->next = NULL;
 		p->prev = NULL;
 		if(list == NULL) {
@@ -650,7 +686,7 @@ int main(int argc, char *argv[])
 	}
 	if(!working)
 		exit(0);
-	
+
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
@@ -663,6 +699,13 @@ int main(int argc, char *argv[])
 		tmp = tmp->next;
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
+	if(rotated != -1) {
+		if(rotated == 0 && last_rotation != 0) {
+			JANUS_LOG(LOG_INFO, "The video is rotated\n");
+		} else if(rotated > 0) {
+			JANUS_LOG(LOG_INFO, "The video changed orientation %d times\n", rotated);
+		}
+	}
 
 	if(video) {
 		/* Look for maximum width and height, if possible, and for the average framerate */
@@ -720,7 +763,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	
+
 	/* Loop */
 	if(!video && !data) {
 		if(opus) {
@@ -771,7 +814,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(file);
-	
+
 	file = fopen(destination, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_INFO, "No destination file %s??\n", destination);
@@ -790,5 +833,83 @@ int main(int argc, char *argv[])
 	}
 
 	JANUS_LOG(LOG_INFO, "Bye!\n");
+	return 0;
+}
+
+/* Static helper to quickly find the extension data */
+static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
+		uint8_t *byte, uint32_t *word, char **ref) {
+	if(!buf || len < 12)
+		return -1;
+	janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)buf;
+	int hlen = 12;
+	if(rtp->csrccount)	/* Skip CSRC if needed */
+		hlen += rtp->csrccount*4;
+	if(rtp->extension) {
+		janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(buf+hlen);
+		int extlen = ntohs(ext->length)*4;
+		hlen += 4;
+		if(len > (hlen + extlen)) {
+			/* 1-Byte extension */
+			if(ntohs(ext->type) == 0xBEDE) {
+				const uint8_t padding = 0x00, reserved = 0xF;
+				uint8_t extid = 0, idlen;
+				int i = 0;
+				while(i < extlen) {
+					extid = buf[hlen+i] >> 4;
+					if(extid == reserved) {
+						break;
+					} else if(extid == padding) {
+						i++;
+						continue;
+					}
+					idlen = (buf[hlen+i] & 0xF)+1;
+					if(extid == id) {
+						/* Found! */
+						if(byte)
+							*byte = buf[hlen+i+1];
+						if(word)
+							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+						if(ref)
+							*ref = &buf[hlen+i];
+						return 0;
+					}
+					i += 1 + idlen;
+				}
+			}
+			hlen += extlen;
+		}
+	}
+	return -1;
+}
+
+static int janus_pp_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level) {
+	uint8_t byte = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+		return -1;
+	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
+	int value = byte & 0x7F;
+	if(level)
+		*level = value;
+	return 0;
+}
+
+static int janus_pp_rtp_header_extension_parse_video_orientation(char *buf, int len, int id, int *rotation) {
+	uint8_t byte = 0;
+	if(janus_pp_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
+		return -1;
+	/* a=extmap:4 urn:3gpp:video-orientation */
+	gboolean r1bit = (byte & 0x02) >> 1;
+	gboolean r0bit = byte & 0x01;
+	if(rotation) {
+		if(!r0bit && !r1bit)
+			*rotation = 0;
+		else if(r0bit && !r1bit)
+			*rotation = 90;
+		else if(!r0bit && r1bit)
+			*rotation = 180;
+		else if(r0bit && r1bit)
+			*rotation = 270;
+	}
 	return 0;
 }

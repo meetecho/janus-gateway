@@ -255,6 +255,7 @@ static json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
+	json_object_set_new(info, "static-event-loops", json_integer(janus_ice_get_static_event_loops()));
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
@@ -1145,7 +1146,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Is this valid SDP? */
 			char error_str[512];
 			int audio = 0, video = 0, data = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
+			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, error_str);
@@ -1218,9 +1219,9 @@ int janus_process_incoming_request(janus_request *request) {
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
 					if(do_trickle) {
-						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
-					} else {	
-						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
+					} else {
+						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
 				} else {
@@ -1296,7 +1297,7 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 
 		/* Make sure the app handle is still valid */
-		if(handle->app == NULL || handle->app_handle == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
+		if(handle->app == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
 			g_free(jsep_type);
 			g_free(jsep_sdp_stripped);
@@ -1376,7 +1377,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-		if(handle->app == NULL || handle->app_handle == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
+		if(handle->app == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this trickle candidate");
 			goto jsondone;
 		}
@@ -2139,9 +2140,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
+		json_object_set_new(info, "loop-running", (handle->mainloop != NULL &&
+			g_main_loop_is_running(handle->mainloop)) ? json_true() : json_false());
 		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
-		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
+		if(handle->app && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
 			if(plugin->query_session) {
@@ -2183,7 +2186,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
-			json_object_set_new(info, "ice-loop-running", g_atomic_int_get(&handle->looprunning) ? json_true() : json_false());
 		}
 		json_t *sdps = json_object();
 		if(handle->rtp_profile)
@@ -2689,8 +2691,7 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep) {
 	if(!plugin || !message)
 		return -1;
-	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
-			!janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
+	if(!janus_plugin_session_is_alive(plugin_session))
 		return -2;
 	janus_refcount_increase(&plugin_session->ref);
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
@@ -2767,8 +2768,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 }
 
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart) {
-	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
-			!janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped) ||
+	if(!janus_plugin_session_is_alive(plugin_session) ||
 			plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
@@ -2796,7 +2796,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	/* Is this valid SDP? */
 	char error_str[512];
 	int audio = 0, video = 0, data = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, error_str, sizeof(error_str), &audio, &video, &data);
+	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP... %s\n", ice_handle->handle_id, error_str);
 		return NULL;
@@ -3066,7 +3066,7 @@ static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
 
 void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection: enqueue it as a timed source */
-	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
+	if(!janus_plugin_session_is_alive(plugin_session))
 		return;
 	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
@@ -3105,7 +3105,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 
 void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle: enqueue it as a timed source */
-	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped))
+	if(!janus_plugin_session_is_alive(plugin_session))
 		return;
 	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
@@ -3121,7 +3121,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 	guint64 session_id = 0, handle_id = 0;
 	char *opaque_id = NULL;
 	if(plugin_session != NULL) {
-		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || g_atomic_int_get(&plugin_session->stopped)) {
+		if(!janus_plugin_session_is_alive(plugin_session)) {
 			json_decref(event);
 			return;
 		}
@@ -3747,6 +3747,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
 #endif
+	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
+	item = janus_config_get(config, config_general, janus_config_type_item, "event_loops");
+	if(item && item->value)
+		janus_ice_set_static_event_loops(atoi(item->value));
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
@@ -4399,6 +4403,9 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 	g_free(local_ip);
+
+	if(janus_ice_get_static_event_loops() > 0)
+		janus_ice_stop_static_event_loops();
 
 #ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */
