@@ -28,12 +28,13 @@
 
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen,
+janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *error_str, size_t errlen,
 		int *audio, int *video, int *data) {
-	if(!jsep_sdp || !audio || !video || !data) {
+	if(!ice_handle || !jsep_sdp || !audio || !video || !data) {
 		JANUS_LOG(LOG_ERR, "  Can't preparse, invalid arguments\n");
 		return NULL;
 	}
+	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_sdp *parsed_sdp = janus_sdp_parse(jsep_sdp, error_str, errlen);
 	if(!parsed_sdp) {
 		JANUS_LOG(LOG_ERR, "  Error parsing SDP? %s\n", error_str ? error_str : "(unknown reason)");
@@ -48,6 +49,30 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errl
 			*audio = *audio + 1;
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 			*video = *video + 1;
+		}
+		/* Preparse the mid as well */
+		GList *tempA = m->attributes;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+			if(a->name) {
+				if(!strcasecmp(a->name, "mid")) {
+					/* Found mid attribute */
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->value);
+						if(handle->audio_mid == NULL)
+							handle->audio_mid = g_strdup(a->value);
+						if(handle->stream_mid == NULL)
+							handle->stream_mid = handle->audio_mid;
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->value);
+						if(handle->video_mid == NULL)
+							handle->video_mid = g_strdup(a->value);
+						if(handle->stream_mid == NULL)
+							handle->stream_mid = handle->video_mid;
+					}
+				}
+			}
+			tempA = tempA->next;
 		}
 		temp = temp->next;
 	}

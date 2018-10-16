@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .opus files
  * \details  Implementation of the post-processing code (based on libogg)
  * needed to generate .opus files out of Opus RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -96,6 +96,9 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			JANUS_LOG(LOG_WARN, "Dropping previously marked audio packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/48000);
 			tmp = tmp->next;
 			continue;
+		}
+		if(tmp->audiolevel != -1) {
+			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
 		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;

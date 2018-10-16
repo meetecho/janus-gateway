@@ -146,7 +146,7 @@ gchar *janus_dtls_get_local_fingerprint(void) {
  * which does indeed implement the callbacks the OpenSSL docs suggest.
  *
  */
-static janus_mutex *janus_dtls_locks;
+static pthread_mutex_t *janus_dtls_locks;
 
 static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
 	/* FIXME Assuming pthread, which is fine as GLib wraps pthread and
@@ -162,9 +162,9 @@ static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
 
 static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int line) {
 	if((mode & CRYPTO_LOCK)) {
-		janus_mutex_lock(&janus_dtls_locks[type]);
+		pthread_mutex_lock(&janus_dtls_locks[type]);
 	} else {
-		janus_mutex_unlock(&janus_dtls_locks[type]);
+		pthread_mutex_unlock(&janus_dtls_locks[type]);
 	}
 }
 #endif
@@ -334,7 +334,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
 	int l=0;
 	for(l = 0; l < CRYPTO_num_locks(); l++) {
-		janus_mutex_init(&janus_dtls_locks[l]);
+		pthread_mutex_init(&janus_dtls_locks[l], NULL);
 	}
 	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
 	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
