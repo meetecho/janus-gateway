@@ -255,6 +255,7 @@ static json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
+	json_object_set_new(info, "static-event-loops", json_integer(janus_ice_get_static_event_loops()));
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
@@ -1218,9 +1219,9 @@ int janus_process_incoming_request(janus_request *request) {
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
 					if(do_trickle) {
-						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
-					} else {	
-						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);	
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
+					} else {
+						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
 				} else {
@@ -3730,6 +3731,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
 #endif
+	/* Do we need a limited number of static event loops, or is it ok to have one per handle (the default)? */
+	item = janus_config_get_item_drilldown(config, "general", "event_loops");
+	if(item && item->value)
+		janus_ice_set_static_event_loops(atoi(item->value));
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
@@ -4382,6 +4387,9 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 	g_free(local_ip);
+
+	if(janus_ice_get_static_event_loops() > 0)
+		janus_ice_stop_static_event_loops();
 
 #ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */

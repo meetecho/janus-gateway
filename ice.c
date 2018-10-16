@@ -95,6 +95,85 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+/* Only needed in case we're using static event loops spawned at startup (disabled by default) */
+typedef struct janus_ice_static_event_loop {
+	int id;
+	GMainContext *mainctx;
+	GMainLoop *mainloop;
+	GThread *thread;
+} janus_ice_static_event_loop;
+static int static_event_loops = 0;
+static GSList *event_loops = NULL, *current_loop = NULL;
+static janus_mutex event_loops_mutex = JANUS_MUTEX_INITIALIZER;
+static void *janus_ice_static_event_loop_thread(void *data) {
+	janus_ice_static_event_loop *loop = data;
+	JANUS_LOG(LOG_VERB, "[loop#%d] Event loop thread started\n", loop->id);
+	if(loop->mainloop == NULL) {
+		JANUS_LOG(LOG_ERR, "[loop#%d] Invalid loop...\n", loop->id);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	JANUS_LOG(LOG_DBG, "[loop#%d] Looping...\n", loop->id);
+	g_main_loop_run(loop->mainloop);
+	/* When the loop quits, we can unref it */
+	g_main_loop_unref(loop->mainloop);
+	g_main_context_unref(loop->mainctx);
+	JANUS_LOG(LOG_VERB, "[loop#%d] Event loop thread ended!\n", loop->id);
+	return NULL;
+}
+int janus_ice_get_static_event_loops(void) {
+	return static_event_loops;
+}
+void janus_ice_set_static_event_loops(int loops) {
+	if(loops == 0)
+		return;
+	else if(loops < 1) {
+		JANUS_LOG(LOG_WARN, "Invalid number of static event loops (%d), disabling\n", loops);
+		return;
+	}
+	/* Create a pool of new event loops */
+	int i = 0;
+	for(i=0; i<loops; i++) {
+		janus_ice_static_event_loop *loop = g_malloc0(sizeof(janus_ice_static_event_loop));
+		loop->id = static_event_loops;
+		loop->mainctx = g_main_context_new();
+		loop->mainloop = g_main_loop_new(loop->mainctx, FALSE);
+		/* Now spawn a thread for this loop */
+		GError *error = NULL;
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "hloop %d", loop->id);
+		loop->thread = g_thread_try_new(tname, &janus_ice_static_event_loop_thread, loop, &error);
+		if(error != NULL) {
+			g_main_loop_unref(loop->mainloop);
+			g_main_context_unref(loop->mainctx);
+			g_free(loop);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch a new event loop thread...\n",
+				error->code, error->message ? error->message : "??");
+		} else {
+			event_loops = g_slist_append(event_loops, loop);
+			static_event_loops++;
+		}
+	}
+	current_loop = event_loops;
+	JANUS_LOG(LOG_INFO, "Spawned %d static event loops (handles won't have a dedicated loop)\n", static_event_loops);
+	return;
+}
+void janus_ice_stop_static_event_loops(void) {
+	if(static_event_loops < 1)
+		return;
+	/* Quit all the static loops and wait for the threads to leave */
+	janus_mutex_lock(&event_loops_mutex);
+	GSList *l = event_loops;
+	while(l) {
+		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)l->data;
+		if(loop->mainloop != NULL && g_main_loop_is_running(loop->mainloop))
+			g_main_loop_quit(loop->mainloop);
+		g_thread_join(loop->thread);
+		l = l->next;
+	}
+	g_slist_free_full(event_loops, (GDestroyNotify)g_free);
+	janus_mutex_unlock(&event_loops_mutex);
+}
 
 /* libnice debugging */
 static gboolean janus_ice_debugging_enabled;
@@ -253,6 +332,13 @@ static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 	return G_SOURCE_REMOVE;
 }
 
+/* Deallocation helpers for handles and related structs */
+static void janus_ice_handle_free(const janus_refcount *handle_ref);
+static void janus_ice_webrtc_free(janus_ice_handle *handle);
+static void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
+static void janus_ice_stream_free(const janus_refcount *handle_ref);
+static void janus_ice_component_free(const janus_refcount *handle_ref);
+
 /* Custom GSource for outgoing traffic */
 typedef struct janus_ice_outgoing_traffic {
 	GSource parent;
@@ -279,8 +365,14 @@ static gboolean janus_ice_outgoing_traffic_dispatch(GSource *source, GSourceFunc
 static void janus_ice_outgoing_traffic_finalize(GSource *source) {
 	janus_ice_outgoing_traffic *t = (janus_ice_outgoing_traffic *)source;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Finalizing loop source\n", t->handle->handle_id);
-	if(t->handle->mainloop != NULL && g_main_loop_is_running(t->handle->mainloop))
+	if(static_event_loops > 0) {
+		/* This handle was sharing an event loop with others */
+		janus_ice_webrtc_free(t->handle);
+		janus_refcount_decrease(&t->handle->ref);
+	} else if(t->handle->mainloop != NULL && g_main_loop_is_running(t->handle->mainloop)) {
+		/* This handle had a dedicated event loop, quit it */
 		g_main_loop_quit(t->handle->mainloop);
+	}
 	janus_refcount_decrease(&t->handle->ref);
 }
 static GSourceFuncs janus_ice_outgoing_traffic_funcs = {
@@ -950,13 +1042,6 @@ const gchar *janus_get_ice_state_name(gint state) {
 }
 
 
-/* ICE Handles */
-static void janus_ice_handle_free(const janus_refcount *handle_ref);
-static void janus_ice_webrtc_free(janus_ice_handle *handle);
-static void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
-static void janus_ice_stream_free(const janus_refcount *handle_ref);
-static void janus_ice_component_free(const janus_refcount *handle_ref);
-
 /* Thread to take care of the handle loop */
 static void *janus_ice_handle_thread(void *data) {
 	janus_ice_handle *handle = data;
@@ -1044,24 +1129,39 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	g_hash_table_insert(plugin_sessions, session_handle, session_handle);
 	janus_mutex_unlock(&plugin_sessions_mutex);
 	/* Create a new context, loop, and source */
-	handle->mainctx = g_main_context_new();
-	handle->mainloop = g_main_loop_new(handle->mainctx, FALSE);
+	if(static_event_loops == 0) {
+		handle->mainctx = g_main_context_new();
+		handle->mainloop = g_main_loop_new(handle->mainctx, FALSE);
+	} else {
+		/* We're actually using static event loops, pick one from the list */
+		janus_refcount_increase(&handle->ref);
+		janus_mutex_lock(&event_loops_mutex);
+		janus_ice_static_event_loop *loop = (janus_ice_static_event_loop *)current_loop->data;
+		handle->mainctx = loop->mainctx;
+		handle->mainloop = loop->mainloop;
+		current_loop = current_loop->next;
+		if(current_loop == NULL)
+			current_loop = event_loops;
+		janus_mutex_unlock(&event_loops_mutex);
+	}
 	handle->rtp_source = janus_ice_outgoing_traffic_create(handle, (GDestroyNotify)g_free);
 	g_source_set_priority(handle->rtp_source, G_PRIORITY_DEFAULT);
 	g_source_attach(handle->rtp_source, handle->mainctx);
-	/* Now spawn a thread for this loop */
-	GError *terror = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "hloop %"SCNu64, handle->handle_id);
-	janus_refcount_increase(&handle->ref);
-	handle->thread = g_thread_try_new(tname, &janus_ice_handle_thread, handle, &terror);
-	if(terror != NULL) {
-		/* FIXME We should clear some resources... */
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the handle thread...\n",
-			handle->handle_id, terror->code, terror->message ? terror->message : "??");
-		janus_refcount_decrease(&handle->ref);	/* This is for the thread reference we just added */
-		janus_ice_handle_destroy(session, handle);
-		return -1;
+	if(static_event_loops == 0) {
+		/* Now spawn a thread for this loop */
+		GError *terror = NULL;
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "hloop %"SCNu64, handle->handle_id);
+		janus_refcount_increase(&handle->ref);
+		handle->thread = g_thread_try_new(tname, &janus_ice_handle_thread, handle, &terror);
+		if(terror != NULL) {
+			/* FIXME We should clear some resources... */
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the handle thread...\n",
+				handle->handle_id, terror->code, terror->message ? terror->message : "??");
+			janus_refcount_decrease(&handle->ref);	/* This is for the thread reference we just added */
+			janus_ice_handle_destroy(session, handle);
+			return -1;
+		}
 	}
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
@@ -1100,7 +1200,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 			if(handle->stream_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop), NULL, NULL);
 			}
-			if(handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop)) {
+			if(static_event_loops == 0 && handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop)) {
 				g_main_loop_quit(handle->mainloop);
 			}
 		}
@@ -1134,11 +1234,11 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 		janus_ice_clear_queued_packets(handle);
 		g_async_queue_unref(handle->queued_packets);
 	}
-	if(handle->mainloop != NULL) {
+	if(static_event_loops == 0 && handle->mainloop != NULL) {
 		g_main_loop_unref(handle->mainloop);
 		handle->mainloop = NULL;
 	}
-	if(handle->mainctx != NULL) {
+	if(static_event_loops == 0 && handle->mainctx != NULL) {
 		g_main_context_unref(handle->mainctx);
 		handle->mainctx = NULL;
 	}
