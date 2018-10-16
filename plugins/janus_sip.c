@@ -287,17 +287,23 @@
 	"sip" : "event",
 	"result" : {
 		"event" : "missed_call",
-		"username" : "<SIP URI of the caller>",
+		"caller" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>"
 	}
 }
 \endverbatim
  *
- * Closing a session is always done the same way: this means that, no matter
- * if you're decling a call or hanging up an ongoing session, you always
- * use the same request. This request is called \c hangup and needs no
+ * Closing a session depends on the call state. If you have an incoming
+ * call that you don't want to accept, use the \c decline request; in all
+ * other cases, use the \c hangup request instead. Both requests need no
  * additional arguments, as the whole context can be extracted from the
  * current state of the session in the plugin:
+ *
+\verbatim
+{
+	"request" : "decline"
+}
+\endverbatim
  *
 \verbatim
 {
@@ -305,7 +311,8 @@
 }
 \endverbatim
  *
- * An \c hangingup event will be sent back, as this is an asynchronous request.
+ * Since these are asynchronous requests, you'll get an event in response:
+ * \c declining if you used \c decline and \c hangingup if you used \c hangup.
  *
  * As anticipated before, when a call is declined or being hung up, a
  * \c hangup event is sent instead, which is basically a SIP error event

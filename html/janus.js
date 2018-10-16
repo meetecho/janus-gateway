@@ -293,7 +293,7 @@ Janus.init = function(options) {
 		Janus.attachMediaStream = function(element, stream) {
 			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
 				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 43) {
+				if(chromever >= 52) {
 					element.srcObject = stream;
 				} else if(typeof element.src !== 'undefined') {
 					element.src = URL.createObjectURL(stream);
@@ -307,7 +307,7 @@ Janus.init = function(options) {
 		Janus.reattachMediaStream = function(to, from) {
 			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
 				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 43) {
+				if(chromever >= 52) {
 					to.srcObject = from.srcObject;
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;

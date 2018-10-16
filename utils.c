@@ -4,7 +4,7 @@
  * \brief    Utilities and helpers
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -496,7 +496,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	# define swap2(d) d
 #endif
 
-gboolean janus_vp8_is_keyframe(char* buffer, int len) {
+gboolean janus_vp8_is_keyframe(char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP8 header now */
@@ -569,7 +569,7 @@ gboolean janus_vp8_is_keyframe(char* buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_vp9_is_keyframe(char* buffer, int len) {
+gboolean janus_vp9_is_keyframe(char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP9 header now */
@@ -640,7 +640,7 @@ gboolean janus_vp9_is_keyframe(char* buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_h264_is_keyframe(char* buffer, int len) {
+gboolean janus_h264_is_keyframe(char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse H264 header now */
@@ -648,9 +648,27 @@ gboolean janus_h264_is_keyframe(char* buffer, int len) {
 	uint8_t nal = *(buffer+1) & 0x1F;
 	uint8_t start_bit = *(buffer+1) & 0x80;
 	if(fragment == 5 ||
-			((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
+			((fragment == 28 || fragment == 29) && (nal == 5 || nal == 7) && start_bit == 128)) {
 		JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");
 		return TRUE;
+	} else if(fragment == 24) {
+		/* May we find an SPS in this STAP-A? */
+		buffer++;
+		int tot = len-1;
+		uint16_t psize = 0;
+		while(tot > 0) {
+			memcpy(&psize, buffer, 2);
+			psize = ntohs(psize);
+			buffer += 2;
+			tot -= 2;
+			int nal = *buffer & 0x1F;
+			if(nal == 7) {
+				JANUS_LOG(LOG_HUGE, "Got an SPS/PPS\n");
+				return TRUE;
+			}
+			buffer += psize;
+			tot -= psize;
+		}
 	}
 	/* If we got here it's not a key frame */
 	return FALSE;

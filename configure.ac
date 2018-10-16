@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.4.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.5.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -15,9 +15,9 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
-JANUS_VERSION=45
+JANUS_VERSION=50
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.4.5"
+JANUS_VERSION_STRING="0.5.0"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -100,6 +100,12 @@ AC_ARG_ENABLE([dtls-settimeout],
                               [Use DTLSv1_set_initial_timeout_duration (only available in recent BoringSSL versions)])],
               [],
               [enable_dtls_settimeout=no])
+
+AC_ARG_ENABLE([pthread-mutex],
+              [AS_HELP_STRING([--enable-pthread-mutex],
+                              [Use pthread_mutex instead of GMutex (see #1397)])],
+              [],
+              [enable_pthread_mutex=no])
 
 AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
@@ -283,6 +289,13 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
       ])
 AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
+
+AS_IF([test "x$enable_pthread_mutex" = "xyes"],
+      [
+      AC_DEFINE(USE_PTHREAD_MUTEX)
+      AC_MSG_NOTICE([Will use pthread_mutex instead of GMutex])
+      ])
+AM_CONDITIONAL([ENABLE_PTHREAD_MUTEX], [test "x$enable_pthread_mutex" = "xyes"])
 
 AC_SEARCH_LIBS([tls_config_set_ca_mem],[tls],
              [AM_CONDITIONAL([LIBRESSL_DETECTED], true)],
@@ -893,6 +906,9 @@ AM_COND_IF([ENABLE_BORINGSSL],
 		[echo "SSL/crypto library:        LibreSSL"],
 		[echo "SSL/crypto library:        OpenSSL"])
 	 echo "DTLS set-timeout:          not available"])
+AM_COND_IF([ENABLE_PTHREAD_MUTEX],
+	[echo "Mutex implementation:      pthread mutex"],
+	[echo "Mutex implementation:      GMutex (native futex on Linux)"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
