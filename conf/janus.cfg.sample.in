@@ -54,8 +54,8 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;
 ;reclaim_session_timeout = 0		; How long (in seconds) we should wait for a
 ;							janus session to be reclaimed after the transport
-;							is gone. After the transport is gone, a session 
-;							times out when no request is received for 
+;							is gone. After the transport is gone, a session
+;							times out when no request is received for
 ;							reclaim_session_timeout seconds (default=0s).
 ;							Setting this to 0 will disable the timeout
 ;							mechanism, and sessions will be destroyed immediately
@@ -78,6 +78,23 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							recordings_tmp_ext property to the extension
 ;							to add to the base (e.g., tmp --> .mjr.tmp).
 
+;event_loops = 8			; By default, Janus handles each have their own
+;							event loop and related thread for all the media
+;							routing and management. If for some reason you'd
+;							rather limit the number of loop/threads, and
+;							you want handles to share those, you can do that
+;							configuring the event_loops property: this will
+;							spawn the specified amount of threads at startup,
+;							run a separate event loop on each of them, and
+;							add new handles to one of them when attaching.
+;							Notice that, while cutting the number of threads
+;							and possibly reducing context switching, this
+;							might have an impact on the media delivery,
+;							especially if the available loops can't take
+;							care of all the handles and their media in time.
+;							As such, if you want to use this you should
+;							provision the correct value according to the
+;							available resources (e.g., CPUs available).
 
 ; Certificate and key to use for DTLS (and passphrase if needed).
 [certificates]
@@ -125,7 +142,7 @@ cert_key = @certdir@/mycert.key
 ; you can also enable ICE-TCP support (beware that it currently *only*
 ; works if you enable ICE Lite as well), choose which interfaces should
 ; be used for gathering candidates, and enable or disable the
-; internal libnice debugging, if needed. 
+; internal libnice debugging, if needed.
 [nat]
 ;stun_server = stun.voip.eutelia.it
 ;stun_port = 3478

@@ -5,11 +5,11 @@
  * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <string.h>
 #include "rtp.h"
 #include "rtpsrtp.h"
@@ -231,7 +231,7 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	   |  ID   | L=1   |transport-wide sequence number | zero padding  |
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	*/ 
+	*/
 	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
 	return 0;
 }
@@ -788,7 +788,8 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		/* There has been a change: let's wait for a keyframe on the target */
 		int step = (context->substream < 1 && context->substream_target == 2);
 		if((ssrc == *(ssrcs + context->substream_target)) || (step && ssrc == *(ssrcs + step))) {
-			if(janus_vp8_is_keyframe(payload, plen)) {
+			if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
+					(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen))) {
 				uint32_t ssrc_old = 0;
 				if(context->substream != -1)
 					ssrc_old = *(ssrcs + context->substream);

@@ -5198,7 +5198,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
-			 * value for sending GET_PARAMETER keepalives later on */
+			 * value for sending OPTIONS keepalives later on */
 			ka_timeout = atoi(timeout+strlen(";timeout="));
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
@@ -5224,7 +5224,13 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
+		if(strstr(acontrol, source->rtsp_url) == acontrol) {
+			/* The control attribute already contains the whole URL? */
+			g_snprintf(uri, sizeof(uri), "%s", acontrol);
+		} else {
+			/* Append the control attribute to the URL */
+			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
+		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
@@ -5254,7 +5260,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
-			 * value for sending GET_PARAMETER keepalives later on */
+			 * value for sending OPTIONS keepalives later on */
 			int temp_timeout = atoi(timeout+strlen(";timeout="));
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", temp_timeout);
 			if(temp_timeout > 0 && temp_timeout < ka_timeout)
@@ -5921,23 +5927,23 @@ static void *janus_streaming_relay_thread(void *data) {
 			g_usleep(5000000);
 			continue;
 		}
-		/* We may also need to occasionally send a GET_PARAMETER request as a keep-alive */
+		/* We may also need to occasionally send a OPTIONS request as a keep-alive */
 		if(ka_timeout > 0) {
-			/* Let's be conservative and send a GET_PARAMETER when half of the timeout has passed */
+			/* Let's be conservative and send a OPTIONS when half of the timeout has passed */
 			now = janus_get_monotonic_time();
 			if(now-before > ka_timeout && source->curldata) {
-				JANUS_LOG(LOG_VERB, "[%s] %"SCNi64"s passed, sending GET_PARAMETER\n", name, (now-before)/G_USEC_PER_SEC);
+				JANUS_LOG(LOG_VERB, "[%s] %"SCNi64"s passed, sending OPTIONS\n", name, (now-before)/G_USEC_PER_SEC);
 				before = now;
-				/* Send an RTSP GET_PARAMETER */
+				/* Send an RTSP OPTIONS */
 				janus_mutex_lock(&source->rtsp_mutex);
 				g_free(source->curldata->buffer);
 				source->curldata->buffer = g_malloc0(1);
 				source->curldata->size = 0;
 				curl_easy_setopt(source->curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_url);
-				curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_GET_PARAMETER);
+				curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_OPTIONS);
 				resfd = curl_easy_perform(source->curl);
 				if(resfd != CURLE_OK) {
-					JANUS_LOG(LOG_ERR, "[%s] Couldn't send GET_PARAMETER request: %s\n", name, curl_easy_strerror(resfd));
+					JANUS_LOG(LOG_ERR, "[%s] Couldn't send OPTIONS request: %s\n", name, curl_easy_strerror(resfd));
 				}
 				janus_mutex_unlock(&source->rtsp_mutex);
 			}

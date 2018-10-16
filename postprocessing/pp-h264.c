@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .mp4 files
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -242,6 +242,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
+	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	while(tmp) {
@@ -255,7 +256,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			}
 			if(tmp->seq - tmp->prev->seq > 1) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
 		/* Parse H264 header now */
@@ -313,6 +314,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->rotation != -1 && tmp->rotation != rotation) {
+			rotation = tmp->rotation;
+			JANUS_LOG(LOG_INFO, "Video rotation: %d degrees\n", rotation);
+		}
 		tmp = tmp->next;
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
@@ -348,7 +353,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
-	uint32_t keyframe_ts = 0;
+	gboolean keyframe_found = FALSE;
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -390,8 +395,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
 				keyFrame = 1;
 				/* Is this the first keyframe we find? */
-				if(keyframe_ts == 0) {
-					keyframe_ts = tmp->ts;
+				if(!keyframe_found) {
+					keyframe_found = TRUE;
 					JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 				}
 			}
