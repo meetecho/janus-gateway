@@ -510,7 +510,7 @@ int main(int argc, char *argv[])
 		audiolevel = -1;
 		rotation = -1;
 		if(rtp->extension) {
-			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
+			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
