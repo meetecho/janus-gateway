@@ -496,7 +496,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	# define swap2(d) d
 #endif
 
-gboolean janus_vp8_is_keyframe(char *buffer, int len) {
+gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP8 header now */
@@ -569,7 +569,7 @@ gboolean janus_vp8_is_keyframe(char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_vp9_is_keyframe(char *buffer, int len) {
+gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP9 header now */
@@ -640,7 +640,7 @@ gboolean janus_vp9_is_keyframe(char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_h264_is_keyframe(char *buffer, int len) {
+gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse H264 header now */
