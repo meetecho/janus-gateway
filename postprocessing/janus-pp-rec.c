@@ -214,6 +214,8 @@ int main(int argc, char *argv[])
 	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	char prebuffer2[1500];
+	memset(prebuffer2, 0, 1500);
 	/* Let's look for timestamp resets first */
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
@@ -582,8 +584,8 @@ int main(int argc, char *argv[])
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
-			bytes = fread(prebuffer, sizeof(char), 1, file);
-			uint8_t padlen = (uint8_t)prebuffer[0];
+			bytes = fread(prebuffer2, sizeof(char), 1, file);
+			uint8_t padlen = (uint8_t)prebuffer2[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
 			p->len -= padlen;
