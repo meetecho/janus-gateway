@@ -622,11 +622,11 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			uint i=0;
 			for(i=0; i<n_s; i++) {
 				/* Width */
-				uint16_t *w = (uint16_t *)buffer;
+				const uint16_t *w = (const uint16_t *)buffer;
 				int vp9w = ntohs(*w);
 				buffer += 2;
 				/* Height */
-				uint16_t *h = (uint16_t *)buffer;
+				const uint16_t *h = (const uint16_t *)buffer;
 				int vp9h = ntohs(*h);
 				buffer += 2;
 				if(vp9w || vp9h) {
