@@ -214,6 +214,8 @@ int main(int argc, char *argv[])
 	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	char prebuffer2[1500];
+	memset(prebuffer2, 0, 1500);
 	/* Let's look for timestamp resets first */
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
@@ -511,7 +513,7 @@ int main(int argc, char *argv[])
 		rotation = -1;
 		if(rtp->extension) {
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
-			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
+			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
 			if(audio_level_extmap_id > 0)
@@ -582,8 +584,8 @@ int main(int argc, char *argv[])
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
-			bytes = fread(prebuffer, sizeof(char), 1, file);
-			uint8_t padlen = (uint8_t)prebuffer[0];
+			bytes = fread(prebuffer2, sizeof(char), 1, file);
+			uint8_t padlen = (uint8_t)prebuffer2[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
 			p->len -= padlen;
