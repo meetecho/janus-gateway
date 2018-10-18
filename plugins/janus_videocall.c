@@ -12,7 +12,7 @@
  * WebRTC peers to call each other through the Janus core. The idea is to
  * provide a similar service as the well known AppRTC demo (https://apprtc.appspot.com),
  * but with the media flowing through a server rather than being peer-to-peer.
- * 
+ *
  * The plugin provides a simple fake registration mechanism. A peer attaching
  * to the plugin needs to specify a username, which acts as a "phone number":
  * if the username is free, it is associated with the peer, which means
@@ -21,17 +21,17 @@
  * The approach used by this plugin is similar to the one employed by the
  * echo test one: all frames (RTP/RTCP) coming from one peer are relayed
  * to the other.
- * 
+ *
  * Just as in the janus_videocall.c plugin, there are knobs to control
  * whether audio and/or video should be muted or not, and if the bitrate
  * of the peer needs to be capped by means of REMB messages.
- * 
+ *
  * \section vcallapi Video Call API
- * 
+ *
  * All requests you can send in the Video Call API are asynchronous,
  * which means all responses (successes and errors) will be delivered
- * as events with the same transaction. 
- * 
+ * as events with the same transaction.
+ *
  * The supported requests are \c list , \c register , \c call ,
  * \c accept , \c set and \c hangup . \c list allows you to get a list
  * of all the registered peers; \c register can be used to register
@@ -42,9 +42,9 @@
  * the send bandwidth); finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup an ongoing call or to
  * cancel/decline a call that hasn't started yet.
- * 
+ *
  * The \c list request has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"request" : "list"
@@ -52,7 +52,7 @@
 \endverbatim
  *
  * A successful request will result in an array of peers to be returned:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -65,11 +65,11 @@
 	}
 }
 \endverbatim
- * 
+ *
  * An error instead (and the same applies to all other requests, so this
  * won't be repeated) would provide both an error code and a more verbose
  * description of the cause of the issue:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -77,23 +77,23 @@
 	"error" : "<error description as a string>"
 }
 \endverbatim
- * 
+ *
  * To register a username to call and be called, the \c register request
  * can be used. This works on a "first come, first served" basis: there's
  * no authentication involved, you just specify the username you'd like
  * to use and, if free, it's assigned to you. Notice that there's no
  * way to unregister: you have to close the handle to free the username.
  * The \c register request has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"request" : "register",
 	"username" : "<desired unique username>"
 }
 \endverbatim
- * 
+ *
  * If successul, this will result in a \c registered event:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -103,22 +103,22 @@
 	}
 }
 \endverbatim
- * 
+ *
  * Once you're registered, you can either start a new call or wait to
  * be called by someone else who knows your username. To start a new
  * call, the \c call request can be used: this request must be attached
  * to a JSEP offer containing the WebRTC-related info to setup a new
  * media session. A \c call request has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"request" : "call",
 	"username" : "<username to call>"
 }
 \endverbatim
- * 
+ *
  * If successul, this will result in a \c calling event:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -131,7 +131,7 @@
  *
  * At the same time, the user being called will receive an
  * \c incomingcall event
- *  
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -141,21 +141,21 @@
 	}
 }
 \endverbatim
- * 
+ *
  * To accept the call, the \c accept request can be used. This request
  * must be attached to a JSEP answer containing the WebRTC-related
  * information to complete the actual PeerConnection setup. A \c accept
  * request has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"request" : "accept"
 }
 \endverbatim
- * 
+ *
  * If successul, both the caller and the callee will receive an
  * \c accepted event to notify them about the success of the signalling:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -197,9 +197,9 @@
  * call. Finally, in case the call uses simulcasting, \c substream and
  * \c temporal can be used to manually pick which substream and/or temporal
  * layer should be received from the peer.
- * 
+ *
  * A successful request will result in a \c set event:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -228,7 +228,7 @@
  * To decline an incoming call, cancel an attempt to call or simply
  * hangup an ongoing conversation, the \c hangup request can be used,
  * which has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"request" : "hangup"
@@ -238,7 +238,7 @@
  * Whatever the reason of a call being closed (e.g., a \c hangup request,
  * a PeerConnection being closed, or something else), both parties in
  * the communication will receive a \c hangup event:
- * 
+ *
 \verbatim
 {
 	"videocall" : "event",
@@ -309,7 +309,7 @@ static janus_plugin janus_videocall_plugin =
 		.get_name = janus_videocall_get_name,
 		.get_author = janus_videocall_get_author,
 		.get_package = janus_videocall_get_package,
-		
+
 		.create_session = janus_videocall_create_session,
 		.handle_message = janus_videocall_handle_message,
 		.setup_media = janus_videocall_setup_media,
@@ -472,7 +472,7 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_config_destroy(config);
 	config = NULL;
-	
+
 	sessions = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videocall_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videocall_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
@@ -505,10 +505,10 @@ void janus_videocall_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOCALL_NAME);
@@ -547,7 +547,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_videocall_session *session = g_malloc0(sizeof(janus_videocall_session));
 	session->handle = handle;
 	session->has_audio = FALSE;
@@ -576,7 +576,7 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle; 
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No VideoCall session associated with this handle...\n");
 		*error = -2;
@@ -598,7 +598,7 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
-	}	
+	}
 	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -674,7 +674,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_VIDEOCALL_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -690,7 +690,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
-		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -791,7 +791,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
-		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -819,7 +819,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
-		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -849,7 +849,7 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -910,7 +910,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_VIDEOCALL_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1645,7 +1645,7 @@ static void *janus_videocall_handler(void *data) {
 		json_decref(event);
 		janus_videocall_message_free(msg);
 		continue;
-		
+
 error:
 		{
 			/* Prepare JSON error event */

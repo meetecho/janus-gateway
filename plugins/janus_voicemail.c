@@ -14,29 +14,29 @@
  * When a peer contacts the plugin, the plugin starts recording the audio
  * frames it receives and, after 10 seconds, it shuts the PeerConnection
  * down and returns an URL to the recorded file.
- * 
+ *
  * Since an URL is returned, the plugin allows you to configure where the
  * recordings whould be stored (e.g., a folder in your web server, writable
  * by the plugin) and the base path to use when returning URLs (e.g.,
  * /my/recordings/ or http://www.example.com/my/recordings).
- * 
+ *
  * By default the plugin saves the recordings in the \c html folder of
  * this project, meaning that it can work out of the box with the VoiceMail
  * demo we provide in the same folder.
  *
  * \section vmailapi VoiceMail API
- * 
- * The VoiceMail API supports just two requests, \c record and \c stop 
+ *
+ * The VoiceMail API supports just two requests, \c record and \c stop
  * and they're both asynchronous, which means all responses (successes
- * and errors) will be delivered as events with the same transaction. 
- * 
+ * and errors) will be delivered as events with the same transaction.
+ *
  * \c record will instruct the plugin to start recording, while \c stop
  * will make the recording stop before the 10 seconds have passed.
  * Never send a JSEP offer with any of these requests: it's always the
  * VoiceMail plugin that originates a JSEP offer, in response to a
  * \c record request, which means your application will only have to
  * send a JSEP answer when that happens.
- * 
+ *
  * The \c record request has to be formatted as follows:
  *
 \verbatim
@@ -46,27 +46,27 @@
 \endverbatim
  *
  * A successful request will result in an \c starting status event:
- * 
+ *
 \verbatim
 {
 	"voicemail" : "event",
 	"status": "starting"
 }
 \endverbatim
- * 
+ *
  * which will be followed by a \c started as soon as the associated
- * PeerConnection has been made available to the plugin: 
- * 
+ * PeerConnection has been made available to the plugin:
+ *
 \verbatim
 {
 	"voicemail" : "event",
 	"status": "started"
 }
 \endverbatim
- * 
+ *
  * An error instead would provide both an error code and a more verbose
  * description of the cause of the issue:
- * 
+ *
 \verbatim
 {
 	"voicemail" : "event",
@@ -74,7 +74,7 @@
 	"error" : "<error description as a string>"
 }
 \endverbatim
- * 
+ *
  * The \c stop request instead has to be formatted as follows:
  *
 \verbatim
@@ -88,7 +88,7 @@
  * \c done status notification is triggered to inform the application
  * the recording session is over, together with the path to the
  * recording file itself:
- * 
+ *
 \verbatim
 {
 	"voicemail" : "event",
@@ -155,7 +155,7 @@ static janus_plugin janus_voicemail_plugin =
 		.get_name = janus_voicemail_get_name,
 		.get_author = janus_voicemail_get_author,
 		.get_package = janus_voicemail_get_package,
-		
+
 		.create_session = janus_voicemail_create_session,
 		.handle_message = janus_voicemail_handle_message,
 		.setup_media = janus_voicemail_setup_media,
@@ -306,7 +306,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
 		janus_config_print(config);
-	
+
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_voicemail_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_voicemail_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
@@ -346,7 +346,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 			return -1;	/* No point going on... */
 		}
 	}
-	
+
 	g_atomic_int_set(&initialized, 1);
 
 	/* Launch the thread that will handle incoming messages */
@@ -374,10 +374,10 @@ void janus_voicemail_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
@@ -424,7 +424,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_voicemail_session *session = g_malloc0(sizeof(janus_voicemail_session));
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
@@ -453,7 +453,7 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
@@ -474,7 +474,7 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_voicemail_session *session = janus_voicemail_lookup_session(handle);
 	if(!session) {
@@ -557,7 +557,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
+	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || session->stopping || !session->started || session->start_time == 0)
 		return;
 	gint64 now = janus_get_monotonic_time();
@@ -808,7 +808,7 @@ static void *janus_voicemail_handler(void *data) {
 			/* Did the peer negotiate video? */
 			if(strstr(msg_sdp, "m=video") != NULL) {
 				/* If so, reject it */
-				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
+				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);
 			}
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			/* How long will the Janus core take to push the event? */
@@ -829,7 +829,7 @@ static void *janus_voicemail_handler(void *data) {
 		}
 
 		continue;
-		
+
 error:
 		{
 			/* Prepare JSON error event */
