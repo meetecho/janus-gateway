@@ -1098,7 +1098,6 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto plugin_response;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(root != NULL)
 			json_decref(root);
 		if(jsep != NULL)
