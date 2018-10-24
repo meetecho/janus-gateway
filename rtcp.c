@@ -531,7 +531,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 		rtp_expected = rtp_expected << 16;
 	}
 	rtp_expected = rtp_expected + 1 + ctx->max_seq_nr - ctx->base_seq;
-	if(count_lost && rtp_expected > ctx->received)
+	if(count_lost && rtp_expected >= ctx->received)
 		ctx->lost = rtp_expected - ctx->received;
 	ctx->expected = rtp_expected;
 

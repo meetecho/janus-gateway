@@ -2286,10 +2286,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						janus_mutex_unlock(&stream->mutex);
 					}
 				}
-				if(video && stream->rtx_nacked[vindex] != NULL) {
+				if(video) {
 					/* Check if this packet is a duplicate: can happen with RFC4588 */
 					guint16 seqno = ntohs(header->seq_number);
-					int nstate = GPOINTER_TO_INT(g_hash_table_lookup(stream->rtx_nacked[vindex], GUINT_TO_POINTER(seqno)));
+					int nstate = stream->rtx_nacked[vindex] ?
+						GPOINTER_TO_INT(g_hash_table_lookup(stream->rtx_nacked[vindex], GUINT_TO_POINTER(seqno))) : 0;
 					if(nstate == 1) {
 						/* Packet was NACKed and this is the first time we receive it: change state to received */
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Received NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
@@ -2298,6 +2299,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else if(nstate == 2) {
 						/* We already received this packet: drop it */
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Detected duplicate packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+							handle->handle_id, seqno, packet_ssrc, vindex);
+						return;
+					} else if(rtx && nstate == 0) {
+						/* We received a retransmission for a packet we didn't NACK: drop it
+						 * FIXME This seems to happen with Chrome when RFC4588 is enabled: in that case,
+						 * Chrome sends the first packet ~8 times as a retransmission, probably to ensure
+						 * we receive it, since the first packet cannot be NACKed (NACKs are triggered
+						 * when there's a gap in between two packets, and the first doesn't have a reference)
+						 * Rather than dropping, we should add a better check in the future */
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got a retransmission for non-NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 							handle->handle_id, seqno, packet_ssrc, vindex);
 						return;
 					}
