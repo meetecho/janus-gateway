@@ -2399,7 +2399,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Update the RTCP context as well */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
+				gboolean count_lost = ((!video && !component->do_audio_nacks) || (video && !component->do_video_nacks)) ? TRUE : FALSE;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen, count_lost);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
@@ -2466,6 +2467,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(cur_seq->state == SEQ_MISSING && now - cur_seq->ts > SEQ_MISSING_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
+							rtcp_ctx->lost++;
 							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_NACKED;
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
