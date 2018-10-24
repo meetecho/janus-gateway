@@ -378,7 +378,7 @@ struct janus_ice_stream {
 	/*! \brief  Wether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
-	guint transport_wide_cc_ext_id;
+	gint transport_wide_cc_ext_id;
 	/*! \brief Last received transport wide seq num */
 	guint32 transport_wide_cc_last_seq_num;
 	/*! \brief Last transport wide seq num sent on feedback */

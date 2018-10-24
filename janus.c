@@ -1227,7 +1227,7 @@ int janus_process_incoming_request(janus_request *request) {
 				} else {
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-					handle->stream->do_transport_wide_cc = TRUE;
+					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
 					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 				}
 			} else {
@@ -2333,6 +2333,11 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 			json_object_set_new(sc, "video-codec", json_string(stream->video_codec));
 		json_object_set_new(s, "codecs", sc);
 	}
+	json_t *bwe = json_object();
+	json_object_set_new(bwe, "twcc", stream->do_transport_wide_cc ? json_true() : json_false());
+	if(stream->transport_wide_cc_ext_id >= 0)
+		json_object_set_new(bwe, "twcc-ext-id", json_integer(stream->transport_wide_cc_ext_id));
+	json_object_set_new(s, "bwe", bwe);
 	json_t *components = json_array();
 	if(stream->component) {
 		json_t *c = janus_admin_component_summary(stream->component);
@@ -2921,12 +2926,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error stream not found\n", ice_handle->handle_id);
 		janus_mutex_unlock(&ice_handle->mutex);
 		return NULL;
-	}
-	if (!offer) {
-		/* Check if transport wide CC is supported */
-		int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-		stream->do_transport_wide_cc = TRUE;
-		stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 	}
 	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) &&
 			stream->rtx_payload_types == NULL) {
