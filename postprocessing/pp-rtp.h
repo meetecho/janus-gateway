@@ -22,6 +22,8 @@
 #include <endian.h>
 #endif
 
+#include <glib.h>
+
 typedef struct janus_pp_rtp_header
 {
 #if __BYTE_ORDER == __BIG_ENDIAN

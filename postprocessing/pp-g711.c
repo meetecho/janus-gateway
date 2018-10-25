@@ -118,7 +118,7 @@ int16_t janus_pp_g711_alaw_table[256] =
 
 
 /* Processing methods */
-int janus_pp_g711_create(char *destination) {
+int janus_pp_g711_create(char *destination, char *metadata) {
 	/* Create wav file */
 	wav_file = fopen(destination, "wb");
 	if(wav_file == NULL) {
@@ -142,6 +142,8 @@ int janus_pp_g711_create(char *destination) {
 		{'d', 'a', 't', 'a'},
 		0
 	};
+	/* Note: .wav files don't seem to support arbitrary comments
+	 * so there's nothing we can do with the provided metadata*/
 	if(fwrite(&header, 1, sizeof(header), wav_file) != sizeof(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write WAV header, expect problems...\n");
 	}
