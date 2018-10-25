@@ -940,8 +940,14 @@ void janus_http_destroy(void) {
 	g_free(allow_origin);
 	allow_origin = NULL;
 
+	janus_mutex_lock(&messages_mutex);
 	g_hash_table_destroy(messages);
+	messages = NULL;
+	janus_mutex_unlock(&messages_mutex);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
+	janus_mutex_unlock(&sessions_mutex);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);

@@ -66,7 +66,7 @@ static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
 
-int janus_pp_webm_create(char *destination, int vp8) {
+int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if(destination == NULL)
 		return -1;
 #if LIBAVCODEC_VERSION_MAJOR < 55
@@ -90,7 +90,9 @@ int janus_pp_webm_create(char *destination, int vp8) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
 	}
-	//~ fctx->oformat = guess_format("webm", NULL, NULL);
+	/* We save the metadata part as a comment (see #1189) */
+	if(metadata)
+		av_dict_set(&fctx->metadata, "comment", metadata, 0);
 	fctx->oformat = av_guess_format("webm", NULL, NULL);
 	if(fctx->oformat == NULL) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
@@ -169,7 +171,7 @@ int janus_pp_webm_create(char *destination, int vp8) {
 	return 0;
 }
 
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -364,7 +366,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 	return 0;
 }
 
-int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int *working) {
+int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;

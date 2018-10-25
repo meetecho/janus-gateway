@@ -227,19 +227,19 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_vp8_is_keyframe(char *buffer, int len);
+gboolean janus_vp8_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if a VP9 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_vp9_is_keyframe(char *buffer, int len);
+gboolean janus_vp9_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an H.264 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_h264_is_keyframe(char *buffer, int len);
+gboolean janus_h264_is_keyframe(const char *buffer, int len);
 
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {

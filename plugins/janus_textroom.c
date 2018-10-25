@@ -54,7 +54,7 @@
  *
  * To add more static rooms or modify the existing one, you can use the following
  * syntax:
- * 
+ *
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
@@ -79,7 +79,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
  * To get a list of the available rooms (excluded those configured or
  * created as private rooms) you can make use of the \c list request,
  * which has to be formatted as follows:
- * 
+ *
 \verbatim
 {
 	"textroom" : "list",
@@ -122,7 +122,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 \endverbatim
  *
  * A successful creation procedure will result in a \c success response:
- * 
+ *
 \verbatim
 {
 	"textroom" : "success",
@@ -137,7 +137,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
  * An error instead (and the same applies to all other requests, so this
  * won't be repeated) would provide both an error code and a more verbose
  * description of the cause of the issue:
- * 
+ *
 \verbatim
 {
 	"textroom" : "event",
@@ -746,7 +746,7 @@ static size_t janus_textroom_write_data(void *buffer, size_t size, size_t nmemb,
 }
 #endif
 
-/* We use this method to handle incoming requests. Since most of the requests 
+/* We use this method to handle incoming requests. Since most of the requests
  * will arrive from data channels, but some may also arrive from the regular
  * plugin messaging (e.g., room management), we have the ability to pass
  * parsed JSON objects instead of strings, which explains why we specify a
@@ -910,13 +910,14 @@ void janus_textroom_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	janus_mutex_lock(&rooms_mutex);
 	g_hash_table_destroy(rooms);
+	rooms = NULL;
 	janus_mutex_unlock(&rooms_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 
 #ifdef HAVE_LIBCURL
 	curl_global_cleanup();
@@ -1097,7 +1098,6 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto plugin_response;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(root != NULL)
 			json_decref(root);
 		if(jsep != NULL)

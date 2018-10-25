@@ -60,7 +60,7 @@ static FILE *wav_file = NULL;
 
 
 /* Processing methods */
-int janus_pp_g722_create(char *destination) {
+int janus_pp_g722_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -118,6 +118,8 @@ int janus_pp_g722_create(char *destination) {
 		{'d', 'a', 't', 'a'},
 		0
 	};
+	/* Note: .wav files don't seem to support arbitrary comments
+	 * so there's nothing we can do with the provided metadata*/
 	if(fwrite(&header, 1, sizeof(header), wav_file) != sizeof(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write WAV header, expect problems...\n");
 	}
