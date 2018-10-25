@@ -8,11 +8,11 @@
  * rfc5766-turn-server and coturn, and so should be generic enough to
  * be usable here.
  * \note This implementation depends on \c libcurl and is optional.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifdef HAVE_LIBCURL
 
 #include <netdb.h>
@@ -38,7 +38,7 @@ typedef struct janus_turnrest_buffer {
 	char *buffer;
 	size_t size;
 } janus_turnrest_buffer;
- 
+
 /* Callback we use to progressively receive the whole response via libcurl in the buffer */
 static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data) {
 	size_t realsize = size * nmemb;
@@ -70,7 +70,7 @@ void janus_turnrest_deinit(void) {
 
 void janus_turnrest_set_backend(const char *server, const char *key, const char *method) {
 	janus_mutex_lock(&api_mutex);
-	
+
 	/* Get rid of the old values first */
 	g_free((char *)api_server);
 	api_server = NULL;
@@ -126,8 +126,14 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	char query_string[512];
 	g_snprintf(query_string, 512, "service=turn");
 	if(api_key != NULL) {
+		/* Note: we've been using 'api' as a query string parameter for
+		 * a while, but the expired draft this implementation follows
+		 * suggested 'key' instead: as such, we send them both
+		 * See https://github.com/meetecho/janus-gateway/issues/1416*/
 		char buffer[256];
 		g_snprintf(buffer, 256, "&api=%s", api_key);
+		g_strlcat(query_string, buffer, 512);
+		g_snprintf(buffer, 256, "&key=%s", api_key);
 		g_strlcat(query_string, buffer, 512);
 	}
 	char request_uri[1024];
@@ -267,7 +273,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	if(response->servers == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any valid TURN URI in the response...\n");
 		janus_turnrest_response_destroy(response);
-		return NULL; 
+		return NULL;
 	}
 	/* Done */
 	return response;
