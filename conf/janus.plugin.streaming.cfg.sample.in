@@ -78,7 +78,7 @@
 ; script in the plugins/streams folder. To test the live and on-demand
 ; audio file streams, instead, the install.sh installation script
 ; automatically downloads a couple of files (radio.alaw, music.mulaw)
-; to the plugins/streams folder. 
+; to the plugins/streams folder.
 
 [general]
 ;admin_key = supersecret		; If set, mountpoints can be created via API
@@ -119,10 +119,13 @@ video = no
 secret = adminpwd
 
 ;
-; Firefox Nightly supports H.264 through Cisco's OpenH264 plugin. The only
-; supported profile is the baseline one. This is an example of how to create
-; a H.264 mountpoint: you can feed it an x264enc+rtph264pay pipeline in
-; gstreamer.
+; All browsers also support H.264, often through Cisco's OpenH264 plugin.
+; The only profile that is definitely supported is the baseline one, which
+; means that if you try a higher one it might or might not work. No matter
+; which profile you encode, though, you can put a custom one in the SDP if
+; you override the fmtp SDP attribute via 'videofmtp'. The following is an
+; example of how to create a simple H.264 mountpoint: you can feed it via
+; an x264enc+rtph264pay pipeline in gstreamer, an ffmpeg script or other.
 ;
 ;[h264-sample]
 ;type = rtp
@@ -141,7 +144,7 @@ secret = adminpwd
 ;[gstreamer-multicast]
 ;type = rtp
 ;id = 20
-;description = Opus/VP8 live multicast stream coming from gstreamer 
+;description = Opus/VP8 live multicast stream coming from gstreamer
 ;audio = yes
 ;video = yes
 ;audioport = 5002
