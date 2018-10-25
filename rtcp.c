@@ -502,7 +502,7 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 }
 
 
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len) {
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean count_lost) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
@@ -516,7 +516,6 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
 		ctx->base_seq = seq_number;
 
-	ctx->received++;
 	if((int16_t)(seq_number - ctx->max_seq_nr) < 0) {
 		/* Late packet or retransmission */
 		ctx->retransmitted++;
@@ -524,6 +523,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 		if(seq_number < ctx->max_seq_nr)
 			ctx->seq_cycle++;
 		ctx->max_seq_nr = seq_number;
+		ctx->received++;
 	}
 	uint32_t rtp_expected = 0x0;
 	if(ctx->seq_cycle > 0) {
@@ -531,7 +531,8 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 		rtp_expected = rtp_expected << 16;
 	}
 	rtp_expected = rtp_expected + 1 + ctx->max_seq_nr - ctx->base_seq;
-	ctx->lost = rtp_expected - ctx->received;
+	if(count_lost && rtp_expected >= ctx->received)
+		ctx->lost = rtp_expected - ctx->received;
 	ctx->expected = rtp_expected;
 
 	uint64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;

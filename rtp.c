@@ -842,7 +842,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		uint8_t keyidx = 0;
 		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-			if(context->templayer != context->templayer_target) {
+			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
 				/* FIXME We should be smarter in deciding when to switch */
 				context->templayer = context->templayer_target;
 				/* Notify the caller that the temporal layer changed */

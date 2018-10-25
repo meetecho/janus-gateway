@@ -354,7 +354,7 @@ struct janus_ice_stream {
 	/*! \brief Codecs used by this stream */
 	char *audio_codec, *video_codec;
 	/*! \brief Pointer to function to check if a packet is a keyframe (depends on negotiated codec) */
-	gboolean (* video_is_keyframe)(char* buffer, int len);
+	gboolean (* video_is_keyframe)(const char* buffer, int len);
 	/*! \brief Media direction */
 	gboolean audio_send, audio_recv, video_send, video_recv;
 	/*! \brief RTCP context for the audio stream */
@@ -378,7 +378,7 @@ struct janus_ice_stream {
 	/*! \brief  Wether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
-	guint transport_wide_cc_ext_id;
+	gint transport_wide_cc_ext_id;
 	/*! \brief Last received transport wide seq num */
 	guint32 transport_wide_cc_last_seq_num;
 	/*! \brief Last transport wide seq num sent on feedback */

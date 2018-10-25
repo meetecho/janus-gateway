@@ -30,7 +30,7 @@
  *
  * Every JavaScript script that wants to implement a Janus plugin must provide
  * the following functions as callbacks:
- * 
+ *
  * - \c init(): called when janus_duktape.c is initialized;
  * - \c destroy(): called when janus_duktape.c is deinitialized (Janus shutting down);
  * - \c createSession(): called when a new user attaches to the Janus Duktape plugin;
@@ -233,7 +233,7 @@ static janus_plugin janus_duktape_plugin =
 		.get_name = janus_duktape_get_name,
 		.get_author = janus_duktape_get_author,
 		.get_package = janus_duktape_get_package,
-		
+
 		.create_session = janus_duktape_create_session,
 		.handle_message = janus_duktape_handle_message,
 		.setup_media = janus_duktape_setup_media,
@@ -1533,11 +1533,13 @@ int janus_duktape_get_version(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_VERSION;
 		}
 		duktape_script_version = (int)duk_get_number(t, -1);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_version;
 	}
@@ -1562,6 +1564,7 @@ const char *janus_duktape_get_version_string(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_VERSION_STRING;
 		}
@@ -1569,6 +1572,7 @@ const char *janus_duktape_get_version_string(void) {
 		if(version != NULL)
 			duktape_script_version_string = g_strdup(version);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_version_string;
 	}
@@ -1593,6 +1597,7 @@ const char *janus_duktape_get_description(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_DESCRIPTION;
 		}
@@ -1600,6 +1605,7 @@ const char *janus_duktape_get_description(void) {
 		if(description != NULL)
 			duktape_script_description = g_strdup(description);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_description;
 	}
@@ -1624,6 +1630,7 @@ const char *janus_duktape_get_name(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_NAME;
 		}
@@ -1631,6 +1638,7 @@ const char *janus_duktape_get_name(void) {
 		if(name != NULL)
 			duktape_script_name = g_strdup(name);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_name;
 	}
@@ -1655,6 +1663,7 @@ const char *janus_duktape_get_author(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_AUTHOR;
 		}
@@ -1662,6 +1671,7 @@ const char *janus_duktape_get_author(void) {
 		if(author != NULL)
 			duktape_script_author = g_strdup(author);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_author;
 	}
@@ -1686,6 +1696,7 @@ const char *janus_duktape_get_package(void) {
 			/* Something went wrong... return the Janus Duktape plugin info */
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 			duk_pop(t);
+			duk_pop(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
 			return JANUS_DUKTAPE_PACKAGE;
 		}
@@ -1693,6 +1704,7 @@ const char *janus_duktape_get_package(void) {
 		if(package != NULL)
 			duktape_script_package = g_strdup(package);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return duktape_script_package;
 	}
@@ -1712,7 +1724,7 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&duktape_sessions_mutex);
 	uint32_t id = 0;
 	while(id == 0) {
@@ -1747,6 +1759,7 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 	}
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 
 	return;
@@ -1756,7 +1769,7 @@ void janus_duktape_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&duktape_sessions_mutex);
 	janus_duktape_session *session = janus_duktape_lookup_session(handle);
 	if(!session) {
@@ -1782,6 +1795,7 @@ void janus_duktape_destroy_session(janus_plugin_session *handle, int *error) {
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 	}
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 
 	/* Get any rid references recipients of this sessions may have */
@@ -1809,7 +1823,7 @@ void janus_duktape_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_duktape_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&duktape_sessions_mutex);
 	janus_duktape_session *session = janus_duktape_lookup_session(handle);
 	if(!session) {
@@ -1832,12 +1846,14 @@ json_t *janus_duktape_query_session(janus_plugin_session *handle) {
 		json_t *json = json_object();
 		json_object_set_new(json, "error", json_string(duk_safe_to_string(t, -1)));
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_refcount_decrease(&session->ref);
 		return json;
 	}
 	janus_refcount_decrease(&session->ref);
 	const char *info = duk_get_string(t, -1);
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	/* We need a Jansson object */
 	json_error_t error;
 	json_t *json = json_loads(info, 0, &error);
@@ -1888,10 +1904,10 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Duktape error", NULL);
 	}
-	//~ duk_pop(duktape_ctx);
 	janus_refcount_decrease(&session->ref);
 	if(message_text != NULL)
 		free(message_text);
@@ -1903,6 +1919,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 		/* Either an error or an asynchronous response */
 		int res = (int)duk_get_number(t, 0);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		if(res < 0) {
 			/* We got an error */
@@ -1916,6 +1933,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 		json_error_t error;
 		json_t *json = json_loads(response, 0, &error);
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		if(!json) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
@@ -1924,6 +1942,9 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 		return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, json);
 	}
 	/* If we got here, we didn't get what we expect */
+	duk_pop(t);
+	duk_pop(duktape_ctx);
+	janus_mutex_unlock(&duktape_mutex);
 	return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Duktape error", NULL);
 }
 
@@ -1960,6 +1981,7 @@ void janus_duktape_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 	}
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 	janus_refcount_decrease(&session->ref);
 }
@@ -1967,7 +1989,7 @@ void janus_duktape_setup_media(janus_plugin_session *handle) {
 void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
-	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;	
+	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1991,6 +2013,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *b
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 		}
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return;
 	}
@@ -2054,6 +2077,7 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 		}
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return;
 	}
@@ -2111,6 +2135,7 @@ void janus_duktape_incoming_data(janus_plugin_session *handle, char *buf, int le
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 		}
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 		return;
 	}
@@ -2163,6 +2188,7 @@ void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video
 			JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 		}
 		duk_pop(t);
+		duk_pop(duktape_ctx);
 		janus_mutex_unlock(&duktape_mutex);
 	}
 	janus_refcount_decrease(&session->ref);
@@ -2226,6 +2252,7 @@ void janus_duktape_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 	}
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 	janus_refcount_decrease(&session->ref);
 }
@@ -2241,7 +2268,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 	if(!session || !session->handle || !g_atomic_int_get(&session->started)) {
 		return;
 	}
-	
+
 	/* Check if this recipient is willing/allowed to receive this medium */
 	if((packet->is_video && !session->accept_video) || (!packet->is_video && !session->accept_audio)) {
 		/* Nope, don't relay */
@@ -2334,6 +2361,7 @@ static gboolean janus_duktape_timer_cb(void *data) {
 		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
 	}
 	duk_pop(t);
+	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 	/* Done */
 	g_source_destroy(cb->source);

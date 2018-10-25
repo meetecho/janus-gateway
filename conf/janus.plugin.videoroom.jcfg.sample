@@ -51,6 +51,7 @@ room-1234: {
 	fir_freq = 10
 	#audiocodec = "opus"
 	#videocodec = "vp8"
+	#transport_wide_cc_ext = true
 	record = false
 	#rec_dir = "/path/to/recordings-folder"
 }
@@ -68,4 +69,5 @@ room-5678: {
 	fir_freq = 10
 	videocodec = "vp9"
 	video_svc = true
+	#transport_wide_cc_ext = true
 }
