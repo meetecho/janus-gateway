@@ -77,7 +77,7 @@
 # To test the 'gstreamer-sample' example, check the test_gstreamer.sh
 # script in the plugins/streams folder. The live and on-demand  audio
 # file streams, use a couple of files (radio.alaw, music.mulaw) that are
-# provided in the plugins/streams folder. 
+# provided in the plugins/streams folder.
 #}
 
 general: {
@@ -123,10 +123,13 @@ file-ondemand-sample: {
 }
 
 #
-# Firefox Nightly supports H.264 through Cisco's OpenH264 plugin. The only
-# supported profile is the baseline one. This is an example of how to create
-# a H.264 mountpoint: one way to feed it is via an x264enc+rtph264pay
-# pipeline in gstreamer.
+# All browsers also support H.264, often through Cisco's OpenH264 plugin.
+# The only profile that is definitely supported is the baseline one, which
+# means that if you try a higher one it might or might not work. No matter
+# which profile you encode, though, you can put a custom one in the SDP if
+# you override the fmtp SDP attribute via 'videofmtp'. The following is an
+# example of how to create a simple H.264 mountpoint: you can feed it via
+# an x264enc+rtph264pay pipeline in gstreamer, an ffmpeg script or other.
 #
 #h264-sample: {
 	#type = "rtp"
@@ -138,6 +141,25 @@ file-ondemand-sample: {
 	#videopt = 126
 	#videortpmap = "H264/90000"
 	#videofmtp = "profile-level-id=42e01f;packetization-mode=1"
+#}
+
+#
+# The Streaming plugin also supports the broadcasting of datachannel
+# messages, either by themselves or along other audio/video streams (e.g.,
+# to add a subtitle to a stream you're sending). The following is an
+# example of how you can create a datachannel-only mountpoint: you can
+# feed it with any tool that can send UDP datagrams, e.g., netcat.
+# Notice that the 'rtp' type just indicates this is a live mountpoint:
+# datachannel messages will be sent as usual, and not use RTP at all.
+#
+#data-example: {
+	#type = rtp
+	#id = 15
+	#description = Datachannel stream from an UDP source
+	#audio = false
+	#video = false
+	#data = true
+	#dataport = 5008
 #}
 
 #
