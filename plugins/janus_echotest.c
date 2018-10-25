@@ -15,7 +15,7 @@
  * to make sure they are coherent with the involved SSRCs. In order to
  * demonstrate how peer-provided messages can change the behaviour of a
  * plugin, this plugin implements a simple API based on three messages:
- * 
+ *
  * 1. a message to enable/disable audio (that is, to tell the plugin
  * whether incoming audio RTP packets need to be sent back or discarded);
  * 2. a message to enable/disable video (that is, to tell the plugin
@@ -23,13 +23,13 @@
  * 3. a message to cap the bitrate (which would modify incoming RTCP
  * REMB messages before sending them back, in order to trick the peer into
  * thinking the available bandwidth is different).
- * 
+ *
  * \section echoapi Echo Test API
- * 
+ *
  * There's a single unnamed request you can send and it's asynchronous,
  * which means all responses (successes and errors) will be delivered
- * as events with the same transaction. 
- * 
+ * as events with the same transaction.
+ *
  * The request has to be formatted as follows. All the attributes are
  * optional, so any request can contain a subset of them:
  *
@@ -63,7 +63,7 @@
  * are automatically appended); finally, in case the session uses
  * simulcasting, \c substream and \c temporal can be used to manually
  * pick which substream and/or temporal layer should be received back.
- * 
+ *
  * A JSEP offer can be sent along any request to negotiate a PeerConnection:
  * in that case, a JSEP answer will be provided with the asynchronous
  * response notification. Other requests (e.g., to dynamically manipulate
@@ -71,19 +71,19 @@
  * attached, unless you want to renegotiate a session (e.g., to add/remove
  * a media stream, or force an ICE restart): in case of renegotiations,
  * the same rules as the first JSEP offer apply.
- * 
+ *
  * A successful request will result in an \c ok event:
- * 
+ *
 \verbatim
 {
 	"echotest" : "event",
 	"result": "ok"
 }
 \endverbatim
- * 
+ *
  * An error instead will provide both an error code and a more verbose
  * description of the cause of the issue:
- * 
+ *
 \verbatim
 {
 	"echotest" : "event",
@@ -95,7 +95,7 @@
  * If the plugin detects a loss of the associated PeerConnection, a
  * "done" notification is triggered to inform the application the Echo
  * Test session is over:
- * 
+ *
 \verbatim
 {
 	"echotest" : "event",
@@ -162,7 +162,7 @@ static janus_plugin janus_echotest_plugin =
 		.get_name = janus_echotest_get_name,
 		.get_author = janus_echotest_get_author,
 		.get_package = janus_echotest_get_package,
-		
+
 		.create_session = janus_echotest_create_session,
 		.handle_message = janus_echotest_handle_message,
 		.setup_media = janus_echotest_setup_media,
@@ -297,7 +297,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_config_destroy(config);
 	config = NULL;
-	
+
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_echotest_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_echotest_message_free);
 	/* This is the callback we'll need to invoke to contact the server */
@@ -330,10 +330,10 @@ void janus_echotest_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -381,7 +381,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_echotest_session *session = g_malloc0(sizeof(janus_echotest_session));
 	session->handle = handle;
 	session->has_audio = FALSE;
@@ -411,7 +411,7 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_echotest_session *session = janus_echotest_lookup_session(handle);
 	if(!session) {
@@ -430,7 +430,7 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_echotest_session *session = janus_echotest_lookup_session(handle);
 	if(!session) {
@@ -522,7 +522,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 	/* Simple echo test */
 	if(gateway) {
 		/* Honour the audio/video active flags */
-		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
+		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -612,7 +612,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		return;
 	/* Simple echo test */
 	if(gateway) {
-		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
+		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -646,7 +646,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		return;
 	/* Simple echo test */
 	if(gateway) {
-		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
+		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -1218,7 +1218,7 @@ static void *janus_echotest_handler(void *data) {
 
 		/* Done, on to the next request */
 		continue;
-		
+
 error:
 		{
 			/* Prepare JSON error event */

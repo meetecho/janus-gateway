@@ -1837,13 +1837,14 @@ void janus_streaming_destroy(void) {
 	/* Remove all mountpoints */
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_destroy(mountpoints);
+	mountpoints = NULL;
 	janus_mutex_unlock(&mountpoints_mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 
 	janus_config_destroy(config);
 	g_free(admin_key);
@@ -5520,7 +5521,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		janus_refcount_decrease(&live_rtsp->ref);	/* This is for the failed thread */
 		janus_refcount_decrease(&live_rtsp->ref);
 		return NULL;
-	}				
+	}
 	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);
 	return live_rtsp;
@@ -5794,7 +5795,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	janus_refcount_decrease(&mountpoint->ref);
 	return NULL;
 }
-		
+
 /* Thread to relay RTP frames coming from gstreamer/ffmpeg/others */
 static void *janus_streaming_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting streaming relay thread\n");

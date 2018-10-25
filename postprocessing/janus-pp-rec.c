@@ -61,7 +61,6 @@
 #include <stdlib.h>
 #include <signal.h>
 
-#include <glib.h>
 #include <jansson.h>
 
 #include "../debug.h"
@@ -83,6 +82,7 @@ gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
+static char *metadata = NULL;
 static int working = 0;
 
 static int post_reset_trigger = 200;
@@ -125,6 +125,10 @@ int main(int argc, char *argv[])
 		if(val >= LOG_NONE && val <= LOG_MAX)
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
+	}
+	if(g_getenv("JANUS_PPREC_METADATA") != NULL) {
+		metadata = g_strdup(g_getenv("JANUS_PPREC_METADATA"));
+		JANUS_LOG(LOG_INFO, "Metadata: %d\n", janus_log_level);
 	}
 	if(g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
@@ -204,8 +208,9 @@ int main(int argc, char *argv[])
 	if(!jsonheader_only)
 		JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean parsed_header = FALSE;
-	int video = 0, data = 0;
-	int opus = 0, g711 = 0, g722 = 0, vp8 = 0, vp9 = 0, h264 = 0;
+	gboolean video = FALSE, data = FALSE;
+	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
+		vp8 = FALSE, vp9 = FALSE, h264 = FALSE;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
@@ -214,6 +219,8 @@ int main(int argc, char *argv[])
 	uint32_t ssrc = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	char prebuffer2[1500];
+	memset(prebuffer2, 0, 1500);
 	/* Let's look for timestamp resets first */
 	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
@@ -244,26 +251,26 @@ int main(int argc, char *argv[])
 				bytes = fread(prebuffer, sizeof(char), 5, file);
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_INFO, "This is a video recording, assuming VP8\n");
-					video = 1;
-					data = 0;
-					vp8 = 1;
+					video = TRUE;
+					data = FALSE;
+					vp8 = TRUE;
 					if(extension && strcasecmp(extension, ".webm")) {
 						JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
 						exit(1);
 					}
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_INFO, "This is an audio recording, assuming Opus\n");
-					video = 0;
-					data = 0;
-					opus = 1;
+					video = FALSE;
+					data = FALSE;
+					opus = TRUE;
 					if(extension && strcasecmp(extension, ".opus")) {
 						JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
 						exit(1);
 					}
 				} else if(prebuffer[0] == 'd') {
 					JANUS_LOG(LOG_INFO, "This is a text data recording, assuming SRT\n");
-					video = 0;
-					data = 1;
+					video = FALSE;
+					data = TRUE;
 					if(extension && strcasecmp(extension, ".srt")) {
 						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
 						exit(1);
@@ -314,14 +321,14 @@ int main(int argc, char *argv[])
 				}
 				const char *t = json_string_value(type);
 				if(!strcasecmp(t, "v")) {
-					video = 1;
-					data = 0;
+					video = TRUE;
+					data = FALSE;
 				} else if(!strcasecmp(t, "a")) {
-					video = 0;
-					data = 0;
+					video = FALSE;
+					data = FALSE;
 				} else if(!strcasecmp(t, "d")) {
-					video = 0;
-					data = 1;
+					video = FALSE;
+					data = TRUE;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
 					exit(1);
@@ -335,19 +342,19 @@ int main(int argc, char *argv[])
 				const char *c = json_string_value(codec);
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
-						vp8 = 1;
+						vp8 = TRUE;
 						if(extension && strcasecmp(extension, ".webm")) {
 							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "vp9")) {
-						vp9 = 1;
+						vp9 = TRUE;
 						if(extension && strcasecmp(extension, ".webm")) {
 							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h264")) {
-						h264 = 1;
+						h264 = TRUE;
 						if(extension && strcasecmp(extension, ".mp4")) {
 							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
 							exit(1);
@@ -358,19 +365,19 @@ int main(int argc, char *argv[])
 					}
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
-						opus = 1;
+						opus = TRUE;
 						if(extension && strcasecmp(extension, ".opus")) {
 							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
-						g711 = 1;
+						g711 = TRUE;
 						if(extension && strcasecmp(extension, ".wav")) {
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g722")) {
-						g722 = 1;
+						g722 = TRUE;
 						if(extension && strcasecmp(extension, ".wav")) {
 							JANUS_LOG(LOG_ERR, "G.722 RTP packets can only be converted to a .wav file\n");
 							exit(1);
@@ -408,6 +415,10 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
+				/* Save the original string as a metadata to save in the media container, if possible */
+				if(metadata == NULL)
+					metadata = g_strdup(prebuffer);
+				json_decref(info);
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
@@ -511,7 +522,7 @@ int main(int argc, char *argv[])
 		rotation = -1;
 		if(rtp->extension) {
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
-			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
+			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
 			if(audio_level_extmap_id > 0)
@@ -582,8 +593,8 @@ int main(int argc, char *argv[])
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
-			bytes = fread(prebuffer, sizeof(char), 1, file);
-			uint8_t padlen = (uint8_t)prebuffer[0];
+			bytes = fread(prebuffer2, sizeof(char), 1, file);
+			uint8_t padlen = (uint8_t)prebuffer2[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
 			p->len -= padlen;
@@ -730,34 +741,34 @@ int main(int argc, char *argv[])
 
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_create(destination) < 0) {
+			if(janus_pp_opus_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
 				exit(1);
 			}
 		} else if(g711) {
-			if(janus_pp_g711_create(destination) < 0) {
+			if(janus_pp_g711_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
 				exit(1);
 			}
 		} else if(g722) {
-			if(janus_pp_g722_create(destination) < 0) {
+			if(janus_pp_g722_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
 				exit(1);
 			}
 		}
 	} else if(data) {
-		if(janus_pp_srt_create(destination) < 0) {
+		if(janus_pp_srt_create(destination, metadata) < 0) {
 			JANUS_LOG(LOG_ERR, "Error creating .srt file...\n");
 			exit(1);
 		}
 	} else {
 		if(vp8 || vp9) {
-			if(janus_pp_webm_create(destination, vp8) < 0) {
+			if(janus_pp_webm_create(destination, metadata, vp8) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .webm file...\n");
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination) < 0) {
+			if(janus_pp_h264_create(destination, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				exit(1);
 			}

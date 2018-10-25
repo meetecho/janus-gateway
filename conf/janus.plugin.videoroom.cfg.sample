@@ -49,6 +49,7 @@ bitrate = 128000
 fir_freq = 10
 ;audiocodec = opus
 ;videocodec = vp8
+;transport_wide_cc_ext = yes
 record = false
 ;rec_dir = /path/to/recordings-folder
 
@@ -66,3 +67,4 @@ bitrate = 512000
 fir_freq = 10
 videocodec = vp9
 video_svc = true
+;transport_wide_cc_ext = yes

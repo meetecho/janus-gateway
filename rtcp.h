@@ -360,8 +360,9 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
+ * @param[in] count_lost Whether we should try and compute a count of the lost packets
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len);
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean count_lost);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report

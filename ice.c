@@ -2286,10 +2286,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						janus_mutex_unlock(&stream->mutex);
 					}
 				}
-				if(video && stream->rtx_nacked[vindex] != NULL) {
+				if(video) {
 					/* Check if this packet is a duplicate: can happen with RFC4588 */
 					guint16 seqno = ntohs(header->seq_number);
-					int nstate = GPOINTER_TO_INT(g_hash_table_lookup(stream->rtx_nacked[vindex], GUINT_TO_POINTER(seqno)));
+					int nstate = stream->rtx_nacked[vindex] ?
+						GPOINTER_TO_INT(g_hash_table_lookup(stream->rtx_nacked[vindex], GUINT_TO_POINTER(seqno))) : 0;
 					if(nstate == 1) {
 						/* Packet was NACKed and this is the first time we receive it: change state to received */
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Received NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
@@ -2298,6 +2299,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else if(nstate == 2) {
 						/* We already received this packet: drop it */
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Detected duplicate packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+							handle->handle_id, seqno, packet_ssrc, vindex);
+						return;
+					} else if(rtx && nstate == 0) {
+						/* We received a retransmission for a packet we didn't NACK: drop it
+						 * FIXME This seems to happen with Chrome when RFC4588 is enabled: in that case,
+						 * Chrome sends the first packet ~8 times as a retransmission, probably to ensure
+						 * we receive it, since the first packet cannot be NACKed (NACKs are triggered
+						 * when there's a gap in between two packets, and the first doesn't have a reference)
+						 * Rather than dropping, we should add a better check in the future */
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got a retransmission for non-NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 							handle->handle_id, seqno, packet_ssrc, vindex);
 						return;
 					}
@@ -2399,7 +2410,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Update the RTCP context as well */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
+				gboolean count_lost = ((!video && !component->do_audio_nacks) || (video && !component->do_video_nacks)) ? TRUE : FALSE;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen, count_lost);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
@@ -2466,6 +2478,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(cur_seq->state == SEQ_MISSING && now - cur_seq->ts > SEQ_MISSING_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
+							rtcp_ctx->lost++;
 							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_NACKED;
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -3949,7 +3962,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
+					JANUS_LOG(LOG_DBG, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+						handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
 					janus_ice_free_rtp_packet(p);
 				} else {
 					/* Shoot! */

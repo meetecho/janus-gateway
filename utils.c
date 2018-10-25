@@ -496,7 +496,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	# define swap2(d) d
 #endif
 
-gboolean janus_vp8_is_keyframe(char *buffer, int len) {
+gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP8 header now */
@@ -569,7 +569,7 @@ gboolean janus_vp8_is_keyframe(char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_vp9_is_keyframe(char *buffer, int len) {
+gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse VP9 header now */
@@ -622,11 +622,11 @@ gboolean janus_vp9_is_keyframe(char *buffer, int len) {
 			uint i=0;
 			for(i=0; i<n_s; i++) {
 				/* Width */
-				uint16_t *w = (uint16_t *)buffer;
+				const uint16_t *w = (const uint16_t *)buffer;
 				int vp9w = ntohs(*w);
 				buffer += 2;
 				/* Height */
-				uint16_t *h = (uint16_t *)buffer;
+				const uint16_t *h = (const uint16_t *)buffer;
 				int vp9h = ntohs(*h);
 				buffer += 2;
 				if(vp9w || vp9h) {
@@ -640,7 +640,7 @@ gboolean janus_vp9_is_keyframe(char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean janus_h264_is_keyframe(char *buffer, int len) {
+gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 	if(!buffer || len < 0)
 		return FALSE;
 	/* Parse H264 header now */
