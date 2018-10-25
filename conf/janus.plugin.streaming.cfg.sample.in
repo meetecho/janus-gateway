@@ -139,6 +139,24 @@ secret = adminpwd
 ;videofmtp = profile-level-id=42e01f\;packetization-mode=1
 
 ;
+; The Streaming plugin also supports the broadcasting of datachannel
+; messages, either by themselves or along other audio/video streams (e.g.,
+; to add a subtitle to a stream you're sending). The following is an
+; example of how you can create a datachannel-only mountpoint: you can
+; feed it with any tool that can send UDP datagrams, e.g., netcat.
+; Notice that the 'rtp' type just indicates this is a live mountpoint:
+; datachannel messages will be sent as usual, and not use RTP at all.
+;
+;[data-example]
+;type = rtp
+;id = 15
+;description = Datachannel stream from an UDP source
+;audio = no
+;video = no
+;data = yes
+;dataport = 5008
+
+;
 ; This is a sample configuration for Opus/VP8 multicast streams
 ;
 ;[gstreamer-multicast]
