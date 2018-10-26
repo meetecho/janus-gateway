@@ -2804,6 +2804,8 @@ function Janus(gatewayCallbacks) {
 										if(Janus.webRTCAdapter.browserDetails.browser == "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
 										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
+										if(Janus.webRTCAdapter.browserDetails.browser === 'safari')
+											bitRate = parseInt(bitRate/1000);
 										config.bitrate.value = bitRate + ' kbits/sec';
 										//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
 										config.bitrate.bsbefore = config.bitrate.bsnow;
