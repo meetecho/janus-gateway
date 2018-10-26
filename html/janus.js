@@ -336,6 +336,25 @@ Janus.init = function(options) {
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
 		});
+		// If this is a Safari Technology Preview, check if VP8 is supported
+		Janus.safariVp8 = false;
+		if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
+				Janus.webRTCAdapter.browserDetails.version >= 605) {
+			// We do it in a very ugly way, as there's no alternative...
+			// We create a PeerConnection to see if VP8 is in an offer
+			var testpc = new RTCPeerConnection({}, {});
+			testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
+				Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+				if(Janus.safariVp8) {
+					Janus.log("This version of Safari supports VP8");
+				} else {
+					Janus.warn("This version of Safari does NOT support VP8: if you're using a Technology Preview, " +
+						"try enabling the 'WebRTC VP8 codec' setting in the 'Experimental Features' Develop menu");
+				}
+				testpc.close();
+				testpc = null;
+			});
+		}
 		Janus.initDone = true;
 		options.callback();
 	}
@@ -2390,8 +2409,9 @@ function Janus(gatewayCallbacks) {
 				Janus.debug(offer);
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
-					// This SDP munging only works with Chrome
-					if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+					// This SDP munging only works with Chrome (Safari STP may support it too)
+					if(Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+							Janus.webRTCAdapter.browserDetails.browser === "safari") {
 						Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
 						offer.sdp = mungeSdpForSimulcasting(offer.sdp);
 					} else if(Janus.webRTCAdapter.browserDetails.browser !== "firefox") {
