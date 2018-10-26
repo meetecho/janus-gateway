@@ -2596,11 +2596,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							video = 0;
 						} else if(rtcp_ssrc == stream->video_ssrc) {
 							video = 1;
-						} else {
+						} else if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len) || janus_rtcp_get_remb(buf, len)) {
 							/* Mh, no SR or RR? Try checking if there's any FIR, PLI or REMB */
-							if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len) || janus_rtcp_get_remb(buf, len)) {
-								video = 1;
-							}
+							video = 1;
+						} else {
+							JANUS_LOG(LOG_WARN,"[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+							return;
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (local SSRC: video=%"SCNu32", audio=%"SCNu32", got %"SCNu32")\n",
 							handle->handle_id, video ? "video" : "audio", stream->video_ssrc, stream->audio_ssrc, rtcp_ssrc);
@@ -2618,6 +2619,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(stream->video_ssrc_peer[2] && rtcp_ssrc == stream->video_ssrc_peer[2]) {
 							video = 1;
 							vindex = 2;
+						} else {
+							JANUS_LOG(LOG_WARN,"[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+							return;
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, audio=%"SCNu32", got %"SCNu32")\n",
 							handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer[vindex], vindex, stream->audio_ssrc_peer, rtcp_ssrc);
@@ -2713,6 +2717,18 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						handle->handle_id, component->retransmit_recent_cnt, video ? "video" : "audio", vindex);
 					component->retransmit_recent_cnt = 0;
 					component->retransmit_log_ts = now;
+				}
+
+				/* Fix packet data for RTCP SR and RTCP RR */
+				janus_rtp_switching_context *rtp_ctx = video ? &stream->rtp_ctx[vindex] : &stream->rtp_ctx[0];
+				uint32_t ssrc_peer = video ? stream->video_ssrc_peer_orig[vindex] : stream->audio_ssrc_peer_orig;
+				uint32_t ssrc_local = video ? stream->video_ssrc : stream->audio_ssrc;
+				uint32_t ssrc_expected = video ? rtp_ctx->v_last_ssrc : rtp_ctx->a_last_ssrc;
+				if (janus_rtcp_fix_report_data(buf, buflen, rtp_ctx, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
+					/* Drop packet in case of parsing error or SSRC different from the one expected. */
+					/* This might happen at the very beginning of the communication or early after */
+					/* a re-negotation has been concluded. */
+					return;
 				}
 
 				janus_plugin *plugin = (janus_plugin *)handle->app;
