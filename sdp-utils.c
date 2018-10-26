@@ -7,13 +7,13 @@
  * of such object by playing with its properties, and a serialization
  * to an SDP string that can be passed around. Since they don't have any
  * core dependencies, these utilities can be used by plugins as well.
- * 
+ *
  * \ingroup core
  * \ref core
  */
 
 #include <string.h>
- 
+
 #include "sdp-utils.h"
 #include "utils.h"
 #include "debug.h"
@@ -810,14 +810,14 @@ char *janus_sdp_write(janus_sdp *imported) {
 			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
 			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		}
-		if(m->port == 0) {
-			/* No point going on */
-			temp = temp->next;
-			continue;
-		}
 		GList *temp2 = m->attributes;
 		while(temp2) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)temp2->data;
+			if(m->port == 0 && strcasecmp(a->name, "mid")) {
+				/* This media has been rejected or disabled: we only add the mid attribute, if available */
+				temp2 = temp2->next;
+				continue;
+			}
 			if(a->value != NULL) {
 				g_snprintf(buffer, sizeof(buffer), "a=%s:%s\r\n", a->name, a->value);
 			} else {
