@@ -2078,8 +2078,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	} else {
 		/* Handle-related */
-		if(!strcasecmp(message_text, "start_text2pcap")) {
-			/* Start dumping RTP and RTCP packets to a text2pcap file */
+		if(!strcasecmp(message_text, "start_pcap") || !strcasecmp(message_text, "start_text2pcap")) {
+			/* Start dumping RTP and RTCP packets to a pcap or text2pcap file */
 			JANUS_VALIDATE_JSON_OBJECT(root, text2pcap_parameters,
 				error_code, error_cause, FALSE,
 				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
@@ -2087,16 +2087,19 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 				goto jsondone;
 			}
+			gboolean text = !strcasecmp(message_text, "start_text2pcap");
 			const char *folder = json_string_value(json_object_get(root, "folder"));
 			const char *filename = json_string_value(json_object_get(root, "filename"));
 			int truncate = json_integer_value(json_object_get(root, "truncate"));
 			if(handle->text2pcap != NULL) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap already started");
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+					text ? "text2pcap already started" : "pcap already started");
 				goto jsondone;
 			}
-			handle->text2pcap = janus_text2pcap_create(folder, filename, truncate);
+			handle->text2pcap = janus_text2pcap_create(folder, filename, truncate, text);
 			if(handle->text2pcap == NULL) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error starting text2pcap dump");
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+					text ? "Error starting text2pcap dump" : "Error starting pcap dump");
 				goto jsondone;
 			}
 			g_atomic_int_set(&handle->dump_packets, 1);
@@ -2107,10 +2110,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
-		} else if(!strcasecmp(message_text, "stop_text2pcap")) {
-			/* Stop dumping RTP and RTCP packets to a text2pcap file */
+		} else if(!strcasecmp(message_text, "stop_pcap") || !strcasecmp(message_text, "stop_text2pcap")) {
+			/* Stop dumping RTP and RTCP packets to a pcap or text2pcap file */
 			if(handle->text2pcap == NULL) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap not started");
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN,
+					"Capture not started");
 				goto jsondone;
 			}
 			if(g_atomic_int_compare_and_exchange(&handle->dump_packets, 1, 0)) {
