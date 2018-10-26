@@ -2203,10 +2203,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "pending-trickles", json_integer(g_list_length(handle->pending_trickles)));
 		if(handle->queued_packets)
 			json_object_set_new(info, "queued-packets", json_integer(g_async_queue_length(handle->queued_packets)));
-		if(g_atomic_int_get(&handle->dump_packets)) {
-			json_object_set_new(info, "dump-to-text2pcap", json_true());
-			if(handle->text2pcap && handle->text2pcap->filename)
-			json_object_set_new(info, "text2pcap-file", json_string(handle->text2pcap->filename));
+		if(g_atomic_int_get(&handle->dump_packets) && handle->text2pcap) {
+			if(handle->text2pcap->text) {
+				json_object_set_new(info, "dump-to-text2pcap", json_true());
+				json_object_set_new(info, "text2pcap-file", json_string(handle->text2pcap->filename));
+			} else {
+				json_object_set_new(info, "dump-to-pcap", json_true());
+				json_object_set_new(info, "pcap-file", json_string(handle->text2pcap->filename));
+			}
 		}
 		json_t *streams = json_array();
 		if(handle->stream) {
