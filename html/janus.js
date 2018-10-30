@@ -701,10 +701,12 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("No provided notification callback");
 			}
 		} else if(json["janus"] === "timeout") {
-		    Janus.error("Timeout on session " + sessionId);
-		    Janus.debug(json);
-		    ws.close(3504, "Gateway timeout");
-		    return;
+			Janus.error("Timeout on session " + sessionId);
+			Janus.debug(json);
+			if (websockets) {
+				ws.close(3504, "Gateway timeout");
+			}
+			return;
 		} else {
 			Janus.warn("Unknown message/event  '" + json["janus"] + "' on session " + sessionId);
 			Janus.debug(json);
