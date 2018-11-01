@@ -235,7 +235,7 @@ char *janus_sdp_write(janus_sdp *sdp);
 
 /*! \brief Method to quickly generate a janus_sdp instance from a few selected fields
  * @note This allocates the \c o_addr, \c s_name and \c c_addr properties: if you
- * want to replace them, don't remember to \c g_free the original pointers first.
+ * want to replace them, don't forget to \c g_free the original pointers first.
  * @param[in] name The session name (if NULL, a default value will be set)
  * @param[in] address The IP to set in o= and c= fields (if NULL, a default value will be set)
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
@@ -297,7 +297,7 @@ void janus_sdp_destroy(janus_sdp *sdp);
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
 /*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer, using variable arguments
- * to dictate how to responde (e.g., in terms of media to accept, reject, directions, etc.). Variable
+ * to dictate how to respond (e.g., in terms of media to accept, reject, directions, etc.). Variable
  * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
  \verbatim
 	janus_sdp *answer = janus_sdp_generate_answer(offer,
