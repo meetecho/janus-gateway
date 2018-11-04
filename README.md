@@ -56,7 +56,7 @@ On Ubuntu or Debian, it would require something like this:
 
 * *Note:* please notice that libopus may not be available out of the box on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
-While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice (or even the [experimental patch](https://groups.google.com/forum/#!topic/meetecho-janus/7vvkNxtyXX4) that optimize its performances). Installation of libnice master is quite straightforward:
+While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice. Installation of libnice master is quite straightforward:
 
 	git clone https://gitlab.freedesktop.org/libnice/libnice
 	cd libnice
