@@ -19,6 +19,9 @@ extern "C" {
 
 #include <math.h>
 
+#include <prometheus/exposer.h>
+#include <prometheus/registry.h>
+
 /* Plugin information */
 #define JANUS_PROMETHEUS_VERSION		1
 #define JANUS_PROMETHEUS_VERSION_STRING	"0.0.1"
@@ -102,6 +105,10 @@ static struct janus_json_parameter tweak_parameters[] = {
 
 
 /* Plugin implementation */
+static bool prom_init(const char* host, int port);
+static void prom_destroy();
+static void prom_process_event(json_t *event);
+
 int janus_promevh_init(const char *config_path) {
 	gboolean success = TRUE;
 	char *host = NULL;
@@ -148,6 +155,9 @@ int janus_promevh_init(const char *config_path) {
 
 	/* Connect */
 	JANUS_LOG(LOG_VERB, "PrometheusEventHandler: Creating Prometheus http server at %s:%u...\n", host, port);
+	if(!prom_init(host, port)) {
+		goto error;
+	}
 
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_promevh_event_free);
@@ -196,7 +206,7 @@ void janus_promevh_destroy(void) {
 	g_async_queue_unref(events);
 	events = NULL;
 
-	// destroy here
+	prom_destroy();
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -309,7 +319,7 @@ static void *janus_promevh_handler(void *data) {
 			break;
 
 		if(!g_atomic_int_get(&stopping)) {
-			// process event here
+			prom_process_event(event);
 		}
 
 		/* Done, let's unref the event */
@@ -319,47 +329,102 @@ static void *janus_promevh_handler(void *data) {
 	return NULL;
 }
 
+enum PromEventIdx {
+	PROM_EVENT_IDX_NONE = 0,
+	PROM_EVENT_IDX_SESSION,
+	PROM_EVENT_IDX_HANDLE,
+	PROM_EVENT_IDX_EXTERNAL,
+	PROM_EVENT_IDX_JSEP,
+	PROM_EVENT_IDX_WEBRTC,
+	PROM_EVENT_IDX_MEDIA,
+	PROM_EVENT_IDX_PLUGIN,
+	PROM_EVENT_IDX_TRANSPORT,
+	PROM_EVENT_IDX_CORE,
+	PROM_EVENT_IDX_TOTAL,
+};
 
-#include <chrono>
-#include <map>
-#include <memory>
-#include <string>
-#include <thread>
-#include <stdio.h>
+static prometheus::Exposer *prom_exposer = NULL;
+static std::shared_ptr<prometheus::Registry> prom_registry;
+static prometheus::Counter *prom_event_counters[PROM_EVENT_IDX_TOTAL] = {0,};
 
-#include <prometheus/exposer.h>
-#include <prometheus/registry.h>
+static void prom_destroy()
+{
+	delete prom_exposer;
+	prom_exposer = NULL;
 
-// reference test to check library load
-int test_prometheus() {
-  	// create an http server running on port 8080
-  	prometheus::Exposer exposer{"0.0.0.0:9091"};
-  	printf("Start listent at 0.0.0.0:9091\n");
-
-  	// create a metrics registry with component=main labels applied to all its metrics
-  	auto registry = std::make_shared<prometheus::Registry>();
-
-  	// add a new counter family to the registry (families combine values with the same name, but distinct label dimensions)
-	prometheus::Family<prometheus::Counter>& 
-	counter_family = prometheus::BuildCounter()
-                             .Name("time_running_seconds")
-                             .Help("How many seconds is this server running?")
-                             .Labels({{"label", "value"}})
-                             .Register(*registry);
-
-  	// add a counter to the metric family
-	prometheus::Counter&
-	second_counter = counter_family.Add(
-      {{"another_label", "value"}, {"yet_another_label", "value"}});
-
-  	// ask the exposer to scrape the registry on incoming scrapes
-  	exposer.RegisterCollectable(registry);
-
-  	for (;;) {
-    	std::this_thread::sleep_for(std::chrono::seconds(2));
-    	// increment the counter by one (second)
-		second_counter.Increment();
-		printf ("increment!!!\n");
-  	}
-  	return 0;
+	prom_registry.reset();
 }
+
+static PromEventIdx janus_event_type_to_index(int event_type)
+{
+	switch(event_type) {
+		case JANUS_EVENT_TYPE_NONE: 	return PROM_EVENT_IDX_NONE;
+		case JANUS_EVENT_TYPE_SESSION:	return PROM_EVENT_IDX_SESSION;
+		case JANUS_EVENT_TYPE_HANDLE:   return PROM_EVENT_IDX_HANDLE;
+		case JANUS_EVENT_TYPE_EXTERNAL: return PROM_EVENT_IDX_EXTERNAL;
+		case JANUS_EVENT_TYPE_JSEP:     return PROM_EVENT_IDX_JSEP;
+		case JANUS_EVENT_TYPE_WEBRTC:   return PROM_EVENT_IDX_WEBRTC;
+		case JANUS_EVENT_TYPE_MEDIA:    return PROM_EVENT_IDX_MEDIA;
+		case JANUS_EVENT_TYPE_PLUGIN:   return PROM_EVENT_IDX_PLUGIN;
+		case JANUS_EVENT_TYPE_TRANSPORT:return PROM_EVENT_IDX_TRANSPORT;
+		case JANUS_EVENT_TYPE_CORE:     return PROM_EVENT_IDX_CORE;
+		default: return PROM_EVENT_IDX_NONE;
+	}
+}
+
+static bool prom_create_metrics()
+{
+	auto& events_counter_family = prometheus::BuildCounter()
+		.Name("janus_events_total").Help("Raw counter for each type of event.")//.Labels({{"label", "value"}})
+		.Register(*prom_registry);
+
+	prom_event_counters[PROM_EVENT_IDX_NONE] 		= &events_counter_family.Add({ {"type", "none"} });
+	prom_event_counters[PROM_EVENT_IDX_SESSION] 	= &events_counter_family.Add({ {"type", "session"} });
+	prom_event_counters[PROM_EVENT_IDX_HANDLE] 		= &events_counter_family.Add({ {"type", "handle"} });
+	prom_event_counters[PROM_EVENT_IDX_EXTERNAL] 	= &events_counter_family.Add({ {"type", "external"} });
+	prom_event_counters[PROM_EVENT_IDX_JSEP] 		= &events_counter_family.Add({ {"type", "jsep"} });
+	prom_event_counters[PROM_EVENT_IDX_WEBRTC] 		= &events_counter_family.Add({ {"type", "webrtc"} });
+	prom_event_counters[PROM_EVENT_IDX_MEDIA] 		= &events_counter_family.Add({ {"type", "media"} });
+	prom_event_counters[PROM_EVENT_IDX_PLUGIN] 		= &events_counter_family.Add({ {"type", "plugin"} });
+	prom_event_counters[PROM_EVENT_IDX_TRANSPORT] 	= &events_counter_family.Add({ {"type", "transport"} });
+	prom_event_counters[PROM_EVENT_IDX_CORE] 		= &events_counter_family.Add({ {"type", "core"} });
+
+	return true;
+}
+
+static bool prom_init(const char* host, int port)
+{
+	try {
+		prom_exposer = new prometheus::Exposer(std::string(host) + ":" + std::to_string(port));
+	} catch(...) {
+		JANUS_LOG(LOG_FATAL, "PrometheusEventHandler: Can't start http server at %s:%d...\n", host, port);
+		goto error;
+	}
+	try {
+		prom_registry = std::make_shared<prometheus::Registry>();
+	} catch(...) {
+		JANUS_LOG(LOG_FATAL, "PrometheusEventHandler: Can't create prometheus::Regestry\n");
+		goto error;
+	}
+	if(!prom_create_metrics()) {
+		JANUS_LOG(LOG_FATAL, "PrometheusEventHandler: Can't create prometheus counters\n");
+		goto error;
+	}
+	// ask the exposer to scrape the registry on incoming scrapes
+	prom_exposer->RegisterCollectable(prom_registry);
+
+	return true;
+
+error:
+	prom_destroy();
+
+	return false;
+}
+
+static void prom_process_event(json_t *event)
+{
+	int type = json_integer_value(json_object_get(event, "type"));
+	PromEventIdx idx = janus_event_type_to_index(type);
+	prom_event_counters[idx]->Increment();
+}
+
