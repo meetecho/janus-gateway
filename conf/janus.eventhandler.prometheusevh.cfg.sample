@@ -1,0 +1,10 @@
+; This configures the Prometheus event handler.
+
+[general]
+enabled = no				; By default the module is not enabled
+events = all				; Comma separated list of the events mask you're interested
+							; in. Valid values are none, sessions, handles, jsep, webrtc,
+							; media, plugins, transports, core, external and all. By
+							; default we subscribe to everything (all)
+host = 0.0.0.0				; The address of the Prometheus server
+;port = 9091				; The listening port of the Prometheus server (9091 by default)

@@ -11,6 +11,7 @@ AM_SILENT_RULES([yes])
 AC_GNU_SOURCE
 
 AC_PROG_CC
+AC_PROG_CXX
 
 LT_PREREQ([2.2])
 LT_INIT
@@ -150,6 +151,8 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_rabbitmq_event_handler=no])
                AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
                      [enable_mqtt_event_handler=no])
+               AS_IF([test "x$enable_prometheus_event_handler" != "xyes"],
+                     [x$enable_prometheus_event_handler=no])
               ],
               [])
 
@@ -226,6 +229,13 @@ AC_ARG_ENABLE([mqtt-event-handler],
               [AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
                      [enable_mqtt_event_handler=no])],
               [enable_mqtt_event_handler=maybe])
+
+AC_ARG_ENABLE([prometheus-event-handler],
+              [AS_HELP_STRING([--enable-prometheus-event-handler],
+                              [Enable Prometheus metrics server])],
+              [AS_IF([test "x$enable_prometheus_event_handler" != "xyes"],
+                     [enable_prometheus_event_handler=no])],
+              [enable_prometheus_event_handler=no])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -512,11 +522,63 @@ AC_CHECK_LIB([nanomsg],
                AS_IF([test "x$enable_nanomsg" = "xyes"],
                      [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg])])
              ])
+
+AS_IF([test "x$enable_prometheus_event_handler" = "xyes"],
+[
+	AC_LANG_PUSH([C++])
+	CXXFLAGS="$CXXFLAGS -std=c++11"
+
+	SAVED_CPPFLAGS=$CPPFLAGS
+	CPPFLAGS="$CPPFLAGS -std=c++11"
+	AC_CHECK_HEADERS(	[prometheus/exposer.h prometheus/counter.h],
+						[AC_MSG_NOTICE([Promethus headers found])],
+						[AC_MSG_ERROR([Promethus headers not found])]
+                       )
+	CPPFLAGS=$SAVED_CPPFLAGS
+
+	PKG_CHECK_MODULES([ZLIB],[zlib],[:],[AC_MSG_ERROR([zlib not found])])
+	AC_SUBST([ZLIB_CFLAGS])
+	AC_SUBST([ZLIB_LIBS])
+
+	AC_MSG_CHECKING([prometheus static libraries])
+	saved_CXXLAGS="$CXXFLAGS"
+	saved_LDFLAGS="$LDFLAGS"
+	saved_LIBS="$LIBS"
+	CXXFLAGS="$CXXFLAGS $ZLIB_CFLAGS"
+	LDFLAGS="$LDFLAGS -lpthread $ZLIB_LIBS"
+	LIBS="$LIBS -lprometheus-cpp-pull -lprometheus-cpp-core"
+	AC_LINK_IFELSE(
+		[AC_LANG_PROGRAM(
+			[[
+				#include <prometheus/exposer.h>
+				#include <prometheus/registry.h>
+			]], 
+			[[
+				auto registry = std::make_shared<prometheus::Registry>();
+				auto& counter_family = prometheus::BuildCounter().Register(*registry);
+		    	prometheus::Exposer exposer{"0.0.0.0:9091"};
+			]]
+		)],
+		[
+			AC_DEFINE(HAVE_PROMETHEUSEVH)
+			AC_MSG_NOTICE([libprometheus-cpp-core and libprometheus-cpp-pull found.])
+		], 
+  		[
+			AC_MSG_ERROR([libprometheus-cpp-core or libprometheus-cpp-pull not found. Prometheus server not supported.])
+		]
+	)
+	CXXFLAGS="$saved_CXXLAGS"
+	LDFLAGS="$saved_LDFLAGS"
+	LIBS="$saved_LIBS"
+	AC_LANG_POP([C++])
+])
+
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
+AM_CONDITIONAL([ENABLE_PROMETHEUSEVH], [test "x$enable_prometheus_event_handler" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -549,7 +611,6 @@ AS_IF([test "x$enable_systemd_sockets" = "xyes"],
                           ],
                           [AC_MSG_ERROR([libsystemd not found. systemd unix domain socket service not supported])])
       ])
-
 
 ##
 # Plugins
@@ -764,7 +825,6 @@ AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xye
 ##
 # Event handlers
 ##
-
 PKG_CHECK_MODULES([EVENTS],
                   [
                     glib-2.0 >= $glib_version
@@ -962,6 +1022,9 @@ AM_COND_IF([ENABLE_RABBITMQEVH],
 AM_COND_IF([ENABLE_MQTTEVH],
 	[echo "    MQTT event handler:    yes"],
 	[echo "    MQTT event handler:    no"])
+AM_COND_IF([ENABLE_PROMETHEUSEVH],
+	[echo "    Prometheus event handler: yes"],
+	[echo "    Prometheus event handler: no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"

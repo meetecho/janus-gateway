@@ -323,6 +323,17 @@ conf_DATA += conf/janus.eventhandler.mqttevh.cfg.sample
 EXTRA_DIST += conf/janus.eventhandler.mqttevh.cfg.sample
 endif
 
+if ENABLE_PROMETHEUSEVH
+event_LTLIBRARIES += events/libjanus_prometheusevh.la
+events_libjanus_prometheusevh_la_SOURCES = events/janus_prometheusevh.cc
+events_libjanus_prometheusevh_la_CXXFLAGS = $(events_cflags) $(ZLIB_CFLAGS)
+events_libjanus_prometheusevh_la_LDFLAGS = $(ZLIB_LIBS)
+events_libjanus_prometheusevh_la_LIBADD = -lprometheus-cpp-pull -lprometheus-cpp-core
+conf_DATA += conf/janus.eventhandler.prometheusevh.cfg.sample
+EXTRA_DIST += conf/janus.eventhandler.prometheusevh.cfg.sample
+janus_prometheusevh.o: CPPFLAGS += -std=c++11
+endif
+
 ##
 # Plugins
 ##
