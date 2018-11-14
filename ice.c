@@ -3699,7 +3699,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup (%s)\n",
 			handle->handle_id, plugin ? plugin->get_name() : "??");
-		if(plugin != NULL) {
+		if(plugin != NULL && handle->app_handle != NULL) {
 			plugin->hangup_media(handle->app_handle);
 		}
 		/* Get rid of the attached sources */
@@ -3725,7 +3725,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the handle detach (%s)\n",
 			handle->handle_id, plugin ? plugin->get_name() : "??");
-		if(plugin != NULL) {
+		if(plugin != NULL && handle->app_handle != NULL) {
 			int error = 0;
 			plugin->destroy_session(handle->app_handle, &error);
 		}
