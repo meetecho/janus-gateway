@@ -625,14 +625,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_REST_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_REST_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
+		janus_config_category *config_cors = janus_config_get_create(config, NULL, janus_config_type_category, "cors");
+		janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 
 		/* Handle configuration */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -651,7 +661,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Check if we need to send events to handlers */
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -659,7 +669,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Check the base paths */
-		item = janus_config_get_item_drilldown(config, "general", "base_path");
+		item = janus_config_get(config, config_general, janus_config_type_item, "base_path");
 		if(item && item->value) {
 			if(item->value[0] != '/') {
 				JANUS_LOG(LOG_FATAL, "Invalid base path %s (it should start with a /, e.g., /janus\n", item->value);
@@ -674,7 +684,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			ws_path = g_strdup("/janus");
 		}
 		/* Do the same for the admin/monitor interface */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_base_path");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_base_path");
 		if(item && item->value) {
 			if(item->value[0] != '/') {
 				JANUS_LOG(LOG_FATAL, "Invalid admin/monitor base path %s (it should start with a /, e.g., /admin\n", item->value);
@@ -690,7 +700,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Any ACL for either the Janus or Admin API? */
-		item = janus_config_get_item_drilldown(config, "general", "acl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -708,7 +718,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			g_strfreev(list);
 			list = NULL;
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_acl");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -728,7 +738,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Any custom value for the Access-Control-Allow-Origin header? */
-		item = janus_config_get_item_drilldown(config, "cors", "allow_origin");
+		item = janus_config_get(config, config_cors, janus_config_type_item, "allow_origin");
 		if(item && item->value) {
 			allow_origin = g_strdup(item->value);
 			JANUS_LOG(LOG_INFO, "Restricting Access-Control-Allow-Origin to '%s'\n", allow_origin);
@@ -736,7 +746,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 		/* Start with the Janus API web server now */
 		gint64 threads = 0;
-		item = janus_config_get_item_drilldown(config, "general", "threads");
+		item = janus_config_get(config, config_general, janus_config_type_item, "threads");
 		if(item && item->value) {
 			if(!strcasecmp(item->value, "unlimited")) {
 				/* No limit on threads, use a thread per connection */
@@ -752,20 +762,20 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				}
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "general", "http");
+		item = janus_config_get(config, config_general, janus_config_type_item, "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 		} else {
 			int wsport = 8088;
-			item = janus_config_get_item_drilldown(config, "general", "port");
+			item = janus_config_get(config, config_general, janus_config_type_item, "port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			const char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "interface");
+			item = janus_config_get(config, config_general, janus_config_type_item, "interface");
 			if(item && item->value)
 				interface = item->value;
 			const char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "ip");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ip");
 			if(item && item->value)
 				ip = item->value;
 			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads,
@@ -778,24 +788,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 		/* Do we also have to provide an HTTPS one? */
 		char *server_pem = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 		if(item && item->value)
 			server_pem = (char *)item->value;
 		char *server_key = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 		if(item && item->value)
 			server_key = (char *)item->value;
 		char *password = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 		if(item && item->value)
 			password = (char *)item->value;
 		const char *ciphers = "NORMAL";
-		item = janus_config_get_item_drilldown(config, "certificates", "ciphers");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
 		if(item && item->value)
 			ciphers = item->value;
 		if(server_key)
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
-		item = janus_config_get_item_drilldown(config, "general", "https");
+		item = janus_config_get(config, config_general, janus_config_type_item, "https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 		} else {
@@ -803,15 +813,15 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				int swsport = 8089;
-				item = janus_config_get_item_drilldown(config, "general", "secure_port");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
 				const char *interface = NULL;
-				item = janus_config_get_item_drilldown(config, "general", "secure_interface");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_interface");
 				if(item && item->value)
 					interface = item->value;
 				const char *ip = NULL;
-				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_ip");
 				if(item && item->value)
 					ip = item->value;
 				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads,
@@ -825,7 +835,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 		/* Admin/monitor time: start web server, if enabled */
 		threads = 0;
-		item = janus_config_get_item_drilldown(config, "admin", "admin_threads");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_threads");
 		if(item && item->value) {
 			if(!strcasecmp(item->value, "unlimited")) {
 				/* No limit on threads, use a thread per connection */
@@ -841,20 +851,20 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				}
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_http");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 		} else {
 			int wsport = 7088;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_port");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			const char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_interface");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_interface");
 			if(item && item->value)
 				interface = item->value;
 			const char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ip");
 			if(item && item->value)
 				ip = item->value;
 			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads,
@@ -866,7 +876,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 		}
 		/* Do we also have to provide an HTTPS one? */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_https");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
 		} else {
@@ -874,15 +884,15 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				int swsport = 7889;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_port");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
 				const char *interface = NULL;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_interface");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_interface");
 				if(item && item->value)
 					interface = item->value;
 				const char *ip = NULL;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
 				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads,

@@ -1087,20 +1087,27 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_LUA_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_LUA_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_LUA_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_LUA_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config == NULL) {
 		/* No config means no Lua script */
 		JANUS_LOG(LOG_ERR, "Failed to load configuration file for Lua plugin...\n");
 		return -1;
 	}
 	janus_config_print(config);
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 	char *lua_folder = NULL;
-	janus_config_item *folder = janus_config_get_item_drilldown(config, "general", "path");
+	janus_config_item *folder = janus_config_get(config, config_general, janus_config_type_item, "path");
 	if(folder && folder->value)
 		lua_folder = g_strdup(folder->value);
-	janus_config_item *script = janus_config_get_item_drilldown(config, "general", "script");
+	janus_config_item *script = janus_config_get(config, config_general, janus_config_type_item, "script");
 	if(script == NULL || script->value == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing script path in Lua plugin configuration...\n");
 		janus_config_destroy(config);
@@ -1109,7 +1116,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	}
 	char *lua_file = g_strdup(script->value);
 	char *lua_config = NULL;
-	janus_config_item *conf = janus_config_get_item_drilldown(config, "general", "config");
+	janus_config_item *conf = janus_config_get(config, config_general, janus_config_type_item, "config");
 	if(conf && conf->value)
 		lua_config = g_strdup(conf->value);
 	janus_config_destroy(config);

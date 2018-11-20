@@ -615,13 +615,20 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_NOSIP_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_NOSIP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_NOSIP_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_NOSIP_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
 			struct ifaddrs *ifas = NULL;
@@ -643,7 +650,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
 			char *maxport = strrchr(item->value, '-');
@@ -674,7 +681,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "NoSIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "events");
+		item = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(item != NULL && item->value != NULL)
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {

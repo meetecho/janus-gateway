@@ -528,6 +528,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	if(config != NULL) {
 		janus_config_print(config);
 	}
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 
 	/* Initializing context */
 	janus_mqttevh_context *ctx = g_malloc0(sizeof(struct janus_mqttevh_context));
@@ -550,7 +551,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	ctx->tls.verify_host = DEFAULT_TLS_VERIFY_HOST;
 
 	/* Setup the event handler, if required */
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
+	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "MQTT event handler disabled\n");
@@ -559,28 +560,28 @@ static int janus_mqttevh_init(const char *config_path) {
 	janus_mqtt_evh_enabled = TRUE;
 
 	/* MQTT URL */
-	url_item = janus_config_get_item_drilldown(config, "general", "url");
+	url_item = janus_config_get(config, config_general, janus_config_type_item, "url");
 	ctx->connect.url= g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
 
-	janus_config_item *client_id_item = janus_config_get_item_drilldown(config, "general", "client_id");
+	janus_config_item *client_id_item = janus_config_get(config, config_general, janus_config_type_item, "client_id");
 
 	ctx->connect.client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
-	username_item = janus_config_get_item_drilldown(config, "general", "username");
+	username_item = janus_config_get(config, config_general, janus_config_type_item, "username");
 	if(username_item && username_item->value) {
 		ctx->connect.username = g_strdup(username_item->value);
 	} else {
 		ctx->connect.username = NULL;
 	}
 
-	password_item = janus_config_get_item_drilldown(config, "general", "password");
+	password_item = janus_config_get(config, config_general, janus_config_type_item, "password");
 	if(password_item && password_item->value) {
 		ctx->connect.password = g_strdup(password_item->value);
 	} else {
 		ctx->connect.password = NULL;
 	}
 
-	janus_config_item *json_item = janus_config_get_item_drilldown(config, "general", "json");
+	janus_config_item *json_item = janus_config_get(config, config_general, janus_config_type_item, "json");
 	if(json_item && json_item->value) {
 		/* Check how we need to format/serialize the JSON output */
 		if(!strcasecmp(json_item->value, "indented")) {
@@ -599,82 +600,82 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 
 	/* Which events should we subscribe to? */
-	item = janus_config_get_item_drilldown(config, "general", "events");
+	item = janus_config_get(config, config_general, janus_config_type_item, "events");
 	if(item && item->value)
 		janus_events_edit_events_mask(item->value, &janus_mqttevh.events_mask);
 
 	/* Connect configuration */
-	keep_alive_interval_item = janus_config_get_item_drilldown(config, "general", "keep_alive_interval");
+	keep_alive_interval_item = janus_config_get(config, config_general, janus_config_type_item, "keep_alive_interval");
 	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ? atoi(keep_alive_interval_item->value) : DEFAULT_KEEPALIVE;
 
-	cleansession_item = janus_config_get_item_drilldown(config, "general", "cleansession");
+	cleansession_item = janus_config_get(config, config_general, janus_config_type_item, "cleansession");
 	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ? atoi(cleansession_item->value) : DEFAULT_CLEANSESSION;
 
 	/* Disconnect configuration */
-	disconnect_timeout_item = janus_config_get_item_drilldown(config, "general", "disconnect_timeout");
+	disconnect_timeout_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_timeout");
 	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : DEFAULT_DISCONNECT_TIMEOUT;
 
-	topic_item = janus_config_get_item_drilldown(config, "general", "topic");
+	topic_item = janus_config_get(config, config_general, janus_config_type_item, "topic");
 	if(!topic_item || !topic_item->value) {
 		ctx->publish.topic = g_strdup(DEFAULT_BASETOPIC);
 	} else {
 		ctx->publish.topic = g_strdup(topic_item->value);
 	}
-	addevent_item = janus_config_get_item_drilldown(config, "general", "addevent");
+	addevent_item = janus_config_get(config, config_general, janus_config_type_item, "addevent");
 	if(addevent_item && addevent_item->value && janus_is_true(addevent_item->value)) {
 		ctx->addevent = TRUE;
 	}
-	retain_item = janus_config_get_item_drilldown(config, "general", "retain");
+	retain_item = janus_config_get(config, config_general, janus_config_type_item, "retain");
 	if(retain_item && retain_item->value && janus_is_true(retain_item->value)) {
 		ctx->publish.retain = atoi(retain_item->value);;
 	}
 
-	qos_item = janus_config_get_item_drilldown(config, "general", "qos");
+	qos_item = janus_config_get(config, config_general, janus_config_type_item, "qos");
 	ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 
 	/* TLS config*/
-	item = janus_config_get_item_drilldown(config, "general", "tls_enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "tls_enable");
 	/* for old people */
 	if(!item) {
-		item = janus_config_get_item_drilldown(config, "general", "ssl_enable");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
 	}
 
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_INFO, "MQTTEventHandler: MQTT TLS support disabled\n");
 	} else {
 		ctx->tls.enable = TRUE;
-		item = janus_config_get_item_drilldown(config, "general", "tls_cacert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "tls_cacert");
 		if(!item) {
-			item = janus_config_get_item_drilldown(config, "general", "ssl_cacert");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cacert");
 		}
 		if(item && item->value) {
 			ctx->tls.cacert_file = g_strdup(item->value);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "tls_client_cert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "tls_client_cert");
 		if(!item) {
-			item = janus_config_get_item_drilldown(config, "general", "ssl_client_cert");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_client_cert");
 		}
 		if(item && item->value) {
 			ctx->tls.cert_file = g_strdup(item->value);
 		}
-		item = janus_config_get_item_drilldown(config, "general", "tls_client_key");
+		item = janus_config_get(config, config_general, janus_config_type_item, "tls_client_key");
 		if(!item) {
-			item = janus_config_get_item_drilldown(config, "general", "ssl_client_key");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_client_key");
 		}
 		if(item && item->value) {
 			ctx->tls.key_file = g_strdup(item->value);
 		}
-		item = janus_config_get_item_drilldown(config, "general", "tls_verify_peer");
+		item = janus_config_get(config, config_general, janus_config_type_item, "tls_verify_peer");
 		if(!item) {
-			item = janus_config_get_item_drilldown(config, "general", "ssl_verify_peer");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_peer");
 		}
 		if(item && item->value && janus_is_true(item->value)) {
 			ctx->tls.verify_peer = TRUE;
 		}
-		item = janus_config_get_item_drilldown(config, "general", "tls_verify_hostname");
+		item = janus_config_get(config, config_general, janus_config_type_item, "tls_verify_hostname");
 		if(!item) {
-			item = janus_config_get_item_drilldown(config, "general", "ssl_verify_hostname");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_hostname");
 		}
 		if(item && item->value && janus_is_true(item->value)) {
 			ctx->tls.verify_host = TRUE;

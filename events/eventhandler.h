@@ -101,7 +101,7 @@ janus_eventhandler *create(void) {
 
 
 /*! \brief Version of the API, to match the one event handler plugins were compiled against */
-#define JANUS_EVENTHANDLER_API_VERSION	2
+#define JANUS_EVENTHANDLER_API_VERSION	3
 
 /*! \brief Initialization of all event handler plugin properties to NULL
  * 

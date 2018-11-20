@@ -1231,10 +1231,11 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	janus_config_print(config);
-	janus_config_item *folder = janus_config_get_item_drilldown(config, "general", "path");
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+	janus_config_item *folder = janus_config_get(config, config_general, janus_config_type_item, "path");
 	if(folder && folder->value)
 		duktape_folder = g_strdup(folder->value);
-	janus_config_item *script = janus_config_get_item_drilldown(config, "general", "script");
+	janus_config_item *script = janus_config_get(config, config_general, janus_config_type_item, "script");
 	if(script == NULL || script->value == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing script path in Duktape plugin configuration...\n");
 		janus_config_destroy(config);
@@ -1243,7 +1244,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	}
 	char *duktape_file = g_strdup(script->value);
 	char *duktape_config = NULL;
-	janus_config_item *conf = janus_config_get_item_drilldown(config, "general", "config");
+	janus_config_item *conf = janus_config_get(config, config_general, janus_config_type_item, "config");
 	if(conf && conf->value)
 		duktape_config = g_strdup(conf->value);
 	janus_config_destroy(config);

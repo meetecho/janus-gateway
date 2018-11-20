@@ -1,6 +1,0 @@
-; path = where to place recordings in the file system
-; events = yes|no, whether events should be sent to event handlers
-
-[general]
-path = @recordingsdir@
-;events = no

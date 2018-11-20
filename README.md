@@ -12,6 +12,7 @@ To discuss Janus with us and other users, there's a Google Group called [meetech
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
+* [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
@@ -42,8 +43,8 @@ All of those libraries are usually available on most of the most common distribu
 
     yum install libmicrohttpd-devel jansson-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libcurl-devel lua-devel \
-       pkgconfig gengetopt libtool autoconf automake
+       opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
+       libconfig-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
@@ -52,7 +53,7 @@ On Ubuntu or Debian, it would require something like this:
 	aptitude install libmicrohttpd-dev libjansson-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
-		pkg-config gengetopt libtool automake
+		libconfig-dev pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
@@ -213,8 +214,8 @@ While most of the above instructions will work when compiling Janus on MacOS as 
 First of all, you can use `brew` to install most of the dependencies:
 
 	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
-		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl \
-		glib pkg-config gengetopt autoconf automake libtool
+		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
+		libconfig pkg-config gengetopt autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version is higher than `2.4.1`, or you might encounter the problems described in [this post](https://groups.google.com/forum/#!topic/meetecho-janus/HsFaEXBz4Cg). If `brew` doesn't provide a more recent version, you'll have to install the library manually.
 

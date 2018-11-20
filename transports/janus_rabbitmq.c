@@ -173,13 +173,21 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RABBITMQ_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_RABBITMQ_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_RABBITMQ_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RABBITMQ_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL)
 		janus_config_print(config);
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+	janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
 
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 	if(item && item->value) {
 		/* Check how we need to format/serialize the JSON output */
 		if(!strcasecmp(item->value, "indented")) {
@@ -198,7 +206,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	}
 
 	/* Check if we need to send events to handlers */
-	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+	janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 	if(events != NULL && events->value != NULL)
 		notify_events = janus_is_true(events->value);
 	if(!notify_events && callback->events_is_enabled()) {
@@ -206,28 +214,28 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	}
 
 	/* Handle configuration, starting from the server details */
-	item = janus_config_get_item_drilldown(config, "general", "host");
+	item = janus_config_get(config, config_general, janus_config_type_item, "host");
 	if(item && item->value)
 		rmqhost = g_strdup(item->value);
 	else
 		rmqhost = g_strdup("localhost");
 	int rmqport = AMQP_PROTOCOL_PORT;
-	item = janus_config_get_item_drilldown(config, "general", "port");
+	item = janus_config_get(config, config_general, janus_config_type_item, "port");
 	if(item && item->value)
 		rmqport = atoi(item->value);
 
 	/* Credentials and Virtual Host */
-	item = janus_config_get_item_drilldown(config, "general", "vhost");
+	item = janus_config_get(config, config_general, janus_config_type_item, "vhost");
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
 		vhost = g_strdup("/");
-	item = janus_config_get_item_drilldown(config, "general", "username");
+	item = janus_config_get(config, config_general, janus_config_type_item, "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
 	else
 		username = g_strdup("guest");
-	item = janus_config_get_item_drilldown(config, "general", "password");
+	item = janus_config_get(config, config_general, janus_config_type_item, "password");
 	if(item && item->value)
 		password = g_strdup(item->value);
 	else
@@ -237,47 +245,47 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	gboolean ssl_enable = FALSE;
 	gboolean ssl_verify_peer = FALSE;
 	gboolean ssl_verify_hostname = FALSE;
-	item = janus_config_get_item_drilldown(config, "general", "ssl_enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_INFO, "RabbitMQ SSL support disabled\n");
 	} else {
 		ssl_enable = TRUE;
-		item = janus_config_get_item_drilldown(config, "general", "ssl_cacert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cacert");
 		if(item && item->value)
 			ssl_cacert_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_cert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cert");
 		if(item && item->value)
 			ssl_cert_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_key");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_key");
 		if(item && item->value)
 			ssl_key_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_peer");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_peer");
 		if(item && item->value && janus_is_true(item->value))
 			ssl_verify_peer = TRUE;
-		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_hostname");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_hostname");
 		if(item && item->value && janus_is_true(item->value))
 			ssl_verify_hostname = TRUE;
 	}
 
 	/* Now check if the Janus API must be supported */
-	item = janus_config_get_item_drilldown(config, "general", "enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Janus API)\n");
 	} else {
 		/* Parse configuration */
-		item = janus_config_get_item_drilldown(config, "general", "to_janus");
+		item = janus_config_get(config, config_general, janus_config_type_item, "to_janus");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_FATAL, "Missing name of incoming queue for RabbitMQ integration...\n");
 			goto error;
 		}
 		to_janus = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "from_janus");
+		item = janus_config_get(config, config_general, janus_config_type_item, "from_janus");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_FATAL, "Missing name of outgoing queue for RabbitMQ integration...\n");
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "janus_exchange");
+		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_INFO, "Missing name of outgoing exchange for RabbitMQ integration, using default\n");
 		} else {
@@ -291,18 +299,18 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_janus_api_enabled = TRUE;
 	}
 	/* Do the same for the admin API */
-	item = janus_config_get_item_drilldown(config, "admin", "admin_enable");
+	item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Admin API)\n");
 	} else {
 		/* Parse configuration */
-		item = janus_config_get_item_drilldown(config, "admin", "to_janus_admin");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "to_janus_admin");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_FATAL, "Missing name of incoming queue for RabbitMQ integration...\n");
 			goto error;
 		}
 		to_janus_admin = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "admin", "from_janus_admin");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "from_janus_admin");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_FATAL, "Missing name of outgoing queue for RabbitMQ integration...\n");
 			goto error;

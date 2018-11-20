@@ -1217,13 +1217,20 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SIP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SIP_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
 			struct ifaddrs *ifas = NULL;
@@ -1245,28 +1252,28 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
+		item = janus_config_get(config, config_general, janus_config_type_item, "keepalive_interval");
 		if(item && item->value)
 			keepalive_interval = atoi(item->value);
 		JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
 
-		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value)
 			register_ttl = atoi(item->value);
 		JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
 
-		item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+		item = janus_config_get(config, config_general, janus_config_type_item, "behind_nat");
 		if(item && item->value)
 			behind_nat = janus_is_true(item->value);
 
-		item = janus_config_get_item_drilldown(config, "general", "user_agent");
+		item = janus_config_get(config, config_general, janus_config_type_item, "user_agent");
 		if(item && item->value)
 			user_agent = g_strdup(item->value);
 		else
 			user_agent = g_strdup("Janus WebRTC Server SIP Plugin "JANUS_SIP_VERSION_STRING);
 		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 
-		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
 			char *maxport = strrchr(item->value, '-');
@@ -1288,7 +1295,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "SIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "events");
+		item = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(item != NULL && item->value != NULL)
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
