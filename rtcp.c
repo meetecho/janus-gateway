@@ -705,11 +705,6 @@ int janus_rtcp_fix_report_data(char *packet, int len, janus_rtp_switching_contex
 		switch(rtcp->type) {
 			case RTCP_RR: {
 				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
-				uint32_t recv_ssrc = ntohl(rr->ssrc);
-				if (recv_ssrc != ssrc_expected) {
-					JANUS_LOG(LOG_WARN,"Incoming RTCP RR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
-					return -3;
-				}
 				rr->ssrc = htonl(ssrc_peer);
 				status++;
 				if (rr->header.rc > 0) {
