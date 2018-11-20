@@ -101,7 +101,7 @@
  * and, more importantly, both \c timeCallback() and \c pokeScheduler() which,
  * together with JavaScript's \c resumeScheduler(), will be clearer in the next section.
  *
- * \section coroutines JavaScript/C coroutines scheduler
+ * \section jcoroutines JavaScript/C coroutines scheduler
  *
  * Duktape is a single threaded environment. While it has a concept similar
  * to threads called coroutines, these are not threads as known in C.
@@ -129,7 +129,7 @@
  * This simple mechanism is what the sample JavaScript scripts provided in this
  * repo use, for instance, to handle incoming messages asynchronously,
  * so you can refer to those to have an idea of how it can be used. The
- * next section will address \ref timers instead.
+ * next section will address \ref jtimers instead.
  *
  * \note You can implement asynchronous behaviour any way you want, and
  * you're not required to use this C scheduler. Anyway, you must implement
@@ -137,7 +137,7 @@
  * its presence and fails if it's not there. If you don't need it, just
  * create an empty function that does nothing and you'll be fine.
  *
- * \section timers JavaScript/C time-based scheduler
+ * \section jtimers JavaScript/C time-based scheduler
  *
  * Another helpful way to implement asynchronous behaviour is with the
  * help of the \c timeCallback() function. Specifically, this function

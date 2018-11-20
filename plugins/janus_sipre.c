@@ -15,7 +15,7 @@
  * SIP plugin. The API it exposes is exactly the same, meaning it should
  * be pretty straightforward to switch from one plugin to another on the
  * client side. The configuration file looks exactly the same as well.
- * As such, you can mostly refer to the \ref sip for both.
+ * As such, you can mostly refer to the \ref sipsofia for both.
  *
  * \section sipreapi SIPre Plugin API
  *

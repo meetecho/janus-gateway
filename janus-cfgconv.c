@@ -11,17 +11,17 @@
  * to .jcfg as soon as possible, which is what this tool allows you to do.
  * Notice that the tool also allows you to go the other way around, although
  * libconfig concepts that cannot be expressed in INI will be lost in the process.
- * 
+ *
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the path to the file you want to convert (.cfg or .jcfg) and the path to
  * the target file (.jcfg or .cfg), e.g.:
- * 
+ *
 \verbatim
 ./janus-cfgconv /path/to/config.cfg /path/to/config.jcfg
-\endverbatim 
- * 
- * \ingroup utilities
- * \ref utilities
+\endverbatim
+ *
+ * \ingroup tools
+ * \ref tools
  */
 
 #include <stdlib.h>
