@@ -692,6 +692,74 @@ gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *
 	return FALSE;
 }
 
+int janus_rtcp_fix_report_data(char *packet, int len, janus_rtp_switching_context *rtp_ctx, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video) {
+	if(packet == NULL || len <= 0)
+		return -1;
+	/* Parse RTCP compound packet */
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return -2;
+	int pno = 0, total = len, status = 0;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_RR: {
+				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
+				uint32_t recv_ssrc = ntohl(rr->ssrc);
+				if (recv_ssrc != ssrc_expected) {
+					JANUS_LOG(LOG_WARN,"Incoming RTCP RR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
+					return -3;
+				}
+				rr->ssrc = htonl(ssrc_peer);
+				status++;
+				if (rr->header.rc > 0) {
+					rr->rb[0].ssrc = htonl(ssrc_local);
+					status++;
+					/* FIXME we need to fix the extended highest sequence number received */
+					/* FIXME we need to fix the cumulative number of packets lost */
+					break;
+				}
+				break;
+			}
+			case RTCP_SR: {
+				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
+				uint32_t recv_ssrc = ntohl(sr->ssrc);
+				if (recv_ssrc != ssrc_expected) {
+					JANUS_LOG(LOG_WARN,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
+					return -3;
+				}
+				sr->ssrc = htonl(ssrc_peer);
+				/* FIXME we need to fix the sender's packet count */
+				/* FIXME we need to fix the sender's octet count */
+				uint32_t sr_ts = ntohl(sr->si.rtp_ts);
+				uint32_t fix_ts = video ? (sr_ts - rtp_ctx->v_base_ts) + rtp_ctx->v_base_ts_prev :
+						(sr_ts - rtp_ctx->a_base_ts) + rtp_ctx->a_base_ts_prev;
+				sr->si.rtp_ts = htonl(fix_ts);
+				status++;
+				if (sr->header.rc > 0) {
+					sr->rb[0].ssrc = htonl(ssrc_local);
+					status++;
+					/* FIXME we need to fix the extended highest sequence number received */
+					/* FIXME we need to fix the cumulative number of packets lost */
+					break;
+				}
+				break;
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return status;
+}
+
 gboolean janus_rtcp_has_bye(char *packet, int len) {
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
