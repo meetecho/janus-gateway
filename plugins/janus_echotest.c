@@ -985,93 +985,7 @@ static void *janus_echotest_handler(void *data) {
 				gateway->relay_rtcp(session->handle, 1, buf, 12);
 			}
 		}
-		if(record) {
-			if(msg_sdp) {
-				session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
-				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
-				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
-			}
-			gboolean recording = json_is_true(record);
-			const char *recording_base = json_string_value(recfile);
-			JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
-			janus_mutex_lock(&session->rec_mutex);
-			if(!recording) {
-				janus_echotest_recorder_close(session);
-			} else {
-				/* We've started recording, send a PLI and go on */
-				char filename[255];
-				gint64 now = janus_get_real_time();
-				if(session->has_audio) {
-					/* FIXME We assume we're recording Opus, here */
-					memset(filename, 0, 255);
-					if(recording_base) {
-						/* Use the filename and path we have been provided */
-						g_snprintf(filename, 255, "%s-audio", recording_base);
-						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
-						if(session->arc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
-						}
-					} else {
-						/* Build a filename */
-						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
-						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
-						if(session->arc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
-						}
-					}
-				}
-				if(session->has_video) {
-					/* FIXME We assume we're recording VP8, here */
-					memset(filename, 0, 255);
-					if(recording_base) {
-						/* Use the filename and path we have been provided */
-						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
-						if(session->vrc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
-						}
-					} else {
-						/* Build a filename */
-						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
-						if(session->vrc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
-						}
-					}
-					/* Send a PLI */
-					JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
-					char buf[12];
-					memset(buf, 0, 12);
-					janus_rtcp_pli((char *)&buf, 12);
-					gateway->relay_rtcp(session->handle, 1, buf, 12);
-				}
-				if(session->has_data) {
-					memset(filename, 0, 255);
-					if(recording_base) {
-						/* Use the filename and path we have been provided */
-						g_snprintf(filename, 255, "%s-data", recording_base);
-						session->drc = janus_recorder_create(NULL, "text", filename);
-						if(session->drc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
-						}
-					} else {
-						/* Build a filename */
-						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-data", session, now);
-						session->drc = janus_recorder_create(NULL, "text", filename);
-						if(session->drc == NULL) {
-							/* FIXME We should notify the fact the recorder could not be created */
-							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
-						}
-					}
-				}
-			}
-			janus_mutex_unlock(&session->rec_mutex);
-		}
+
 		/* Any SDP to handle? */
 		if(msg_sdp) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
@@ -1192,6 +1106,88 @@ static void *janus_echotest_handler(void *data) {
 			/* We don't need the event and jsep anymore */
 			json_decref(event);
 			json_decref(jsep);
+		}
+		if(record) {
+			gboolean recording = json_is_true(record);
+			const char *recording_base = json_string_value(recfile);
+			JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
+			janus_mutex_lock(&session->rec_mutex);
+			if(!recording) {
+				janus_echotest_recorder_close(session);
+			} else {
+				/* We've started recording, send a PLI and go on */
+				char filename[255];
+				gint64 now = janus_get_real_time();
+				if(session->has_audio) {
+					/* FIXME We assume we're recording Opus, here */
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-audio", recording_base);
+						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
+						if(session->arc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
+						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
+						if(session->arc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
+						}
+					}
+				}
+				if(session->has_video) {
+					/* FIXME We assume we're recording VP8, here */
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-video", recording_base);
+						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
+						if(session->vrc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
+						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
+						if(session->vrc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
+						}
+					}
+					/* Send a PLI */
+					JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
+					char buf[12];
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					gateway->relay_rtcp(session->handle, 1, buf, 12);
+				}
+				if(session->has_data) {
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-data", recording_base);
+						session->drc = janus_recorder_create(NULL, "text", filename);
+						if(session->drc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-data", session, now);
+						session->drc = janus_recorder_create(NULL, "text", filename);
+						if(session->drc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
+						}
+					}
+				}
+			}
+			janus_mutex_unlock(&session->rec_mutex);
 		}
 		janus_echotest_message_free(msg);
 
