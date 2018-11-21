@@ -20,10 +20,16 @@
 
 
 /* Filename helper */
-static char *get_filename(const char *path) {
-	char *filename = NULL;
-	if(path)
-		filename = strrchr(path, '/')+1;
+static const char *get_filename(const char *path) {
+	const char *filename = NULL;
+	if(path) {
+		filename = strrchr(path, '/');
+		if(filename == NULL) {
+			filename = path;
+		} else {
+			filename += 1;
+		}
+	}
 	return filename;
 }
 
@@ -77,7 +83,7 @@ static void janus_config_free_category(gpointer data) {
 janus_config *janus_config_parse(const char *config_file) {
 	if(config_file == NULL)
 		return NULL;
-	char *filename = get_filename(config_file);
+	const char *filename = get_filename(config_file);
 	if(filename == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid filename %s\n", config_file);
 		return NULL;
