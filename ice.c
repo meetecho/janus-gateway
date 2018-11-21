@@ -2721,10 +2721,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Fix packet data for RTCP SR and RTCP RR */
 				janus_rtp_switching_context *rtp_ctx = video ? &stream->rtp_ctx[vindex] : &stream->rtp_ctx[0];
+				uint32_t base_ts = video ? rtp_ctx->v_base_ts : rtp_ctx->a_base_ts;
+				uint32_t base_ts_prev = video ? rtp_ctx->v_base_ts_prev : rtp_ctx->a_base_ts_prev;
 				uint32_t ssrc_peer = video ? stream->video_ssrc_peer_orig[vindex] : stream->audio_ssrc_peer_orig;
 				uint32_t ssrc_local = video ? stream->video_ssrc : stream->audio_ssrc;
 				uint32_t ssrc_expected = video ? rtp_ctx->v_last_ssrc : rtp_ctx->a_last_ssrc;
-				if (janus_rtcp_fix_report_data(buf, buflen, rtp_ctx, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
+				if (janus_rtcp_fix_report_data(buf, buflen, base_ts, base_ts_prev, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
 					/* Drop packet in case of parsing error or SSRC different from the one expected. */
 					/* This might happen at the very beginning of the communication or early after */
 					/* a re-negotation has been concluded. */

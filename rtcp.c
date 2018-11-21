@@ -692,7 +692,7 @@ gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *
 	return FALSE;
 }
 
-int janus_rtcp_fix_report_data(char *packet, int len, janus_rtp_switching_context *rtp_ctx, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video) {
+int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t base_ts_prev, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video) {
 	if(packet == NULL || len <= 0)
 		return -1;
 	/* Parse RTCP compound packet */
@@ -727,8 +727,7 @@ int janus_rtcp_fix_report_data(char *packet, int len, janus_rtp_switching_contex
 				/* FIXME we need to fix the sender's packet count */
 				/* FIXME we need to fix the sender's octet count */
 				uint32_t sr_ts = ntohl(sr->si.rtp_ts);
-				uint32_t fix_ts = video ? (sr_ts - rtp_ctx->v_base_ts) + rtp_ctx->v_base_ts_prev :
-						(sr_ts - rtp_ctx->a_base_ts) + rtp_ctx->a_base_ts_prev;
+				uint32_t fix_ts = (sr_ts - base_ts) + base_ts_prev;
 				sr->si.rtp_ts = htonl(fix_ts);
 				status++;
 				if (sr->header.rc > 0) {

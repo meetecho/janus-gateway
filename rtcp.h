@@ -341,13 +341,14 @@ int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len);
 /*! \brief Method to fix incoming RTCP SR and RR data
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
- * @param[in] rtp_ctx RTP context to get timestamp info from
+ * @param[in] base_ts RTP context base timestamp to compute offset
+ * @param[in] base_ts_prev RTP context base timestamp to compute offset
  * @param[in] ssrc_peer The remote SSRC in usage for this stream
  * @param[in] ssrc_local The local SSRC in usage for this stream
  * @param[in] ssrc_expected The expected SSRC for this RTCP packet
  * @param[in] video Whether the RTCP packet contains report for video data
  * @returns The number of fields updated, negative values on errors */
-int janus_rtcp_fix_report_data(char *packet, int len, janus_rtp_switching_context *rtp_ctx, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video);
+int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t base_ts_prev, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video);
 
 /*! \brief Method to fix an RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] ctx RTCP context to update, if needed (optional)
