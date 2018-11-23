@@ -11,16 +11,16 @@
  * it is sent to the peers. The actual SDP processing (parsing SDP strings,
  * representation of SDP as an internal format, and so on) is done via
  * the tools provided in sdp-utils.h.
- * 
+ *
  * \todo Right now, we only support sessions with up to a single audio
  * and/or a single video stream (as in, a single audio and/or video
  * m-line) plus an optional DataChannel. Later versions of the server
  * will add support for more media streams of the same type in a session.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_SDP_H
 #define _JANUS_SDP_H
 
@@ -59,27 +59,26 @@ int janus_sdp_process(void *handle, janus_sdp *sdp, gboolean update);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] webrtc Opaque pointer to the WebRTC PeerConnection this candidate refers to
  * @param[in] candidate The remote candidate to process
  * @param[in] trickle Whether this is a trickle candidate, or coming from the SDP
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_candidate(void *stream, const char *candidate, int trickle);
+int janus_sdp_parse_candidate(void *webrtc, const char *candidate, int trickle);
 
 /*! \brief Method to parse a SSRC group attribute
  * \details This method will parse a SSRC group attribute, and set the parsed values for the peer
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] medium Opaque pointer to the medium this candidate refers to
  * @param[in] group_attr The SSRC group attribute value to parse
- * @param[in] video Whether this is video-related or not
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_ssrc_group(void *stream, const char *group_attr, int video);
+int janus_sdp_parse_ssrc_group(void *medium, const char *group_attr, int video);
 
 /*! \brief Method to parse a SSRC attribute
  * \details This method will parse a SSRC attribute, and set it for the peer
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] medium Opaque pointer to the medium this candidate refers to
  * @param[in] ssrc_attr The SSRC attribute value to parse
  * @param[in] video Whether this is a video SSRC or not
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_ssrc(void *stream, const char *ssrc_attr, int video);
+int janus_sdp_parse_ssrc(void *medium, const char *ssrc_attr, int video);
 
 /*! \brief Method to strip/anonymize a session description
  * @param[in,out] sdp The Janus SDP description object to strip/anonymize

@@ -6,16 +6,16 @@
  * The code takes care of the SCTP association between peers and the server,
  * and allows for sending and receiving text messages (binary stuff yet to
  * be implemented) after that.
- * 
+ *
  * \note Right now, the code is heavily based on the rtcweb.c sample code
  * provided in the \c usrsctp library code, and as such the copyright notice
  * that appears at the beginning of that code is ideally present here as
- * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c 
- * 
+ * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_SCTP_H
 #define _JANUS_SCTP_H
 
@@ -75,7 +75,7 @@ void janus_sctp_deinit(void);
 #define DATA_CHANNEL_FLAGS_SEND_ACK 0x00000004
 
 struct janus_dtls_srtp;
-struct janus_ice_handle;
+struct janus_handle;
 
 typedef struct janus_sctp_channel {
 	/*! \brief SCTP channel ID */
@@ -98,7 +98,7 @@ typedef struct janus_sctp_association {
 	/*! \brief Pointer to the DTLS instance related to this SCTP association */
 	struct janus_dtls_srtp *dtls;
 	/*! \brief Pointer to the ICE handle related to this SCTP association */
-	struct janus_ice_handle *handle;
+	struct janus_handle *handle;
 	/*! \brief Identifier of the handle owning this SCTP association (for debugging purposes only) */
 	uint64_t handle_id;
 	/*! \brief Array of SCTP channels */
@@ -186,7 +186,7 @@ typedef struct janus_datachannel_ack {
  * \param[in] handle Pointer to the ICE handle that will send out SCTP messages.
  * \param[in] udp_port The port as negotiated in the sctpmap attribute (http://tools.ietf.org/html/draft-ietf-mmusic-sctp-sdp-06)
  * \returns A janus_sctp_association instance if successful, NULL otherwise */
-janus_sctp_association *janus_sctp_association_create(struct janus_dtls_srtp *dtls, struct janus_ice_handle *handle, uint16_t udp_port);
+janus_sctp_association *janus_sctp_association_create(struct janus_dtls_srtp *dtls, struct janus_handle *handle, uint16_t udp_port);
 
 /*! \brief Destroy an existing SCTP association
  * \param[in] sctp The SCTP association to get rid of */

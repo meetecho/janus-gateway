@@ -257,6 +257,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
+	int mlines = 0;
 
 	gchar **parts = g_strsplit(sdp, "\r\n", -1);
 	if(parts) {
@@ -393,6 +394,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							success = FALSE;
 							break;
 						}
+						m->index = mlines;
+						mlines++;
 						m->type = janus_sdp_parse_mtype(type);
 						m->type_str = g_strdup(type);
 						m->proto = g_strdup(proto);
@@ -1019,6 +1022,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	/* Now add all the media we should */
 	if(do_audio) {
 		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_AUDIO, 1, "UDP/TLS/RTP/SAVPF", audio_dir);
+		m->index = g_list_length(offer->m_lines);
 		m->c_ipv4 = TRUE;
 		m->c_addr = g_strdup(offer->c_addr);
 		/* Add the selected audio codec */
@@ -1037,6 +1041,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	}
 	if(do_video) {
 		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_VIDEO, 1, "UDP/TLS/RTP/SAVPF", video_dir);
+		m->index = g_list_length(offer->m_lines);
 		m->c_ipv4 = TRUE;
 		m->c_addr = g_strdup(offer->c_addr);
 		/* Add the selected video codec */
@@ -1064,6 +1069,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	if(do_data) {
 		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_APPLICATION, 1,
 			data_legacy ? "DTLS/SCTP" : "UDP/DTLS/SCTP", JANUS_SDP_DEFAULT);
+		m->index = g_list_length(offer->m_lines);
 		m->c_ipv4 = TRUE;
 		m->c_addr = g_strdup(offer->c_addr);
 		m->fmts = g_list_append(m->fmts, g_strdup(data_legacy ? "5000" : "webrtc-datachannel"));
@@ -1155,6 +1161,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 		janus_sdp_mline *am = g_malloc0(sizeof(janus_sdp_mline));
 		g_atomic_int_set(&am->destroyed, 0);
 		janus_refcount_init(&am->ref, janus_sdp_mline_free);
+		am->index = m->index;
 		am->type = m->type;
 		am->type_str = m->type_str ? g_strdup(m->type_str) : NULL;
 		am->proto = g_strdup(m->proto ? m->proto : "UDP/TLS/RTP/SAVPF");

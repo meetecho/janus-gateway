@@ -79,13 +79,10 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 		return;
 	if(dtls == NULL)
 		return;
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL)
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL)
 		return;
-	janus_ice_stream *stream = component->stream;
-	if(stream == NULL)
-		return;
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(handle == NULL)
 		return;
 	janus_session *session = (janus_session *)handle->session;
@@ -93,8 +90,8 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 		return;
 	json_t *info = json_object();
 	json_object_set_new(info, "dtls", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
-	json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
-	json_object_set_new(info, "component_id", json_integer(component->component_id));
+	json_object_set_new(info, "stream_id", json_integer(pc->stream_id));
+	json_object_set_new(info, "component_id", json_integer(pc->component_id));
 	json_object_set_new(info, "retransmissions", json_integer(dtls->retransmissions));
 	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
@@ -433,7 +430,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
 	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
 	/* This stack can be destroyed, free all the resources */
-	dtls->component = NULL;
+	dtls->pc = NULL;
 	if(dtls->ssl != NULL) {
 		SSL_free(dtls->ssl);
 		dtls->ssl = NULL;
@@ -475,18 +472,13 @@ void janus_dtls_srtp_cleanup(void) {
 }
 
 
-janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role role) {
-	janus_ice_component *component = (janus_ice_component *)ice_component;
-	if(component == NULL) {
-		JANUS_LOG(LOG_ERR, "No component, no DTLS...\n");
+janus_dtls_srtp *janus_dtls_srtp_create(void *webrtc, janus_dtls_role role) {
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)webrtc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection, no DTLS...\n");
 		return NULL;
 	}
-	janus_ice_stream *stream = component->stream;
-	if(!stream) {
-		JANUS_LOG(LOG_ERR, "No stream, no DTLS...\n");
-		return NULL;
-	}
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle || !handle->agent) {
 		JANUS_LOG(LOG_ERR, "No handle/agent, no DTLS...\n");
 		return NULL;
@@ -550,7 +542,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 #endif
 	/* Done */
 	dtls->dtls_connected = 0;
-	dtls->component = component;
+	dtls->pc = pc;
 	return dtls;
 }
 
@@ -577,21 +569,18 @@ int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls) {
 #ifdef HAVE_SCTP
 	if(dtls == NULL)
 		return -1;
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL)
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL)
 		return -2;
-	janus_ice_stream *stream = component->stream;
-	if(!stream)
-		return -3;
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle || !handle->agent)
+		return -3;
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT))
 		return -4;
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
-		return -5;
 	dtls->sctp = janus_sctp_association_create(dtls, handle, 5000);
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating SCTP association...\n", handle->handle_id);
-		return -6;
+		return -5;
 	}
 	return 0;
 #else
@@ -605,27 +594,22 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		JANUS_LOG(LOG_ERR, "No DTLS-SRTP stack, no incoming message...\n");
 		return;
 	}
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL) {
-		JANUS_LOG(LOG_ERR, "No component, no DTLS...\n");
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection, no DTLS...\n");
 		return;
 	}
-	janus_ice_stream *stream = component->stream;
-	if(!stream) {
-		JANUS_LOG(LOG_ERR, "No stream, no DTLS...\n");
-		return;
-	}
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle || !handle->agent) {
 		JANUS_LOG(LOG_ERR, "No handle/agent, no DTLS...\n");
 		return;
 	}
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT)) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Alert already triggered, clearing up...\n", handle->handle_id);
 		return;
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, pc->component_id, pc->stream_id);
 		return;
 	}
 	if(dtls->dtls_started == 0) {
@@ -653,7 +637,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			return;
 		}
 	}
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
 		/* DTLS alert triggered, we should end it here */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forced to stop it here...\n", handle->handle_id);
 		return;
@@ -688,7 +672,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			unsigned char rfingerprint[EVP_MAX_MD_SIZE];
 			char remote_fingerprint[160];
 			char *rfp = (char *)&remote_fingerprint;
-			if(stream->remote_hashing && !strcasecmp(stream->remote_hashing, "sha-1")) {
+			if(pc->remote_hashing && !strcasecmp(pc->remote_hashing, "sha-1")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Computing sha-1 fingerprint of remote certificate...\n", handle->handle_id);
 				X509_digest(rcert, EVP_sha1(), (unsigned char *)rfingerprint, &rsize);
 			} else {
@@ -704,8 +688,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			*(rfp-1) = 0;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote fingerprint (%s) of the client is %s\n",
-				handle->handle_id, stream->remote_hashing ? stream->remote_hashing : "sha-256", remote_fingerprint);
-			if(!strcasecmp(remote_fingerprint, stream->remote_fingerprint ? stream->remote_fingerprint : "(none)")) {
+				handle->handle_id, pc->remote_hashing ? pc->remote_hashing : "sha-256", remote_fingerprint);
+			if(!strcasecmp(remote_fingerprint, pc->remote_fingerprint ? pc->remote_fingerprint : "(none)")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Fingerprint is a match!\n", handle->handle_id);
 				dtls->dtls_state = JANUS_DTLS_STATE_CONNECTED;
 				dtls->dtls_connected = janus_get_monotonic_time();
@@ -713,7 +697,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				janus_dtls_notify_state_change(dtls);
 			} else {
 				/* FIXME NOT a match! MITM? */
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, stream->remote_fingerprint);
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, pc->remote_fingerprint);
 				dtls->dtls_state = JANUS_DTLS_STATE_FAILED;
 				/* Notify event handlers */
 				janus_dtls_notify_state_change(dtls);
@@ -765,7 +749,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				if(!SSL_export_keying_material(dtls->ssl, material, master_length*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
 					/* Oops... */
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
-						handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
+						handle->handle_id, pc->component_id, pc->stream_id, ERR_reason_error_string(ERR_get_error()));
 					goto done;
 				}
 				/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
@@ -855,23 +839,23 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
 				if(res != srtp_err_status_ok) {
 					/* Something went wrong... */
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, pc->component_id, pc->stream_id);
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
 					goto done;
 				}
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, pc->component_id, pc->stream_id);
 				res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
 				if(res != srtp_err_status_ok) {
 					/* Something went wrong... */
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, pc->component_id, pc->stream_id);
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_srtp_error_str(res));
 					goto done;
 				}
 				dtls->srtp_profile = srtp_profile->id;
 				dtls->srtp_valid = 1;
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, pc->component_id, pc->stream_id);
 #ifdef HAVE_SCTP
-				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_DATA_CHANNELS)) {
 					/* Create SCTP association as well */
 					janus_dtls_srtp_create_sctp(dtls);
 				}
@@ -879,13 +863,13 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				dtls->ready = 1;
 			}
 done:
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && dtls->srtp_valid) {
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT) && dtls->srtp_valid) {
 				/* Handshake successfully completed */
-				janus_ice_dtls_handshake_done(handle, component);
+				janus_handle_dtls_handshake_done(handle);
 			} else {
 				/* Something went wrong in either DTLS or SRTP... tell the plugin about it */
 				janus_dtls_callback(dtls->ssl, SSL_CB_ALERT, 0);
-				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+				janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_CLEANING);
 			}
 		}
 	}
@@ -926,23 +910,18 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		JANUS_LOG(LOG_ERR, "No DTLS session related to this alert...\n");
 		return;
 	}
-	janus_ice_component *component = dtls->component;
-	if(component == NULL) {
-		JANUS_LOG(LOG_ERR, "No ICE component related to this alert...\n");
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection related to this alert...\n");
 		return;
 	}
-	janus_ice_stream *stream = component->stream;
-	if(!stream) {
-		JANUS_LOG(LOG_ERR, "No ICE stream related to this alert...\n");
-		return;
-	}
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle) {
 		JANUS_LOG(LOG_ERR, "No ICE handle related to this alert...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-	janus_ice_webrtc_hangup(handle, "DTLS alert");
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, pc->stream_id, pc->component_id);
+	janus_handle_webrtc_hangup(handle, "DTLS alert");
 }
 
 /* DTLS certificate verification callback */
@@ -972,17 +951,12 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	if(dtls == NULL || buf == NULL || len < 1)
 		return;
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL) {
-		JANUS_LOG(LOG_ERR, "No component...\n");
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection...\n");
 		return;
 	}
-	janus_ice_stream *stream = component->stream;
-	if(!stream) {
-		JANUS_LOG(LOG_ERR, "No stream...\n");
-		return;
-	}
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle || !handle->agent || !dtls->write_bio) {
 		JANUS_LOG(LOG_ERR, "No handle...\n");
 		return;
@@ -995,16 +969,13 @@ gboolean janus_dtls_retry(gpointer stack) {
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)stack;
 	if(dtls == NULL)
 		return FALSE;
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL)
-		return FALSE;
-	janus_ice_stream *stream = component->stream;
-	if(!stream)
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL)
 		goto stoptimer;
-	janus_ice_handle *handle = stream->handle;
+	janus_handle *handle = pc->handle;
 	if(!handle)
 		goto stoptimer;
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP))
 		goto stoptimer;
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
@@ -1013,8 +984,8 @@ gboolean janus_dtls_retry(gpointer stack) {
 	if(janus_get_monotonic_time() - dtls->dtls_started >= 20*G_USEC_PER_SEC) {
 		/* FIXME Should we really give up after 20 seconds waiting for DTLS? */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] DTLS taking too much time for component %d in stream %d...\n",
-			handle->handle_id, component->component_id, stream->stream_id);
-		janus_ice_webrtc_hangup(handle, "DTLS timeout");
+			handle->handle_id, pc->component_id, pc->stream_id);
+		janus_handle_webrtc_hangup(handle, "DTLS timeout");
 		goto stoptimer;
 	}
 	struct timeval timeout = {0};
@@ -1026,7 +997,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
 	if(timeout_value == 0) {
 		dtls->retransmissions++;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, component->component_id, stream->stream_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, pc->component_id, pc->stream_id);
 		/* Notify event handlers */
 		janus_dtls_notify_state_change(dtls);
 		/* Retransmit the packet */
@@ -1035,10 +1006,10 @@ gboolean janus_dtls_retry(gpointer stack) {
 	return TRUE;
 
 stoptimer:
-	if(component->dtlsrt_source != NULL) {
-		g_source_destroy(component->dtlsrt_source);
-		g_source_unref(component->dtlsrt_source);
-		component->dtlsrt_source = NULL;
+	if(pc->dtlsrt_source != NULL) {
+		g_source_destroy(pc->dtlsrt_source);
+		g_source_unref(pc->dtlsrt_source);
+		pc->dtlsrt_source = NULL;
 	}
 	return FALSE;
 }

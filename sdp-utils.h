@@ -7,11 +7,11 @@
  * of such object by playing with its properties, and a serialization
  * to an SDP string that can be passed around. Since they don't have any
  * core dependencies, these utilities can be used by plugins as well.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_SDP_UTILS_H
 #define _JANUS_SDP_UTILS_H
 
@@ -126,6 +126,8 @@ const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec);
 
 /*! \brief SDP m-line representation */
 typedef struct janus_sdp_mline {
+	/*! \brief Media index in the SDP */
+	int index;
 	/*! \brief Media type as a janus_sdp_mtype enumerator */
 	janus_sdp_mtype type;
 	/*! \brief Media type (string) */

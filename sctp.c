@@ -6,12 +6,12 @@
  * The code takes care of the SCTP association between peers and the server,
  * and allows for sending and receiving text messages (binary stuff yet to
  * be implemented) after that.
- * 
+ *
  * \note Right now, the code is heavily based on the rtcweb.c sample code
  * provided in the \c usrsctp library code, and as such the copyright notice
  * that appears at the beginning of that code is ideally present here as
- * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c 
- * 
+ * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c
+ *
  * \note If you want/need to debug SCTP messages for any reason, you can
  * do so by uncommenting the definition of \c DEBUG_SCTP in sctp.h. This
  * will force this code to save all the SCTP messages being exchanged to
@@ -19,19 +19,19 @@
  * these files in by modifying the \c debug_folder variable. Once a file
  * has been saved, you need to process it using the \c text2pcap tool
  * that is usually shipped with Wireshark, e.g.:
- * 
+ *
 \verbatim
 cd /path/to/sctp
 /usr/sbin/text2pcap -n -l 248 -D -t '%H:%M:%S.' sctp-debug-XYZ.txt sctp-debug-XYZ.pcapng
 /usr/sbin/wireshark sctp-debug-XYZ.pcapng
 \endverbatim
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
 
 #ifdef HAVE_SCTP
- 
+
 #include "sctp.h"
 #include "dtls.h"
 #include "janus.h"
@@ -122,10 +122,10 @@ static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	sctp = NULL;
 }
 
-janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, janus_ice_handle *handle, uint16_t udp_port) {
+janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, janus_handle *handle, uint16_t udp_port) {
 	if(dtls == NULL || handle == NULL || udp_port == 0)
 		return NULL;
-	
+
 	/* usrsctp provides UDP encapsulation of SCTP, but we need these messages to
 	 * be encapsulated in DTLS and actually sent/received by libnice, and not by
 	 * usrsctp itself... as such, we make use of the AF_CONN approach */
@@ -209,7 +209,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY (%d)\n", sctp->handle_id, errno);
 		janus_refcount_decrease(&sctp->ref);
 		return NULL;
-	}	
+	}
 	/* Enable the events of interest */
 	struct sctp_event event;
 	memset(&event, 0, sizeof(event));
@@ -686,7 +686,7 @@ int janus_sctp_send_text(janus_sctp_association *sctp, uint16_t id, char *text, 
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] sctp_sendv error (%d)\n", sctp->handle_id, errno);
 		return -1;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message sent on channel %"SCNu16"\n", sctp->handle_id, id); 
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Message sent on channel %"SCNu16"\n", sctp->handle_id, id);
 	return 0;
 }
 
@@ -826,7 +826,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	if(len > 0 && len < length) {
 		label = g_malloc(len+1);
 		memcpy(label, req->label, len);
-		label[len] = '\0'; 
+		label[len] = '\0';
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
 		label ? label : "??",
@@ -1145,7 +1145,7 @@ void janus_sctp_handle_stream_reset_event(janus_sctp_association *sctp, struct s
 		}
 		JANUS_LOG(LOG_VERB, "%d", strrst->strreset_stream_list[i]);
 	}
-	JANUS_LOG(LOG_VERB, ".\n");	
+	JANUS_LOG(LOG_VERB, ".\n");
 	if(!(strrst->strreset_flags & SCTP_STREAM_RESET_DENIED) &&
 	    !(strrst->strreset_flags & SCTP_STREAM_RESET_FAILED)) {
 		for(i = 0; i < n; i++) {
