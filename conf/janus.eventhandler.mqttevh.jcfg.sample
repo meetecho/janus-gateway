@@ -27,6 +27,11 @@ general: {
 	#addtype = true					# Whether we should add the event type to the base topic
 
 
+	#will_content = "{\"event\": \"disconnect\"}"	# LWT content
+	#will_retain = yes								# Whether LWT should be retained (default: yes)
+	#will_qos = 0									# QoS for LWT (default: 0)
+
+
 	# Additional parameters if "mqtts://" schema is used
 	#tls_verify_peer = true			# Whether peer verification must be enabled
 	#tls_verify_hostname = true		# Whether hostname verification must be enabled

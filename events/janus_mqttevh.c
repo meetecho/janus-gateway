@@ -294,6 +294,14 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.onFailure = janus_mqttevh_client_connect_failure;
 	options.context = ctx;
 
+	MQTTAsync_willOptions willOptions = MQTTAsync_willOptions_initializer;
+	willOptions.topicName = ctx->will.topic;
+	willOptions.message = ctx->will.content;
+	willOptions.retained = ctx->will.retain;
+	willOptions.qos = ctx->will.qos;
+
+	options.will = &willOptions;
+
 	rc = MQTTAsync_connect(ctx->client, &options);
 	return rc;
 }
@@ -511,6 +519,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
 	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item;
+	janus_config_item *will_retain_item, *will_qos_item, *will_content_item;
 
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
@@ -632,6 +641,27 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	qos_item = janus_config_get(config, config_general, janus_config_type_item, "qos");
 	ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+
+	/* LWT config */
+	will_content_item = janus_config_get(config, config_general, janus_config_type_item, "will_content");
+	if(will_content_item && will_content_item->value) {
+		ctx->will.content = g_strdup(will_content_item->value);
+	} else {
+		ctx->will.content = g_strdup(DEFAULT_WILL_CONTENT);
+	}
+
+	will_retain_item = janus_config_get(config, config_general, janus_config_type_item, "will_retain");
+	if(will_retain_item && will_retain_item->value && janus_is_true(will_retain_item->value)) {
+		ctx->will.retain = TRUE;
+	}
+
+	will_qos_item = janus_config_get(config, config_general, janus_config_type_item, "will_qos");
+	if(will_qos_item && will_qos_item->value) {
+		ctx->will.qos = atoi(will_qos_item->value);
+	}
+
+	/* Using the same topic for LWT as configured for publish. */
+	ctx->will.topic = ctx->publish.topic;
 
 	/* TLS config*/
 	item = janus_config_get(config, config_general, janus_config_type_item, "tls_enable");
