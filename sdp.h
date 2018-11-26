@@ -33,29 +33,33 @@
 /** @name Janus SDP helper methods
  */
 ///@{
-/*! \brief Method to pre-parse a session description
- * \details This method is only used to quickly check how many audio and video lines are in an SDP, and to generate a Janus SDP instance
+/*! \brief Method to pre-parse a session description to generate a Janus SDP instance
  * @param[in] handle Opaque pointer to the ICE handle this session description will modify
  * @param[in] jsep_sdp The SDP that the browser peer originated
+ * @param[in,out] audio The number of audio m-lines in the SDP
+ * @param[in,out] video The number of video m-lines in the SDP
+ * @param[in,out] data The number of data m-lines in the SDP
  * @param[in,out] error_str Buffer to receive a reason for an error, if any
  * @param[in] errlen The length of the error buffer
- * @param[out] audio The number of audio m-lines
- * @param[out] video The number of video m-lines
- * @param[out] data The number of SCTP m-lines
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
+janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp,
+	int *audio, int *video, int *data, char *error_str, size_t errlen);
 
-/*! \brief Method to process a parsed session description
+/*! \brief Method to process a remote parsed session description
  * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly
- * \note While this method can handle SDP updates, renegotiations are currently
- * limited to updates to the media direction of existing media streams
- * (e.g., sendrecv to recvonly) and ICE restarts. Adding/removing streams
- * and supporting multiple streams in the same PeerConnection are still WIP.
  * @param[in] handle Opaque pointer to the ICE handle this session description will modify
  * @param[in] sdp The Janus SDP object to process
  * @param[in] update Whether this SDP is an update to an existing session or not
  * @returns 0 in case of success, -1 in case of an error */
-int janus_sdp_process(void *handle, janus_sdp *sdp, gboolean update);
+int janus_sdp_process_remote(void *handle, janus_sdp *sdp, gboolean update);
+
+/*! \brief Method to process a local parsed session description
+ * \details This method will process a session description coming from a plugin, and set up media accordingly
+ * @param[in] handle Opaque pointer to the ICE handle this session description will modify
+ * @param[in] sdp The Janus SDP object to process
+ * @param[in] update Whether this SDP is an update to an existing session or not
+ * @returns 0 in case of success, -1 in case of an error */
+int janus_sdp_process_local(void *handle, janus_sdp *sdp, gboolean update);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not

@@ -99,15 +99,16 @@ janus_sdp_mdirection janus_sdp_parse_mdirection(const char *direction);
  * @returns The direction as a string, if valid, or NULL otherwise */
 const char *janus_sdp_mdirection_str(janus_sdp_mdirection direction);
 
-/*! \brief Helper method to return the preferred audio and video codecs in an SDP offer or answer,
+/*! \brief Helper method to return the preferred audio or video codec in an SDP offer or answer,
  * (where by preferred we mean the codecs we prefer ourselves, and not the m-line SDP order)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
- * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
- * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * \note The codec arguments is input/output, and it'll be set to a static value
+ * in janus_preferred_audio_codecs or janus_preferred_video_codecs, so don't free it.
  * @param[in] sdp The Janus SDP object to parse
- * @param[out] acodec The audio codec that was found
- * @param[out] vcodec The video codec that was found */
-void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
+ * @param[in] type Whether we're looking at an audio or video codec
+ * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
+ * @param[out] codec The audio or video codec that was found */
+void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec);
 /*! \brief Helper method to return the first audio and video codecs in an SDP offer or answer,
  * (no matter whether we personally prefer them ourselves or not)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
@@ -224,12 +225,6 @@ int janus_sdp_attribute_add_to_mline(janus_sdp_mline *mline, janus_sdp_attribute
  * of errors, if provided the error string is filled with a reason  */
 janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen);
 
-/*! \brief Helper method to quickly remove all traces (m-line, rtpmap, fmtp, etc.) of a payload type
- * @param[in] sdp The janus_sdp object to remove the payload type from
- * @param[in] pt The payload type to remove
- * @returns 0 in case of success, a negative integer otherwise */
-int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt);
-
 /*! \brief Method to serialize a janus_sdp object to an SDP string
  * @param[in] sdp The janus_sdp object to serialize
  * @returns A pointer to a string with the serialized SDP, if successful, NULL otherwise */
@@ -248,9 +243,13 @@ janus_sdp *janus_sdp_new(const char *name, const char *address);
 void janus_sdp_destroy(janus_sdp *sdp);
 
 typedef enum janus_sdp_oa_type {
-/*! \brief When generating an offer or answer automatically, accept/reject audio if offered (depends on value that follows) */
-JANUS_SDP_OA_AUDIO = 1,
-/*! \brief When generating an offer or answer automatically, accept/reject video if offered (depends on value that follows) */
+/*! \brief When generating an offer or answer automatically, refer to this m-line index for the following attributes (depends on value that follows) */
+JANUS_SDP_OA_MLINE_INDEX = 1,
+/*! \brief When generating an offer or answer automatically, ignore m-lines for now (depends on value that follows) */
+JANUS_SDP_OA_GLOBAL_ONLY = 1,
+/*! \brief When generating an offer or answer automatically, accept/reject (first) audio if offered (depends on value that follows) */
+JANUS_SDP_OA_AUDIO,
+/*! \brief When generating an offer or answer automatically, accept/reject (first) video if offered (depends on value that follows) */
 JANUS_SDP_OA_VIDEO,
 /*! \brief When generating an offer or answer automatically, accept/reject datachannels if offered (depends on value that follows) */
 JANUS_SDP_OA_DATA,
@@ -320,21 +319,30 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...);
 
-/*! \brief Helper to get the payload type associated to a specific codec
+/*! \brief Helper to get the payload type associated to a specific codec in an m-line
  * @param sdp The Janus SDP instance to process
+ * @param mindex The m-line to refer to (use -1 for the first m-line that matches)
  * @param codec The codec to find, as a string
  * @returns The payload type, if found, or -1 otherwise */
-int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec);
+int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec);
 
-/*! \brief Helper to get the codec name associated to a specific payload type
+/*! \brief Helper to get the codec name associated to a specific payload type in an m-line
  * @param sdp The Janus SDP instance to process
+ * @param mindex The m-line to refer to (use -1 for the first m-line that matches)
  * @param pt The payload type to find
  * @returns The codec name, if found, or NULL otherwise */
-const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt);
+const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt);
+
+/*! \brief Helper method to quickly remove all traces (m-line, rtpmap, fmtp, etc.) of a payload type
+ * @param[in] sdp The janus_sdp object to remove the payload type from
+ * @param[in] index The m-line to remove the payload type from (use -1 for the first m-line that matches)
+ * @param[in] pt The payload type to remove
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int mindex, int pt);
 
 /*! \brief Helper to get the rtpmap associated to a specific codec
  * @param codec The codec name, as a string (e.g., "opus")
- * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or -1 otherwise */
+ * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or NULL otherwise */
 const char *janus_sdp_get_codec_rtpmap(const char *codec);
 
 #endif

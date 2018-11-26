@@ -549,12 +549,16 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	return imported;
 }
 
-int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int mindex, int pt) {
 	if(!sdp || pt < 0)
 		return -1;
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		if(mindex != -1 && mindex != m->index) {
+			ml = ml->next;
+			continue;
+		}
 		/* Remove any reference from the m-line */
 		m->ptypes = g_list_remove(m->ptypes, GINT_TO_POINTER(pt));
 		/* Also remove all attributes that reference the same payload type */
@@ -569,12 +573,14 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
 			}
 			ma = ma->next;
 		}
+		if(mindex != -1)
+			break;
 		ml = ml->next;
 	}
 	return 0;
 }
 
-int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
+int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec) {
 	if(sdp == NULL || codec == NULL)
 		return -1;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
@@ -628,6 +634,10 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 			ml = ml->next;
 			continue;
 		}
+		if(mindex != -1 && mindex != m->index) {
+			ml = ml->next;
+			continue;
+		}
 		/* Look in all rtpmap attributes */
 		GList *ma = m->attributes;
 		while(ma) {
@@ -639,12 +649,14 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 			}
 			ma = ma->next;
 		}
+		if(mindex != -1)
+			break;
 		ml = ml->next;
 	}
 	return -1;
 }
 
-const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
+const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt) {
 	if(sdp == NULL || pt < 0)
 		return NULL;
 	if(pt == 0)
@@ -656,6 +668,10 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		if(mindex != -1 && mindex != m->index) {
+			ml = ml->next;
+			continue;
+		}
 		/* Look in all rtpmap attributes */
 		GList *ma = m->attributes;
 		while(ma) {
@@ -690,6 +706,8 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 			}
 			ma = ma->next;
 		}
+		if(mindex != -1)
+			break;
 		ml = ml->next;
 	}
 	return NULL;
@@ -835,41 +853,32 @@ char *janus_sdp_write(janus_sdp *imported) {
 	return sdp;
 }
 
-void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
+void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec) {
 	if(sdp == NULL)
 		return;
 	janus_refcount_increase(&sdp->ref);
-	gboolean audio = FALSE, video = FALSE;
+	gboolean found = FALSE;
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		/* Which media are available? */
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-			if(audio == FALSE) {
-				uint i=0;
-				for(i=0; i<janus_audio_codecs; i++) {
-					if(janus_sdp_get_codec_pt(sdp, janus_preferred_audio_codecs[i]) > 0) {
-						audio = TRUE;
-						if(acodec)
-							*acodec = janus_preferred_audio_codecs[i];
-						break;
-					}
-				}
-			}
-		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-			if(video == FALSE) {
-				uint i=0;
-				for(i=0; i<janus_video_codecs; i++) {
-					if(janus_sdp_get_codec_pt(sdp, janus_preferred_video_codecs[i]) > 0) {
-						video = TRUE;
-						if(vcodec)
-							*vcodec = janus_preferred_video_codecs[i];
-						break;
-					}
+		if(mindex != -1 && mindex != m->index) {
+			temp = temp->next;
+			continue;
+		}
+		if(m->type == type && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
+			uint i=0;
+			for(i=0; i<(type == JANUS_SDP_AUDIO ? janus_audio_codecs : janus_video_codecs); i++) {
+				if(janus_sdp_get_codec_pt(sdp, m->index,
+						type == JANUS_SDP_AUDIO ? janus_preferred_audio_codecs[i] : janus_preferred_video_codecs[i]) > 0) {
+					found = TRUE;
+					if(codec)
+						*codec = (type == JANUS_SDP_AUDIO ? janus_preferred_audio_codecs[i] : janus_preferred_video_codecs[i]);
+					break;
 				}
 			}
 		}
-		if(audio && video)
+		if(found || mindex != -1)
 			break;
 		temp = temp->next;
 	}
@@ -888,7 +897,7 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char
 		if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 			if(audio == FALSE && m->ptypes) {
 				int pt = GPOINTER_TO_INT(m->ptypes->data);
-				const char *codec = janus_sdp_get_codec_name(sdp, pt);
+				const char *codec = janus_sdp_get_codec_name(sdp, m->index, pt);
 				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
 				if(codec) {
 					audio = TRUE;
@@ -899,7 +908,7 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 			if(video == FALSE && m->ptypes) {
 				int pt = GPOINTER_TO_INT(m->ptypes->data);
-				const char *codec = janus_sdp_get_codec_name(sdp, pt);
+				const char *codec = janus_sdp_get_codec_name(sdp, m->index, pt);
 				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
 				if(codec) {
 					video = TRUE;
@@ -1252,21 +1261,21 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				 * as browsers would reject it anyway. If you need more flexibility you'll
 				 * have to generate an answer yourself, rather than automatically... */
 				codec = m->type == JANUS_SDP_AUDIO ? "opus" : "vp8";
-				if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+				if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 					/* We couldn't find our preferred codec, let's try something else */
 					if(m->type == JANUS_SDP_AUDIO) {
 						/* Opus not found, maybe mu-law? */
 						codec = "pcmu";
-						if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+						if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 							/* mu-law not found, maybe a-law? */
 							codec = "pcma";
-							if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+							if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 								/* a-law not found, maybe G.722? */
 								codec = "g722";
-								if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+								if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 									/* G.722 not found, maybe isac32? */
 									codec = "isac32";
-									if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+									if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 										/* isac32 not found, maybe isac16? */
 										codec = "isac16";
 									}
@@ -1276,14 +1285,14 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					} else {
 						/* VP8 not found, maybe VP9? */
 						codec = "vp9";
-						if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+						if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
 							/* VP9 not found either, maybe H.264? */
 							codec = "h264";
 						}
 					}
 				}
 			}
-			int pt = janus_sdp_get_codec_pt(offer, codec);
+			int pt = janus_sdp_get_codec_pt(offer, m->index, codec);
 			if(pt < 0) {
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",
@@ -1301,7 +1310,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				am->attributes = g_list_append(am->attributes, a);
 				/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
 				if(audio_dtmf) {
-					int dtmf_pt = janus_sdp_get_codec_pt(offer, "dtmf");
+					int dtmf_pt = janus_sdp_get_codec_pt(offer, m->index, "dtmf");
 					if(dtmf_pt >= 0) {
 						/* We do */
 						am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));

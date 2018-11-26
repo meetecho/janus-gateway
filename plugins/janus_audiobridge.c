@@ -4030,7 +4030,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			/* What is the Opus payload type? */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
-			participant->opus_pt = janus_sdp_get_codec_pt(offer, "opus");
+			participant->opus_pt = janus_sdp_get_codec_pt(offer, -1, "opus");
 			if(participant->opus_pt < 0) {
 				/* TODO Handle this case */
 				JANUS_LOG(LOG_ERR, "Offer doesn't contain Opus..?\n");

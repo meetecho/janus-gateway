@@ -46,7 +46,7 @@ typedef struct janus_session {
 	/*! \brief Janus Core-Client session ID */
 	guint64 session_id;
 	/*! \brief Map of handles this session is managing */
-	GHashTable *ice_handles;
+	GHashTable *handles;
 	/*! \brief Time of the last activity on the session */
 	gint64 last_activity;
 	/*! \brief Pointer to the request instance (and the transport that originated the session) */

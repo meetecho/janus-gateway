@@ -175,8 +175,6 @@ typedef struct janus_trickle janus_trickle;
 #define JANUS_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
 #define JANUS_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
 #define JANUS_HANDLE_WEBRTC_CLEANING			(1 << 11)
-#define JANUS_HANDLE_WEBRTC_HAS_AUDIO			(1 << 12)
-#define JANUS_HANDLE_WEBRTC_HAS_VIDEO			(1 << 13)
 #define JANUS_HANDLE_WEBRTC_GOT_OFFER			(1 << 14)
 #define JANUS_HANDLE_WEBRTC_GOT_ANSWER			(1 << 15)
 #define JANUS_HANDLE_WEBRTC_HAS_AGENT			(1 << 16)
@@ -285,13 +283,7 @@ struct janus_handle {
 	gint64 agent_created;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
-	/*! \brief Audio mid (media ID) */
-	gchar *audio_mid;
-	/*! \brief Video mid (media ID) */
-	gchar *video_mid;
-	/*! \brief Data channel mid (media ID) */
-	gchar *data_mid;
-	/*! \brief Main mid (will be a pointer to one of the above) */
+	/*! \brief Main mid */
 	gchar *pc_mid;
 	/*! \brief ICE Stream ID */
 	guint stream_id;
@@ -586,12 +578,9 @@ void janus_ice_relay_sctp(janus_handle *handle, char *buffer, int length);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER
- * @param[in] audio Whether audio is enabled
- * @param[in] video Whether video is enabled
- * @param[in] data Whether SCTP data channels are enabled
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_handle_setup_local(janus_handle *handle, int offer, int audio, int video, int data, int trickle);
+int janus_handle_setup_local(janus_handle *handle, gboolean offer, gboolean trickle);
 /*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus handle this method refers to
  * @param[in] mline The Janus SDP m-line object to add candidates to

@@ -1326,12 +1326,8 @@ static void janus_ice_webrtc_free(janus_handle *handle) {
 	g_free(handle->remote_sdp);
 	handle->remote_sdp = NULL;
 	handle->pc_mid = NULL;
-	g_free(handle->audio_mid);
-	handle->audio_mid = NULL;
-	g_free(handle->video_mid);
-	handle->video_mid = NULL;
-	g_free(handle->data_mid);
-	handle->data_mid = NULL;
+	g_free(handle->pc_mid);
+	handle->pc_mid = NULL;
 	handle->thread = NULL;
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_READY);
@@ -2883,41 +2879,24 @@ void janus_handle_setup_remote_candidates(janus_handle *handle, guint stream_id,
 	}
 }
 
-int janus_handle_setup_local(janus_handle *handle, int offer, int audio, int video, int data, int trickle) {
+int janus_handle_setup_local(janus_handle *handle, gboolean offer, gboolean trickle) {
 	if(!handle)
 		return -1;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AGENT)) {
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Agent already exists?\n", handle->handle_id);
 		return -2;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting ICE locally: got %s (%d audios, %d videos)\n", handle->handle_id, offer ? "OFFER" : "ANSWER", audio, video);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting ICE locally: got %s)\n",
+		handle->handle_id, offer ? "OFFER" : "ANSWER");
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AGENT);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_START);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_CLEANING);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AUDIO);
-	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_VIDEO);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ICE_RESTART);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RESEND_TRICKLES);
 
-	/* Note: in case this is not an OFFER, we don't know whether any medium are supported on the other side or not yet */
-	if(audio != -1) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AUDIO);
-	} else {
-		janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AUDIO);
-	}
-	if(video != -1) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_VIDEO);
-	} else {
-		janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_VIDEO);
-	}
-	if(data != -1) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_DATA_CHANNELS);
-	} else {
-		janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_DATA_CHANNELS);
-	}
 	/* Note: in case this is not an OFFER, we don't know whether ICE trickling is supported on the other side or not yet */
 	if(offer && trickle) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_TRICKLE);
@@ -3055,29 +3034,6 @@ int janus_handle_setup_local(janus_handle *handle, int offer, int audio, int vid
 
 	handle->cdone = 0;
 	handle->stream_id = 0;
-	/* If this is our first offer, let's generate some mids */
-	if(!offer) {
-		if(audio != -1) {
-			if(handle->audio_mid == NULL)
-				handle->audio_mid = g_strdup("audio");
-			if(audio == 0 && handle->pc_mid == NULL)
-				handle->pc_mid = handle->audio_mid;
-		}
-		if(video != -1) {
-			if(handle->video_mid == NULL)
-				handle->video_mid = g_strdup("video");
-			if(video == 0 && handle->pc_mid == NULL)
-				handle->pc_mid = handle->video_mid;
-		}
-#ifdef HAVE_SCTP
-		if(data != -1) {
-			if(handle->data_mid == NULL)
-				handle->data_mid = g_strdup("data");
-			if(data == 0 && handle->pc_mid == NULL)
-				handle->pc_mid = handle->data_mid;
-		}
-#endif
-	}
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
 	janus_handle_webrtc *pc = g_malloc0(sizeof(janus_handle_webrtc));
@@ -3145,15 +3101,6 @@ int janus_handle_setup_local(janus_handle *handle, int offer, int audio, int vid
 	pc->media = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_destroy);
 	pc->media_byssrc = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_dereference);
 	pc->media_bytype = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_dereference);
-	if(audio != -1) {
-		janus_handle_webrtc_medium_create(handle, JANUS_MEDIA_AUDIO);
-	}
-	if(video != -1) {
-		janus_handle_webrtc_medium_create(handle, JANUS_MEDIA_VIDEO);
-	}
-	if(data != -1) {
-		janus_handle_webrtc_medium_create(handle, JANUS_MEDIA_DATA);
-	}
 	return 0;
 }
 
@@ -3868,9 +3815,6 @@ static void janus_ice_queue_packet(janus_handle *handle, janus_ice_queued_packet
 
 void janus_ice_relay_rtp(janus_handle *handle, int video, char *buf, int len) {
 	if(!handle || !handle->pc || handle->queued_packets == NULL || buf == NULL || len < 1)
-		return;
-	if((!video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AUDIO))
-			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
 	/* Find the right medium instance */
 	janus_handle_webrtc_medium *medium = g_hash_table_lookup(handle->pc->media_bytype,
