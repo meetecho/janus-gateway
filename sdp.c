@@ -162,6 +162,9 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				if(m->port > 0) {
 					/* Yep */
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, pc->stream_id);
+					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_DATA_CHANNELS)) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_DATA_CHANNELS);
+					}
 					if(!strcasecmp(m->proto, "UDP/DTLS/SCTP")) {
 						janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
 					} else {
@@ -1058,6 +1061,12 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	GList *first = anon->attributes;
 	janus_sdp_attribute *a = janus_sdp_attribute_create("group", "%s", buffer);
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
+	/* Advertise trickle support */
+	a = janus_sdp_attribute_create("ice-options", "trickle");
+	anon->attributes = g_list_insert_before(anon->attributes, first, a);
+	/* We put the fingerprint in the global attributes */
+	a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
+	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* msid-semantic: add new global attribute */
 	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
@@ -1183,10 +1192,6 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		g_free(ufrag);
 		g_free(password);
-		a = janus_sdp_attribute_create("ice-options", "trickle");
-		m->attributes = g_list_insert_before(m->attributes, first, a);
-		a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
-		m->attributes = g_list_insert_before(m->attributes, first, a);
 		a = janus_sdp_attribute_create("setup", "%s", janus_get_dtls_srtp_role(offer ? JANUS_DTLS_ROLE_ACTPASS : pc->dtls_role));
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		/* Add last attributes, rtcp and ssrc (msid) */
@@ -1198,33 +1203,19 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* TODO Get rid of this ugly code */
 		if(m->type == JANUS_SDP_AUDIO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+			a = janus_sdp_attribute_create("msid", "janus janusa0");
+			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusa0", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" mslabel:janus", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusa0", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+			a = janus_sdp_attribute_create("msid", "janus janusv0");
+			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" mslabel:janus", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusv0", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
 				/* Add rtx SSRC group to negotiate the RFC4588 stuff */
 				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", medium->ssrc_rtx);
-				m->attributes = g_list_append(m->attributes, a);
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", medium->ssrc_rtx);
-				m->attributes = g_list_append(m->attributes, a);
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" mslabel:janus", medium->ssrc_rtx);
-				m->attributes = g_list_append(m->attributes, a);
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusv0", medium->ssrc_rtx);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}
