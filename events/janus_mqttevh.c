@@ -127,6 +127,9 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_MQTTEVH_ERROR_INVALID_ELEMENT		413
 #define JANUS_MQTTEVH_ERROR_UNKNOWN_ERROR		499
 
+/* Special topics postfix */
+#define JANUS_MQTTEVH_STATUS_TOPIC "status"
+
 
 /* MQTT client context */
 typedef struct janus_mqttevh_context {
@@ -315,16 +318,19 @@ static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_succes
 
 	JANUS_LOG(LOG_INFO, "MQTT EVH client has been successfully connected to the broker\n");
 
-	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+	// Make a shallow copy to overwrite if needed.
+	janus_mqttevh_context ctx = *(janus_mqttevh_context *)context;
 
 	json_t *info = json_object();
 
 	json_object_set_new(info, "event", json_string("connected"));
 	json_object_set_new(info, "eventhandler", json_string(JANUS_MQTTEVH_PACKAGE));
-	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, "status");
+	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx.publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
 	json_incref(info);
 
-	janus_mqttevh_send_message(context, topicbuf, info);
+	ctx.publish.retain = ctx.will.retain;
+
+	janus_mqttevh_send_message(&ctx, topicbuf, info);
 
 	json_decref(info);
 }
@@ -380,7 +386,7 @@ static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_succ
 	}
 	json_t *info = json_object();
 	json_object_set_new(info, "event", json_string("connected"));
-	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, "status");
+	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
 	//~ janus_mqttevh_send_message(context, topicbuf, info);
 }
 
@@ -534,7 +540,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_MQTTEVH_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_MQTTEVH_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL) {
@@ -661,7 +667,7 @@ static int janus_mqttevh_init(const char *config_path) {
 
 		will_retain_item = janus_config_get(config, config_general, janus_config_type_item, "will_retain");
 		if(will_retain_item && will_retain_item->value && janus_is_true(will_retain_item->value)) {
-			ctx->will.retain = TRUE;
+			ctx->will.retain = 1;
 		}
 
 		will_qos_item = janus_config_get(config, config_general, janus_config_type_item, "will_qos");
@@ -669,8 +675,10 @@ static int janus_mqttevh_init(const char *config_path) {
 			ctx->will.qos = atoi(will_qos_item->value);
 		}
 
-		/* Using the same topic for LWT as configured for publish. */
-		ctx->will.topic = ctx->publish.topic;
+		/* Using the topic for LWT as configured for publish and prefixed with JANUS_MQTTEVH_STATUS_TOPIC. */
+		char will_topic_buf[512];
+		snprintf(will_topic_buf, sizeof(will_topic_buf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
+		ctx->will.topic = g_strdup(will_topic_buf);
 	}
 
 	/* TLS config*/
