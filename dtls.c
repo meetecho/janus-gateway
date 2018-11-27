@@ -652,6 +652,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Any data available?\n", handle->handle_id);
 #ifdef HAVE_SCTP
 		if(dtls->sctp != NULL && read > 0) {
+			/* Update stats for the data medium */
+			janus_handle_webrtc_medium *medium = g_hash_table_lookup(pc->media_bytype,
+					GINT_TO_POINTER(JANUS_MEDIA_DATA));
+			if(medium != NULL) {
+				medium->in_stats.info[0].packets++;
+				medium->in_stats.info[0].bytes += read;
+			}
+			/* Pass the data to the SCTP stack */
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Sending data (%d bytes) to the SCTP stack...\n", handle->handle_id, read);
 			janus_sctp_data_from_dtls(dtls->sctp, data, read);
 		}
@@ -940,10 +948,23 @@ void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || buf == NULL || len < 1)
 		return -1;
+	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection related to this data...\n");
+		return -2;
+	}
 	int res = SSL_write(dtls->ssl, buf, len);
 	if(res <= 0) {
 		unsigned long err = SSL_get_error(dtls->ssl, res);
 		JANUS_LOG(LOG_ERR, "Error sending data: %s\n", ERR_reason_error_string(err));
+	} else {
+		/* Update stats for the data medium */
+		janus_handle_webrtc_medium *medium = g_hash_table_lookup(pc->media_bytype,
+				GINT_TO_POINTER(JANUS_MEDIA_DATA));
+		if(medium != NULL) {
+			medium->out_stats.info[0].packets++;
+			medium->out_stats.info[0].bytes += res;
+		}
 	}
 	return res;
 }
