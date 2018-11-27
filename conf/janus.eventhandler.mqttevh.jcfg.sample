@@ -27,9 +27,9 @@ general: {
 	#topic = "/janus/events"		# Base topic (default: /janus/events)
 	#addevent = true				# Whether we should add the event type to the base topic
 
-	#will_enabled = no								# Whether to enable LWT (default: no)
+	#will_enabled = false							# Whether to enable LWT (default: false)
 	#will_content = "{\"event\": \"disconnect\"}"	# LWT content
-	#will_retain = yes								# Whether LWT should be retained (default: yes)
+	#will_retain = 1								# Whether LWT should be retained (default: 1)
 	#will_qos = 0									# QoS for LWT (default: 0)
 
 	# Additional parameters if "mqtts://" schema is used
