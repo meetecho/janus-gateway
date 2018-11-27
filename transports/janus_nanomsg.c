@@ -305,6 +305,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 	if(!nanomsg_thread) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Nanomsg thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 

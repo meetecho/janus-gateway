@@ -2597,6 +2597,7 @@ static void *janus_transport_requests(void *data) {
 					json_t *transaction = json_object_get(message, "transaction");
 					const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
 					janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+					g_error_free(tperror);
 				} else {
 					/* Don't destroy the request now, the task will take care of that */
 					destroy = FALSE;
@@ -3830,6 +3831,7 @@ gint main(int argc, char *argv[])
 	GThread *watchdog = g_thread_try_new("timeout watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Start the thread that will dispatch incoming requests */
@@ -3837,6 +3839,7 @@ gint main(int argc, char *argv[])
 	GThread *requests_thread = g_thread_try_new("sessions requests", &janus_transport_requests, NULL, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
@@ -3845,6 +3848,7 @@ gint main(int argc, char *argv[])
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Wait 120 seconds before stopping idle threads to avoid the creation of too many threads for AddressSanitizer. */

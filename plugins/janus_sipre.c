@@ -1090,6 +1090,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIPre handler thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	/* Launch the thread that will handle the libre initialization and event loop */
@@ -1098,6 +1099,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIPre loop thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	/* Let's wait for the libre initialization to complete */
@@ -2262,6 +2264,7 @@ static void *janus_sipre_handler(void *data) {
 				if(error != NULL) {
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+					g_error_free(error);
 				}
 			}
 		} else if(!strcasecmp(request_text, "update")) {
@@ -3854,6 +3857,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		if(error != NULL) {
 			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+			g_error_free(error);
 		}
 	}
 	/* Send event back to the browser */

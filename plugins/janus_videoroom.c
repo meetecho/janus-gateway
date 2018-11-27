@@ -2118,6 +2118,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		/* We show the error but it's not fatal */
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom RTCP thread for RTP forwarders...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 	}
 
 	g_atomic_int_set(&initialized, 1);

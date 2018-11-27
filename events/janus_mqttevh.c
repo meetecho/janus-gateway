@@ -747,6 +747,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the MQTT EventHandler handler thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 

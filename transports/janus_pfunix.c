@@ -32,7 +32,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/un.h>
- 
+
 #ifdef  HAVE_LIBSYSTEMD
 #include "systemd/sd-daemon.h"
 #endif /* HAVE_LIBSYSTEMD */
@@ -341,6 +341,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	if(!pfunix_thread) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 

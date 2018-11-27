@@ -1455,6 +1455,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				/* FIXME We should clear some resources... */
 				janus_refcount_decrease(&audiobridge->ref);
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
+				g_error_free(error);
 			} else {
 				janus_mutex_lock(&rooms_mutex);
 				g_hash_table_insert(rooms, janus_uint64_dup(audiobridge->room_id), audiobridge);
@@ -1486,6 +1487,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge handler thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_config_destroy(config);
 		return -1;
 	}
@@ -1904,6 +1906,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_refcount_decrease(&audiobridge->ref);
 			g_hash_table_remove(rooms, &audiobridge->room_id);
 			janus_mutex_unlock(&rooms_mutex);
@@ -3398,6 +3401,7 @@ static void *janus_audiobridge_handler(void *data) {
 					janus_refcount_decrease(&session->ref);
 					/* FIXME We should fail here... */
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the participant thread...\n", error->code, error->message ? error->message : "??");
+					g_error_free(error);
 				}
 			}
 

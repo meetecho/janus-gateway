@@ -153,6 +153,7 @@ void janus_ice_set_static_event_loops(int loops) {
 			g_free(loop);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch a new event loop thread...\n",
 				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 		} else {
 			event_loops = g_slist_append(event_loops, loop);
 			static_event_loops++;
@@ -1158,6 +1159,7 @@ gint janus_handle_attach_plugin(void *core_session, janus_handle *handle, janus_
 			/* FIXME We should clear some resources... */
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the handle thread...\n",
 				handle->handle_id, terror->code, terror->message ? terror->message : "??");
+			g_error_free(terror);
 			janus_refcount_decrease(&handle->ref);	/* This is for the thread reference we just added */
 			janus_handle_destroy(session, handle);
 			return -1;

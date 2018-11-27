@@ -13,7 +13,7 @@
  * RTP bridge. It is named "NoSIP" since, as the name suggests, signalling
  * takes no place here, and is entirely up to the application. The typical
  * usage of this application is something like this:
- * 
+ *
  * 1. a WebRTC application handles signalling on its own (e.g., SIP), but
  * needs to interact with a peer that doesn't support WebRTC (DTLS/ICE);
  * 2. it creates a handle with the NoSIP plugin, creates a JSEP SDP offer,
@@ -56,7 +56,7 @@
  * use; the \c process request, on the other hand, processes a remote
  * barebone SDP, and matches it to the plugin may have generated before,
  * in order to then return a JSEP offer or answer that can be used to
- * setup a PeerConnection. 
+ * setup a PeerConnection.
  *
  * The \c generate request must be formatted as follows:
  *
@@ -719,6 +719,7 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP handler thread...\n", error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_NOSIP_NAME);
@@ -1189,7 +1190,7 @@ static void *janus_nosip_handler(void *data) {
 		json_t *result = NULL, *localjsep = NULL;
 
 		if(!strcasecmp(request_text, "generate") || !strcasecmp(request_text, "process")) {
-			/* Shared code for two different requests:	
+			/* Shared code for two different requests:
 			 * 		generate: Take a JSEP offer or answer and generate a barebone SDP the application can use
 			 * 		process: Process a remote barebone SDP, and match it to the one we may have generated before */
 			gboolean generate = !strcasecmp(request_text, "generate") ? TRUE : FALSE;
@@ -1412,6 +1413,7 @@ static void *janus_nosip_handler(void *data) {
 				if(error != NULL) {
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+					g_error_free(error);
 				}
 			}
 		} else if(!strcasecmp(request_text, "hangup")) {
@@ -1826,7 +1828,7 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 			rtp_port_next = rtp_range_min;
 			rtp_port_wrap = TRUE;
 		}
-		if(janus_nosip_bind_socket(rtp_fd, rtp_port)) { 
+		if(janus_nosip_bind_socket(rtp_fd, rtp_port)) {
 			/* rtp_fd still unbound, reuse it */
 		} else if(janus_nosip_bind_socket(rtcp_fd, rtcp_port)) {
 			close(rtp_fd);
@@ -1889,7 +1891,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 	}
 	/* Start */
-	if(session->media.has_audio && 
+	if(session->media.has_audio &&
 			(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0)) {
 		if(session->media.audio_rtp_fd != -1) {
 			JANUS_LOG(LOG_WARN, "Audio RTP unbound socket detected, closing ...\n");
@@ -1913,7 +1915,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		session->media.local_audio_rtp_port = ports[0];
 		session->media.local_audio_rtcp_port = ports[1];
 	}
-	if(session->media.has_video && 
+	if(session->media.has_video &&
 			(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0)) {
 		if(session->media.video_rtp_fd != -1) {
 			JANUS_LOG(LOG_WARN, "Video RTP unbound socket detected, closing ...\n");

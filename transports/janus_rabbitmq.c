@@ -460,6 +460,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(error != NULL) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -469,6 +470,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(error != NULL) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
