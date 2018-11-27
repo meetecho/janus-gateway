@@ -661,8 +661,8 @@ const char *janus_audiobridge_get_package(void);
 void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_audiobridge_setup_media(janus_plugin_session *handle);
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_audiobridge_query_session(janus_plugin_session *handle);
@@ -2784,7 +2784,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&rooms_mutex);
 }
 
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
@@ -3025,7 +3025,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 	}
 }
 
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME Should we care? */
@@ -4537,7 +4537,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Fix sequence number and timestamp (room switching may be involved) */
 	janus_rtp_header_update(packet->data, &participant->context, FALSE, 960);
 	if(gateway != NULL)
-		gateway->relay_rtp(session->handle, 0, (char *)packet->data, packet->length);
+		gateway->relay_rtp(session->handle, -1, FALSE, (char *)packet->data, packet->length);
 	/* Restore the timestamp and sequence number to what the publisher set them to */
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);

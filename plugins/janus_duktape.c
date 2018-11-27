@@ -212,8 +212,8 @@ const char *janus_duktape_get_package(void);
 void janus_duktape_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_duktape_setup_media(janus_plugin_session *handle);
-void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_duktape_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
+void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_duktape_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_duktape_hangup_media(janus_plugin_session *handle);
@@ -861,7 +861,7 @@ static duk_ret_t janus_duktape_method_setbitrate(duk_context *ctx) {
 	if(session->bitrate > 0 && g_atomic_int_get(&session->started)) {
 		char rtcpbuf[24];
 		janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
-		janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 24);
+		janus_core->relay_rtcp(session->handle, -1, TRUE, rtcpbuf, 24);
 	}
 	/* Done */
 	janus_refcount_decrease(&session->ref);
@@ -920,7 +920,7 @@ static duk_ret_t janus_duktape_method_sendpli(duk_context *ctx) {
 	char rtcpbuf[12];
 	janus_rtcp_pli((char *)&rtcpbuf, 12);
 	JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-	janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+	janus_core->relay_rtcp(session->handle, -1, TRUE, rtcpbuf, 12);
 	/* Done */
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -967,7 +967,7 @@ static duk_ret_t janus_duktape_method_relayrtp(duk_context *ctx) {
 	}
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Send the RTP packet */
-	janus_core->relay_rtp(session->handle, is_video, (char *)payload, len);
+	janus_core->relay_rtp(session->handle, -1, is_video, (char *)payload, len);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -1012,7 +1012,7 @@ static duk_ret_t janus_duktape_method_relayrtcp(duk_context *ctx) {
 	}
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Send the RTCP packet */
-	janus_core->relay_rtcp(session->handle, is_video, (char *)payload, len);
+	janus_core->relay_rtcp(session->handle, -1, is_video, (char *)payload, len);
 	duk_push_int(ctx, 0);
 	return 1;
 }
@@ -1127,7 +1127,7 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		char rtcpbuf[12];
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
 		JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-		janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+		janus_core->relay_rtcp(session->handle, -1, TRUE, rtcpbuf, 12);
 	}
 	if(drc) {
 		session->drc = drc;
@@ -1988,7 +1988,7 @@ void janus_duktape_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_duktape_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
 	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;
@@ -2047,12 +2047,12 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *b
 			char rtcpbuf[12];
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-			janus_core->relay_rtcp(handle, 1, rtcpbuf, 12);
+			janus_core->relay_rtcp(handle, -1, TRUE, rtcpbuf, 12);
 		}
 	}
 }
 
-void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
 	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;
@@ -2089,9 +2089,9 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *
 		if(session->bitrate > 0) {
 			char rtcpbuf[24];
 			janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
-			janus_core->relay_rtcp(handle, 1, rtcpbuf, 24);
+			janus_core->relay_rtcp(handle, -1, TRUE, rtcpbuf, 24);
 		} else {
-			janus_core->relay_rtcp(handle, 1, buf, len);
+			janus_core->relay_rtcp(handle, -1, TRUE, buf, len);
 		}
 	}
 	/* If there's an incoming PLI, instead, relay it to the source of the media if any */
@@ -2103,7 +2103,7 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *
 			char rtcpbuf[12];
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->sender->id);
-			janus_core->relay_rtcp(session->sender->handle, 1, rtcpbuf, 12);
+			janus_core->relay_rtcp(session->sender->handle, -1, TRUE, rtcpbuf, 12);
 			janus_mutex_unlock_nodebug(&session->sender->recipients_mutex);
 		}
 	}
@@ -2280,7 +2280,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 	janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, packet->is_video ? 4500 : 960);
 	/* Send the packet */
 	if(janus_core != NULL)
-		janus_core->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+		janus_core->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
 	/* Restore the timestamp and sequence number to what the publisher set them to */
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);

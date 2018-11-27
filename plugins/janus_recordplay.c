@@ -293,8 +293,8 @@ const char *janus_recordplay_get_package(void);
 void janus_recordplay_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
+void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
@@ -470,7 +470,7 @@ void janus_recordplay_update_recordings_list(void);
 static void *janus_recordplay_playout_thread(void *data);
 
 /* Helper to send RTCP feedback back to recorders, if needed */
-void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len);
+static void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, gboolean video, char *buf, int len);
 
 /* To make things easier, we use static payload types for viewers (unless it's for G.711 or G.722) */
 #define AUDIO_PT		111
@@ -1088,8 +1088,8 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(video != 1)
+static void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, gboolean video, char *buf, int len) {
+	if(!video)
 		return;	/* We just do this for video, for now */
 
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
@@ -1112,7 +1112,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		/* Send a new REMB back */
 		char rtcpbuf[24];
 		janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 24);
+		gateway->relay_rtcp(handle, -1, video, rtcpbuf, 24);
 
 		session->video_remb_last = now;
 	}
@@ -1124,14 +1124,14 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 	if(elapsed >= interval) {
 		/* Send both a FIR and a PLI, just to be sure */
 		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
+		gateway->relay_rtcp(handle, -1, video, rtcpbuf, 20);
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+		gateway->relay_rtcp(handle, -1, video, rtcpbuf, 12);
 		session->video_keyframe_request_last = now;
 	}
 }
 
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
@@ -1161,7 +1161,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			char rtcpbuf[12];
 			memset(rtcpbuf, 0, 12);
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
+			gateway->relay_rtcp(handle, -1, TRUE, rtcpbuf, 12);
 		}
 		/* If we got here, update the RTP header and save the packet */
 		janus_rtp_header_update(header, &session->context, TRUE, 0);
@@ -1185,7 +1185,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 	janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
 }
 
-void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 }
@@ -2353,7 +2353,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 				/* Update payload type */
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
-				gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+				gateway->relay_rtp(session->handle, -1, FALSE, (char *)buffer, bytes);
 				gettimeofday(&now, NULL);
 				abefore.tv_sec = now.tv_sec;
 				abefore.tv_usec = now.tv_usec;
@@ -2393,7 +2393,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
-					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+					gateway->relay_rtp(session->handle, -1, FALSE, (char *)buffer, bytes);
 					asent = TRUE;
 					audio = audio->next;
 				}
@@ -2411,7 +2411,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
-					gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+					gateway->relay_rtp(session->handle, -1, TRUE, (char *)buffer, bytes);
 					video = video->next;
 				}
 				vsent = TRUE;
@@ -2455,7 +2455,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						/* Update payload type */
 						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
-						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+						gateway->relay_rtp(session->handle, -1, TRUE, (char *)buffer, bytes);
 						video = video->next;
 					}
 					vsent = TRUE;

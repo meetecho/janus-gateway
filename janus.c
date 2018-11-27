@@ -417,8 +417,8 @@ void janus_transport_task(gpointer data, gpointer user_data);
 ///@{
 int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart);
-void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
-void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
+void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len);
+void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len);
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
@@ -2329,6 +2329,16 @@ json_t *janus_admin_webrtc_summary(janus_handle_webrtc *pc) {
 		/* FIXME Actually check if this succeeded? */
 		json_object_set_new(d, "sctp-association", dtls->sctp ? json_true() : json_false());
 #endif
+		json_t *stats = json_object();
+		json_t *in_stats = json_object();
+		json_object_set_new(in_stats, "packets", json_integer(pc->dtls_in_stats.info[0].packets));
+		json_object_set_new(in_stats, "bytes", json_integer(pc->dtls_in_stats.info[0].bytes));
+		json_t *out_stats = json_object();
+		json_object_set_new(out_stats, "packets", json_integer(pc->dtls_out_stats.info[0].packets));
+		json_object_set_new(out_stats, "bytes", json_integer(pc->dtls_out_stats.info[0].bytes));
+		json_object_set_new(stats, "in", in_stats);
+		json_object_set_new(stats, "out", out_stats);
+		json_object_set_new(d, "stats", stats);
 	}
 	json_object_set_new(w, "dtls", d);
 	json_t *bwe = json_object();
@@ -2951,24 +2961,24 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	return jsep;
 }
 
-void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len) {
 	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped) || buf == NULL || len < 1)
 		return;
 	janus_handle *handle = (janus_handle *)plugin_session->gateway_handle;
 	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP)
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtp(handle, video, buf, len);
+	janus_ice_relay_rtp(handle, mindex, video, buf, len);
 }
 
-void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len) {
 	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped) || buf == NULL || len < 1)
 		return;
 	janus_handle *handle = (janus_handle *)plugin_session->gateway_handle;
 	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP)
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtcp(handle, video, buf, len);
+	janus_ice_relay_rtcp(handle, mindex, video, buf, len);
 }
 
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len) {

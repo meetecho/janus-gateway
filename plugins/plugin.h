@@ -169,7 +169,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	10
+#define JANUS_PLUGIN_API_VERSION	11
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -282,20 +282,22 @@ struct janus_plugin {
 	void (* const setup_media)(janus_plugin_session *handle);
 	/*! \brief Method to handle an incoming RTP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] mindex Index of the source stream (relative to the SDP)
 	 * @param[in] video Whether this is an audio or a video frame
 	 * @param[in] buf The packet data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
+	void (* const incoming_rtp)(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 	/*! \brief Method to handle an incoming RTCP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] mindex Index of the source stream (relative to the SDP)
 	 * @param[in] video Whether this is related to an audio or a video stream
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	void (* const incoming_rtcp)(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 	/*! \brief Method to handle incoming SCTP/DataChannel data from a peer (text only, for the moment)
 	 * \note We currently only support text data, binary data will follow... please also notice that
 	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to
-	 * use them.
+	 * use them. Notice that no mindex is needed here, as there can only be a single data channel stream.
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
@@ -348,17 +350,20 @@ struct janus_callbacks {
 
 	/*! \brief Callback to relay RTP packets to a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] mindex Index of the target stream (relative to the SDP), -1 for the first audio/video stream
 	 * @param[in] video Whether this is an audio or a video frame
 	 * @param[in] buf The packet data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const relay_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
+	void (* const relay_rtp)(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 	/*! \brief Callback to relay RTCP messages to a peer
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
+	 * @param[in] mindex Index of the target stream (relative to the SDP), -1 for the first audio/video stream
 	 * @param[in] video Whether this is related to an audio or a video stream
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const relay_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	void (* const relay_rtcp)(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 	/*! \brief Callback to relay SCTP/DataChannel messages to a peer
+	 * \note Notice that no mindex is needed here, as there can only be a single data channel stream.
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */

@@ -544,16 +544,18 @@ void janus_handle_webrtc_destroy(janus_handle_webrtc *pc);
 ///@{
 /*! \brief Core RTP callback, called when a plugin has an RTP packet to send to a peer
  * @param[in] handle The Janus handle associated with the peer
+ * @param[in] mindex Index of the target stream (relative to the SDP), -1 for the first audio/video stream
  * @param[in] video Whether this is an audio or a video frame
  * @param[in] buf The packet data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_rtp(janus_handle *handle, int video, char *buf, int len);
+void janus_ice_relay_rtp(janus_handle *handle, int mindex, gboolean video, char *buf, int len);
 /*! \brief Core RTCP callback, called when a plugin has an RTCP message to send to a peer
  * @param[in] handle The Janus handle associated with the peer
+ * @param[in] mindex Index of the target stream (relative to the SDP), -1 for the first audio/video stream
  * @param[in] video Whether this is related to an audio or a video stream
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_rtcp(janus_handle *handle, int video, char *buf, int len);
+void janus_ice_relay_rtcp(janus_handle *handle, int mindex, gboolean video, char *buf, int len);
 /*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus handle associated with the peer
  * @param[in] buf The message data (buffer)

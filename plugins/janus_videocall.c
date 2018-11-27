@@ -288,8 +288,8 @@ const char *janus_videocall_get_package(void);
 void janus_videocall_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_videocall_setup_media(janus_plugin_session *handle);
-void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videocall_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
+void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
@@ -693,7 +693,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
 
-void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_videocall_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -754,7 +754,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				char rtcpbuf[12];
 				memset(rtcpbuf, 0, 12);
 				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+				gateway->relay_rtcp(session->handle, -1, TRUE, rtcpbuf, 12);
 			}
 			if(peer->sim_context.changed_temporal) {
 				/* Notify the user about the temporal layer change */
@@ -779,7 +779,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			header->ssrc = htonl(1);
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
-			gateway->relay_rtp(peer->handle, video, buf, len);
+			gateway->relay_rtp(peer->handle, -1, video, buf, len);
 			/* Restore header or core statistics will be messed up */
 			header->ssrc = htonl(ssrc);
 			header->timestamp = htonl(timestamp);
@@ -789,13 +789,13 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 				/* Forward the packet to the peer */
-				gateway->relay_rtp(peer->handle, video, buf, len);
+				gateway->relay_rtp(peer->handle, -1, video, buf, len);
 			}
 		}
 	}
 }
 
-void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -816,10 +816,10 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			if(session->bitrate > 0)
 				janus_rtcp_cap_remb(buf, len, session->bitrate);
-			gateway->relay_rtcp(peer->handle, 1, buf, len);
+			gateway->relay_rtcp(peer->handle, -1, TRUE, buf, len);
 			return;
 		}
-		gateway->relay_rtcp(peer->handle, video, buf, len);
+		gateway->relay_rtcp(peer->handle, -1, video, buf, len);
 	}
 }
 
@@ -1373,7 +1373,7 @@ static void *janus_videocall_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
 					char buf[12];
 					janus_rtcp_pli((char *)&buf, 12);
-					gateway->relay_rtcp(session->handle, 1, buf, 12);
+					gateway->relay_rtcp(session->handle, -1, TRUE, buf, 12);
 				}
 				session->video_active = json_is_true(video);
 				JANUS_LOG(LOG_VERB, "Setting video property: %s\n", session->video_active ? "true" : "false");
@@ -1386,7 +1386,7 @@ static void *janus_videocall_handler(void *data) {
 					char buf[24];
 					janus_rtcp_remb((char *)&buf, 24, session->bitrate);
 					JANUS_LOG(LOG_VERB, "Sending REMB\n");
-					gateway->relay_rtcp(session->handle, 1, buf, 24);
+					gateway->relay_rtcp(session->handle, -1, TRUE, buf, 24);
 					/* FIXME How should we handle a subsequent "no limit" bitrate? */
 				}
 			}
@@ -1413,7 +1413,7 @@ static void *janus_videocall_handler(void *data) {
 					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					if(peer && peer->handle)
-						gateway->relay_rtcp(session->handle, 1, buf, 12);
+						gateway->relay_rtcp(session->handle, -1, TRUE, buf, 12);
 				}
 			}
 			if(temporal) {
@@ -1438,7 +1438,7 @@ static void *janus_videocall_handler(void *data) {
 					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					if(peer && peer->handle)
-						gateway->relay_rtcp(session->handle, 1, buf, 12);
+						gateway->relay_rtcp(session->handle, -1, TRUE, buf, 12);
 				}
 			}
 			if(record) {
@@ -1509,7 +1509,7 @@ static void *janus_videocall_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
 						janus_rtcp_pli((char *)&buf, 12);
-						gateway->relay_rtcp(session->handle, 1, buf, 12);
+						gateway->relay_rtcp(session->handle, -1, TRUE, buf, 12);
 					}
 					if(session->has_data) {
 						memset(filename, 0, 255);
