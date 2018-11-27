@@ -2363,39 +2363,46 @@ json_t *janus_admin_webrtc_medium_summary(janus_handle_webrtc_medium *medium) {
 		json_object_set_new(m, "type", json_string("data"));
 	json_object_set_new(m, "mindex", json_integer(medium->mindex));
 	json_object_set_new(m, "mid", json_string(medium->mid));
-	json_t *ms = json_object();
-	if(medium->ssrc)
-		json_object_set_new(ms, "ssrc", json_integer(medium->ssrc));
-	if(medium->ssrc_rtx)
-		json_object_set_new(ms, "ssrc-rtx", json_integer(medium->ssrc_rtx));
-	if(medium->ssrc_peer[0])
-		json_object_set_new(ms, "ssrc-peer", json_integer(medium->ssrc_peer[0]));
-	if(medium->ssrc_peer[1])
-		json_object_set_new(ms, "ssrc-peer-sim-1", json_integer(medium->ssrc_peer[1]));
-	if(medium->ssrc_peer[2])
-		json_object_set_new(ms, "ssrc-peer-sim-2", json_integer(medium->ssrc_peer[2]));
-	if(medium->ssrc_peer_rtx[0])
-		json_object_set_new(ms, "ssrc-peer-rtx", json_integer(medium->ssrc_peer_rtx[0]));
-	if(medium->ssrc_peer_rtx[1])
-		json_object_set_new(ms, "ssrc-peer-sim-1-rtx", json_integer(medium->ssrc_peer_rtx[1]));
-	if(medium->ssrc_peer_rtx[2])
-		json_object_set_new(ms, "ssrc-peer-sim-2-rtx", json_integer(medium->ssrc_peer_rtx[2]));
-	if(medium->rid[0]) {
-		json_t *rid = json_array();
-		json_array_append_new(rid, json_string(medium->rid[0]));
-		if(medium->rid[1])
-			json_array_append_new(rid, json_string(medium->rid[1]));
-		if(medium->rid[1])
-			json_array_append_new(rid, json_string(medium->rid[2]));
-		json_object_set_new(ms, "rid", rid);
+	if(medium->type != JANUS_MEDIA_DATA)
+		json_object_set_new(m, "do_nacks", medium->do_nacks ? json_true() : json_false());
+	if(medium->type != JANUS_MEDIA_DATA) {
+		json_t *ms = json_object();
+		if(medium->ssrc)
+			json_object_set_new(ms, "ssrc", json_integer(medium->ssrc));
+		if(medium->ssrc_rtx)
+			json_object_set_new(ms, "ssrc-rtx", json_integer(medium->ssrc_rtx));
+		if(medium->ssrc_peer[0])
+			json_object_set_new(ms, "ssrc-peer", json_integer(medium->ssrc_peer[0]));
+		if(medium->ssrc_peer[1])
+			json_object_set_new(ms, "ssrc-peer-sim-1", json_integer(medium->ssrc_peer[1]));
+		if(medium->ssrc_peer[2])
+			json_object_set_new(ms, "ssrc-peer-sim-2", json_integer(medium->ssrc_peer[2]));
+		if(medium->ssrc_peer_rtx[0])
+			json_object_set_new(ms, "ssrc-peer-rtx", json_integer(medium->ssrc_peer_rtx[0]));
+		if(medium->ssrc_peer_rtx[1])
+			json_object_set_new(ms, "ssrc-peer-sim-1-rtx", json_integer(medium->ssrc_peer_rtx[1]));
+		if(medium->ssrc_peer_rtx[2])
+			json_object_set_new(ms, "ssrc-peer-sim-2-rtx", json_integer(medium->ssrc_peer_rtx[2]));
+		if(medium->rid[0]) {
+			json_t *rid = json_array();
+			json_array_append_new(rid, json_string(medium->rid[0]));
+			if(medium->rid[1])
+				json_array_append_new(rid, json_string(medium->rid[1]));
+			if(medium->rid[1])
+				json_array_append_new(rid, json_string(medium->rid[2]));
+			json_object_set_new(ms, "rid", rid);
+		}
+		json_object_set_new(m, "ssrc", ms);
 	}
-	json_object_set_new(m, "ssrc", ms);
 	/* Media direction */
-	json_t *md = json_object();
-	json_object_set_new(md, "send", medium->send ? json_true() : json_false());
-	json_object_set_new(md, "recv", medium->recv ? json_true() : json_false());
-	json_object_set_new(m, "direction", md);
-	if(medium->payload_type > -1 || medium->payload_type > -1) {
+	if(medium->type != JANUS_MEDIA_DATA) {
+		json_t *md = json_object();
+		json_object_set_new(md, "send", medium->send ? json_true() : json_false());
+		json_object_set_new(md, "recv", medium->recv ? json_true() : json_false());
+		json_object_set_new(m, "direction", md);
+	}
+	/* Payload type and codec */
+	if(medium->type != JANUS_MEDIA_DATA && (medium->payload_type > -1 || medium->payload_type > -1)) {
 		json_t *sc = json_object();
 		if(medium->payload_type > -1)
 			json_object_set_new(sc, "pt", json_integer(medium->payload_type));
@@ -2406,34 +2413,36 @@ json_t *janus_admin_webrtc_medium_summary(janus_handle_webrtc_medium *medium) {
 		json_object_set_new(m, "codecs", sc);
 	}
 	/* RTCP stats */
-	json_t *rtcp_stats = NULL;
 	int vindex=0;
-	for(vindex=0; vindex<3; vindex++) {
-		if(medium->rtcp_ctx[vindex] != NULL) {
-			if(rtcp_stats == NULL)
-				rtcp_stats = json_object();
-			json_t *medium_rtcp_stats = json_object();
-			json_object_set_new(medium_rtcp_stats, "base", json_integer(medium->rtcp_ctx[vindex]->tb));
-			if(vindex == 0)
-				json_object_set_new(medium_rtcp_stats, "rtt", json_integer(janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex])));
-			json_object_set_new(medium_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE)));
-			json_object_set_new(medium_rtcp_stats, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], TRUE)));
-			json_object_set_new(medium_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], FALSE)));
-			json_object_set_new(medium_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], TRUE)));
-			json_object_set_new(medium_rtcp_stats, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(medium->rtcp_ctx[vindex])));
-			json_object_set_new(medium_rtcp_stats, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(medium->rtcp_ctx[vindex])));
-			json_object_set_new(medium_rtcp_stats, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(medium->rtcp_ctx[vindex])));
-			json_object_set_new(medium_rtcp_stats, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(medium->rtcp_ctx[vindex])));
-			if(vindex == 0)
-				json_object_set_new(rtcp_stats, "main", medium_rtcp_stats);
-			else if(vindex == 1)
-				json_object_set_new(rtcp_stats, "sim1", medium_rtcp_stats);
-			else
-				json_object_set_new(rtcp_stats, "sim2", medium_rtcp_stats);
+	if(medium->type != JANUS_MEDIA_DATA) {
+		json_t *rtcp_stats = NULL;
+		for(vindex=0; vindex<3; vindex++) {
+			if(medium->rtcp_ctx[vindex] != NULL) {
+				if(rtcp_stats == NULL)
+					rtcp_stats = json_object();
+				json_t *medium_rtcp_stats = json_object();
+				json_object_set_new(medium_rtcp_stats, "base", json_integer(medium->rtcp_ctx[vindex]->tb));
+				if(vindex == 0)
+					json_object_set_new(medium_rtcp_stats, "rtt", json_integer(janus_rtcp_context_get_rtt(medium->rtcp_ctx[vindex])));
+				json_object_set_new(medium_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE)));
+				json_object_set_new(medium_rtcp_stats, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], TRUE)));
+				json_object_set_new(medium_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], FALSE)));
+				json_object_set_new(medium_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(medium->rtcp_ctx[vindex], TRUE)));
+				json_object_set_new(medium_rtcp_stats, "in-link-quality", json_integer(janus_rtcp_context_get_in_link_quality(medium->rtcp_ctx[vindex])));
+				json_object_set_new(medium_rtcp_stats, "in-media-link-quality", json_integer(janus_rtcp_context_get_in_media_link_quality(medium->rtcp_ctx[vindex])));
+				json_object_set_new(medium_rtcp_stats, "out-link-quality", json_integer(janus_rtcp_context_get_out_link_quality(medium->rtcp_ctx[vindex])));
+				json_object_set_new(medium_rtcp_stats, "out-media-link-quality", json_integer(janus_rtcp_context_get_out_media_link_quality(medium->rtcp_ctx[vindex])));
+				if(vindex == 0)
+					json_object_set_new(rtcp_stats, "main", medium_rtcp_stats);
+				else if(vindex == 1)
+					json_object_set_new(rtcp_stats, "sim1", medium_rtcp_stats);
+				else
+					json_object_set_new(rtcp_stats, "sim2", medium_rtcp_stats);
+			}
 		}
+		if(rtcp_stats != NULL)
+			json_object_set_new(m, "rtcp", rtcp_stats);
 	}
-	if(rtcp_stats != NULL)
-		json_object_set_new(m, "rtcp", rtcp_stats);
 	/* Media stats */
 	json_t *stats = json_object();
 	json_t *in_stats = json_object();
@@ -2446,8 +2455,6 @@ json_t *janus_admin_webrtc_medium_summary(janus_handle_webrtc_medium *medium) {
 		json_object_set_new(container, "bytes", json_integer(medium->in_stats.info[vindex].bytes));
 		if(medium->type != JANUS_MEDIA_DATA) {
 			json_object_set_new(container, "bytes_lastsec", json_integer(medium->in_stats.info[vindex].bytes_lastsec));
-			if(vindex == 0)
-				json_object_set_new(container, "do_nacks", medium->do_nacks ? json_true() : json_false());
 			if(medium->do_nacks)
 				json_object_set_new(container, "nacks", json_integer(medium->in_stats.info[vindex].nacks));
 			if(vindex == 1)
