@@ -341,8 +341,8 @@ events_libjanus_mqttevh_la_SOURCES = events/janus_mqttevh.c
 events_libjanus_mqttevh_la_CFLAGS = $(events_cflags)
 events_libjanus_mqttevh_la_LDFLAGS = $(events_ldflags) -lpaho-mqtt3as
 events_libjanus_mqttevh_la_LIBADD = $(events_libadd)
-conf_DATA += conf/janus.eventhandler.mqttevh.cfg.sample
-EXTRA_DIST += conf/janus.eventhandler.mqttevh.cfg.sample
+conf_DATA += conf/janus.eventhandler.mqttevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.mqttevh.jcfg.sample
 endif
 
 ##
