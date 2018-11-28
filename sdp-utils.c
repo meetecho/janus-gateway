@@ -1386,6 +1386,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 					break;
 			}
 			/* Look for the right codec and stick to that */
+			int pt = -1;
 			if(codec == NULL) {
 				/* FIXME User didn't provide a codec to accept? Let's see if Opus (for audio)
 				 * of VP8 (for video) were negotiated: if so, use them, otherwise let's
@@ -1394,21 +1395,21 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 				 * as browsers would reject it anyway. If you need more flexibility you'll
 				 * have to generate an answer yourself, rather than automatically... */
 				codec = am->type == JANUS_SDP_AUDIO ? "opus" : "vp8";
-				if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+				if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 					/* We couldn't find our preferred codec, let's try something else */
 					if(am->type == JANUS_SDP_AUDIO) {
 						/* Opus not found, maybe mu-law? */
 						codec = "pcmu";
-						if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+						if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 							/* mu-law not found, maybe a-law? */
 							codec = "pcma";
-							if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+							if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 								/* a-law not found, maybe G.722? */
 								codec = "g722";
-								if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+								if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 									/* G.722 not found, maybe isac32? */
 									codec = "isac32";
-									if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+									if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 										/* isac32 not found, maybe isac16? */
 										codec = "isac16";
 									}
@@ -1418,14 +1419,15 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 					} else {
 						/* VP8 not found, maybe VP9? */
 						codec = "vp9";
-						if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
+						if((pt = janus_sdp_get_codec_pt(offer, offered->index, codec)) < 0) {
 							/* VP9 not found either, maybe H.264? */
 							codec = "h264";
 						}
 					}
 				}
 			}
-			int pt = janus_sdp_get_codec_pt(offer, offered->index, codec);
+			if(pt < 0)
+				pt = janus_sdp_get_codec_pt(offer, offered->index, codec);
 			if(pt < 0) {
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",

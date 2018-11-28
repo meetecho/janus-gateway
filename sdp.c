@@ -924,10 +924,10 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 			audio++;
-			m->port = audio == 1 ? 9 : 0;
+			m->port = 9;
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 			video++;
-			m->port = video == 1 ? 9 : 0;
+			m->port = 9;
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 			if(m->proto != NULL && (!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP"))) {
 				data++;
