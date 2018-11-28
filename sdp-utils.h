@@ -112,12 +112,13 @@ void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mi
 /*! \brief Helper method to return the first audio and video codecs in an SDP offer or answer,
  * (no matter whether we personally prefer them ourselves or not)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
- * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
- * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * \note The codec arguments is input/output, and it'll be set to a static value
+ * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free it.
  * @param[in] sdp The Janus SDP object to parse
- * @param[out] acodec The audio codec that was found
- * @param[out] vcodec The video codec that was found */
-void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
+ * @param[in] type Whether we're looking at an audio or video codec
+ * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
+ * @param[out] codec The audio or video codec that was found */
+void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec);
 /*! \brief Helper method to match a codec to one of the preferred codecs
  * \note Don't free the returned value, as it's a constant value
  * @param[in] type The type of media to match
@@ -243,37 +244,25 @@ janus_sdp *janus_sdp_new(const char *name, const char *address);
 void janus_sdp_destroy(janus_sdp *sdp);
 
 typedef enum janus_sdp_oa_type {
-/*! \brief When generating an offer or answer automatically, refer to this m-line index for the following attributes (depends on value that follows) */
-JANUS_SDP_OA_MLINE_INDEX = 1,
-/*! \brief When generating an offer or answer automatically, ignore m-lines for now (depends on value that follows) */
-JANUS_SDP_OA_GLOBAL_ONLY = 1,
-/*! \brief When generating an offer or answer automatically, accept/reject (first) audio if offered (depends on value that follows) */
-JANUS_SDP_OA_AUDIO,
-/*! \brief When generating an offer or answer automatically, accept/reject (first) video if offered (depends on value that follows) */
-JANUS_SDP_OA_VIDEO,
-/*! \brief When generating an offer or answer automatically, accept/reject datachannels if offered (depends on value that follows) */
-JANUS_SDP_OA_DATA,
-/*! \brief When generating an offer or answer automatically, use this direction for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_DIRECTION,
-/*! \brief When generating an offer or answer automatically, use this direction for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_DIRECTION,
-/*! \brief When generating an offer or answer automatically, use this codec for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_CODEC,
-/*! \brief When generating an offer or answer automatically, use this codec for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_CODEC,
-/*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_PT,
-/*! \brief When generating an offer (this is ignored for answers), use this payload type for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_PT,
-/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only) */
+/*! \brief Add a new m-line of the specific kind (used as a separator for audio, video and data details passed to janus_sdp_generate_offer) */
+JANUS_SDP_OA_MLINE = 1,
+/*! \brief Whether we should enable a specific m-line when offering/answering (depends on what follows, true by default) */
+JANUS_SDP_OA_ENABLED,
+/*! \brief When generating an offer or answer automatically, use this direction for media (depends on value that follows, sendrecv by default) */
+JANUS_SDP_OA_DIRECTION,
+/*! \brief When generating an offer or answer automatically, use this codec (depends on value that follows, opus/vp8 by default) */
+JANUS_SDP_OA_CODEC,
+/*! \brief When generating an offer (this is ignored for answers), use this payload type (depends on value that follows) */
+JANUS_SDP_OA_PT,
+/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
 JANUS_SDP_OA_AUDIO_DTMF,
-/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
+/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
 JANUS_SDP_OA_VIDEO_H264_FMTP,
-/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
+/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
 JANUS_SDP_OA_DATA_LEGACY,
-/*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
+/*! \brief MUST be used as the last argument in janus_sdp_generate_offer, janus_sdp_generate_offer_mline and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
 
@@ -282,42 +271,74 @@ JANUS_SDP_OA_DONE = 0
  * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
  \verbatim
 	janus_sdp *offer = janus_sdp_generate_offer("My session", "127.0.0.1",
-		JANUS_SDP_OA_AUDIO, TRUE,
-		JANUS_SDP_OA_AUDIO_PT, 100,
-		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_AUDIO_CODEC, "opus",
-		JANUS_SDP_OA_VIDEO, FALSE,
-		JANUS_SDP_OA_DATA, FALSE,
+		JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+			JANUS_SDP_OA_PT, 100,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+			JANUS_SDP_OA_CODEC, "opus",
+		JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+			JANUS_SDP_OA_PT, 101,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+			JANUS_SDP_OA_CODEC, "vp8",
 		JANUS_SDP_OA_DONE);
  \endverbatim
- * to only offer a \c sendonly Opus audio stream being offered with 100 as
- * payload type, and avoid video and datachannels. Refer to the property names in
- * the header file for a complete list of how you can drive the offer.
- * The default, if not specified, is to offer everything, using Opus with pt=111
- * for audio, VP8 with pt=96 as video, and data channels, all as \c sendrecv.
+ * to offer a \c sendonly Opus audio stream being offered with 100 as
+ * payload type, and a \c recvonly VP8 video stream with 101 as payload type.
+ * Refer to the property names in the header file for a complete
+ * list of how you can drive the offer. Other media streams can be added,
+ * as long as you prefix/specify them with JANUS_SDP_OA_MLINE as done here.
+ * The default, if not specified, is to not offer anything, meaning it
+ * will be up to you to add m-lines subsequently.
  * @param[in] name The session name (if NULL, a default value will be set)
  * @param[in] address The IP to set in o= and c= fields (if NULL, a default value will be set)
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
-/*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer, using variable arguments
- * to dictate how to respond (e.g., in terms of media to accept, reject, directions, etc.). Variable
- * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
+/*! \brief Method to add a single m-line to a new offer, using the same
+ * variable arguments janus_sdp_generate_offer supports. This is useful
+ * whenever you need to create a new offer, but don't know in advance
+ * how many m-lines you'll need, or it would be hard to do programmatically
+ * in a single call to janus_sdp_generate_offer. The first argument
+ * MUST be JANUS_SDP_OA_MLINE, specifying the type of the media.
+ * \note In case case you add audio and don't specify anything else, the
+ * default is to use Opus and payload type 111. For video, the default
+ * is VP8 and payload type 96. The default media direction is \c sendrecv.
+ * @param[in] offer The Janus SDP offer to add the new m-line to
+ * @returns 0 if successful, a negative integer othwerwise */
+int janus_sdp_generate_offer_mline(janus_sdp *offer, ...);
+/*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer.
+ * Notice that this doesn't address the individual m-lines: it will just
+ * create an empty response, create the corresponding m-lines, but leave
+ * them all "rejected". To answer each m-line you'll have to iterate on
+ * the offer m-lines and call janus_sdp_generate_answer_mline instead, e.g.:
  \verbatim
-	janus_sdp *answer = janus_sdp_generate_answer(offer,
-		JANUS_SDP_OA_AUDIO, TRUE,
-		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
-		JANUS_SDP_OA_AUDIO_CODEC, "opus",
-		JANUS_SDP_OA_VIDEO, FALSE,
-		JANUS_SDP_OA_DATA, FALSE,
-		JANUS_SDP_OA_DONE);
+	janus_sdp *answer = janus_sdp_generate_answer(offer);
+	GList *temp = offer->m_lines;
+	while(temp) {
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		janus_sdp_generate_answer_mline(offer, answer, m,
+			[..]
+			JANUS_SDP_OA_DONE);
+		temp = temp->next;
+	}
  \endverbatim
- * to only accept the audio stream being offered, but as \c recvonly, use Opus
- * and reject both video and datachannels. Refer to the property names in
- * the header file for a complete list of how you can drive the answer.
- * The default, if not specified, is to accept everything as \c sendrecv.
  * @param[in] offer The Janus SDP offer to respond to
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
-janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...);
+janus_sdp *janus_sdp_generate_answer(janus_sdp *offer);
+/*! \brief Method to respond to a single m-line in an offer, using the same
+ * variable arguments janus_sdp_generate_offer_mline supports. The first
+ * argument MUST be JANUS_SDP_OA_MLINE, specifying the type of the media, e.g.:
+ \verbatim
+	janus_sdp_generate_answer_mline(offer, answer, offer_mline,
+		JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+			JANUS_SDP_OA_CODEC, "opus",
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+		JANUS_SDP_OA_DONE);
+ \endverbatim
+ * to respond to an offered m-line with recvonly audio and use Opus.
+ * @param[in] offer The Janus SDP offer
+ * @param[in] answer The Janus SDP answer to add the new m-line to
+ * @param[in] offered The Janus SDP m-line from the offer to respond to
+ * @returns 0 if successful, a negative integer othwerwise */
+int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_sdp_mline *offered, ...);
 
 /*! \brief Helper to get the payload type associated to a specific codec in an m-line
  * @param sdp The Janus SDP instance to process

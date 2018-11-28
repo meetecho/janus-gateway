@@ -1285,8 +1285,9 @@ static void *janus_videocall_handler(void *data) {
 			}
 			/* Check which codecs we ended up using */
 			const char *acodec = NULL, *vcodec = NULL;
-			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			janus_sdp_find_first_codecs(answer, JANUS_SDP_AUDIO, -1, &acodec);
 			session->acodec = janus_audiocodec_from_name(acodec);
+			janus_sdp_find_first_codecs(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->acodec == JANUS_AUDIOCODEC_NONE) {
 				session->has_audio = FALSE;

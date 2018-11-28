@@ -4066,11 +4066,20 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				temp = temp->next;
 			}
-			janus_sdp *answer = janus_sdp_generate_answer(offer,
-				/* Reject video and data channels, if offered */
-				JANUS_SDP_OA_VIDEO, FALSE,
-				JANUS_SDP_OA_DATA, FALSE,
-				JANUS_SDP_OA_DONE);
+			janus_sdp *answer = janus_sdp_generate_answer(offer);
+			/* Only accept the first audio line, and reject everything else if offered */
+			temp = offer->m_lines;
+			gboolean accepted = FALSE;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				if(m->type == JANUS_SDP_AUDIO && !accepted) {
+					accepted = TRUE;
+					janus_sdp_generate_answer_mline(offer, answer, m,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_DONE);
+				}
+				temp = temp->next;
+			}
 			/* Replace the session name */
 			g_free(answer->s_name);
 			char s_name[100];

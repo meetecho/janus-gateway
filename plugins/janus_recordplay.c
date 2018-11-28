@@ -621,15 +621,16 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 	g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
 	janus_sdp *offer = janus_sdp_generate_offer(
 		s_name, "1.1.1.1",
-		JANUS_SDP_OA_AUDIO, offer_audio,
-		JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
-		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
-		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_VIDEO, offer_video,
-		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
-		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
-		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_DATA, FALSE,
+		JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+			JANUS_SDP_OA_ENABLED, offer_audio,
+			JANUS_SDP_OA_CODEC, janus_audiocodec_name(rec->acodec),
+			JANUS_SDP_OA_PT, rec->audio_pt,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+			JANUS_SDP_OA_ENABLED, offer_video,
+			JANUS_SDP_OA_CODEC, janus_videocodec_name(rec->vcodec),
+			JANUS_SDP_OA_PT, rec->video_pt,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);
 	rec->offer = janus_sdp_write(offer);
@@ -1543,15 +1544,28 @@ static void *janus_recordplay_handler(void *data) {
 			janus_mutex_unlock(&recordings_mutex);
 			/* We need to prepare an answer */
 recdone:
-			answer = janus_sdp_generate_answer(offer,
-				JANUS_SDP_OA_AUDIO, audio,
-				JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
-				JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
-				JANUS_SDP_OA_VIDEO, video,
-				JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
-				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
-				JANUS_SDP_OA_DATA, FALSE,
-				JANUS_SDP_OA_DONE);
+			answer = janus_sdp_generate_answer(offer);
+			gboolean audio_accepted = FALSE, video_accepted = FALSE;
+			GList *temp = offer->m_lines;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				if(m->type == JANUS_SDP_AUDIO && audio && !audio_accepted) {
+					audio_accepted = TRUE;
+					janus_sdp_generate_answer_mline(offer, answer, m,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+							JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+							JANUS_SDP_OA_CODEC, janus_audiocodec_name(rec->acodec),
+						JANUS_SDP_OA_DONE);
+				} else if(m->type == JANUS_SDP_VIDEO && video && !video_accepted) {
+					video_accepted = TRUE;
+					janus_sdp_generate_answer_mline(offer, answer, m,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+							JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+							JANUS_SDP_OA_CODEC, janus_videocodec_name(rec->vcodec),
+						JANUS_SDP_OA_DONE);
+				}
+				temp = temp->next;
+			}
 			g_free(answer->s_name);
 			char s_name[100];
 			g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);

@@ -1046,10 +1046,17 @@ static void *janus_echotest_handler(void *data) {
 				}
 				temp = temp->next;
 			}
-			janus_sdp *answer = janus_sdp_generate_answer(offer,
-				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
-				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
-				JANUS_SDP_OA_DONE);
+			janus_sdp *answer = janus_sdp_generate_answer(offer);
+			temp = offer->m_lines;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				janus_sdp_generate_answer_mline(offer, answer, m,
+					JANUS_SDP_OA_MLINE, m->type,
+					JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_AUDIO ? json_string_value(audiocodec) :
+						(m->type == JANUS_SDP_VIDEO ? json_string_value(videocodec) : NULL)),
+					JANUS_SDP_OA_DONE);
+				temp = temp->next;
+			}
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
 			if(m && m->direction == JANUS_SDP_SENDONLY)
@@ -1059,9 +1066,10 @@ static void *janus_echotest_handler(void *data) {
 				m->direction = JANUS_SDP_INACTIVE;
 			/* Check which codecs we ended up with */
 			const char *acodec = NULL, *vcodec = NULL;
-			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			janus_sdp_find_first_codecs(answer, JANUS_SDP_AUDIO, -1, &acodec);
 			if(acodec)
 				session->acodec = janus_audiocodec_from_name(acodec);
+			janus_sdp_find_first_codecs(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;

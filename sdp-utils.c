@@ -885,39 +885,30 @@ void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mi
 	janus_refcount_decrease(&sdp->ref);
 }
 
-void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
+void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec) {
 	if(sdp == NULL)
 		return;
 	janus_refcount_increase(&sdp->ref);
-	gboolean audio = FALSE, video = FALSE;
+	gboolean found = FALSE;
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		/* Which media are available? */
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-			if(audio == FALSE && m->ptypes) {
-				int pt = GPOINTER_TO_INT(m->ptypes->data);
-				const char *codec = janus_sdp_get_codec_name(sdp, m->index, pt);
-				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
-				if(codec) {
-					audio = TRUE;
-					if(acodec)
-						*acodec = codec;
-				}
-			}
-		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-			if(video == FALSE && m->ptypes) {
-				int pt = GPOINTER_TO_INT(m->ptypes->data);
-				const char *codec = janus_sdp_get_codec_name(sdp, m->index, pt);
-				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
-				if(codec) {
-					video = TRUE;
-					if(vcodec)
-						*vcodec = codec;
-				}
+		if(mindex != -1 && mindex != m->index) {
+			temp = temp->next;
+			continue;
+		}
+		if(m->type == type && m->port > 0 && m->direction != JANUS_SDP_INACTIVE && m->ptypes) {
+			int pt = GPOINTER_TO_INT(m->ptypes->data);
+			const char *c = janus_sdp_get_codec_name(sdp, m->index, pt);
+			c = janus_sdp_match_preferred_codec(m->type, (char *)c);
+			if(c) {
+				found = TRUE;
+				if(codec)
+					*codec = c;
 			}
 		}
-		if(audio && video)
+		if(found || mindex != -1)
 			break;
 		temp = temp->next;
 	}
@@ -964,35 +955,111 @@ janus_sdp *janus_sdp_new(const char *name, const char *address) {
 
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) {
 	/* This method has a variable list of arguments, telling us what we should offer */
+	int property = -1;
 	va_list args;
 	va_start(args, address);
-	/* Let's see what we should do with the media */
-	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE,
-		data_legacy = TRUE;
-	const char *audio_codec = NULL, *video_codec = NULL;
-	int audio_pt = 111, video_pt = 96;
-	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
-	int property = va_arg(args, int);
+
+	/* Create a new janus_sdp object */
+	janus_sdp *offer = janus_sdp_new(name, address);
+
+	/* Iterate on all m-lines to add, if any */
+	gboolean new_mline = FALSE, mline_enabled = TRUE;
+	janus_sdp_mtype type = JANUS_SDP_OTHER;
+	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
+	int pt = -1;
+	const char *codec = NULL;
+	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	while(property != JANUS_SDP_OA_DONE) {
-		if(property == JANUS_SDP_OA_AUDIO) {
-			do_audio = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_VIDEO) {
-			do_video = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_DATA) {
-			do_data = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_AUDIO_DIRECTION) {
-			audio_dir = va_arg(args, janus_sdp_mdirection);
-		} else if(property == JANUS_SDP_OA_VIDEO_DIRECTION) {
-			video_dir = va_arg(args, janus_sdp_mdirection);
-		} else if(property == JANUS_SDP_OA_AUDIO_CODEC) {
-			audio_codec = va_arg(args, char *);
-		} else if(property == JANUS_SDP_OA_VIDEO_CODEC) {
-			video_codec = va_arg(args, char *);
-		} else if(property == JANUS_SDP_OA_AUDIO_PT) {
-			audio_pt = va_arg(args, int);
-		} else if(property == JANUS_SDP_OA_VIDEO_PT) {
-			video_pt = va_arg(args, int);
+		property = va_arg(args, int);
+		if(!new_mline && property != JANUS_SDP_OA_MLINE && property != JANUS_SDP_OA_DONE) {
+			/* The first attribute MUST be JANUS_SDP_OA_MLINE or JANUS_SDP_OA_DONE */
+			JANUS_LOG(LOG_ERR, "First attribute is not JANUS_SDP_OA_MLINE or JANUS_SDP_OA_DONE\n");
+			janus_sdp_destroy(offer);
+			va_end(args);
+			return NULL;
+		}
+		if(property == JANUS_SDP_OA_MLINE || property == JANUS_SDP_OA_DONE) {
+			/* A new m-line is starting or we're done, should we wrap the previous one? */
+			new_mline = TRUE;
+			if(mline_enabled) {
+				/* Create a new m-line with the data collected so far */
+				if(type == JANUS_SDP_AUDIO) {
+					if(janus_sdp_generate_offer_mline(offer,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_PT, pt,
+						JANUS_SDP_OA_CODEC, codec,
+						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_AUDIO_DTMF, audio_dtmf,
+						JANUS_SDP_OA_DONE
+					) < 0) {
+						janus_sdp_destroy(offer);
+						va_end(args);
+						return NULL;
+					}
+				} else if(type == JANUS_SDP_VIDEO) {
+					if(janus_sdp_generate_offer_mline(offer,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+						JANUS_SDP_OA_PT, pt,
+						JANUS_SDP_OA_CODEC, codec,
+						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS, video_rtcpfb,
+						JANUS_SDP_OA_VIDEO_H264_FMTP, h264_fmtp,
+						JANUS_SDP_OA_DONE
+					) < 0) {
+						janus_sdp_destroy(offer);
+						va_end(args);
+						return NULL;
+					}
+				} else if(type == JANUS_SDP_APPLICATION) {
+					if(janus_sdp_generate_offer_mline(offer,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
+						JANUS_SDP_OA_DATA_LEGACY, data_legacy,
+						JANUS_SDP_OA_DONE
+					) < 0) {
+						janus_sdp_destroy(offer);
+						va_end(args);
+						return NULL;
+					}
+				}
+			}
+			if(property != JANUS_SDP_OA_MLINE)
+				continue;
+			/* Now reset the properties */
+			audio_dtmf = FALSE;
+			video_rtcpfb = TRUE;
+			h264_fmtp = TRUE;
+			data_legacy = FALSE;
+			pt = -1;
+			codec = NULL;
+			mdir = JANUS_SDP_DEFAULT;
+			/* The value of JANUS_SDP_OA_MLINE MUST be the media we want to add */
+			type = va_arg(args, int);
+			if(type == JANUS_SDP_AUDIO) {
+				/* Audio */
+				pt = 111;
+				codec = "opus";
+			} else if(type == JANUS_SDP_VIDEO) {
+				/* Video */
+				pt = 96;
+				codec = "vp8";
+			} else if(type == JANUS_SDP_APPLICATION) {
+				/* Data */
+			} else {
+				/* Unsupported m-line type */
+				JANUS_LOG(LOG_ERR, "Invalid m-line type\n");
+				janus_sdp_destroy(offer);
+				va_end(args);
+				return NULL;
+			}
+			mline_enabled = TRUE;
+		} else if(property == JANUS_SDP_OA_ENABLED) {
+			mline_enabled = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_DIRECTION) {
+			mdir = va_arg(args, janus_sdp_mdirection);
+		} else if(property == JANUS_SDP_OA_CODEC) {
+			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_PT) {
+			pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1002,85 +1069,144 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 		} else if(property == JANUS_SDP_OA_DATA_LEGACY) {
 			data_legacy = va_arg(args, gboolean);
 		} else {
+			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP offer, ignoring...\n", property);
+		}
+	}
+
+	/* Done */
+	va_end(args);
+
+	return offer;
+}
+
+int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
+	if(offer == NULL)
+		return -1;
+
+	/* This method has a variable list of arguments, telling us what we should offer */
+	va_list args;
+	va_start(args, offer);
+
+	/* First of all, let's see what we should add */
+	janus_sdp_mtype type = JANUS_SDP_OTHER;
+	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
+	int pt = -1;
+	const char *codec = NULL, *rtpmap = NULL;
+	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
+	int property = va_arg(args, int);
+	if(property != JANUS_SDP_OA_MLINE) {
+		/* The first attribute MUST be JANUS_SDP_OA_MLINE */
+		JANUS_LOG(LOG_ERR, "First attribute is not JANUS_SDP_OA_MLINE\n");
+		va_end(args);
+		return -2;
+	}
+	type = va_arg(args, int);
+	if(type == JANUS_SDP_AUDIO) {
+		/* Audio */
+		pt = 111;
+		codec = "opus";
+	} else if(type == JANUS_SDP_VIDEO) {
+		/* Video */
+		pt = 96;
+		codec = "vp8";
+	} else if(type == JANUS_SDP_APPLICATION) {
+		/* Data */
+#ifndef HAVE_SCTP
+		va_end(args);
+		return -3;
+#endif
+	} else {
+		/* Unsupported m-line type */
+		JANUS_LOG(LOG_ERR, "Invalid m-line type\n");
+		janus_sdp_destroy(offer);
+		va_end(args);
+		return -4;
+	}
+
+	/* Let's see what we should do with the media to add */
+	property = va_arg(args, int);
+	while(property != JANUS_SDP_OA_DONE) {
+		if(property == JANUS_SDP_OA_DIRECTION) {
+			mdir = va_arg(args, janus_sdp_mdirection);
+		} else if(property == JANUS_SDP_OA_CODEC) {
+			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_PT) {
+			pt = va_arg(args, int);
+		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
+			audio_dtmf = va_arg(args, gboolean);
+		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
+			video_rtcpfb = va_arg(args, gboolean);
+		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
+			h264_fmtp = va_arg(args, gboolean);
+		} else if(type == JANUS_SDP_APPLICATION && property == JANUS_SDP_OA_DATA_LEGACY) {
+			data_legacy = va_arg(args, gboolean);
+		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
 		property = va_arg(args, int);
 	}
-	if(audio_codec == NULL)
-		audio_codec = "opus";
-	const char *audio_rtpmap = janus_sdp_get_codec_rtpmap(audio_codec);
-	if(do_audio && audio_rtpmap == NULL) {
-		JANUS_LOG(LOG_ERR, "Unsupported audio codec '%s', can't prepare an offer\n", audio_codec);
-		va_end(args);
-		return NULL;
+	/* Configure some defaults, if values weren't specified */
+	if(type == JANUS_SDP_AUDIO) {
+		if(codec == NULL)
+			codec = "opus";
+		rtpmap = janus_sdp_get_codec_rtpmap(codec);
+		if(rtpmap == NULL) {
+			JANUS_LOG(LOG_ERR, "Unsupported audio codec '%s', can't prepare an offer\n", codec);
+			va_end(args);
+			return -3;
+		}
+	} else if(type == JANUS_SDP_VIDEO) {
+		if(codec == NULL)
+			codec = "vp8";
+		rtpmap = janus_sdp_get_codec_rtpmap(codec);
+		if(rtpmap == NULL) {
+			JANUS_LOG(LOG_ERR, "Unsupported video codec '%s', can't prepare an offer\n", codec);
+			va_end(args);
+			return -4;
+		}
 	}
-	if(video_codec == NULL)
-		video_codec = "vp8";
-	const char *video_rtpmap = janus_sdp_get_codec_rtpmap(video_codec);
-	if(do_video && video_rtpmap == NULL) {
-		JANUS_LOG(LOG_ERR, "Unsupported video codec '%s', can't prepare an offer\n", video_codec);
-		va_end(args);
-		return NULL;
-	}
-#ifndef HAVE_SCTP
-	do_data = FALSE;
-#endif
 
-	/* Create a new janus_sdp object */
-	janus_sdp *offer = janus_sdp_new(name, address);
-	/* Now add all the media we should */
-	if(do_audio) {
-		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_AUDIO, 1, "UDP/TLS/RTP/SAVPF", audio_dir);
-		m->index = g_list_length(offer->m_lines);
-		m->c_ipv4 = TRUE;
-		m->c_addr = g_strdup(offer->c_addr);
-		/* Add the selected audio codec */
-		m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(audio_pt));
-		janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", audio_pt, audio_rtpmap);
+	/* Create the m-line */
+	const char *transport = "UDP/TLS/RTP/SAVPF";
+	if(type == JANUS_SDP_APPLICATION)
+		transport = (data_legacy ? "DTLS/SCTP" : "UDP/DTLS/SCTP");
+	janus_sdp_mline *m = janus_sdp_mline_create(type, 9, transport, mdir);
+	m->index = g_list_length(offer->m_lines);
+	m->c_ipv4 = TRUE;
+	m->c_addr = g_strdup(offer->c_addr);
+	if(type == JANUS_SDP_AUDIO || type == JANUS_SDP_VIDEO) {
+		/* Add the selected codec */
+		m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(pt));
+		janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, rtpmap);
 		m->attributes = g_list_append(m->attributes, a);
-		/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
-		if(audio_dtmf) {
-			/* We do */
-			int dtmf_pt = 126;
-			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(dtmf_pt));
-			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
-			m->attributes = g_list_append(m->attributes, a);
+		if(type == JANUS_SDP_AUDIO) {
+			/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
+			if(audio_dtmf) {
+				/* We do */
+				int dtmf_pt = 126;
+				m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(dtmf_pt));
+				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+				m->attributes = g_list_append(m->attributes, a);
+			}
+		} else {
+			if(!strcasecmp(codec, "h264") && h264_fmtp) {
+				/* If it's H.264 and we were asked to, add the default fmtp profile as well */
+				a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+				m->attributes = g_list_append(m->attributes, a);
+			}
+			if(video_rtcpfb) {
+				/* Add rtcp-fb attributes */
+				a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", pt);
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("rtcp-fb", "%d nack", pt);
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", pt);
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
+				m->attributes = g_list_append(m->attributes, a);
+			}
 		}
-		offer->m_lines = g_list_append(offer->m_lines, m);
-	}
-	if(do_video) {
-		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_VIDEO, 1, "UDP/TLS/RTP/SAVPF", video_dir);
-		m->index = g_list_length(offer->m_lines);
-		m->c_ipv4 = TRUE;
-		m->c_addr = g_strdup(offer->c_addr);
-		/* Add the selected video codec */
-		m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(video_pt));
-		janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", video_pt, video_rtpmap);
-		m->attributes = g_list_append(m->attributes, a);
-		if(!strcasecmp(video_codec, "h264") && h264_fmtp) {
-			/* If it's H.264 and we were asked to, add the default fmtp profile as well */
-			a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", video_pt);
-			m->attributes = g_list_append(m->attributes, a);
-		}
-		if(video_rtcpfb) {
-			/* Add rtcp-fb attributes */
-			a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", video_pt);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("rtcp-fb", "%d nack", video_pt);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", video_pt);
-			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", video_pt);
-			m->attributes = g_list_append(m->attributes, a);
-		}
-		offer->m_lines = g_list_append(offer->m_lines, m);
-	}
-	if(do_data) {
-		janus_sdp_mline *m = janus_sdp_mline_create(JANUS_SDP_APPLICATION, 1,
-			data_legacy ? "DTLS/SCTP" : "UDP/DTLS/SCTP", JANUS_SDP_DEFAULT);
-		m->index = g_list_length(offer->m_lines);
-		m->c_ipv4 = TRUE;
-		m->c_addr = g_strdup(offer->c_addr);
+	} else {
 		m->fmts = g_list_append(m->fmts, g_strdup(data_legacy ? "5000" : "webrtc-datachannel"));
 		/* Add an sctpmap attribute */
 		if(data_legacy) {
@@ -1090,63 +1216,24 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			janus_sdp_attribute *aa = janus_sdp_attribute_create("sctp-port", "5000");
 			m->attributes = g_list_append(m->attributes, aa);
 		}
-		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
+	offer->m_lines = g_list_append(offer->m_lines, m);
 
 	/* Done */
 	va_end(args);
 
-	return offer;
+	return 0;
 }
 
-janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
+janus_sdp *janus_sdp_generate_answer(janus_sdp *offer) {
 	if(offer == NULL)
 		return NULL;
 
 	janus_refcount_increase(&offer->ref);
-	/* This method has a variable list of arguments, telling us how we should respond */
-	va_list args;
-	va_start(args, offer);
-	/* Let's see what we should do with the media */
-	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
-	const char *audio_codec = NULL, *video_codec = NULL;
-	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
-	int property = va_arg(args, int);
-	while(property != JANUS_SDP_OA_DONE) {
-		if(property == JANUS_SDP_OA_AUDIO) {
-			do_audio = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_VIDEO) {
-			do_video = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_DATA) {
-			do_data = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_AUDIO_DIRECTION) {
-			audio_dir = va_arg(args, janus_sdp_mdirection);
-		} else if(property == JANUS_SDP_OA_VIDEO_DIRECTION) {
-			video_dir = va_arg(args, janus_sdp_mdirection);
-		} else if(property == JANUS_SDP_OA_AUDIO_CODEC) {
-			audio_codec = va_arg(args, char *);
-		} else if(property == JANUS_SDP_OA_VIDEO_CODEC) {
-			video_codec = va_arg(args, char *);
-		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
-			audio_dtmf = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
-			video_rtcpfb = va_arg(args, gboolean);
-		} else if(property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
-			h264_fmtp = va_arg(args, gboolean);
-		} else {
-			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
-		}
-		property = va_arg(args, int);
-	}
-#ifndef HAVE_SCTP
-	do_data = FALSE;
-#endif
-
+	/* Create an SDP answer, and start by copying some of the headers */
 	janus_sdp *answer = g_malloc(sizeof(janus_sdp));
 	g_atomic_int_set(&answer->destroyed, 0);
 	janus_refcount_init(&answer->ref, janus_sdp_free);
-	/* Start by copying some of the headers */
 	answer->version = offer->version;
 	answer->o_name = g_strdup(offer->o_name ? offer->o_name : "-");
 	answer->o_sessid = offer->o_sessid;
@@ -1161,83 +1248,129 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	answer->attributes = NULL;
 	answer->m_lines = NULL;
 
-	/* Now iterate on all media, and let's see what we should do */
-	int audio = 0, video = 0, data = 0;
+	/* Iterate on all m-lines to add, if any */
 	GList *temp = offer->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		/* For each m-line we parse, we'll need a corresponding one in the answer */
 		janus_sdp_mline *am = g_malloc0(sizeof(janus_sdp_mline));
-		g_atomic_int_set(&am->destroyed, 0);
 		janus_refcount_init(&am->ref, janus_sdp_mline_free);
 		am->index = m->index;
 		am->type = m->type;
 		am->type_str = m->type_str ? g_strdup(m->type_str) : NULL;
 		am->proto = g_strdup(m->proto ? m->proto : "UDP/TLS/RTP/SAVPF");
-		am->port = m->port;
 		am->c_ipv4 = m->c_ipv4;
 		am->c_addr = g_strdup(am->c_addr ? am->c_addr : "127.0.0.1");
-		am->direction = JANUS_SDP_INACTIVE;	/* We'll change this later */
+		/* We reject the media line by default, but this can be changed later */
+		am->port = 0;
+		am->direction = JANUS_SDP_INACTIVE;
+		am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
 		/* Append to the list of m-lines in the answer */
 		answer->m_lines = g_list_append(answer->m_lines, am);
-		/* Let's see what this is */
-		if(m->type == JANUS_SDP_AUDIO) {
-			if(m->port > 0) {
-				audio++;
-			}
-			if(!do_audio || audio > 1) {
-				/* Reject */
-				am->port = 0;
-				temp = temp->next;
-				continue;
-			}
-		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
-			if(m->port > 0) {
-				video++;
-			}
-			if(!do_video || video > 1) {
-				/* Reject */
-				am->port = 0;
-				temp = temp->next;
-				continue;
-			}
-		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-			if(m->port > 0) {
-				data++;
-			}
-			if(!do_data || data > 1) {
-				/* Reject */
-				am->port = 0;
-				temp = temp->next;
-				continue;
-			}
+		temp = temp->next;
+	}
+	janus_refcount_decrease(&offer->ref);
+
+	/* Done*/
+	return answer;
+}
+
+int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_sdp_mline *offered, ...) {
+	if(answer == NULL || offered == NULL)
+		return -1;
+
+	/* This method has a variable list of arguments, telling us what we should offer */
+	va_list args;
+	va_start(args, offered);
+
+	/* First of all, let's see what we should add */
+	gboolean mline_enabled = TRUE;
+	janus_sdp_mtype type = JANUS_SDP_OTHER;
+	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
+	const char *codec = NULL;
+	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
+	int property = va_arg(args, int);
+	if(property != JANUS_SDP_OA_MLINE) {
+		/* The first attribute MUST be JANUS_SDP_OA_MLINE */
+		JANUS_LOG(LOG_ERR, "First attribute is not JANUS_SDP_OA_MLINE\n");
+		va_end(args);
+		return -2;
+	}
+	type = va_arg(args, int);
+	if(type != JANUS_SDP_AUDIO && type != JANUS_SDP_VIDEO && type != JANUS_SDP_APPLICATION) {
+		/* Unsupported m-line type */
+		JANUS_LOG(LOG_ERR, "Invalid m-line type\n");
+		va_end(args);
+		return -3;
+	}
+
+	/* Let's see what we should do with the media to add */
+	property = va_arg(args, int);
+	while(property != JANUS_SDP_OA_DONE) {
+		if(property == JANUS_SDP_OA_ENABLED) {
+			mline_enabled = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_DIRECTION) {
+			mdir = va_arg(args, janus_sdp_mdirection);
+		} else if(property == JANUS_SDP_OA_CODEC) {
+			codec = va_arg(args, char *);
+		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
+			audio_dtmf = va_arg(args, gboolean);
+		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
+			video_rtcpfb = va_arg(args, gboolean);
+		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
+			h264_fmtp = va_arg(args, gboolean);
+		} else {
+			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
-		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
-			janus_sdp_mdirection target_dir = m->type == JANUS_SDP_AUDIO ? audio_dir : video_dir;
+		property = va_arg(args, int);
+	}
+
+	/* Iterate on all m-lines to add, if any, to find the one with the same index */
+	GList *temp = answer->m_lines;
+	while(temp) {
+		janus_sdp_mline *am = (janus_sdp_mline *)temp->data;
+		if(am->index != offered->index) {
+			temp = temp->next;
+			continue;
+		}
+		/* When answering, m-lines are disabled by default */
+		am->direction = JANUS_SDP_INACTIVE;
+		g_list_free(am->ptypes);
+		am->ptypes = NULL;
+		g_list_free_full(am->fmts, (GDestroyNotify)g_free);
+		am->fmts = NULL;
+		g_list_free_full(am->attributes, (GDestroyNotify)janus_sdp_attribute_destroy);
+		am->attributes = NULL;
+		if(!mline_enabled) {
+			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
+			break;
+		}
+		am->port = 9;
+		if(am->type == JANUS_SDP_AUDIO || am->type == JANUS_SDP_VIDEO) {
 			/* What is the direction we were offered? And how were we asked to react?
 			 * Adapt the direction in our answer accordingly */
-			switch(m->direction) {
+			switch(offered->direction) {
 				case JANUS_SDP_RECVONLY:
-					if(target_dir == JANUS_SDP_SENDRECV || target_dir == JANUS_SDP_SENDONLY) {
+					if(mdir == JANUS_SDP_SENDRECV || mdir == JANUS_SDP_DEFAULT || mdir == JANUS_SDP_SENDONLY) {
 						/* Peer is recvonly, we'll only send */
 						am->direction = JANUS_SDP_SENDONLY;
 					} else {
 						/* Peer is recvonly, but we're not ok to send, so reply with inactive */
 						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
-							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
-							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
+							am->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
+							janus_sdp_mdirection_str(offered->direction), janus_sdp_mdirection_str(mdir));
 						am->direction = JANUS_SDP_INACTIVE;
 					}
 					break;
 				case JANUS_SDP_SENDONLY:
-					if(target_dir == JANUS_SDP_SENDRECV || target_dir == JANUS_SDP_RECVONLY) {
+					if(mdir == JANUS_SDP_SENDRECV || mdir == JANUS_SDP_DEFAULT || mdir == JANUS_SDP_RECVONLY) {
 						/* Peer is sendonly, we'll only receive */
 						am->direction = JANUS_SDP_RECVONLY;
 					} else {
 						/* Peer is sendonly, but we're not ok to receive, so reply with inactive */
 						JANUS_LOG(LOG_WARN, "%s offered as '%s', but we need '%s' for us: using 'inactive'\n",
-							m->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
-							janus_sdp_mdirection_str(m->direction), janus_sdp_mdirection_str(target_dir));
+							offered->type == JANUS_SDP_AUDIO ? "Audio" : "Video",
+							janus_sdp_mdirection_str(offered->direction), janus_sdp_mdirection_str(mdir));
 						am->direction = JANUS_SDP_INACTIVE;
 					}
 					break;
@@ -1246,13 +1379,13 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					am->direction = JANUS_SDP_INACTIVE;
 					break;
 				case JANUS_SDP_SENDRECV:
+				case JANUS_SDP_DEFAULT:
 				default:
 					/* The peer is fine with everything, so use our constraint */
-					am->direction = target_dir;
+					am->direction = mdir;
 					break;
 			}
 			/* Look for the right codec and stick to that */
-			const char *codec = m->type == JANUS_SDP_AUDIO ? audio_codec : video_codec;
 			if(codec == NULL) {
 				/* FIXME User didn't provide a codec to accept? Let's see if Opus (for audio)
 				 * of VP8 (for video) were negotiated: if so, use them, otherwise let's
@@ -1260,22 +1393,22 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				 * Notice that if it's not a codec we understand, we reject the medium,
 				 * as browsers would reject it anyway. If you need more flexibility you'll
 				 * have to generate an answer yourself, rather than automatically... */
-				codec = m->type == JANUS_SDP_AUDIO ? "opus" : "vp8";
-				if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+				codec = am->type == JANUS_SDP_AUDIO ? "opus" : "vp8";
+				if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 					/* We couldn't find our preferred codec, let's try something else */
-					if(m->type == JANUS_SDP_AUDIO) {
+					if(am->type == JANUS_SDP_AUDIO) {
 						/* Opus not found, maybe mu-law? */
 						codec = "pcmu";
-						if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+						if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 							/* mu-law not found, maybe a-law? */
 							codec = "pcma";
-							if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+							if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 								/* a-law not found, maybe G.722? */
 								codec = "g722";
-								if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+								if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 									/* G.722 not found, maybe isac32? */
 									codec = "isac32";
-									if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+									if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 										/* isac32 not found, maybe isac16? */
 										codec = "isac16";
 									}
@@ -1285,32 +1418,32 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					} else {
 						/* VP8 not found, maybe VP9? */
 						codec = "vp9";
-						if(janus_sdp_get_codec_pt(offer, m->index, codec) < 0) {
+						if(janus_sdp_get_codec_pt(offer, offered->index, codec) < 0) {
 							/* VP9 not found either, maybe H.264? */
 							codec = "h264";
 						}
 					}
 				}
 			}
-			int pt = janus_sdp_get_codec_pt(offer, m->index, codec);
+			int pt = janus_sdp_get_codec_pt(offer, offered->index, codec);
 			if(pt < 0) {
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",
-					codec, m->type == JANUS_SDP_AUDIO ? "audio" : "video");
+					codec, am->type == JANUS_SDP_AUDIO ? "audio" : "video");
 				am->port = 0;
 				am->direction = JANUS_SDP_INACTIVE;
-				temp = temp->next;
-				continue;
+				am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
+				break;
 			}
 			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(pt));
 			/* Add the related attributes */
-			if(m->type == JANUS_SDP_AUDIO) {
+			if(am->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
 				am->attributes = g_list_append(am->attributes, a);
 				/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
 				if(audio_dtmf) {
-					int dtmf_pt = janus_sdp_get_codec_pt(offer, m->index, "dtmf");
+					int dtmf_pt = janus_sdp_get_codec_pt(offer, am->index, "dtmf");
 					if(dtmf_pt >= 0) {
 						/* We do */
 						am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));
@@ -1345,7 +1478,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 		} else {
 			/* This is for data, add formats and an sctpmap attribute */
 			am->direction = JANUS_SDP_DEFAULT;
-			GList *fmt = m->fmts;
+			GList *fmt = offered->fmts;
 			while(fmt) {
 				char *fmt_str = (char *)fmt->data;
 				if(fmt_str)
@@ -1353,12 +1486,9 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				fmt = fmt->next;
 			}
 		}
-		temp = temp->next;
+		/* Nothing else we need to do */
+		break;
 	}
-	janus_refcount_decrease(&offer->ref);
 
-	/* Done */
-	va_end(args);
-
-	return answer;
+	return 0;
 }

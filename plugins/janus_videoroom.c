@@ -5852,12 +5852,32 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				JANUS_LOG(LOG_VERB, "The publisher is going to use the %s video codec\n", janus_videocodec_name(participant->vcodec));
 				participant->video_pt = janus_videocodec_pt(participant->vcodec);
-				janus_sdp *answer = janus_sdp_generate_answer(offer,
-					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->acodec),
-					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
-					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
-					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
-					JANUS_SDP_OA_DONE);
+				janus_sdp *answer = janus_sdp_generate_answer(offer);
+				gboolean audio_accepted = FALSE, video_accepted = FALSE;
+				temp = offer->m_lines;
+				while(temp) {
+					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+					if(m->type == JANUS_SDP_AUDIO && !audio_accepted) {
+						audio_accepted = TRUE;
+						janus_sdp_generate_answer_mline(offer, answer, m,
+							JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+								JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+								JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->acodec),
+							JANUS_SDP_OA_DONE);
+					} else if(m->type == JANUS_SDP_VIDEO && !video_accepted) {
+						video_accepted = TRUE;
+						janus_sdp_generate_answer_mline(offer, answer, m,
+							JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+								JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+								JANUS_SDP_OA_CODEC, janus_videocodec_name(participant->vcodec),
+							JANUS_SDP_OA_DONE);
+					} else if(m->type == JANUS_SDP_APPLICATION) {
+						janus_sdp_generate_answer_mline(offer, answer, m,
+							JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
+							JANUS_SDP_OA_DONE);
+					}
+					temp = temp->next;
+				}
 				janus_sdp_destroy(offer);
 				/* Replace the session name */
 				g_free(answer->s_name);
@@ -5970,15 +5990,18 @@ static void *janus_videoroom_handler(void *data) {
 				char *answer_sdp = janus_sdp_write(answer);
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
 				offer = janus_sdp_generate_offer(s_name, answer->c_addr,
-					JANUS_SDP_OA_AUDIO, participant->audio,
-					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->acodec),
-					JANUS_SDP_OA_AUDIO_PT, janus_audiocodec_pt(participant->acodec),
-					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-					JANUS_SDP_OA_VIDEO, participant->video,
-					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
-					JANUS_SDP_OA_VIDEO_PT, janus_videocodec_pt(participant->vcodec),
-					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
-					JANUS_SDP_OA_DATA, participant->data,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_ENABLED, participant->audio,
+						JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->acodec),
+						JANUS_SDP_OA_PT, janus_audiocodec_pt(participant->acodec),
+						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+						JANUS_SDP_OA_ENABLED, participant->video,
+						JANUS_SDP_OA_CODEC, janus_videocodec_name(participant->vcodec),
+						JANUS_SDP_OA_PT, janus_videocodec_pt(participant->vcodec),
+						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
+						JANUS_SDP_OA_ENABLED, participant->data,
 					JANUS_SDP_OA_DONE);
 				/* Add the extmap attributes, if needed */
 				if(audio_level_extmap) {
