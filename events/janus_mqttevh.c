@@ -358,7 +358,6 @@ static int janus_mqttevh_client_reconnect(janus_mqttevh_context *ctx) {
 /* Callback for successful reconnection to MQTT broker */
 static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_successData *response) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
-	char topicbuf[512];
 
 	JANUS_LOG(LOG_WARN, "MQTT EVH client has been disconnected from %s. Reconnecting...\n", ctx->connect.url);
 
@@ -555,7 +554,7 @@ static int janus_mqttevh_init(const char *config_path) {
 		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 		config = janus_config_parse(filename);
 		if(config == NULL) {
-			JANUS_LOG(LOG_FATAL, "Couldn't find .cfg configuration file (%), giving up\n", JANUS_MQTTEVH_PACKAGE);
+			JANUS_LOG(LOG_FATAL, "Couldn't find .cfg configuration file (%s), giving up\n", JANUS_MQTTEVH_PACKAGE);
 			return -1;
 		}
 	}
