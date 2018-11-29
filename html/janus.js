@@ -1582,7 +1582,12 @@ function Janus(gatewayCallbacks) {
 		}
 		// If we still need to create a PeerConnection, let's do that
 		if(!config.pc) {
-			var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
+			var pc_config = {
+				sdpSemantics: "unified-plan",
+				iceServers: iceServers,
+				iceTransportPolicy: iceTransportPolicy,
+				bundlePolicy: bundlePolicy
+			};
 			//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
