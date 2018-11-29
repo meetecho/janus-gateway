@@ -100,7 +100,8 @@ static volatile gint initialized = 0, stopping = 0;
 #define DEFAULT_DISCONNECT_TIMEOUT	100
 #define DEFAULT_QOS					0
 #define DEFAULT_RETAIN				0
-#define DEFAULT_WILL_CONTENT		"{\"event\": \"disconnect\" }"
+#define DEFAULT_INITIAL_STATUS		"{\"event\": \"connected\", \"eventhandler\": \""JANUS_MQTTEVH_PACKAGE"\"}"
+#define DEFAULT_WILL_CONTENT		"{\"event\": \"disconnected\"}"
 #define DEFAULT_WILL_RETAIN			1
 #define DEFAULT_WILL_QOS			0
 #define DEFAULT_BASETOPIC			"/janus/events"
@@ -156,6 +157,7 @@ typedef struct janus_mqttevh_context {
 	/* Data for publishing events */
 	struct {
 		char *topic;
+		char *initial_status;
 		int qos;
 		int retain;
 	} publish;
@@ -314,25 +316,21 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 
 /* Callback for succesful connection to MQTT broker */
 static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *response) {
-	char topicbuf[512];
-
 	JANUS_LOG(LOG_INFO, "MQTT EVH client has been successfully connected to the broker\n");
 
-	// Make a shallow copy to overwrite if needed.
-	janus_mqttevh_context ctx = *(janus_mqttevh_context *)context;
+	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 
-	json_t *info = json_object();
+	char topicbuf[512];
+	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
 
-	json_object_set_new(info, "event", json_string("connected"));
-	json_object_set_new(info, "eventhandler", json_string(JANUS_MQTTEVH_PACKAGE));
-	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx.publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
-	json_incref(info);
+	/* Using LWT's retain for initial status message because
+	 * we need to ensure we overwrite LWT if it's retained.
+	 */
+	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->publish.initial_status);
 
-	ctx.publish.retain = ctx.will.retain;
-
-	janus_mqttevh_send_message(&ctx, topicbuf, info);
-
-	json_decref(info);
+	if(rc != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+	}
 }
 
 /* Callback for MQTT broker connection failure */
@@ -527,7 +525,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	int res = 0;
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
-	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item;
+	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item, *initial_status_item;
 	janus_config_item *will_retain_item, *will_qos_item, *will_content_item, *will_enabled_item;
 
 	if(g_atomic_int_get(&stopping)) {
@@ -652,6 +650,13 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	qos_item = janus_config_get(config, config_general, janus_config_type_item, "qos");
 	ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+
+	initial_status_item = janus_config_get(config, config_general, janus_config_type_item, "initial_status");
+	if(initial_status_item && initial_status_item->value) {
+		ctx->publish.initial_status = g_strdup(initial_status_item->value);
+	} else {
+		ctx->publish.initial_status = g_strdup(DEFAULT_INITIAL_STATUS);
+	}
 
 	/* LWT config */
 	will_enabled_item = janus_config_get(config, config_general, janus_config_type_item, "will_enabled");
