@@ -523,9 +523,9 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 		}
 		if(medium->mid == NULL) {
 			/* We need a mid as well */
-			char mid[10];
+			char mid[5];
 			memset(mid, 0, sizeof(mid));
-			g_snprintf(mid, sizeof(mid), "janus%d", mlines);
+			g_snprintf(mid, sizeof(mid), "%d", mlines);
 			medium->mid = g_strdup(mid);
 		}
 		temp = temp->next;
