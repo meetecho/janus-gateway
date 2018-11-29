@@ -28,10 +28,11 @@ general: {
 	#addevent = true				# Whether we should add the event type to the base topic
 
 	# Initial message sent to status topic
-	#initial_status = "{\"event\": \"connected\", \"eventhandler\": \"janus.eventhandler.mqttevh\"}"
+	#connect_status = "{\"event\": \"connected\", \"eventhandler\": \"janus.eventhandler.mqttevh\"}"
+	# Message sent after disconnect or as LWT
+	#disconnect_status = "{\"event\": \"disconnected\"}"
 
 	#will_enabled = false							# Whether to enable LWT (default: false)
-	#will_content = "{\"event\": \"disconnected\"}"	# LWT content
 	#will_retain = 1								# Whether LWT should be retained (default: 1)
 	#will_qos = 0									# QoS for LWT (default: 0)
 

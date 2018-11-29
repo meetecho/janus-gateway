@@ -100,8 +100,8 @@ static volatile gint initialized = 0, stopping = 0;
 #define DEFAULT_DISCONNECT_TIMEOUT	100
 #define DEFAULT_QOS					0
 #define DEFAULT_RETAIN				0
-#define DEFAULT_INITIAL_STATUS		"{\"event\": \"connected\", \"eventhandler\": \""JANUS_MQTTEVH_PACKAGE"\"}"
-#define DEFAULT_WILL_CONTENT		"{\"event\": \"disconnected\"}"
+#define DEFAULT_CONNECT_STATUS		"{\"event\": \"connected\", \"eventhandler\": \""JANUS_MQTTEVH_PACKAGE"\"}"
+#define DEFAULT_DISCONNECT_STATUS	"{\"event\": \"disconnected\"}"
 #define DEFAULT_WILL_RETAIN			1
 #define DEFAULT_WILL_QOS			0
 #define DEFAULT_BASETOPIC			"/janus/events"
@@ -157,7 +157,8 @@ typedef struct janus_mqttevh_context {
 	/* Data for publishing events */
 	struct {
 		char *topic;
-		char *initial_status;
+		char *connect_status;
+		char *disconnect_status;
 		int qos;
 		int retain;
 	} publish;
@@ -168,7 +169,6 @@ typedef struct janus_mqttevh_context {
 		char *topic;
 		int qos;
 		int retain;
-		char *content;
 	} will;
 
 	/* TLS connection data */
@@ -303,7 +303,7 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	MQTTAsync_willOptions willOptions = MQTTAsync_willOptions_initializer;
 	if(ctx->will.enabled) {
 		willOptions.topicName = ctx->will.topic;
-		willOptions.message = ctx->will.content;
+		willOptions.message = ctx->publish.disconnect_status;
 		willOptions.retained = ctx->will.retain;
 		willOptions.qos = ctx->will.qos;
 
@@ -326,7 +326,7 @@ static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_succes
 	/* Using LWT's retain for initial status message because
 	 * we need to ensure we overwrite LWT if it's retained.
 	 */
-	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->publish.initial_status);
+	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->publish.connect_status);
 
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", topicbuf, rc);
@@ -416,7 +416,7 @@ static void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_suc
 	/* Using LWT's retain for disconnect status message because
 	 * we need to ensure we overwrite LWT if it's retained.
 	 */
-	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->will.content);
+	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->publish.disconnect_status);
 
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", topicbuf, rc);
@@ -537,8 +537,8 @@ static int janus_mqttevh_init(const char *config_path) {
 	int res = 0;
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
-	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item, *initial_status_item;
-	janus_config_item *will_retain_item, *will_qos_item, *will_content_item, *will_enabled_item;
+	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item, *connect_status_item, *disconnect_status_item;
+	janus_config_item *will_retain_item, *will_qos_item, *will_enabled_item;
 
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
@@ -663,24 +663,24 @@ static int janus_mqttevh_init(const char *config_path) {
 	qos_item = janus_config_get(config, config_general, janus_config_type_item, "qos");
 	ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 
-	initial_status_item = janus_config_get(config, config_general, janus_config_type_item, "initial_status");
-	if(initial_status_item && initial_status_item->value) {
-		ctx->publish.initial_status = g_strdup(initial_status_item->value);
+	connect_status_item = janus_config_get(config, config_general, janus_config_type_item, "connect_status");
+	if(connect_status_item && connect_status_item->value) {
+		ctx->publish.connect_status = g_strdup(connect_status_item->value);
 	} else {
-		ctx->publish.initial_status = g_strdup(DEFAULT_INITIAL_STATUS);
+		ctx->publish.connect_status = g_strdup(DEFAULT_CONNECT_STATUS);
+	}
+
+	disconnect_status_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_status");
+	if(disconnect_status_item && disconnect_status_item->value) {
+		ctx->publish.disconnect_status = g_strdup(disconnect_status_item->value);
+	} else {
+		ctx->publish.disconnect_status = g_strdup(DEFAULT_DISCONNECT_STATUS);
 	}
 
 	/* LWT config */
 	will_enabled_item = janus_config_get(config, config_general, janus_config_type_item, "will_enabled");
 	if(will_enabled_item && will_enabled_item->value && janus_is_true(will_enabled_item->value)) {
 		ctx->will.enabled = TRUE;
-
-		will_content_item = janus_config_get(config, config_general, janus_config_type_item, "will_content");
-		if(will_content_item && will_content_item->value) {
-			ctx->will.content = g_strdup(will_content_item->value);
-		} else {
-			ctx->will.content = g_strdup(DEFAULT_WILL_CONTENT);
-		}
 
 		will_retain_item = janus_config_get(config, config_general, janus_config_type_item, "will_retain");
 		if(will_retain_item && will_retain_item->value && janus_is_true(will_retain_item->value)) {
