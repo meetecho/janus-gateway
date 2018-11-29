@@ -329,7 +329,7 @@ static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_succes
 	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->publish.initial_status);
 
 	if(rc != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", topicbuf, rc);
 	}
 }
 
@@ -409,6 +409,18 @@ static void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_suc
 
 	/* Notify handlers about this transport being gone */
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+
+	char topicbuf[512];
+	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
+
+	/* Using LWT's retain for disconnect status message because
+	 * we need to ensure we overwrite LWT if it's retained.
+	 */
+	int rc = janus_mqttevh_client_publish_message(ctx, topicbuf, ctx->will.retain, ctx->will.content);
+
+	if(rc != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", topicbuf, rc);
+	}
 
 	JANUS_LOG(LOG_INFO, "MQTT EVH client has been successfully disconnected from %s. Destroying the client...\n", ctx->connect.url);
 	janus_mqttevh_client_destroy_context(&ctx);
