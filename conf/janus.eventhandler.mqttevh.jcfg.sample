@@ -16,16 +16,25 @@ general: {
 							# plain (no indentation) or compact (no indentation and no spaces)
 
 	url = "tcp://localhost:1883"	# The URL of the MQTT server. Only tcp supported at this time.
-	client_id = "janus.example.com"	# Janus client id. You have to configure a unique ID.
+	client_id = "janus.example.com"	# Janus client id. You have to configure a unique ID (default: guest).
 	#keep_alive_interval = 20		# Keep connection for N seconds (default: 30)
 	#cleansession = 0				# Clean session flag (default: off)
-	#mqtt_qos = 1					# Default MQTT QoS for published events
+	#retain = 0						# Default MQTT retain flag for published events
+	#qos = 1						# Default MQTT QoS for published events
 	#disconnect_timeout = 100		# Seconds to wait before destroying client
 	#username = "guest"				# Username for authentication (default: no authentication)
 	#password = "guest"				# Password for authentication (default: no authentication)
 	#topic = "/janus/events"		# Base topic (default: /janus/events)
-	#addtype = true					# Whether we should add the event type to the base topic
+	#addevent = true				# Whether we should add the event type to the base topic
 
+	# Initial message sent to status topic
+	#connect_status = "{\"event\": \"connected\", \"eventhandler\": \"janus.eventhandler.mqttevh\"}"
+	# Message sent after disconnect or as LWT
+	#disconnect_status = "{\"event\": \"disconnected\"}"
+
+	#will_enabled = false							# Whether to enable LWT (default: false)
+	#will_retain = 1								# Whether LWT should be retained (default: 1)
+	#will_qos = 0									# QoS for LWT (default: 0)
 
 	# Additional parameters if "mqtts://" schema is used
 	#tls_verify_peer = true			# Whether peer verification must be enabled
