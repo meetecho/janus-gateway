@@ -1178,7 +1178,17 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			a = janus_sdp_attribute_create("mid", "%s", medium->mid);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		}
-		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
+		if(m->type == JANUS_SDP_APPLICATION) {
+			if(!strcasecmp(m->proto, "UDP/DTLS/SCTP"))
+				janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEW_DATACHAN_SDP)) {
+				a = janus_sdp_attribute_create("sctpmap", "5000 webrtc-datachannel 16");
+				m->attributes = g_list_insert_before(m->attributes, first, a);
+			} else {
+				a = janus_sdp_attribute_create("sctp-port", "5000");
+				m->attributes = g_list_insert_before(m->attributes, first, a);
+			}
+		} else if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("rtcp-mux", NULL);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		}
