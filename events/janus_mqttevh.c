@@ -382,10 +382,6 @@ static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_succ
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker, return code: %d (%s)\n", rc, error);
 		return;
 	}
-	json_t *info = json_object();
-	json_object_set_new(info, "event", json_string("connected"));
-	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
-	//~ janus_mqttevh_send_message(context, topicbuf, info);
 }
 
 /* Callback for MQTT broker reconnect failure */
@@ -550,12 +546,22 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_MQTTEVH_PACKAGE);
+	g_snprintf(filename, sizeof(filename), "%s/%s.jcfg", config_path, JANUS_MQTTEVH_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
-	if(config != NULL) {
-		janus_config_print(config);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_MQTTEVH_PACKAGE);
+		g_snprintf(filename, sizeof(filename), "%s/%s.cfg", config_path, JANUS_MQTTEVH_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+		if(config == NULL) {
+			JANUS_LOG(LOG_FATAL, "Couldn't find .cfg configuration file (%), giving up\n", JANUS_MQTTEVH_PACKAGE);
+			return -1;
+		}
 	}
+
+	janus_config_print(config);
+
 	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 
 	/* Initializing context */
