@@ -355,6 +355,25 @@ Janus.init = function(options) {
 				testpc = null;
 			});
 		}
+		// Check if this browser supports Unified Plan and transceivers
+		// Based on https://codepen.io/anon/pen/ZqLwWV?editors=0010
+		Janus.unifiedPlan = false;
+		if(Janus.webRTCAdapter.browserDetails.version >= 59) {
+			// Firefox definitely does, starting from version 59
+			Janus.unifiedPlan = true;
+		} else if(!('currentDirection' in RTCRtpTransceiver.prototype)) {
+			// Safari supports addTransceiver() but not Unified Plan when
+			// currentDirection is not defined (see codepen above)
+			Janus.unifiedPlan = false;
+		} else {
+			// Check if addTransceiver() throws an exception
+			const tempPc = new RTCPeerConnection();
+			try {
+				tempPc.addTransceiver('audio');
+				Janus.unifiedPlan = true;
+			} catch (e) {}
+			tempPc.close();
+		}
 		Janus.initDone = true;
 		options.callback();
 	}
@@ -1515,8 +1534,8 @@ function Janus(gatewayCallbacks) {
 						}
 					}
 				} else {
-					if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-						// Firefox >= 59 uses Transceivers
+					if(Janus.unifiedPlan) {
+						// Unified Plan is supported, we can use transceivers
 						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 						var audioTransceiver = null;
 						var transceivers = config.pc.getTransceivers();
@@ -1553,8 +1572,8 @@ function Janus(gatewayCallbacks) {
 						}
 					}
 				} else {
-					if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-						// Firefox >= 59 uses Transceivers
+					if(Janus.unifiedPlan) {
+						// Unified Plan is supported, we can use transceivers
 						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 						var videoTransceiver = null;
 						var transceivers = config.pc.getTransceivers();
@@ -2307,8 +2326,8 @@ function Janus(gatewayCallbacks) {
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = {};
-		if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-			// Firefox >= 59 uses Transceivers
+		if(Janus.unifiedPlan) {
+			// Unified Plan is supported, we can use transceivers
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
@@ -2470,8 +2489,8 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
 		}
 		var mediaConstraints = null;
-		if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-			// Firefox >= 59 uses Transceivers
+		if(Janus.unifiedPlan) {
+			// Unified Plan is supported, we can use transceivers
 			mediaConstraints = {};
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
