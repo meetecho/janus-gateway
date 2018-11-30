@@ -241,6 +241,36 @@ const char *janus_sdp_mdirection_str(janus_sdp_mdirection direction) {
 	return NULL;
 }
 
+const char *janus_sdp_oa_type_str(janus_sdp_oa_type type) {
+	switch(type) {
+		case JANUS_SDP_OA_MLINE:
+			return "JANUS_SDP_OA_MLINE";
+		case JANUS_SDP_OA_ENABLED:
+			return "JANUS_SDP_OA_ENABLED";
+		case JANUS_SDP_OA_DIRECTION:
+			return "JANUS_SDP_OA_DIRECTION";
+		case JANUS_SDP_OA_MID:
+			return "JANUS_SDP_OA_MID";
+		case JANUS_SDP_OA_CODEC:
+			return "JANUS_SDP_OA_CODEC";
+		case JANUS_SDP_OA_PT:
+			return "JANUS_SDP_OA_PT";
+		case JANUS_SDP_OA_AUDIO_DTMF:
+			return "JANUS_SDP_OA_AUDIO_DTMF";
+		case JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS:
+			return "JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS";
+		case JANUS_SDP_OA_VIDEO_H264_FMTP:
+			return "JANUS_SDP_OA_VIDEO_H264_FMTP";
+		case JANUS_SDP_OA_DATA_LEGACY:
+			return "JANUS_SDP_OA_DATA_LEGACY";
+		case JANUS_SDP_OA_DONE:
+			return "JANUS_SDP_OA_DONE";
+		default:
+			break;
+	}
+	return NULL;
+}
+
 janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	if(!sdp)
 		return NULL;
@@ -967,7 +997,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL;
+	const char *codec = NULL, *mid = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	while(property != JANUS_SDP_OA_DONE) {
 		property = va_arg(args, int);
@@ -986,6 +1016,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				if(type == JANUS_SDP_AUDIO) {
 					if(janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_MID, mid,
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
@@ -999,6 +1030,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				} else if(type == JANUS_SDP_VIDEO) {
 					if(janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+						JANUS_SDP_OA_MID, mid,
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
@@ -1013,6 +1045,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				} else if(type == JANUS_SDP_APPLICATION) {
 					if(janus_sdp_generate_offer_mline(offer,
 						JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
+						JANUS_SDP_OA_MID, mid,
 						JANUS_SDP_OA_DATA_LEGACY, data_legacy,
 						JANUS_SDP_OA_DONE
 					) < 0) {
@@ -1031,6 +1064,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			data_legacy = FALSE;
 			pt = -1;
 			codec = NULL;
+			mid = NULL;
 			mdir = JANUS_SDP_DEFAULT;
 			/* The value of JANUS_SDP_OA_MLINE MUST be the media we want to add */
 			type = va_arg(args, int);
@@ -1058,6 +1092,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
 			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_MID) {
+			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
@@ -1091,7 +1127,7 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL, *rtpmap = NULL;
+	const char *codec = NULL, *mid = NULL, *rtpmap = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1130,6 +1166,8 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
 			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_MID) {
+			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
 		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
@@ -1174,6 +1212,11 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	m->index = g_list_length(offer->m_lines);
 	m->c_ipv4 = TRUE;
 	m->c_addr = g_strdup(offer->c_addr);
+	/* Any mid we should set? */
+	if(mid != NULL) {
+		janus_sdp_attribute *a = janus_sdp_attribute_create("mid", "%s", mid);
+		m->attributes = g_list_append(m->attributes, a);
+	}
 	if(type == JANUS_SDP_AUDIO || type == JANUS_SDP_VIDEO) {
 		/* Add the selected codec */
 		m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(pt));

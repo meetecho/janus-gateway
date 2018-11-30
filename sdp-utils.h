@@ -244,27 +244,30 @@ janus_sdp *janus_sdp_new(const char *name, const char *address);
 void janus_sdp_destroy(janus_sdp *sdp);
 
 typedef enum janus_sdp_oa_type {
-/*! \brief Add a new m-line of the specific kind (used as a separator for audio, video and data details passed to janus_sdp_generate_offer) */
-JANUS_SDP_OA_MLINE = 1,
-/*! \brief Whether we should enable a specific m-line when offering/answering (depends on what follows, true by default) */
-JANUS_SDP_OA_ENABLED,
-/*! \brief When generating an offer or answer automatically, use this direction for media (depends on value that follows, sendrecv by default) */
-JANUS_SDP_OA_DIRECTION,
-/*! \brief When generating an offer or answer automatically, use this codec (depends on value that follows, opus/vp8 by default) */
-JANUS_SDP_OA_CODEC,
-/*! \brief When generating an offer (this is ignored for answers), use this payload type (depends on value that follows) */
-JANUS_SDP_OA_PT,
-/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
-JANUS_SDP_OA_AUDIO_DTMF,
-/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
-JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
-/*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
-JANUS_SDP_OA_VIDEO_H264_FMTP,
-/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
-JANUS_SDP_OA_DATA_LEGACY,
-/*! \brief MUST be used as the last argument in janus_sdp_generate_offer, janus_sdp_generate_offer_mline and janus_sdp_generate_answer */
-JANUS_SDP_OA_DONE = 0
+	/*! \brief Add a new m-line of the specific kind (used as a separator for audio, video and data details passed to janus_sdp_generate_offer) */
+	JANUS_SDP_OA_MLINE = 1,
+	/*! \brief Whether we should enable a specific m-line when offering/answering (depends on what follows, true by default) */
+	JANUS_SDP_OA_ENABLED,
+	/*! \brief When generating an offer or answer automatically, use this direction for media (depends on value that follows, sendrecv by default) */
+	JANUS_SDP_OA_DIRECTION,
+	/*! \brief When generating an offer automatically, use this mid media (depends on value that follows, needs to be a string) */
+	JANUS_SDP_OA_MID,
+	/*! \brief When generating an offer or answer automatically, use this codec (depends on value that follows, opus/vp8 by default) */
+	JANUS_SDP_OA_CODEC,
+	/*! \brief When generating an offer (this is ignored for answers), use this payload type (depends on value that follows) */
+	JANUS_SDP_OA_PT,
+	/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
+	JANUS_SDP_OA_AUDIO_DTMF,
+	/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
+	JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
+	/*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
+	JANUS_SDP_OA_VIDEO_H264_FMTP,
+	/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
+	JANUS_SDP_OA_DATA_LEGACY,
+	/*! \brief MUST be used as the last argument in janus_sdp_generate_offer, janus_sdp_generate_offer_mline and janus_sdp_generate_answer */
+	JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
+const char *janus_sdp_oa_type_str(janus_sdp_oa_type type);
 
 /*! \brief Method to generate a janus_sdp offer, using variable arguments to dictate
  * what to negotiate (e.g., in terms of media to offer, directions, etc.). Variable
