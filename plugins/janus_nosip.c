@@ -308,7 +308,7 @@ typedef struct janus_nosip_media {
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
 	gboolean video_send;
-	janus_rtp_switching_context context;
+	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
 	gboolean updated;
 } janus_nosip_media;
@@ -827,7 +827,8 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
 	/* Initialize the RTP context */
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -2223,8 +2224,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
-					janus_rtp_header_update(header, &session->media.context, video,
-						(video ? (vstep ? vstep : 4500) : (astep ? astep : 960)));
+					janus_rtp_header_update(header, video ? &session->media.vcontext : &session->media.acontext, video);
 					if(video) {
 						if(vts == 0) {
 							vts = timestamp;

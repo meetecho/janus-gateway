@@ -1449,7 +1449,7 @@ typedef struct janus_videoroom_subscriber {
 	gboolean close_pc;		/* Whether we should automatically close the PeerConnection when the publisher goes away */
 	guint32 pvt_id;			/* Private ID of the participant that is subscribing (if available/provided) */
 	janus_sdp *sdp;			/* Offer we sent this listener (may be updated within renegotiations) */
-	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this subscriber */
+	janus_rtp_switching_context acontext, vcontext;	/* Needed in case there are publisher switches on this subscriber */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this subscriber */
@@ -4049,7 +4049,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 				if(!janus_rtp_simulcasting_context_process_rtp(&rtp_forward->sim_context,
 						buf, len, participant->ssrc, participant->vcodec, &rtp_forward->context))
 					continue;
-				janus_rtp_header_update(rtp, &rtp_forward->context, TRUE, 4500);
+				janus_rtp_header_update(rtp, &rtp_forward->context, TRUE);
 				/* By default we use the main SSRC (it may be overwritten later) */
 				rtp->ssrc = htonl(participant->ssrc[0]);
 			}
@@ -4106,7 +4106,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
 				uint32_t ssrc = ntohl(rtp->ssrc);
-				janus_rtp_header_update(rtp, &participant->rec_ctx, TRUE, 4500);
+				janus_rtp_header_update(rtp, &participant->rec_ctx, TRUE);
 				/* We use the main SSRC for the whole recording */
 				rtp->ssrc = htonl(participant->ssrc[0]);
 				janus_recorder_save_frame(participant->vrc, buf, len);
@@ -4907,7 +4907,8 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->pvt_id = pvt_id;
 					subscriber->close_pc = close_pc;
 					/* Initialize the subscriber context */
-					janus_rtp_switching_context_reset(&subscriber->context);
+					janus_rtp_switching_context_reset(&subscriber->acontext);
+					janus_rtp_switching_context_reset(&subscriber->vcontext);
 					subscriber->audio_offered = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
 					subscriber->video_offered = offer_video ? json_is_true(offer_video) : TRUE;	/* True by default */
 					subscriber->data_offered = offer_data ? json_is_true(offer_data) : TRUE;	/* True by default */
@@ -5090,7 +5091,7 @@ static void *janus_videoroom_handler(void *data) {
 						while(ps) {
 							janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
 							if(l)
-								l->context.a_seq_reset = TRUE;
+								l->acontext.seq_reset = TRUE;
 							ps = ps->next;
 						}
 						janus_mutex_unlock(&participant->subscribers_mutex);
@@ -5125,7 +5126,7 @@ static void *janus_videoroom_handler(void *data) {
 						while(ps) {
 							janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
 							if(l)
-								l->context.v_seq_reset = TRUE;
+								l->vcontext.seq_reset = TRUE;
 							ps = ps->next;
 						}
 						janus_mutex_unlock(&participant->subscribers_mutex);
@@ -5310,8 +5311,8 @@ static void *janus_videoroom_handler(void *data) {
 				/* Start/restart receiving the publisher streams */
 				if(subscriber->paused && msg->jsep == NULL) {
 					/* This is just resuming a paused stream, reset the RTP sequence numbers */
-					subscriber->context.a_seq_reset = TRUE;
-					subscriber->context.v_seq_reset = TRUE;
+					subscriber->acontext.seq_reset = TRUE;
+					subscriber->vcontext.seq_reset = TRUE;
 				}
 				subscriber->paused = FALSE;
 				event = json_object();
@@ -5359,7 +5360,7 @@ static void *janus_videoroom_handler(void *data) {
 						gboolean newaudio = json_is_true(audio);
 						if(!oldaudio && newaudio) {
 							/* Audio just resumed, reset the RTP sequence numbers */
-							subscriber->context.a_seq_reset = TRUE;
+							subscriber->acontext.seq_reset = TRUE;
 						}
 						subscriber->audio = newaudio;
 					}
@@ -5368,7 +5369,7 @@ static void *janus_videoroom_handler(void *data) {
 						gboolean newvideo = json_is_true(video);
 						if(!oldvideo && newvideo) {
 							/* Video just resumed, reset the RTP sequence numbers */
-							subscriber->context.v_seq_reset = TRUE;
+							subscriber->vcontext.seq_reset = TRUE;
 						}
 						subscriber->video = newvideo;
 						if(subscriber->video) {
@@ -6199,7 +6200,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(temporal_layer < packet->temporal_layer) {
 				/* Drop the packet: update the context to make sure sequence number is increased normally later */
 				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
-				subscriber->context.v_base_seq++;
+				subscriber->vcontext.base_seq++;
 				return;
 			}
 			int spatial_layer = subscriber->spatial_layer;
@@ -6238,7 +6239,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(spatial_layer < packet->spatial_layer) {
 				/* Drop the packet: update the context to make sure sequence number is increased normally later */
 				JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->spatial_layer);
-				subscriber->context.v_base_seq++;
+				subscriber->vcontext.base_seq++;
 				return;
 			} else if(packet->ebit && spatial_layer == packet->spatial_layer) {
 				/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
@@ -6249,7 +6250,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
 				packet->spatial_layer, packet->temporal_layer);
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
-			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
+			janus_rtp_header_update(packet->data, &subscriber->vcontext, TRUE);
 			if(override_mark_bit && !has_marker_bit) {
 				packet->data->markerbit = 1;
 			}
@@ -6269,7 +6270,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&subscriber->sim_context,
-				(char *)packet->data, packet->length, packet->ssrc, subscriber->feed->vcodec, &subscriber->context);
+				(char *)packet->data, packet->length, packet->ssrc, subscriber->feed->vcodec, &subscriber->vcontext);
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
@@ -6302,7 +6303,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_decref(event);
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
+			janus_rtp_header_update(packet->data, &subscriber->vcontext, TRUE);
 			char vp8pd[6];
 			if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8) {
 				/* For VP8, we save the original payload descriptor, to restore it after */
@@ -6322,7 +6323,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			}
 		} else {
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
-			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
+			janus_rtp_header_update(packet->data, &subscriber->acontext, TRUE);
 			/* Send the packet */
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
@@ -6337,7 +6338,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			return;
 		}
 		/* Fix sequence number and timestamp (publisher switching may be involved) */
-		janus_rtp_header_update(packet->data, &subscriber->context, FALSE, 960);
+		janus_rtp_header_update(packet->data, &subscriber->acontext, FALSE);
 		/* Send the packet */
 		if(gateway != NULL)
 			gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);

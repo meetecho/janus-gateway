@@ -1165,7 +1165,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int mindex, gbo
 			gateway->relay_rtcp(handle, -1, TRUE, rtcpbuf, 12);
 		}
 		/* If we got here, update the RTP header and save the packet */
-		janus_rtp_header_update(header, &session->context, TRUE, 0);
+		janus_rtp_header_update(header, &session->context, TRUE);
 		if(session->recording->vcodec == JANUS_VIDEOCODEC_VP8) {
 			int plen = 0;
 			char *payload = janus_rtp_payload(buf, len, &plen);

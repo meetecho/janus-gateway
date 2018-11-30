@@ -589,7 +589,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int mindex, gbool
 				json_decref(event);
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(header, &session->context, TRUE, 0);
+			janus_rtp_header_update(header, &session->context, TRUE);
 			if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, len, &plen);

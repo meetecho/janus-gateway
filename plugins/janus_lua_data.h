@@ -58,7 +58,7 @@ typedef struct janus_lua_session {
 	gboolean send_audio;				/* Whether outgoing audio can be sent or must be dropped */
 	gboolean send_video;				/* Whether outgoing video can be sent or must be dropped */
 	gboolean send_data;					/* Whether outgoing data can be sent or must be dropped */
-	janus_rtp_switching_context rtpctx;	/* Needed in case the source changes (e.g., stale operator/customer) */
+	janus_rtp_switching_context artpctx, vrtpctx;
 	uint32_t bitrate;					/* Bitrate limit */
 	uint16_t pli_freq;					/* Regular PLI frequency (0=disabled) */
 	gint64 pli_latest;					/* Time of latest sent PLI (to avoid flooding) */

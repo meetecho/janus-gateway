@@ -1740,7 +1740,8 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 	janus_duktape_session *session = (janus_duktape_session *)g_malloc0(sizeof(janus_duktape_session));
 	session->handle = handle;
 	session->id = id;
-	janus_rtp_switching_context_reset(&session->rtpctx);
+	janus_rtp_switching_context_reset(&session->artpctx);
+	janus_rtp_switching_context_reset(&session->vrtpctx);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_duktape_session_free);
@@ -2229,7 +2230,8 @@ void janus_duktape_hangup_media(janus_plugin_session *handle) {
 	session->bitrate = 0;
 	session->pli_freq = 0;
 	session->pli_latest = 0;
-	janus_rtp_switching_context_reset(&session->rtpctx);
+	janus_rtp_switching_context_reset(&session->artpctx);
+	janus_rtp_switching_context_reset(&session->vrtpctx);
 
 	/* Get rid of the recipients */
 	janus_mutex_lock(&session->recipients_mutex);
@@ -2277,7 +2279,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		return;
 	}
 	/* Fix sequence number and timestamp (publisher switching may be involved) */
-	janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, packet->is_video ? 4500 : 960);
+	janus_rtp_header_update(packet->data, video ? &session->vrtpctx : &session->artpctx, packet->is_video);
 	/* Send the packet */
 	if(janus_core != NULL)
 		janus_core->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);

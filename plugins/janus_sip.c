@@ -681,7 +681,7 @@ typedef struct janus_sip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	gboolean video_send;
 	janus_sdp_mdirection pre_hold_video_dir;
-	janus_rtp_switching_context context;
+	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
 	gboolean updated;
 } janus_sip_media;
@@ -1483,7 +1483,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_send = TRUE;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	/* Initialize the RTP context */
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -4547,7 +4548,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
-					janus_rtp_header_update(header, &session->media.context, FALSE, astep ? astep : 960);
+					janus_rtp_header_update(header, &session->media.acontext, FALSE);
 					if(ats == 0) {
 						ats = timestamp;
 					} else if(astep == 0) {
@@ -4611,7 +4612,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					janus_rtp_header_update(header, &session->media.context, TRUE, vstep ? vstep : 4500);
+					janus_rtp_header_update(header, &session->media.vcontext, TRUE);
 					guint32 timestamp = ntohl(header->timestamp);
 					if(vts == 0) {
 						vts = timestamp;

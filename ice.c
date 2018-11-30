@@ -2258,7 +2258,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_rtp_header backup = *header;
 				if(medium->ssrc_peer_orig[vindex] == 0)
 					medium->ssrc_peer_orig[vindex] = packet_ssrc;
-				janus_rtp_header_update(header, &medium->rtp_ctx[vindex], medium->type == JANUS_MEDIA_VIDEO, 0);
+				janus_rtp_header_update(header, &medium->rtp_ctx[vindex], medium->type == JANUS_MEDIA_VIDEO);
 				header->ssrc = htonl(medium->ssrc_peer_orig[vindex]);
 				/* Keep track of payload types too */
 				if(medium->payload_type < 0) {
@@ -2592,11 +2592,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Fix packet data for RTCP SR and RTCP RR */
 				janus_rtp_switching_context *rtp_ctx = &medium->rtp_ctx[vindex];
-				uint32_t base_ts = video ? rtp_ctx->v_base_ts : rtp_ctx->a_base_ts;
-				uint32_t base_ts_prev = video ? rtp_ctx->v_base_ts_prev : rtp_ctx->a_base_ts_prev;
+				uint32_t base_ts = rtp_ctx->base_ts;
+				uint32_t base_ts_prev = rtp_ctx->base_ts_prev;
 				uint32_t ssrc_peer = medium->ssrc_peer_orig[vindex];
 				uint32_t ssrc_local = medium->ssrc;
-				uint32_t ssrc_expected = video ? rtp_ctx->v_last_ssrc : rtp_ctx->a_last_ssrc;
+				uint32_t ssrc_expected = rtp_ctx->last_ssrc;
 				if (janus_rtcp_fix_report_data(buf, buflen, base_ts, base_ts_prev, ssrc_peer, ssrc_local, ssrc_expected, video) < 0) {
 					/* Drop packet in case of parsing error or SSRC different from the one expected. */
 					/* This might happen at the very beginning of the communication or early after */

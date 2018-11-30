@@ -5,11 +5,11 @@
  * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTP_H
 #define _JANUS_RTP_H
 
@@ -153,18 +153,12 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev, a_prev_ts, a_target_ts, a_start_ts,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev, v_prev_ts, v_target_ts, v_start_ts;
-	uint16_t a_last_seq, a_prev_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_prev_seq, v_base_seq, v_base_seq_prev;
-	gboolean a_seq_reset, a_new_ssrc,
-			v_seq_reset, v_new_ssrc;
-	gint16 a_seq_offset,
-			v_seq_offset;
-	gint32 a_prev_delay, a_active_delay, a_ts_offset,
-			v_prev_delay, v_active_delay, v_ts_offset;
-	gint64 a_last_time, a_reference_time, a_start_time, a_evaluating_start_time,
-			v_last_time, v_reference_time, v_start_time, v_evaluating_start_time;
+	uint32_t last_ssrc, last_ts, base_ts, base_ts_prev, prev_ts, target_ts, start_ts;
+	uint16_t last_seq, prev_seq, base_seq, base_seq_prev;
+	gboolean seq_reset, new_ssrc;
+	gint16 seq_offset;
+	gint32 prev_delay, active_delay, ts_offset;
+	gint64 last_time, reference_time, start_time, evaluating_start_time;
 } janus_rtp_switching_context;
 
 /*! \brief Set (or reset) the context fields to their default values
@@ -174,9 +168,8 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
 /*! \brief Use the context info to update the RTP header of a packet, if needed
  * @param[in] header The RTP header to update
  * @param[in] context The context to use as a reference
- * @param[in] video Whether this is an audio or a video packet
- * @param[in] step \b deprecated The expected timestamp step */
-void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
+ * @param[in] video Whether this is an audio or a video packet */
+void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video);
 
 #define RTP_AUDIO_SKEW_TH_MS 120
 #define RTP_VIDEO_SKEW_TH_MS 120

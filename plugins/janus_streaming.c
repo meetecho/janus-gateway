@@ -977,7 +977,7 @@ typedef struct janus_streaming_rtp_source {
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this streams's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
-	janus_rtp_switching_context context[3];
+	janus_rtp_switching_context acontext, vcontext[3];
 	int audio_fd;
 	int video_fd[3];
 	int data_fd;
@@ -1125,7 +1125,7 @@ typedef struct janus_streaming_session {
 	gboolean started;
 	gboolean paused;
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this listener */
-	janus_rtp_switching_context context;
+	janus_rtp_switching_context acontext, vcontext;
 	int substream;			/* Which simulcast substream we should forward, in case the mountpoint is simulcasting */
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer;			/* Which simulcast temporal layer we should forward, in case the mountpoint is simulcasting */
@@ -3558,7 +3558,8 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
-	janus_rtp_switching_context_reset(&session->context);
+	janus_rtp_switching_context_reset(&session->acontext);
+	janus_rtp_switching_context_reset(&session->vcontext);
 	/* If this is related to a live RTP mountpoint, any keyframe we can shoot already? */
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
 	if(mountpoint->streaming_source == janus_streaming_source_rtp) {
@@ -4796,9 +4797,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->arc = NULL;
 	live_rtp_source->vrc = NULL;
 	live_rtp_source->drc = NULL;
-	janus_rtp_switching_context_reset(&live_rtp_source->context[0]);
-	janus_rtp_switching_context_reset(&live_rtp_source->context[1]);
-	janus_rtp_switching_context_reset(&live_rtp_source->context[2]);
+	janus_rtp_switching_context_reset(&live_rtp_source->acontext);
+	janus_rtp_switching_context_reset(&live_rtp_source->vcontext[0]);
+	janus_rtp_switching_context_reset(&live_rtp_source->vcontext[1]);
+	janus_rtp_switching_context_reset(&live_rtp_source->vcontext[2]);
 	janus_mutex_init(&live_rtp_source->rec_mutex);
 	live_rtp_source->audio_fd = audio_fd;
 	live_rtp_source->audio_rtcp_fd = audio_rtcp_fd;
@@ -6113,9 +6115,9 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					packet.data->type = mountpoint->codecs.audio_pt;
 					/* Is there a recorder? */
-					janus_rtp_header_update(packet.data, &source->context[0], FALSE, 0);
+					janus_rtp_header_update(packet.data, &source->acontext, FALSE);
 					if(source->askew) {
-						int ret = janus_rtp_skew_compensate_audio(packet.data, &source->context[0], now);
+						int ret = janus_rtp_skew_compensate_audio(packet.data, &source->acontext, now);
 						if(ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, audio source clock is too fast (ssrc=%"SCNu32")\n",
 								name, -ret, a_last_ssrc);
@@ -6307,9 +6309,9 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					packet.data->type = mountpoint->codecs.video_pt;
 					/* Is there a recorder? (FIXME notice we only record the first substream, if simulcasting) */
-					janus_rtp_header_update(packet.data, &source->context[index], TRUE, 0);
+					janus_rtp_header_update(packet.data, &source->vcontext[index], TRUE);
 					if(source->vskew) {
-						int ret = janus_rtp_skew_compensate_video(packet.data, &source->context[index], now);
+						int ret = janus_rtp_skew_compensate_video(packet.data, &source->vcontext[index], now);
 						if(ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, video source clock is too fast (ssrc=%"SCNu32", index %d)\n",
 								name, -ret, v_last_ssrc[index], index);
@@ -6521,7 +6523,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(temporal_layer < packet->temporal_layer) {
 					/* Drop the packet: update the context to make sure sequence number is increased normally later */
 					JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
-					session->context.v_base_seq++;
+					session->vcontext.base_seq++;
 					return;
 				}
 				int spatial_layer = session->spatial_layer;
@@ -6562,7 +6564,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(spatial_layer < packet->spatial_layer) {
 					/* Drop the packet: update the context to make sure sequence number is increased normally later */
 					JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->spatial_layer);
-					session->context.v_base_seq++;
+					session->vcontext.base_seq++;
 					return;
 				} else if(packet->ebit && spatial_layer == packet->spatial_layer) {
 					/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
@@ -6573,7 +6575,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
 					packet->spatial_layer, packet->temporal_layer);
 				/* Fix sequence number and timestamp (video source switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->context, TRUE, 4500);
+				janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 1;
 				}
@@ -6673,12 +6675,12 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 							JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
 								tid, session->templayer);
 							/* We increase the base sequence number, or there will be gaps when delivering later */
-							session->context.v_base_seq++;
+							session->vcontext.base_seq++;
 							return;
 						}
 					}
 					/* If we got here, update the RTP header and send the packet */
-					janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
+					janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
 					memcpy(vp8pd, payload, sizeof(vp8pd));
 					janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
 				}
@@ -6694,7 +6696,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				}
 			} else {
 				/* Fix sequence number and timestamp (switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
+				janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
 				/* Restore the timestamp and sequence number to what the video source set them to */
@@ -6705,7 +6707,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 			if(!session->audio)
 				return;
 			/* Fix sequence number and timestamp (switching may be involved) */
-			janus_rtp_header_update(packet->data, &session->context, FALSE, 0);
+			janus_rtp_header_update(packet->data, &session->acontext, FALSE);
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
 			/* Restore the timestamp and sequence number to what the video source set them to */
