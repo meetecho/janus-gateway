@@ -1372,12 +1372,6 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->ruser = NULL;
 	g_free(stream->rpass);
 	stream->rpass = NULL;
-	g_free(stream->rid[0]);
-	stream->rid[0] = NULL;
-	g_free(stream->rid[1]);
-	stream->rid[1] = NULL;
-	g_free(stream->rid[2]);
-	stream->rid[2] = NULL;
 	g_list_free(stream->audio_payload_types);
 	stream->audio_payload_types = NULL;
 	g_list_free(stream->video_payload_types);
@@ -1391,31 +1385,23 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->video_codec = NULL;
 	g_free(stream->audio_rtcp_ctx);
 	stream->audio_rtcp_ctx = NULL;
-	g_free(stream->video_rtcp_ctx[0]);
-	stream->video_rtcp_ctx[0] = NULL;
-	g_free(stream->video_rtcp_ctx[1]);
-	stream->video_rtcp_ctx[1] = NULL;
-	g_free(stream->video_rtcp_ctx[2]);
-	stream->video_rtcp_ctx[2] = NULL;
-	if(stream->rtx_nacked[0])
-		g_hash_table_destroy(stream->rtx_nacked[0]);
-	stream->rtx_nacked[0] = NULL;
-	if(stream->rtx_nacked[1])
-		g_hash_table_destroy(stream->rtx_nacked[1]);
-	stream->rtx_nacked[1] = NULL;
-	if(stream->rtx_nacked[2])
-		g_hash_table_destroy(stream->rtx_nacked[2]);
-	stream->rtx_nacked[2] = NULL;
 	g_slist_free_full(stream->transport_wide_received_seq_nums, (GDestroyNotify)g_free);
 	stream->transport_wide_received_seq_nums = NULL;
+	gsize i;
+	for(i=0; i<G_N_ELEMENTS(stream->rid); i++) {
+		g_free(stream->rid[i]);
+		stream->rid[i] = NULL;
+		g_free(stream->video_rtcp_ctx[i]);
+		stream->video_rtcp_ctx[i] = NULL;
+		if(stream->rtx_nacked[i]) {
+			g_hash_table_destroy(stream->rtx_nacked[i]);
+			stream->rtx_nacked[i] = NULL;
+		}
+		stream->video_first_ntp_ts[i] = 0;
+		stream->video_first_rtp_ts[i] = 0;
+	}
 	stream->audio_first_ntp_ts = 0;
 	stream->audio_first_rtp_ts = 0;
-	stream->video_first_ntp_ts[0] = 0;
-	stream->video_first_ntp_ts[1] = 0;
-	stream->video_first_ntp_ts[2] = 0;
-	stream->video_first_rtp_ts[0] = 0;
-	stream->video_first_rtp_ts[1] = 0;
-	stream->video_first_rtp_ts[2] = 0;
 	stream->audio_last_ts = 0;
 	stream->video_last_ts = 0;
 	g_free(stream);
