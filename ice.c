@@ -329,6 +329,7 @@ static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 		pkt->handle->handle_id, pkt->seq_number, pkt->handle->stream->video_ssrc_peer[pkt->vindex], pkt->vindex);
 	g_hash_table_remove(pkt->handle->stream->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
 
+	janus_refcount_decrease(&pkt->handle->stream->ref);
 	return G_SOURCE_REMOVE;
 }
 
@@ -2494,6 +2495,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								np->seq_number = cur_seq->seq;
 								np->vindex = vindex;
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
+								janus_refcount_increase(&stream->ref);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
 								g_source_attach(timeout_source, handle->mainctx);
 								g_source_unref(timeout_source);
