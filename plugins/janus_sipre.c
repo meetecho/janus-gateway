@@ -2863,8 +2863,8 @@ void janus_sipre_sdp_process(janus_sipre_session *session, janus_sdp *sdp, gbool
 						gint32 tag = 0;
 						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
-							&tag, profile, crypto);
+						int res = a->value ? (sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto)) : 0;
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
