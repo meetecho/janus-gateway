@@ -141,6 +141,7 @@ file-ondemand-sample: {
 	#videopt = 126
 	#videortpmap = "H264/90000"
 	#videofmtp = "profile-level-id=42e01f;packetization-mode=1"
+	#secret = "adminpwd"
 #}
 
 #
@@ -160,6 +161,7 @@ file-ondemand-sample: {
 	#video = false
 	#data = true
 	#dataport = 5008
+	#secret = "adminpwd"
 #}
 
 #
@@ -180,6 +182,7 @@ file-ondemand-sample: {
 	#videomcast = "232.3.4.5"
 	#videopt = 100
 	#videortpmap = "VP8/90000"
+	#secret = "adminpwd"
 #}
 
 #
@@ -200,4 +203,54 @@ file-ondemand-sample: {
 	#url = "rtsp://127.0.0.1:8554/unicast"
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
+	#secret = "adminpwd"
 #}
+
+#
+# Finally, this is an example of how you can configure a live Streaming
+# mountpoint to send multiple streams of the same type at the same time:
+# that is, not simulcasting, but different streams (e.g., two audio
+# streams and two video streams). To do so, you don't set the audio,
+# video and data properties inline, but use an array of properties instead,
+# each identifying a single stream to add, that will then translate to
+# a dedicated m-line in the SDP. For each stream, you specify the type,
+# a unique ID (mid), and can provide a short description (label) so that
+# the client side can know what's what when rendering the streams. Notice
+# how the port/pt/rtpmap/fmtp/etc. stuff is called just like that, without
+# any audio/video/data prefix: in fact, each media stream can be configured
+# the same way, and it's the type that allows us to differentiate them.
+# As such, you can use the same approach for creating regular mountpoints
+# as well (e.g., 1 audio and 1 video) in a much clearer, and cleaner, way.
+#
+multistream-test: {
+	type = "rtp"
+	id = 123
+	description = "Multistream test (1 audio, 2 video)"
+	media = (
+		{
+			type = "audio"
+			mid = "a"
+			label = "Audio stream"
+			port = 5102
+			pt = 111
+			rtpmap = "opus/48000/2"
+		},
+		{
+			type = "video"
+			mid = "v1"
+			label = "Video stream #1"
+			port = 5104
+			pt = 100
+			rtpmap = "VP8/90000"
+		},
+		{
+			type = "video"
+			mid = "v2"
+			label = "Video stream #2"
+			port = 5106
+			pt = 100
+			rtpmap = "VP8/90000"
+		}
+	)
+	secret = "adminpwd"
+}
