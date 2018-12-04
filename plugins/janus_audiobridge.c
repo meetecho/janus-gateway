@@ -4022,12 +4022,11 @@ static void *janus_audiobridge_handler(void *data) {
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to update existing connection\n");
-				session->sdp_version++;		/* This needs to be increased when it changes */
 			} else {
 				/* New PeerConnection */
-				session->sdp_version = 1;	/* This needs to be increased when it changes */
 				session->sdp_sessid = janus_get_real_time();
 			}
+			session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 			/* What is the Opus payload type? */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 			participant->opus_pt = janus_sdp_get_codec_pt(offer, "opus");
