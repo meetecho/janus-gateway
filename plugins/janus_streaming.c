@@ -1077,7 +1077,13 @@ typedef struct janus_streaming_rtp_source_stream {
 	gboolean buffermsg;
 	void *last_msg;
 	janus_mutex buffermsg_mutex;
+	janus_refcount ref;
 } janus_streaming_rtp_source_stream;
+static void janus_streaming_rtp_source_stream_unref(janus_streaming_rtp_source_stream *stream) {
+	/* Decrease the counter */
+	if(stream)
+		janus_refcount_decrease(&stream->ref);
+}
 
 typedef struct janus_streaming_file_source {
 	char *filename;
@@ -1161,15 +1167,12 @@ typedef struct janus_streaming_message {
 static GAsyncQueue *messages = NULL;
 static janus_streaming_message exit_message;
 
-typedef struct janus_streaming_session {
-	janus_plugin_session *handle;
-	janus_streaming_mountpoint *mountpoint;
-	gint64 sdp_sessid;
-	gint64 sdp_version;
-	gboolean started;
-	gboolean paused;
-	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this listener */
-	janus_rtp_switching_context acontext, vcontext;
+typedef struct janus_streaming_session_stream {
+	int mindex;				/* The media index of this stream (may not be the same as the mountpoint stream) */
+	janus_streaming_rtp_source_stream *stream;
+	gboolean send;			/* Whether this stream media must be sent to this subscriber */
+	janus_rtp_switching_context context;
+	/* The following is only relevant when simulcasting */
 	int substream;			/* Which simulcast substream we should forward, in case the mountpoint is simulcasting */
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer;			/* Which simulcast temporal layer we should forward, in case the mountpoint is simulcasting */
@@ -1180,6 +1183,22 @@ typedef struct janus_streaming_session {
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
 	int temporal_layer, target_temporal_layer;
+} janus_streaming_session_stream;
+static void janus_streaming_session_stream_free(janus_streaming_session_stream *s) {
+	if(s && s->stream)
+		janus_streaming_rtp_source_stream_unref(s->stream);
+	g_free(s);
+}
+
+typedef struct janus_streaming_session {
+	janus_plugin_session *handle;
+	janus_streaming_mountpoint *mountpoint;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
+	gboolean started;
+	gboolean paused;
+	GList *streams;				/* List of streams this session is subscribed to */
+	GHashTable *streams_byid;	/* Map of streams this session is subscribed to, indexed by mountpoint mindex */
 	gboolean stopping;
 	volatile gint hangingup;
 	volatile gint destroyed;
@@ -2177,27 +2196,27 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 			json_object_set_new(media, "filename", json_string(source->filename));
 			json_object_set_new(info, "media", media);
 		} else if(mp->streaming_source == janus_streaming_source_rtp) {
-			janus_streaming_rtp_source *source = mp->source;
 			json_t *media = json_array();
-			GList *temp = source->media;
+			GList *temp = session->streams;
 			while(temp) {
-				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+				janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
+				janus_streaming_rtp_source_stream *stream = s->stream;
 				json_t *info = json_object();
 				json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
 				if(stream->simulcast) {
 					json_t *simulcast = json_object();
-					json_object_set_new(simulcast, "substream", json_integer(session->substream));
-					json_object_set_new(simulcast, "substream-target", json_integer(session->substream_target));
-					json_object_set_new(simulcast, "temporal-layer", json_integer(session->templayer));
-					json_object_set_new(simulcast, "temporal-layer-target", json_integer(session->templayer_target));
+					json_object_set_new(simulcast, "substream", json_integer(s->substream));
+					json_object_set_new(simulcast, "substream-target", json_integer(s->substream_target));
+					json_object_set_new(simulcast, "temporal-layer", json_integer(s->templayer));
+					json_object_set_new(simulcast, "temporal-layer-target", json_integer(s->templayer_target));
 					json_object_set_new(info, "simulcast", simulcast);
 				}
 				if(stream->svc) {
 					json_t *svc = json_object();
-					json_object_set_new(svc, "spatial-layer", json_integer(session->spatial_layer));
-					json_object_set_new(svc, "target-spatial-layer", json_integer(session->target_spatial_layer));
-					json_object_set_new(svc, "temporal-layer", json_integer(session->temporal_layer));
-					json_object_set_new(svc, "target-temporal-layer", json_integer(session->target_temporal_layer));
+					json_object_set_new(svc, "spatial-layer", json_integer(s->spatial_layer));
+					json_object_set_new(svc, "target-spatial-layer", json_integer(s->target_spatial_layer));
+					json_object_set_new(svc, "temporal-layer", json_integer(s->temporal_layer));
+					json_object_set_new(svc, "target-temporal-layer", json_integer(s->target_temporal_layer));
 					json_object_set_new(info, "svc", svc);
 				}
 				json_array_append_new(media, info);
@@ -4052,10 +4071,8 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
-	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
-	janus_rtp_switching_context_reset(&session->acontext);
-	janus_rtp_switching_context_reset(&session->vcontext);
+	g_atomic_int_set(&session->hangingup, 0);
 	/* If this is related to a live RTP mountpoint, any keyframe we can shoot already? */
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
 	if(mountpoint->streaming_source == janus_streaming_source_rtp) {
@@ -4163,16 +4180,6 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	session->substream = -1;
-	session->substream_target = 2;
-	session->templayer = -1;
-	session->templayer_target = 2;
-	session->last_relayed = 0;
-	janus_vp8_simulcast_context_reset(&session->simulcast_context);
-	session->spatial_layer = -1;
-	session->target_spatial_layer = 1;	/* FIXME Chrome sends 0 and 1 */
-	session->temporal_layer = -1;
-	session->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
 	session->stopping = TRUE;
 	session->started = FALSE;
 	session->paused = FALSE;
@@ -4207,6 +4214,13 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		janus_mutex_unlock(&mp->mutex);
 	}
 	session->mountpoint = NULL;
+	/* Get rid of streams and streams_byid */
+	g_list_free_full(session->streams, (GDestroyNotify)(janus_streaming_session_stream_free));
+	session->streams = NULL;
+	if(session->streams_byid != NULL)
+		g_hash_table_unref(session->streams_byid);
+	session->streams_byid = NULL;
+
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -4332,18 +4346,16 @@ static void *janus_streaming_handler(void *data) {
 			session->sdp_version = 1;	/* This needs to be increased when it changes */
 			session->sdp_sessid = janus_get_real_time();
 			/* Check what we should offer */
-			session->audio = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
+			gboolean audio = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
 			if(!mp->audio)
-				session->audio = FALSE;	/* ... unless the mountpoint isn't sending any audio */
-			session->video = offer_video ? json_is_true(offer_video) : TRUE;	/* True by default */
+				audio = FALSE;	/* ... unless the mountpoint isn't sending any audio */
+			gboolean video = offer_video ? json_is_true(offer_video) : TRUE;	/* True by default */
 			if(!mp->video)
-				session->video = FALSE;	/* ... unless the mountpoint isn't sending any video */
-			session->data = offer_data ? json_is_true(offer_data) : TRUE;	/* True by default */
+				video = FALSE;	/* ... unless the mountpoint isn't sending any video */
+			gboolean data = offer_data ? json_is_true(offer_data) : TRUE;	/* True by default */
 			if(!mp->data)
-				session->data = FALSE;	/* ... unless the mountpoint isn't sending any data */
-			if((!mp->audio || !session->audio) &&
-					(!mp->video || !session->video) &&
-					(!mp->data || !session->data)) {
+				data = FALSE;	/* ... unless the mountpoint isn't sending any data */
+			if((!mp->audio || !audio) && (!mp->video || !video) && (!mp->data || !data)) {
 				session->mountpoint = NULL;
 				janus_mutex_unlock(&mp->mutex);
 				janus_refcount_decrease(&mp->ref);
@@ -4352,7 +4364,19 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Can't offer an SDP with no audio, video or data for this mountpoint");
 				goto error;
 			}
+			if(mp->streaming_source == janus_streaming_source_file) {
+				/* Create a session stream */
+				janus_streaming_session_stream *s = g_malloc0(sizeof(janus_streaming_session_stream));
+				s->mindex = -1;
+				s->send = TRUE;
+				janus_rtp_switching_context_reset(&s->context);
+				session->streams = g_list_append(session->streams, s);
+				if(session->streams_byid == NULL)
+					session->streams_byid = g_hash_table_new(NULL, NULL);
+				g_hash_table_insert(session->streams_byid, GINT_TO_POINTER(s->mindex), s);
+			}
 			if(mp->streaming_type == janus_streaming_type_on_demand) {
+				/* Spawn a thread */
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
@@ -4372,10 +4396,24 @@ static void *janus_streaming_handler(void *data) {
 					goto error;
 				}
 			} else if(mp->streaming_source == janus_streaming_source_rtp) {
+				/* Create a session stream for each source stream we're subscribing to */
+				janus_streaming_session_stream *s = NULL;
 				janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
 				GList *temp = source->media;
 				while(temp) {
 					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+					/* TODO We need to add a better way to filter out streams to subscribe to (maybe by mid?) */
+					if((stream->type == JANUS_STREAMING_MEDIA_AUDIO && !audio) ||
+							(stream->type == JANUS_STREAMING_MEDIA_VIDEO && !video) ||
+							(stream->type == JANUS_STREAMING_MEDIA_DATA && !data)) {
+						/* FIXME Don't subscribe to this stream */
+						temp = temp->next;
+						continue;
+					}
+					/* Create a new session stream and add a reference to the source stream */
+					s = g_malloc0(sizeof(janus_streaming_session_stream));
+					s->send = TRUE;
+					janus_rtp_switching_context_reset(&s->context);
 					if(stream && stream->simulcast) {
 						/* FIXME What if we're simulcasting on two different video streams? */
 						JANUS_VALIDATE_JSON_OBJECT(root, simulcast_parameters,
@@ -4388,23 +4426,23 @@ static void *janus_streaming_handler(void *data) {
 							goto error;
 						}
 						/* In case this mountpoint is simulcasting, let's aim high by default */
-						session->substream = -1;
-						session->substream_target = 2;
-						session->templayer = -1;
-						session->templayer_target = 2;
-						janus_vp8_simulcast_context_reset(&session->simulcast_context);
+						s->substream = -1;
+						s->substream_target = 2;
+						s->templayer = -1;
+						s->templayer_target = 2;
+						janus_vp8_simulcast_context_reset(&s->simulcast_context);
 						/* Unless the request contains a target for either layer */
 						json_t *substream = json_object_get(root, "substream");
 						if(substream) {
-							session->substream_target = json_integer_value(substream);
+							s->substream_target = json_integer_value(substream);
 							JANUS_LOG(LOG_VERB, "Setting video substream to let through (simulcast): %d (was %d)\n",
-								session->substream_target, session->substream);
+								s->substream_target, s->substream);
 						}
 						json_t *temporal = json_object_get(root, "temporal");
 						if(temporal) {
-							session->templayer_target = json_integer_value(temporal);
+							s->templayer_target = json_integer_value(temporal);
 							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
-								session->templayer_target, session->templayer);
+								s->templayer_target, s->templayer);
 						}
 					} else if(stream && stream->svc) {
 						/* FIXME What if we're doing SVC on two different video streams? */
@@ -4418,24 +4456,31 @@ static void *janus_streaming_handler(void *data) {
 							goto error;
 						}
 						/* In case this mountpoint is doing VP9-SVC, let's aim high by default */
-						session->spatial_layer = -1;
-						session->target_spatial_layer = 1;	/* FIXME Chrome sends 0 and 1 */
-						session->temporal_layer = -1;
-						session->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+						s->spatial_layer = -1;
+						s->target_spatial_layer = 1;	/* FIXME Chrome sends 0 and 1 */
+						s->temporal_layer = -1;
+						s->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
 						/* Unless the request contains a target for either layer */
 						json_t *spatial = json_object_get(root, "spatial_layer");
 						if(spatial) {
-							session->target_spatial_layer = json_integer_value(spatial);
+							s->target_spatial_layer = json_integer_value(spatial);
 							JANUS_LOG(LOG_VERB, "Setting video spatial layer to let through (SVC): %d (was %d)\n",
-								session->target_spatial_layer, session->spatial_layer);
+								s->target_spatial_layer, s->spatial_layer);
 						}
 						json_t *temporal = json_object_get(root, "temporal_layer");
 						if(temporal) {
-							session->target_temporal_layer = json_integer_value(temporal);
+							s->target_temporal_layer = json_integer_value(temporal);
 							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (SVC): %d (was %d)\n",
-								session->target_temporal_layer, session->temporal_layer);
+								s->target_temporal_layer, s->temporal_layer);
 						}
 					}
+					s->mindex = g_list_length(session->streams);
+					s->stream = stream;
+					janus_refcount_increase(&stream->ref);
+					session->streams = g_list_append(session->streams, s);
+					if(session->streams_byid == NULL)
+						session->streams_byid = g_hash_table_new(NULL, NULL);
+					g_hash_table_insert(session->streams_byid, GINT_TO_POINTER(stream->mindex), s);
 					temp = temp->next;
 				}
 			}
@@ -4478,11 +4523,11 @@ done:
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 			} else {
 				/* Iterate on all media streams */
-				janus_streaming_rtp_source *source = mp->source;
-				GList *temp = source->media;
+				GList *temp = session->streams;
 				while(temp) {
-					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
-					if(stream->type == JANUS_STREAMING_MEDIA_AUDIO && session->audio) {
+					janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
+					janus_streaming_rtp_source_stream *stream = s->stream;
+					if(stream->type == JANUS_STREAMING_MEDIA_AUDIO && audio) {
 						/* Add audio line */
 						g_snprintf(buffer, 512,
 							"m=audio 1 RTP/SAVPF %d\r\n"
@@ -4504,7 +4549,7 @@ done:
 							g_strlcat(sdptemp, buffer, 2048);
 						}
 						g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
-					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO && session->video) {
+					} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO && video) {
 						/* Add video line */
 						g_snprintf(buffer, 512,
 							"m=video 1 RTP/SAVPF %d\r\n"
@@ -4540,7 +4585,7 @@ done:
 						g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 					}
 #ifdef HAVE_SCTP
-					else if(stream->type == JANUS_STREAMING_MEDIA_DATA && session->data) {
+					else if(stream->type == JANUS_STREAMING_MEDIA_DATA && data) {
 						/* Add data line */
 						g_snprintf(buffer, 512,
 							"m=application 1 DTLS/SCTP 5000\r\n"
@@ -4633,33 +4678,35 @@ done:
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			json_t *audio = json_object_get(root, "audio");
-			if(audio)
-				session->audio = json_is_true(audio);
 			json_t *video = json_object_get(root, "video");
-			if(video)
-				session->video = json_is_true(video);
 			json_t *data = json_object_get(root, "data");
-			if(data)
-				session->data = json_is_true(data);
 			if(mp->streaming_source == janus_streaming_source_rtp) {
-				janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
-				GList *temp = source->media;
+				GList *temp = session->streams;
 				while(temp) {
-					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+					janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
+					janus_streaming_rtp_source_stream *stream = s->stream;
+					/* TODO We need a better way of disabling individual streams */
+					if(audio && stream->type == JANUS_STREAMING_MEDIA_AUDIO)
+						s->send = json_is_true(audio);
+					else if(video && stream->type == JANUS_STREAMING_MEDIA_VIDEO)
+						s->send = json_is_true(video);
+					else if(data && stream->type == JANUS_STREAMING_MEDIA_DATA)
+						s->send = json_is_true(data);
 					/* FIXME What if we're simulcasting or doing SVC on two different video streams? */
 					if(stream && stream->simulcast) {
 						/* Check if the viewer is requesting a different substream/temporal layer */
 						json_t *substream = json_object_get(root, "substream");
 						if(substream) {
-							session->substream_target = json_integer_value(substream);
+							s->substream_target = json_integer_value(substream);
 							JANUS_LOG(LOG_VERB, "Setting video substream to let through (simulcast): %d (was %d)\n",
-								session->substream_target, session->substream);
-							if(session->substream_target == session->substream) {
+								s->substream_target, s->substream);
+							if(s->substream_target == s->substream) {
 								/* No need to do anything, we're already getting the right substream, so notify the viewer */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
-								json_object_set_new(result, "substream", json_integer(session->substream));
+								json_object_set_new(result, "mid", json_string(stream->mid));
+								json_object_set_new(result, "substream", json_integer(s->substream));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -4667,15 +4714,16 @@ done:
 						}
 						json_t *temporal = json_object_get(root, "temporal");
 						if(temporal) {
-							session->templayer_target = json_integer_value(temporal);
+							s->templayer_target = json_integer_value(temporal);
 							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
-								session->templayer_target, session->templayer);
-							if(stream->codecs.video_codec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
+								s->templayer_target, s->templayer);
+							if(stream->codecs.video_codec == JANUS_VIDEOCODEC_VP8 && s->templayer_target == s->templayer) {
 								/* No need to do anything, we're already getting the right temporal layer, so notify the viewer */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
-								json_object_set_new(result, "temporal", json_integer(session->templayer));
+								json_object_set_new(result, "mid", json_string(stream->mid));
+								json_object_set_new(result, "temporal", json_integer(s->templayer));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -4690,20 +4738,21 @@ done:
 							if(spatial_layer > 1) {
 								JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
 							}
-							if(spatial_layer == session->spatial_layer) {
+							if(spatial_layer == s->spatial_layer) {
 								/* No need to do anything, we're already getting the right spatial layer, so notify the user */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
-								json_object_set_new(result, "spatial_layer", json_integer(session->spatial_layer));
+								json_object_set_new(result, "mid", json_string(stream->mid));
+								json_object_set_new(result, "spatial_layer", json_integer(s->spatial_layer));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(msg->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
-							} else if(spatial_layer != session->target_spatial_layer) {
+							} else if(spatial_layer != s->target_spatial_layer) {
 								/* Send a FIR to the source, if RTCP is enabled */
 								g_atomic_int_set(&stream->need_pli, 1);
 							}
-							session->target_spatial_layer = spatial_layer;
+							s->target_spatial_layer = spatial_layer;
 						}
 						json_t *temporal = json_object_get(root, "temporal_layer");
 						if(temporal) {
@@ -4711,17 +4760,18 @@ done:
 							if(temporal_layer > 2) {
 								JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
 							}
-							if(temporal_layer == session->temporal_layer) {
+							if(temporal_layer == s->temporal_layer) {
 								/* No need to do anything, we're already getting the right temporal layer, so notify the user */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
-								json_object_set_new(result, "temporal_layer", json_integer(session->temporal_layer));
+								json_object_set_new(result, "mid", json_string(stream->mid));
+								json_object_set_new(result, "temporal_layer", json_integer(s->temporal_layer));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(msg->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
 							}
-							session->target_temporal_layer = temporal_layer;
+							s->target_temporal_layer = temporal_layer;
 						}
 					}
 					temp = temp->next;
@@ -5000,7 +5050,9 @@ static int janus_streaming_get_fd_port(int fd) {
 }
 
 /* Helpers to destroy a streaming mountpoint source */
-static void janus_streaming_rtp_source_stream_free(janus_streaming_rtp_source_stream *stream) {
+static void janus_streaming_rtp_source_stream_free(const janus_refcount *st_ref) {
+	janus_streaming_rtp_source_stream *stream = janus_refcount_containerof(st_ref, janus_streaming_rtp_source_stream, ref);
+	/* This stream can be destroyed, free all the resources */
 	if(stream->fd[0] > -1) {
 		close(stream->fd[0]);
 	}
@@ -5069,7 +5121,7 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	g_free(source->rtsp_vcodecs.fmtp);
 	janus_mutex_unlock(&source->rtsp_mutex);
 #endif
-	g_list_free_full(source->media, (GDestroyNotify)(janus_streaming_rtp_source_stream_free));
+	g_list_free_full(source->media, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 	g_hash_table_unref(source->media_byid);
 	g_hash_table_unref(source->media_byfd);
 	g_free(source);
@@ -5217,6 +5269,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		stream->last_msg = NULL;
 		janus_mutex_init(&stream->buffermsg_mutex);
 	}
+	janus_refcount_init(&stream->ref, janus_streaming_rtp_source_stream_free);
 	return stream;
 }
 
@@ -6962,48 +7015,57 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
+	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
+	if(s == NULL) {
+		/* No session stream for this mindex: maybe the viewer did not subscribe to it */
+		return;
+	}
+	/* Make sure we're allowed to send packets from this stream */
+	if(!s->send)
+		return;
+	janus_streaming_rtp_source_stream *stream = s->stream;
 
 	if(packet->is_rtp) {
 		/* Make sure there hasn't been a video source switch by checking the SSRC */
 		if(packet->is_video) {
-			if(!session->video)
-				return;
 			/* Check if there's any SVC info to take into account */
 			if(packet->svc) {
 				/* There is: check if this is a layer that can be dropped for this viewer
 				 * Note: Following core inspired by the excellent job done by Sergio Garcia Murillo here:
 				 * https://github.com/medooze/media-server/blob/master/src/vp9/VP9LayerSelector.cpp */
 				gboolean override_mark_bit = FALSE, has_marker_bit = packet->data->markerbit;
-				int temporal_layer = session->temporal_layer;
-				if(session->target_temporal_layer > session->temporal_layer) {
+				int temporal_layer = s->temporal_layer;
+				if(s->target_temporal_layer > s->temporal_layer) {
 					/* We need to upscale */
 					JANUS_LOG(LOG_HUGE, "We need to upscale temporally:\n");
-					if(packet->ubit && packet->bbit && packet->temporal_layer <= session->target_temporal_layer) {
+					if(packet->ubit && packet->bbit && packet->temporal_layer <= s->target_temporal_layer) {
 						JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %u --> %u\n",
-							packet->temporal_layer, session->target_temporal_layer);
-						session->temporal_layer = packet->temporal_layer;
-						temporal_layer = session->temporal_layer;
+							packet->temporal_layer, s->target_temporal_layer);
+						s->temporal_layer = packet->temporal_layer;
+						temporal_layer = s->temporal_layer;
 						/* Notify the viewer */
 						json_t *event = json_object();
 						json_object_set_new(event, "streaming", json_string("event"));
 						json_t *result = json_object();
-						json_object_set_new(result, "temporal_layer", json_integer(session->temporal_layer));
+						json_object_set_new(result, "mid", json_string(stream->mid));
+						json_object_set_new(result, "temporal_layer", json_integer(s->temporal_layer));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 						json_decref(event);
 					}
-				} else if(session->target_temporal_layer < session->temporal_layer) {
+				} else if(s->target_temporal_layer < s->temporal_layer) {
 					/* We need to downscale */
 					JANUS_LOG(LOG_HUGE, "We need to downscale temporally:\n");
 					if(packet->ebit) {
 						JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %u --> %u\n",
-							session->temporal_layer, session->target_temporal_layer);
-						session->temporal_layer = session->target_temporal_layer;
+							s->temporal_layer, s->target_temporal_layer);
+						s->temporal_layer = s->target_temporal_layer;
 						/* Notify the viewer */
 						json_t *event = json_object();
 						json_object_set_new(event, "streaming", json_string("event"));
 						json_t *result = json_object();
-						json_object_set_new(result, "temporal_layer", json_integer(session->temporal_layer));
+						json_object_set_new(result, "mid", json_string(stream->mid));
+						json_object_set_new(result, "temporal_layer", json_integer(s->temporal_layer));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 						json_decref(event);
@@ -7012,39 +7074,41 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(temporal_layer < packet->temporal_layer) {
 					/* Drop the packet: update the context to make sure sequence number is increased normally later */
 					JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
-					session->vcontext.base_seq++;
+					s->context.base_seq++;
 					return;
 				}
-				int spatial_layer = session->spatial_layer;
-				if(session->target_spatial_layer > session->spatial_layer) {
+				int spatial_layer = s->spatial_layer;
+				if(s->target_spatial_layer > s->spatial_layer) {
 					JANUS_LOG(LOG_HUGE, "We need to upscale spatially:\n");
 					/* We need to upscale */
-					if(packet->pbit == 0 && packet->bbit && packet->spatial_layer == session->spatial_layer+1) {
+					if(packet->pbit == 0 && packet->bbit && packet->spatial_layer == s->spatial_layer+1) {
 						JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %u --> %u\n",
-							packet->spatial_layer, session->target_spatial_layer);
-						session->spatial_layer = packet->spatial_layer;
-						spatial_layer = session->spatial_layer;
+							packet->spatial_layer, s->target_spatial_layer);
+						s->spatial_layer = packet->spatial_layer;
+						spatial_layer = s->spatial_layer;
 						/* Notify the viewer */
 						json_t *event = json_object();
 						json_object_set_new(event, "streaming", json_string("event"));
 						json_t *result = json_object();
-						json_object_set_new(result, "spatial_layer", json_integer(session->spatial_layer));
+						json_object_set_new(result, "mid", json_string(stream->mid));
+						json_object_set_new(result, "spatial_layer", json_integer(s->spatial_layer));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 						json_decref(event);
 					}
-				} else if(session->target_spatial_layer < session->spatial_layer) {
+				} else if(s->target_spatial_layer < s->spatial_layer) {
 					/* We need to downscale */
 					JANUS_LOG(LOG_HUGE, "We need to downscale spatially:\n");
 					if(packet->ebit) {
 						JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %u --> %u\n",
-							session->spatial_layer, session->target_spatial_layer);
-						session->spatial_layer = session->target_spatial_layer;
+							s->spatial_layer, s->target_spatial_layer);
+						s->spatial_layer = s->target_spatial_layer;
 						/* Notify the viewer */
 						json_t *event = json_object();
 						json_object_set_new(event, "streaming", json_string("event"));
 						json_t *result = json_object();
-						json_object_set_new(result, "spatial_layer", json_integer(session->spatial_layer));
+						json_object_set_new(result, "mid", json_string(stream->mid));
+						json_object_set_new(result, "spatial_layer", json_integer(s->spatial_layer));
 						json_object_set_new(event, "result", result);
 						gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 						json_decref(event);
@@ -7053,7 +7117,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(spatial_layer < packet->spatial_layer) {
 					/* Drop the packet: update the context to make sure sequence number is increased normally later */
 					JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->spatial_layer);
-					session->vcontext.base_seq++;
+					s->context.base_seq++;
 					return;
 				} else if(packet->ebit && spatial_layer == packet->spatial_layer) {
 					/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
@@ -7064,12 +7128,14 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
 					packet->spatial_layer, packet->temporal_layer);
 				/* Fix sequence number and timestamp (video source switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
+				janus_rtp_header_update(packet->data, &s->context, TRUE);
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 1;
 				}
-				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
+				if(gateway != NULL) {
+					gateway->relay_rtp(session->handle, s->mindex,
+						packet->is_video, (char *)packet->data, packet->length);
+				}
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 0;
 				}
@@ -7083,20 +7149,21 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(payload == NULL)
 					return;
 				gboolean switched = FALSE;
-				if(session->substream != session->substream_target) {
+				if(s->substream != s->substream_target) {
 					/* There has been a change: let's wait for a keyframe on the target */
-					int step = (session->substream < 1 && session->substream_target == 2);
-					if(packet->substream == session->substream_target || (step && packet->substream == step)) {
+					int step = (s->substream < 1 && s->substream_target == 2);
+					if(packet->substream == s->substream_target || (step && packet->substream == step)) {
 						if(janus_vp8_is_keyframe(payload, plen)) {
 							JANUS_LOG(LOG_VERB, "Received keyframe on substream %d, switching (was %d)\n",
-								packet->substream, session->substream);
-							session->substream = packet->substream;
+								packet->substream, s->substream);
+							s->substream = packet->substream;
 							switched = TRUE;
 							/* Notify the viewer */
 							json_t *event = json_object();
 							json_object_set_new(event, "streaming", json_string("event"));
 							json_t *result = json_object();
-							json_object_set_new(result, "substream", json_integer(session->substream));
+							json_object_set_new(result, "mid", json_string(stream->mid));
+							json_object_set_new(result, "substream", json_integer(s->substream));
 							json_object_set_new(event, "result", result);
 							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 							json_decref(event);
@@ -7106,38 +7173,39 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					}
 				}
 				/* If we haven't received our desired substream yet, let's drop temporarily */
-				if(session->last_relayed == 0) {
+				if(s->last_relayed == 0) {
 					/* Let's start slow */
-					session->last_relayed = janus_get_monotonic_time();
+					s->last_relayed = janus_get_monotonic_time();
 				} else {
 					/* Check if 250ms went by with no packet relayed */
 					gint64 now = janus_get_monotonic_time();
-					if(now-session->last_relayed >= 250000) {
-						session->last_relayed = now;
-						int substream = session->substream-1;
+					if(now-s->last_relayed >= 250000) {
+						s->last_relayed = now;
+						int substream = s->substream-1;
 						if(substream < 0)
 							substream = 0;
-						if(session->substream != substream) {
+						if(s->substream != substream) {
 							JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-								session->substream, substream);
-							session->substream = substream;
+								s->substream, substream);
+							s->substream = substream;
 							/* Notify the viewer */
 							json_t *event = json_object();
 							json_object_set_new(event, "streaming", json_string("event"));
 							json_t *result = json_object();
-							json_object_set_new(result, "substream", json_integer(session->substream));
+							json_object_set_new(result, "mid", json_string(stream->mid));
+							json_object_set_new(result, "substream", json_integer(s->substream));
 							json_object_set_new(event, "result", result);
 							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 							json_decref(event);
 						}
 					}
 				}
-				if(packet->substream != session->substream) {
+				if(packet->substream != s->substream) {
 					JANUS_LOG(LOG_HUGE, "Dropping packet (it's from substream %d, but we're only relaying substream %d now\n",
-						packet->substream, session->substream);
+						packet->substream, s->substream);
 					return;
 				}
-				session->last_relayed = janus_get_monotonic_time();
+				s->last_relayed = janus_get_monotonic_time();
 				char vp8pd[6];
 				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
 					/* Check if there's any temporal scalability to take into account */
@@ -7148,34 +7216,37 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					uint8_t keyidx = 0;
 					if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 						//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-						if(session->templayer != session->templayer_target) {
+						if(s->templayer != s->templayer_target) {
 							/* FIXME We should be smarter in deciding when to switch */
-							session->templayer = session->templayer_target;
+							s->templayer = s->templayer_target;
 								/* Notify the viewer */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
-								json_object_set_new(result, "temporal", json_integer(session->templayer));
+								json_object_set_new(result, "mid", json_string(stream->mid));
+								json_object_set_new(result, "temporal", json_integer(s->templayer));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
 						}
-						if(tid > session->templayer) {
+						if(tid > s->templayer) {
 							JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-								tid, session->templayer);
+								tid, s->templayer);
 							/* We increase the base sequence number, or there will be gaps when delivering later */
-							session->vcontext.base_seq++;
+							s->context.base_seq++;
 							return;
 						}
 					}
 					/* If we got here, update the RTP header and send the packet */
-					janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
+					janus_rtp_header_update(packet->data, &s->context, TRUE);
 					memcpy(vp8pd, payload, sizeof(vp8pd));
-					janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
+					janus_vp8_simulcast_descriptor_update(payload, plen, &s->simulcast_context, switched);
 				}
 				/* Send the packet */
-				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, packet->mindex, packet->is_video, (char *)packet->data, packet->length);
+				if(gateway != NULL) {
+					gateway->relay_rtp(session->handle, s->mindex,
+						packet->is_video, (char *)packet->data, packet->length);
+				}
 				/* Restore the timestamp and sequence number to what the video source set them to */
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
@@ -7185,28 +7256,28 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				}
 			} else {
 				/* Fix sequence number and timestamp (switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->vcontext, TRUE);
-				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, packet->mindex, packet->is_video, (char *)packet->data, packet->length);
+				janus_rtp_header_update(packet->data, &s->context, TRUE);
+				if(gateway != NULL) {
+					gateway->relay_rtp(session->handle, s->mindex,
+						packet->is_video, (char *)packet->data, packet->length);
+				}
 				/* Restore the timestamp and sequence number to what the video source set them to */
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
 			}
 		} else {
-			if(!session->audio)
-				return;
 			/* Fix sequence number and timestamp (switching may be involved) */
-			janus_rtp_header_update(packet->data, &session->acontext, FALSE);
-			if(gateway != NULL)
-				gateway->relay_rtp(session->handle, packet->mindex, packet->is_video, (char *)packet->data, packet->length);
+			janus_rtp_header_update(packet->data, &s->context, FALSE);
+			if(gateway != NULL) {
+				gateway->relay_rtp(session->handle, s->mindex,
+					packet->is_video, (char *)packet->data, packet->length);
+			}
 			/* Restore the timestamp and sequence number to what the video source set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
 		}
 	} else {
 		/* We're broadcasting a data channel message */
-		if(!session->data)
-			return;
 		char *text = (char *)packet->data;
 		if(gateway != NULL && text != NULL)
 			gateway->relay_data(session->handle, text, strlen(text));
@@ -7231,9 +7302,16 @@ static void janus_streaming_relay_rtcp_packet(gpointer data, gpointer user_data)
 		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
+	janus_streaming_session_stream *s = g_hash_table_lookup(session->streams_byid, GINT_TO_POINTER(packet->mindex));
+	if(packet->mindex != -1 && s == NULL) {
+		JANUS_LOG(LOG_WARN, "No session stream for mindex %d...\n", packet->mindex);
+		return;
+	}
 
-	if(gateway != NULL)
-		gateway->relay_rtcp(session->handle, -1, packet->is_video, (char*)packet->data, packet->length);
+	if(gateway != NULL) {
+		gateway->relay_rtcp(session->handle, s->mindex,
+			packet->is_video, (char*)packet->data, packet->length);
+	}
 
 	return;
 }
