@@ -6170,6 +6170,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 			//~ header->type, ntohs(header->seq_number), ntohl(header->timestamp));
 		//~ JANUS_LOG(LOG_VERB, " ... Read %d bytes from the audio file...\n", read);
 		/* Relay on all sessions */
+		packet.mindex = -1;
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
 		packet.is_rtp = TRUE;
@@ -6290,6 +6291,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 			// header->type, ntohs(header->seq_number), ntohl(header->timestamp));
 		// JANUS_LOG(LOG_VERB, " ... Read %d bytes from the audio file...\n", read);
 		/* Relay on all sessions */
+		packet.mindex = -1;
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
 		packet.is_rtp = TRUE;
