@@ -3792,7 +3792,7 @@ static void *janus_streaming_handler(void *data) {
 			if(do_restart) {
 				/* User asked for an ICE restart: provide a new offer */
 				JANUS_LOG(LOG_VERB, "Request to perform an ICE restart on mountpoint/stream %"SCNu64" subscription\n", id_value);
-				session->sdp_version++;	/* This needs to be increased when it changes */
+				session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 				goto done;
 			}
 			if(session->mountpoint != NULL) {
@@ -3806,7 +3806,7 @@ static void *janus_streaming_handler(void *data) {
 				} else {
 					/* Simple renegotiation */
 					JANUS_LOG(LOG_VERB, "Request to update mountpoint/stream %"SCNu64" subscription (no restart)\n", id_value);
-					session->sdp_version++;	/* This needs to be increased when it changes */
+					session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 					goto done;
 				}
 			}
@@ -3822,7 +3822,7 @@ static void *janus_streaming_handler(void *data) {
 			}
 			session->stopping = FALSE;
 			session->mountpoint = mp;
-			session->sdp_version = 1;	/* This needs to be increased when it changes */
+			session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 			session->sdp_sessid = janus_get_real_time();
 			/* Check what we should offer */
 			session->audio = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
