@@ -1068,6 +1068,7 @@ typedef struct janus_streaming_rtp_source_stream {
 	gboolean skew;
 	gint64 last_received;
 	uint32_t ssrc;				/* Only needed for fixing outgoing RTCP packets */
+	uint32_t last_ssrc[3];		/* Only needed for detecting new sources */
 	volatile gint need_pli;		/* Whether we need to send a PLI later */
 	volatile gint sending_pli;	/* Whether we're currently sending a PLI */
 	gint64 pli_latest;			/* Time of latest sent PLI (to avoid flooding) */
@@ -5321,13 +5322,13 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		g_hash_table_insert(live_rtp_source->media_byid, GINT_TO_POINTER(stream->mindex), stream);
 		/* Map this stream by all its file descriptors */
 		if(stream->fd[0] != -1)
-			g_hash_table_insert(live_rtp_source->media_byid, GINT_TO_POINTER(stream->fd[0]), stream);
+			g_hash_table_insert(live_rtp_source->media_byfd, GINT_TO_POINTER(stream->fd[0]), stream);
 		if(stream->fd[1] != -1)
-			g_hash_table_insert(live_rtp_source->media_byid, GINT_TO_POINTER(stream->fd[1]), stream);
+			g_hash_table_insert(live_rtp_source->media_byfd, GINT_TO_POINTER(stream->fd[1]), stream);
 		if(stream->fd[2] != -1)
-			g_hash_table_insert(live_rtp_source->media_byid, GINT_TO_POINTER(stream->fd[2]), stream);
+			g_hash_table_insert(live_rtp_source->media_byfd, GINT_TO_POINTER(stream->fd[2]), stream);
 		if(stream->rtcp_fd != -1)
-			g_hash_table_insert(live_rtp_source->media_byid, GINT_TO_POINTER(stream->rtcp_fd), stream);
+			g_hash_table_insert(live_rtp_source->media_byfd, GINT_TO_POINTER(stream->rtcp_fd), stream);
 		temp = temp->next;
 	}
 	live_rtp_source->pipefd[0] = -1;
@@ -6337,12 +6338,12 @@ static void *janus_streaming_relay_thread(void *data) {
 	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Needed to fix seq and ts */
-	uint32_t ssrc = 0, a_last_ssrc = 0, v_last_ssrc[3] = {0, 0, 0};
+	uint32_t ssrc = 0;
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr remote;
 	int resfd = 0, bytes = 0;
-	struct pollfd fds[20];		/* FIXME We should make this dynamic */
+	struct pollfd fds[50];		/* FIXME We should make this dynamic */
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	/* We'll have a dynamic number of streams */
@@ -6534,7 +6535,8 @@ static void *janus_streaming_relay_thread(void *data) {
 					stream = g_hash_table_lookup(source->media_byfd, GINT_TO_POINTER(fds[i].fd));
 				}
 				if(stream == NULL) {
-					/* Nothing to do here */
+					/* No stream..? Shouldn't happen, read the bytes and dump them */
+					(void)recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
 					continue;
 				}
 				if(stream->type == JANUS_STREAMING_MEDIA_AUDIO && fds[i].fd == stream->fd[0]) {
@@ -6553,7 +6555,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
-					if(source->rtp_collision > 0 && a_last_ssrc && ssrc != a_last_ssrc &&
+					if(source->rtp_collision > 0 && stream->last_ssrc[0] && ssrc != stream->last_ssrc[0] &&
 							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on audio mountpoint, dropping packet (ssrc=%"SCNu32")\n", name, ssrc);
 						continue;
@@ -6587,9 +6589,9 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.is_video = FALSE;
 					packet.is_keyframe = FALSE;
 					/* Do we have a new stream? */
-					if(ssrc != a_last_ssrc) {
-						stream->ssrc = a_last_ssrc = ssrc;
-						JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%"SCNu32")\n", name, a_last_ssrc);
+					if(ssrc != stream->last_ssrc[0]) {
+						stream->ssrc = stream->last_ssrc[0] = ssrc;
+						JANUS_LOG(LOG_INFO, "[%s] New audio stream! (#%d, ssrc=%"SCNu32")\n", name, stream->mindex, stream->last_ssrc[0]);
 					}
 					packet.data->type = stream->codecs.pt;
 					/* Is there a recorder? */
@@ -6598,11 +6600,11 @@ static void *janus_streaming_relay_thread(void *data) {
 						int ret = janus_rtp_skew_compensate_audio(packet.data, &stream->context[0], now);
 						if(ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, audio source clock is too fast (ssrc=%"SCNu32")\n",
-								name, -ret, a_last_ssrc);
+								name, -ret, stream->last_ssrc[0]);
 							continue;
 						} else if(ret > 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Jumping %d RTP sequence numbers, audio source clock is too slow (ssrc=%"SCNu32")\n",
-								name, ret, a_last_ssrc);
+								name, ret, stream->last_ssrc[0]);
 						}
 					}
 					packet.data->ssrc = ntohl((uint32_t)mountpoint->id);
@@ -6642,7 +6644,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
-					if(source->rtp_collision > 0 && v_last_ssrc[index] && ssrc != v_last_ssrc[index] &&
+					if(source->rtp_collision > 0 && stream->last_ssrc[index] && ssrc != stream->last_ssrc[index] &&
 							(now-stream->last_received) < (gint64)1000*source->rtp_collision) {
 						JANUS_LOG(LOG_WARN, "[%s] RTP collision on video mountpoint, dropping packet (ssrc=%"SCNu32")\n",
 							name, ssrc);
@@ -6782,12 +6784,12 @@ static void *janus_streaming_relay_thread(void *data) {
 						}
 					}
 					/* Do we have a new stream? */
-					if(ssrc != v_last_ssrc[index]) {
-						v_last_ssrc[index] = ssrc;
+					if(ssrc != stream->last_ssrc[index]) {
+						stream->last_ssrc[index] = ssrc;
 						if(index == 0)
 							stream->ssrc = ssrc;
-						JANUS_LOG(LOG_INFO, "[%s] New video stream! (ssrc=%"SCNu32", index %d)\n",
-							name, v_last_ssrc[index], index);
+						JANUS_LOG(LOG_INFO, "[%s] New video stream! (#%d, ssrc=%"SCNu32", index %d)\n",
+							name, stream->mindex, stream->last_ssrc[index], index);
 					}
 					packet.data->type = stream->codecs.pt;
 					/* Is there a recorder? (FIXME notice we only record the first substream, if simulcasting) */
@@ -6796,11 +6798,11 @@ static void *janus_streaming_relay_thread(void *data) {
 						int ret = janus_rtp_skew_compensate_video(packet.data, &stream->context[index], now);
 						if(ret < 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Dropping %d packets, video source clock is too fast (ssrc=%"SCNu32", index %d)\n",
-								name, -ret, v_last_ssrc[index], index);
+								name, -ret, stream->last_ssrc[index], index);
 							continue;
 						} else if(ret > 0) {
 							JANUS_LOG(LOG_WARN, "[%s] Jumping %d RTP sequence numbers, video source clock is too slow (ssrc=%"SCNu32", index %d)\n",
-								name, ret, v_last_ssrc[index], index);
+								name, ret, stream->last_ssrc[index], index);
 						}
 					}
 					if(index == 0) {
@@ -6870,8 +6872,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
-					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
-						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
+					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: #%d, SSRC %"SCNu32"\n",
+						name, stream->mindex, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
 					packet.is_video = FALSE;
 					packet.mindex = stream->mindex;
@@ -6891,8 +6893,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
-					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
-						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
+					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: #%d, SSRC %"SCNu32"\n",
+						name, stream->mindex, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
 					packet.is_video = TRUE;
 					packet.mindex = stream->mindex;
