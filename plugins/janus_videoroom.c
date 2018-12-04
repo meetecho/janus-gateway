@@ -4979,7 +4979,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* Check if there's something the original SDP has that we should remove */
 						janus_sdp *offer = janus_sdp_parse(publisher->sdp, NULL, 0);
 						subscriber->sdp = offer;
-						session->sdp_version = 1;
+						session->sdp_version = janus_get_real_time();
 						subscriber->sdp->o_version = session->sdp_version;
 						if((publisher->audio && !subscriber->audio_offered) ||
 								(publisher->video && !subscriber->video_offered) ||
@@ -5532,7 +5532,7 @@ static void *janus_videoroom_handler(void *data) {
 							}
 						}
 						janus_sdp_destroy(offer);
-						session->sdp_version++;
+						session->sdp_version = janus_get_real_time();
 						subscriber->sdp->o_version = session->sdp_version;
 						char *newsdp = janus_sdp_write(subscriber->sdp);
 						JANUS_LOG(LOG_VERB, "Updating subscriber:\n%s\n", newsdp);
@@ -5697,12 +5697,11 @@ static void *janus_videoroom_handler(void *data) {
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "  -- Updating existing publisher\n");
-				session->sdp_version++;		/* This needs to be increased when it changes */
 			} else {
 				/* New PeerConnection */
-				session->sdp_version = 1;	/* This needs to be increased when it changes */
 				session->sdp_sessid = janus_get_real_time();
 			}
+			session->sdp_version = janus_get_real_time();		/* This needs to be modified when the SDP changes */
 			const char *type = NULL;
 			if(!strcasecmp(msg_sdp_type, "offer")) {
 				/* We need to answer */
