@@ -213,7 +213,16 @@ $(document).ready(function() {
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
 										$('#stream').append('<audio class="hide" id="remotevideo' + mid + '" autoplay playsinline/>');
-										Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
+										if(remoteVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#stream .no-video-container').length === 0) {
+												$('#stream').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No webcam available</span>' +
+													'</div>');
+											}
+										}
 									} else {
 										// New video track: create a stream out of it
 										remoteVideos++;
@@ -223,28 +232,29 @@ $(document).ready(function() {
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#stream').append('<video class="rounded centered hide" id="remotevideo' + mid + '" width=320 height=240 autoplay playsinline/>');
-										// Show the stream and hide the spinner when we get a playing event
-										$("#remotevideo" + mid).bind("playing", function (ev) {
-											$('#waitingvideo').remove();
-											if(this.videoWidth)
-												$('#'+ev.target.id).removeClass('hide').show();
-											if(spinner !== null && spinner !== undefined)
-												spinner.stop();
-											spinner = null;
-											var width = this.videoWidth;
-											var height = this.videoHeight;
-											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
-												// Firefox Stable has a bug: width and height are not immediately available after a playing
-												setTimeout(function() {
-													var width = $('#'+ev.target.id).get(0).videoWidth;
-													var height = $('#'+ev.target.id).get(0).videoHeight;
-													$('#curres').removeClass('hide').text(width+'x'+height).show();
-												}, 2000);
-											}
-										});
-										Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
 									}
+									// Show the stream and hide the spinner when we get a playing event
+									$("#remotevideo" + mid).bind("playing", function (ev) {
+										$('#waitingvideo').remove();
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+										if(!this.videoWidth)
+											return;
+										$('#'+ev.target.id).removeClass('hide').show();
+										var width = this.videoWidth;
+										var height = this.videoHeight;
+										$('#curres').removeClass('hide').text(width+'x'+height).show();
+										if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+											// Firefox Stable has a bug: width and height are not immediately available after a playing
+											setTimeout(function() {
+												var width = $('#'+ev.target.id).get(0).videoWidth;
+												var height = $('#'+ev.target.id).get(0).videoHeight;
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
+											}, 2000);
+										}
+									});
+									Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
 									if(!addButtons)
 										return;
 									// TODO This isn't working right now

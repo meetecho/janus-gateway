@@ -336,6 +336,16 @@ $(document).ready(function() {
 										Janus.log("Created remote audio stream:", stream);
 										$('#videoright').append('<audio class="hide" id="peervideo' + mid + '" autoplay playsinline/>');
 										Janus.attachMediaStream($('#peervideo' + mid).get(0), stream);
+										if(remoteVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#videoright .no-video-container').length === 0) {
+												$('#videoright').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No webcam available</span>' +
+													'</div>');
+											}
+										}
 									} else {
 										// New video track: create a stream out of it
 										remoteVideos++;
