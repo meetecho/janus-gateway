@@ -52,6 +52,7 @@ var janus = null;
 var streaming = null;
 var opaqueId = "streamingtest-"+Janus.randomString(12);
 
+var remoteTracks = {}, remoteVideos = 0;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -167,72 +168,98 @@ $(document).ready(function() {
 											});
 									}
 								},
-								onremotestream: function(stream) {
-									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(stream);
+								onremotetrack: function(track, mid, on) {
+									Janus.debug(" ::: Got a remote track event :::");
+									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										var stream = remoteTracks[mid];
+										if(stream) {
+											try {
+												var tracks = stream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst !== null && mst !== undefined)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										$('#remotevideo' + mid).remove();
+										if(track.kind === "video") {
+											remoteVideos--;
+											if(remoteVideos === 0) {
+												// No video, at least for now: show a placeholder
+												if($('#stream .no-video-container').length === 0) {
+													$('#stream').append(
+														'<div class="no-video-container">' +
+															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<span class="no-video-text">No remote video available</span>' +
+														'</div>');
+												}
+											}
+										}
+										delete remoteTracks[mid];
+										return;
+									}
+									// If we're here, a new track was added
 									var addButtons = false;
-									if($('#remotevideo').length === 0) {
+									if($('#stream audio').length === 0 && $('#stream video').length === 0) {
 										addButtons = true;
-										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
+									}
+									if(track.kind === "audio") {
+										// New audio track: create a stream out of it, and use a hidden <audio> element
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										remoteTracks[mid] = stream;
+										Janus.log("Created remote audio stream:", stream);
+										$('#stream').append('<audio class="hide" id="remotevideo' + mid + '" autoplay playsinline/>');
+										Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
+									} else {
+										// New video track: create a stream out of it
+										remoteVideos++;
+										$('#stream .no-video-container').remove();
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										remoteTracks[mid] = stream;
+										Janus.log("Created remote video stream:", stream);
+										$('#stream').append('<video class="rounded centered hide" id="remotevideo' + mid + '" width=320 height=240 autoplay playsinline/>');
 										// Show the stream and hide the spinner when we get a playing event
-										$("#remotevideo").bind("playing", function () {
+										$("#remotevideo" + mid).bind("playing", function (ev) {
 											$('#waitingvideo').remove();
 											if(this.videoWidth)
-												$('#remotevideo').removeClass('hide').show();
+												$('#'+ev.target.id).removeClass('hide').show();
 											if(spinner !== null && spinner !== undefined)
 												spinner.stop();
 											spinner = null;
-											var videoTracks = stream.getVideoTracks();
-											if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0)
-												return;
 											var width = this.videoWidth;
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
 											if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 												// Firefox Stable has a bug: width and height are not immediately available after a playing
 												setTimeout(function() {
-													var width = $("#remotevideo").get(0).videoWidth;
-													var height = $("#remotevideo").get(0).videoHeight;
+													var width = $('#'+ev.target.id).get(0).videoWidth;
+													var height = $('#'+ev.target.id).get(0).videoHeight;
 													$('#curres').removeClass('hide').text(width+'x'+height).show();
 												}, 2000);
 											}
 										});
-									}
-									Janus.attachMediaStream($('#remotevideo').get(0), stream);
-									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
-										// No remote video
-										$('#remotevideo').hide();
-										if($('#stream .no-video-container').length === 0) {
-											$('#stream').append(
-												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-													'<span class="no-video-text">No remote video available</span>' +
-												'</div>');
-										}
-									} else {
-										$('#stream .no-video-container').remove();
-										$('#remotevideo').removeClass('hide').show();
+										Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
 									}
 									if(!addButtons)
 										return;
-									if(videoTracks && videoTracks.length &&
-											(Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
-												Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-												Janus.webRTCAdapter.browserDetails.browser === "safari")) {
-										$('#curbitrate').removeClass('hide').show();
-										bitrateTimer = setInterval(function() {
-											// Display updated bitrate, if supported
-											var bitrate = streaming.getBitrate();
-											//~ Janus.debug("Current bitrate is " + streaming.getBitrate());
-											$('#curbitrate').text(bitrate);
-											// Check if the resolution changed too
-											var width = $("#remotevideo").get(0).videoWidth;
-											var height = $("#remotevideo").get(0).videoHeight;
-											if(width > 0 && height > 0)
-												$('#curres').removeClass('hide').text(width+'x'+height).show();
-										}, 1000);
-									}
+									// TODO This isn't working right now
+									$('#curbitrate').removeClass('hide').show();
+									bitrateTimer = setInterval(function() {
+										// Display updated bitrate, if supported
+										var bitrate = streaming.getBitrate();
+										//~ Janus.debug("Current bitrate is " + streaming.getBitrate());
+										$('#curbitrate').text(bitrate);
+										// Check if the resolution changed too
+										var width = $("#remotevideo" + mid).get(0).videoWidth;
+										var height = $("#remotevideo" + mid).get(0).videoHeight;
+										if(width > 0 && height > 0)
+											$('#curres').removeClass('hide').text(width+'x'+height).show();
+									}, 1000);
 								},
 								ondataopen: function(data) {
 									Janus.log("The DataChannel is available!");
@@ -250,10 +277,7 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
-									$('#waitingvideo').remove();
-									$('#remotevideo').remove();
-									$('#datarecv').remove();
-									$('.no-video-container').remove();
+									$('#stream').empty();
 									$('#bitrate').attr('disabled', true);
 									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 									$('#curbitrate').hide();
@@ -263,6 +287,8 @@ $(document).ready(function() {
 									$('#curres').hide();
 									$('#simulcast').remove();
 									simulcastStarted = false;
+									remoteTracks = {};
+									remoteVideos = 0;
 								}
 							});
 					},

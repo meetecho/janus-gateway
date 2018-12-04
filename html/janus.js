@@ -1016,8 +1016,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
 		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : Janus.noop;
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : Janus.noop;
-		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : Janus.noop;
-		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : Janus.noop;
+		callbacks.onlocaltrack = (typeof callbacks.onlocaltrack == "function") ? callbacks.onlocaltrack : Janus.noop;
+		callbacks.onremotetrack = (typeof callbacks.onremotetrack == "function") ? callbacks.onremotetrack : Janus.noop;
 		callbacks.ondata = (typeof callbacks.ondata == "function") ? callbacks.ondata : Janus.noop;
 		callbacks.ondataopen = (typeof callbacks.ondataopen == "function") ? callbacks.ondataopen : Janus.noop;
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : Janus.noop;
@@ -1107,8 +1107,8 @@ function Janus(gatewayCallbacks) {
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-						onlocalstream : callbacks.onlocalstream,
-						onremotestream : callbacks.onremotestream,
+						onlocaltrack : callbacks.onlocaltrack,
+						onremotetrack : callbacks.onremotetrack,
 						ondata : callbacks.ondata,
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
@@ -1192,8 +1192,8 @@ function Janus(gatewayCallbacks) {
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-						onlocalstream : callbacks.onlocalstream,
-						onremotestream : callbacks.onremotestream,
+						onlocaltrack : callbacks.onlocaltrack,
+						onremotetrack : callbacks.onremotetrack,
 						ondata : callbacks.ondata,
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
@@ -1670,14 +1670,19 @@ function Janus(gatewayCallbacks) {
 				if(!event.streams)
 					return;
 				config.remoteStream = event.streams[0];
-				pluginHandle.onremotestream(config.remoteStream);
-				if(event.track && !event.track.onended) {
+				if(event.track) {
+					// Notify about the new track
+					var mid = event.transceiver ? event.transceiver.mid : event.track.id;
+					pluginHandle.onremotetrack(event.track, mid, true);
+					if(event.track.onended)
+						return;
 					Janus.log("Adding onended callback to track:", event.track);
 					event.track.onended = function(ev) {
 						Janus.log("Remote track removed:", ev);
 						if(config.remoteStream) {
 							config.remoteStream.removeTrack(ev.target);
-							pluginHandle.onremotestream(config.remoteStream);
+							var mid = ev.transceiver ? ev.transceiver : ev.target.id;
+							pluginHandle.onremotetrack(ev.target, mid, false);
 						}
 					}
 				}
@@ -1716,8 +1721,18 @@ function Janus(gatewayCallbacks) {
 			config.dataChannel.onerror = onDataChannelError;
 		}
 		// If there's a new local stream, let's notify the application
-		if(config.myStream)
-			pluginHandle.onlocalstream(config.myStream);
+		if(config.myStream) {
+			var tracks = config.myStream.getTracks();
+			for(var i in tracks) {
+				var track = tracks[i];
+				track.onended = function(ev) {
+					// FIXME What does this event contain? Is there a reference to the track?
+					Janus.log("Local track removed:", ev);
+					pluginHandle.onlocaltrack(ev.track, false);
+				}
+				pluginHandle.onlocaltrack(track, true);
+			}
+		}
 		// Create offer/answer now
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
