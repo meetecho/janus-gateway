@@ -1429,7 +1429,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				id = session->recording->id;
 				rec = session->recording;
-				session->sdp_version++;		/* This needs to be increased when it changes */
+				session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 				audio = (session->arc != NULL);
 				video = (session->vrc != NULL);
 				sdp_update = do_update;
@@ -1533,7 +1533,7 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
-			session->sdp_version = 1;	/* This needs to be increased when it changes */
+			session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 			session->sdp_sessid = janus_get_real_time();
 			g_hash_table_insert(recordings, janus_uint64_dup(rec->id), rec);
 			janus_mutex_unlock(&recordings_mutex);
@@ -1619,7 +1619,7 @@ recdone:
 				}
 				rec = session->recording;
 				id_value = rec->id;
-				session->sdp_version++;		/* This needs to be increased when it changes */
+				session->sdp_version = janus_get_real_time();	/* This needs to be modified when the SDP changes */
 				sdp_update = TRUE;
 				/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 				char error_str[512];
