@@ -192,8 +192,8 @@ timeCallback("resumeScheduler", nil, 0)
 
 
 /* Plugin information */
-#define JANUS_LUA_VERSION			1
-#define JANUS_LUA_VERSION_STRING	"0.0.1"
+#define JANUS_LUA_VERSION			2
+#define JANUS_LUA_VERSION_STRING	"0.0.2"
 #define JANUS_LUA_DESCRIPTION		"A custom plugin for the Lua framework."
 #define JANUS_LUA_NAME				"Janus Lua plugin"
 #define JANUS_LUA_AUTHOR			"Meetecho s.r.l."

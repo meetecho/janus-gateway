@@ -267,8 +267,8 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			6
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.6"
+#define JANUS_VIDEOCALL_VERSION			7
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.7"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through a server."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
@@ -330,17 +330,17 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter username_parameters[] = {
-	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter set_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
-	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0},
+	{"filename", JANUS_JSON_STRING, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
 };
 

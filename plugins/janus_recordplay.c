@@ -272,8 +272,8 @@
 
 
 /* Plugin information */
-#define JANUS_RECORDPLAY_VERSION			4
-#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.4"
+#define JANUS_RECORDPLAY_VERSION			5
+#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.5"
 #define JANUS_RECORDPLAY_DESCRIPTION		"This is a trivial Record&Play plugin for Janus, to record WebRTC sessions and replay them."
 #define JANUS_RECORDPLAY_NAME				"JANUS Record&Play plugin"
 #define JANUS_RECORDPLAY_AUTHOR				"Meetecho s.r.l."
@@ -335,20 +335,20 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"video-bitrate-max", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video-keyframe-interval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"video-bitrate-max", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video-keyframe-interval", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter record_parameters[] = {
-	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"filename", JSON_STRING, 0},
+	{"name", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"filename", JANUS_JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter play_parameters[] = {
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"restart", JANUS_JSON_BOOL, 0}
 };
 

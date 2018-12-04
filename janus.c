@@ -83,41 +83,41 @@ static char *api_secret = NULL, *admin_api_secret = NULL;
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string);
 
 static struct janus_json_parameter incoming_request_parameters[] = {
-	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"transaction", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"janus", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"opaque_id", JSON_STRING, 0},
+	{"plugin", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"opaque_id", JANUS_JSON_STRING, 0},
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter jsep_parameters[] = {
-	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"type", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
-	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"sdp", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter add_token_parameters[] = {
-	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"plugins", JSON_ARRAY, 0}
+	{"token", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"plugins", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter token_parameters[] = {
-	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"token", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter admin_parameters[] = {
-	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"transaction", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"janus", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter debug_parameters[] = {
 	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter timeout_parameters[] = {
-	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"timeout", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter level_parameters[] = {
-	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"level", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter timestamps_parameters[] = {
 	{"timestamps", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
@@ -126,23 +126,23 @@ static struct janus_json_parameter colors_parameters[] = {
 	{"colors", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter mnq_parameters[] = {
-	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"max_nack_queue", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter nmt_parameters[] = {
-	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"no_media_timer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter queryhandler_parameters[] = {
-	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"handler", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter customevent_parameters[] = {
-	{"schema", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"schema", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter text2pcap_parameters[] = {
-	{"folder", JSON_STRING, 0},
-	{"filename", JSON_STRING, 0},
-	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"folder", JANUS_JSON_STRING, 0},
+	{"filename", JANUS_JSON_STRING, 0},
+	{"truncate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */

@@ -115,8 +115,8 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			7
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.7"
+#define JANUS_VOICEMAIL_VERSION			8
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.8"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
 #define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
 #define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
@@ -174,7 +174,7 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Useful stuff */

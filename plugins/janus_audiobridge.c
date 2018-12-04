@@ -637,8 +637,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			10
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.10"
+#define JANUS_AUDIOBRIDGE_VERSION			11
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.11"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -699,85 +699,85 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter adminkey_parameters[] = {
-	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"admin_key", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"description", JSON_STRING, 0},
-	{"secret", JSON_STRING, 0},
-	{"pin", JSON_STRING, 0},
+	{"description", JANUS_JSON_STRING, 0},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"pin", JANUS_JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"allowed", JSON_ARRAY, 0},
-	{"sampling", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"allowed", JANUS_JSON_ARRAY, 0},
+	{"sampling", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"record_file", JSON_STRING, 0},
+	{"record_file", JANUS_JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
-	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"audio_active_packets", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_level_average", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter edit_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"new_description", JSON_STRING, 0},
-	{"new_secret", JSON_STRING, 0},
-	{"new_pin", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"new_description", JANUS_JSON_STRING, 0},
+	{"new_secret", JANUS_JSON_STRING, 0},
+	{"new_pin", JANUS_JSON_STRING, 0},
 	{"new_is_private", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"allowed", JSON_ARRAY, 0}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"allowed", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter kick_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter room_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"display", JSON_STRING, 0},
-	{"token", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"display", JANUS_JSON_STRING, 0},
+	{"token", JANUS_JSON_STRING, 0},
 	{"muted", JANUS_JSON_BOOL, 0},
-	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"quality", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"volume", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
-	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"quality", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"volume", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0},
-	{"display", JSON_STRING, 0},
+	{"filename", JANUS_JSON_STRING, 0},
+	{"display", JANUS_JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"ptype", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"srtp_crypto", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ssrc", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"ptype", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"host", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"srtp_suite", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_crypto", JANUS_JSON_STRING, 0},
 	{"always_on", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"stream_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Static configuration instance */

@@ -89,8 +89,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIPRE_VERSION			1
-#define JANUS_SIPRE_VERSION_STRING	"0.0.1"
+#define JANUS_SIPRE_VERSION			2
+#define JANUS_SIPRE_VERSION_STRING	"0.0.2"
 #define JANUS_SIPRE_DESCRIPTION		"This is a simple SIP plugin for Janus (based on libre instead of Sofia), allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIPRE_NAME			"JANUS SIPre plugin"
 #define JANUS_SIPRE_AUTHOR			"Meetecho s.r.l."
@@ -161,18 +161,18 @@ static struct janus_json_parameter register_parameters[] = {
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JSON_STRING, 0},
-	{"outbound_proxy", JSON_STRING, 0}
+	{"proxy", JANUS_JSON_STRING, 0},
+	{"outbound_proxy", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"srtp", JANUS_JSON_STRING, 0},
-	{"srtp_profile", JSON_STRING, 0},
+	{"srtp_profile", JANUS_JSON_STRING, 0},
 	/* The following are only needed in case "guest" registrations
 	 * still need an authenticated INVITE for some reason */
-	{"secret", JSON_STRING, 0},
-	{"authuser", JSON_STRING, 0}
+	{"secret", JANUS_JSON_STRING, 0},
+	{"authuser", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
 	{"srtp", JANUS_JSON_STRING, 0}
@@ -190,11 +190,11 @@ static struct janus_json_parameter dtmf_info_parameters[] = {
 	{"duration", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter info_parameters[] = {
-	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"type", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"content", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"content", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Useful stuff */

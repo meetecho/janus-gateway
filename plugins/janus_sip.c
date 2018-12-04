@@ -428,8 +428,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			7
-#define JANUS_SIP_VERSION_STRING	"0.0.7"
+#define JANUS_SIP_VERSION			8
+#define JANUS_SIP_VERSION_STRING	"0.0.8"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -487,57 +487,57 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter register_parameters[] = {
-	{"type", JSON_STRING, 0},
+	{"type", JANUS_JSON_STRING, 0},
 	{"send_register", JANUS_JSON_BOOL, 0},
 	{"force_udp", JANUS_JSON_BOOL, 0},
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
-	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"secret", JSON_STRING, 0},
-	{"ha1_secret", JSON_STRING, 0},
-	{"authuser", JSON_STRING, 0},
+	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"ha1_secret", JANUS_JSON_STRING, 0},
+	{"authuser", JANUS_JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JSON_STRING, 0},
-	{"outbound_proxy", JSON_STRING, 0}
+	{"proxy", JANUS_JSON_STRING, 0},
+	{"outbound_proxy", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
-	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"uri", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"headers", JSON_OBJECT, 0},
-	{"srtp", JSON_STRING, 0},
-	{"srtp_profile", JSON_STRING, 0},
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"srtp_profile", JANUS_JSON_STRING, 0},
 	/* The following are only needed in case "guest" registrations
 	 * still need an authenticated INVITE for some reason */
-	{"secret", JSON_STRING, 0},
-	{"ha1_secret", JSON_STRING, 0},
-	{"authuser", JSON_STRING, 0}
+	{"secret", JANUS_JSON_STRING, 0},
+	{"ha1_secret", JANUS_JSON_STRING, 0},
+	{"authuser", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
-	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"peer_audio", JANUS_JSON_BOOL, 0},
 	{"peer_video", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
-	{"digit", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"digit", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"duration", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter info_parameters[] = {
-	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"type", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"content", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter sipmessage_parameters[] = {
-	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"content", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Useful stuff */

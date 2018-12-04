@@ -1022,8 +1022,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			9
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.9"
+#define JANUS_VIDEOROOM_VERSION			10
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.10"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -1085,143 +1085,143 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter adminkey_parameters[] = {
-	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"admin_key", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"description", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"description", JANUS_JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"allowed", JSON_ARRAY, 0},
-	{"secret", JSON_STRING, 0},
-	{"pin", JSON_STRING, 0},
+	{"allowed", JANUS_JSON_ARRAY, 0},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"pin", JANUS_JSON_STRING, 0},
 	{"require_pvtid", JANUS_JSON_BOOL, 0},
-	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"bitrate_cap", JANUS_JSON_BOOL, 0},
-	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audiocodec", JSON_STRING, 0},
-	{"videocodec", JSON_STRING, 0},
+	{"fir_freq", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"publishers", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audiocodec", JANUS_JSON_STRING, 0},
+	{"videocodec", JANUS_JSON_STRING, 0},
 	{"video_svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
-	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_active_packets", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_level_average", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videoorient_ext", JANUS_JSON_BOOL, 0},
 	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"transport_wide_cc_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"rec_dir", JSON_STRING, 0},
+	{"rec_dir", JANUS_JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"notify_joining", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter edit_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"new_description", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"new_description", JANUS_JSON_STRING, 0},
 	{"new_is_private", JANUS_JSON_BOOL, 0},
-	{"new_secret", JSON_STRING, 0},
-	{"new_pin", JSON_STRING, 0},
+	{"new_secret", JANUS_JSON_STRING, 0},
+	{"new_pin", JANUS_JSON_STRING, 0},
 	{"new_require_pvtid", JANUS_JSON_BOOL, 0},
-	{"new_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"new_fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"new_publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_fir_freq", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_publishers", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"allowed", JSON_ARRAY, 0}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"allowed", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter kick_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ptype", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
-	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0},
-	{"token", JSON_STRING, 0}
+	{"filename", JANUS_JSON_STRING, 0},
+	{"token", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter publish_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
-	{"audiocodec", JSON_STRING, 0},
+	{"audiocodec", JANUS_JSON_STRING, 0},
 	{"video", JANUS_JSON_BOOL, 0},
-	{"videocodec", JSON_STRING, 0},
+	{"videocodec", JANUS_JSON_STRING, 0},
 	{"data", JANUS_JSON_BOOL, 0},
-	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"keyframe", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0},
-	{"display", JSON_STRING, 0},
+	{"filename", JANUS_JSON_STRING, 0},
+	{"display", JANUS_JSON_STRING, 0},
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_rtcp_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_port_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_ssrc_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_pt_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_port_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_ssrc_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"video_pt_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_rtcp_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"video_port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_rtcp_port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port_2", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc_2", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt_2", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port_3", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc_3", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt_3", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_rtcp_port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_ssrc", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_pt", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"data_port", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"host", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"simulcast", JANUS_JSON_BOOL, 0},
-	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"srtp_crypto", JSON_STRING, 0}
+	{"srtp_suite", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"srtp_crypto", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"stream_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter publisher_parameters[] = {
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"display", JSON_STRING, 0}
+	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"display", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
 	/* For VP8 (or H.264) simulcast */
-	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
-	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter subscriber_parameters[] = {
-	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"private_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"close_pc", JANUS_JSON_BOOL, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},

@@ -450,8 +450,8 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 
 
 /* Plugin information */
-#define JANUS_TEXTROOM_VERSION			2
-#define JANUS_TEXTROOM_VERSION_STRING	"0.0.2"
+#define JANUS_TEXTROOM_VERSION			3
+#define JANUS_TEXTROOM_VERSION_STRING	"0.0.3"
 #define JANUS_TEXTROOM_DESCRIPTION		"This is a plugin implementing a text-only room for Janus, using DataChannels."
 #define JANUS_TEXTROOM_NAME				"JANUS TextRoom plugin"
 #define JANUS_TEXTROOM_AUTHOR			"Meetecho s.r.l."
@@ -514,64 +514,64 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter transaction_parameters[] = {
-	{"textroom", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"textroom", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"transaction", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter room_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter adminkey_parameters[] = {
-	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"admin_key", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"description", JSON_STRING, 0},
-	{"secret", JSON_STRING, 0},
-	{"pin", JSON_STRING, 0},
-	{"post", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"description", JANUS_JSON_STRING, 0},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"pin", JANUS_JSON_STRING, 0},
+	{"post", JANUS_JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"allowed", JSON_ARRAY, 0},
+	{"allowed", JANUS_JSON_ARRAY, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"new_description", JSON_STRING, 0},
-	{"new_secret", JSON_STRING, 0},
-	{"new_pin", JSON_STRING, 0},
-	{"new_post", JSON_STRING, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"new_description", JANUS_JSON_STRING, 0},
+	{"new_secret", JANUS_JSON_STRING, 0},
+	{"new_pin", JANUS_JSON_STRING, 0},
+	{"new_post", JANUS_JSON_STRING, 0},
 	{"new_is_private", JANUS_JSON_BOOL, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"allowed", JSON_ARRAY, 0}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"allowed", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter kick_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
-	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JANUS_JSON_STRING, 0},
+	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"pin", JSON_STRING, 0},
-	{"display", JSON_STRING, 0}
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"pin", JANUS_JSON_STRING, 0},
+	{"display", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter message_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"to", JSON_STRING, 0},
-	{"tos", JSON_ARRAY, 0},
+	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"text", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"to", JANUS_JSON_STRING, 0},
+	{"tos", JANUS_JSON_ARRAY, 0},
 	{"ack", JANUS_JSON_BOOL, 0}
 };
 

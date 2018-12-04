@@ -191,8 +191,8 @@ timeCallback("resumeScheduler", null, 0);
 
 
 /* Plugin information */
-#define JANUS_DUKTAPE_VERSION			1
-#define JANUS_DUKTAPE_VERSION_STRING	"0.0.1"
+#define JANUS_DUKTAPE_VERSION			2
+#define JANUS_DUKTAPE_VERSION_STRING	"0.0.2"
 #define JANUS_DUKTAPE_DESCRIPTION		"A custom plugin for implementing the logic in JavaScript, via Duktape."
 #define JANUS_DUKTAPE_NAME				"Janus JavaScript plugin (Duktape)"
 #define JANUS_DUKTAPE_AUTHOR			"Meetecho s.r.l."

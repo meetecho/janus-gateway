@@ -120,8 +120,8 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			7
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.7"
+#define JANUS_ECHOTEST_VERSION			8
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.8"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
 #define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."

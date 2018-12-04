@@ -19,6 +19,7 @@
 #define JANUS_JSON_STRING			JSON_STRING
 #define JANUS_JSON_INTEGER			JSON_INTEGER
 #define JANUS_JSON_OBJECT			JSON_OBJECT
+#define JANUS_JSON_ARRAY			JSON_ARRAY
 /* Use JANUS_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
 #define JANUS_JSON_BOOL				JSON_TRUE
 #define JANUS_JSON_PARAM_REQUIRED	1
@@ -134,7 +135,7 @@ int janus_pidfile_create(const char *file);
 int janus_pidfile_remove(void);
 
 /*! \brief Creates a string describing the JSON type and constraint
- * @param jtype The JSON type, e.g., JSON_STRING
+ * @param jtype The JSON type, e.g., JANUS_JSON_STRING
  * @param flags Indicates constraints for the described type
  * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters
  * @returns 0 if successful, a negative integer otherwise */
@@ -142,7 +143,7 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
  * @param val The JSON value to be checked
- * @param jtype The JSON type, e.g., JSON_STRING
+ * @param jtype The JSON type, e.g., JANUS_JSON_STRING
  * @param flags Indicates constraints for the described type
  * @returns TRUE if the value is valid */
 gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
@@ -211,7 +212,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 	do { \
 		if (secret) { \
 			static struct janus_json_parameter secret_parameters[] = { \
-				{member, JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
+				{member, JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
 			}; \
 			JANUS_VALIDATE_JSON_OBJECT(obj, secret_parameters, error_code, error_cause, TRUE, missing_code, invalid_code); \
 			if(error_code == 0 && !janus_strcmp_const_time((secret), json_string_value(json_object_get(obj, member)))) { \

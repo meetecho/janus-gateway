@@ -173,8 +173,8 @@
 
 
 /* Plugin information */
-#define JANUS_NOSIP_VERSION			1
-#define JANUS_NOSIP_VERSION_STRING	"0.0.1"
+#define JANUS_NOSIP_VERSION			2
+#define JANUS_NOSIP_VERSION_STRING	"0.0.2"
 #define JANUS_NOSIP_DESCRIPTION		"This is a simple RTP bridging plugin that leaves signalling details (e.g., SIP) up to the application."
 #define JANUS_NOSIP_NAME			"JANUS NoSIP plugin"
 #define JANUS_NOSIP_AUTHOR			"Meetecho s.r.l."
@@ -232,29 +232,29 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"request", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter generate_parameters[] = {
-	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0},
-	{"srtp_profile", JSON_STRING, 0},
+	{"info", JANUS_JSON_STRING, 0},
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"srtp_profile", JANUS_JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter process_parameters[] = {
-	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"info", JSON_STRING, 0},
-	{"srtp", JSON_STRING, 0},
-	{"srtp_profile", JSON_STRING, 0},
+	{"type", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"sdp", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"info", JANUS_JSON_STRING, 0},
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"srtp_profile", JANUS_JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
-	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"peer_audio", JANUS_JSON_BOOL, 0},
 	{"peer_video", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JANUS_JSON_STRING, 0}
 };
 
 /* Useful stuff */
