@@ -1087,7 +1087,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		anon->o_name = g_strdup("-");
 	if(anon->o_sessid == 0 || anon->o_version == 0) {
 		anon->o_sessid = sessid;
-		anon->o_version = 1;
+		anon->o_version = janus_get_real_time();
 	}
 	anon->o_ipv4 = ipv4;
 	g_free(anon->o_addr);

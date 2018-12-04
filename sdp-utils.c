@@ -936,7 +936,7 @@ janus_sdp *janus_sdp_new(const char *name, const char *address) {
 	sdp->version = 0;
 	sdp->o_name = g_strdup("-");
 	sdp->o_sessid = janus_get_real_time();
-	sdp->o_version = 1;
+	sdp->o_version = janus_get_real_time();
 	sdp->o_ipv4 = TRUE;
 	sdp->o_addr = g_strdup(address ? address : "127.0.0.1");
 	sdp->s_name = g_strdup(name ? name : "Janus session");
