@@ -1327,7 +1327,6 @@ static void janus_ice_webrtc_free(janus_handle *handle) {
 	handle->local_sdp = NULL;
 	g_free(handle->remote_sdp);
 	handle->remote_sdp = NULL;
-	handle->pc_mid = NULL;
 	g_free(handle->pc_mid);
 	handle->pc_mid = NULL;
 	handle->thread = NULL;

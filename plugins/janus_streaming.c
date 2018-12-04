@@ -2294,6 +2294,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
 						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
+					json_array_append_new(media, info);
 					temp = temp->next;
 				}
 				json_object_set_new(ml, "media", media);
@@ -4487,6 +4488,8 @@ done:
 							"c=IN IP4 1.1.1.1\r\n",
 							stream->codecs.pt);
 						g_strlcat(sdptemp, buffer, 2048);
+						g_snprintf(buffer, 512, "a=mid:%s\r\n", stream->mid);
+						g_strlcat(sdptemp, buffer, 2048);
 						if(stream->codecs.rtpmap) {
 							g_snprintf(buffer, 512,
 								"a=rtpmap:%d %s\r\n",
@@ -4506,6 +4509,8 @@ done:
 							"m=video 1 RTP/SAVPF %d\r\n"
 							"c=IN IP4 1.1.1.1\r\n",
 							stream->codecs.pt);
+						g_strlcat(sdptemp, buffer, 2048);
+						g_snprintf(buffer, 512, "a=mid:%s\r\n", stream->mid);
 						g_strlcat(sdptemp, buffer, 2048);
 						if(stream->codecs.rtpmap) {
 							g_snprintf(buffer, 512,
@@ -4539,7 +4544,8 @@ done:
 						g_snprintf(buffer, 512,
 							"m=application 1 DTLS/SCTP 5000\r\n"
 							"c=IN IP4 1.1.1.1\r\n"
-							"a=sctpmap:5000 webrtc-datachannel 16\r\n");
+							"a=mid:%s\r\n"
+							"a=sctpmap:5000 webrtc-datachannel 16\r\n", stream->mid);
 						g_strlcat(sdptemp, buffer, 2048);
 					}
 #endif

@@ -521,8 +521,23 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			else
 				medium = janus_handle_webrtc_medium_create(handle, JANUS_MEDIA_DATA);
 		}
+		/* Check if the offer contributed an mid */
+		GList *tempA = m->attributes;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+			if(a->name) {
+				if(!strcasecmp(a->name, "mid")) {
+					/* Found mid attribute */
+					if(medium->mid == NULL)
+						medium->mid = g_strdup(a->value);
+					if(handle->pc_mid == NULL)
+						handle->pc_mid = g_strdup(a->value);
+				}
+			}
+			tempA = tempA->next;
+		}
 		if(medium->mid == NULL) {
-			/* We need a mid as well */
+			/* No mid provided, generate one now */
 			char mid[5];
 			memset(mid, 0, sizeof(mid));
 			g_snprintf(mid, sizeof(mid), "%d", mlines);
@@ -957,6 +972,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "setup")
 					|| !strcasecmp(a->name, "connection")
 					|| !strcasecmp(a->name, "group")
+					|| !strcasecmp(a->name, "mid")
 					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
 					|| !strcasecmp(a->name, "rid")
