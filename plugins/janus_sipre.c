@@ -2306,7 +2306,7 @@ static void *janus_sipre_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
 				goto error;
 			}
-			session->sdp->o_version++;
+			session->sdp->o_version = janus_get_real_time();
 			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, FALSE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error manipulating SDP\n");
