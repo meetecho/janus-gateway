@@ -2397,14 +2397,11 @@ static void *janus_textroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
 			/* Send an offer (whether it's for an ICE restart or not) */
-			if(sdp_update) {
-				/* Renegotiation: increase version */
-				session->sdp_version++;
-			} else {
+			if(!sdp_update) {
 				/* New session: generate new values */
-				session->sdp_version = 1;	/* This needs to be increased when it changes */
 				session->sdp_sessid = janus_get_real_time();
 			}
+			session->sdp_version = janus_get_real_time();
 			char sdp[500];
 			g_snprintf(sdp, sizeof(sdp), sdp_template,
 				session->sdp_sessid, session->sdp_version);
