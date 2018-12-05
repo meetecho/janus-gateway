@@ -1927,6 +1927,7 @@ function Janus(gatewayCallbacks) {
 					var s = config.myStream.getAudioTracks()[0];
 					Janus.log("Removing audio track:", s);
 					config.myStream.removeTrack(s);
+					pluginHandle.onlocaltrack(s, false);
 					try {
 						s.stop();
 					} catch(e) {};
@@ -1953,6 +1954,7 @@ function Janus(gatewayCallbacks) {
 					var s = config.myStream.getVideoTracks()[0];
 					Janus.log("Removing video track:", s);
 					config.myStream.removeTrack(s);
+					pluginHandle.onlocaltrack(s, false);
 					try {
 						s.stop();
 					} catch(e) {};
