@@ -54,9 +54,9 @@ stream-name: {
 	[settings]
 }
 \endverbatim
- * 
+ *
  * with the allowed settings listed below:
- * 
+ *
  * \verbatim
 type = rtp|live|ondemand|rtsp
        rtp = stream originated by an external tool (e.g., gstreamer or
@@ -5403,7 +5403,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	source->curldata->size = 0;
 	JANUS_LOG(LOG_VERB, "Sending PLAY request...\n");
 	curl_easy_setopt(source->curl, CURLOPT_RTSP_STREAM_URI, source->rtsp_url);
-	curl_easy_setopt(source->curl, CURLOPT_RANGE, "0.000-");
+	curl_easy_setopt(source->curl, CURLOPT_RANGE, "npt=0.000-");
 	curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_PLAY);
 	int res = curl_easy_perform(source->curl);
 	if(res != CURLE_OK) {
