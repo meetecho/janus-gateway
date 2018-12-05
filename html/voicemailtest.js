@@ -104,7 +104,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -171,10 +171,10 @@ $(document).ready(function() {
 										vmailtest.handleRemoteJsep({jsep: jsep});
 									}
 								},
-								onlocalstream: function(stream) {
+								onlocaltrack: function(track, on) {
 									// We're not going to attach the local audio stream
 								},
-								onremotestream: function(stream) {
+								onremotetrack: function(track, mid, on) {
 									// We're not going to receive anything from the plugin
 								},
 								oncleanup: function() {

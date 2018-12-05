@@ -255,7 +255,7 @@ $(document).ready(function() {
 										$('#videos').removeClass('hide').show();
 									}
 									if(track.kind === "audio") {
-										// We mostly local audio tracks, they'd generate echo anyway
+										// We ignore local audio tracks, they'd generate echo anyway
 										if(localVideos === 0) {
 											// No video, at least for now: show a placeholder
 											if($('#videoleft .no-video-container').length === 0) {
