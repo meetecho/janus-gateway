@@ -2486,8 +2486,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, len);
 					medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(rtcp_ssrc));
 					if(medium == NULL) {
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SSRC, dropping RTCP packet (SSRC %"SCNu32")...\n",
-							handle->handle_id, rtcp_ssrc);
+						if(rtcp_ssrc > 0) {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SSRC, dropping RTCP packet (SSRC %"SCNu32")...\n",
+								handle->handle_id, rtcp_ssrc);
+						}
 						return;
 					}
 				}
