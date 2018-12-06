@@ -2189,9 +2189,8 @@ static void *janus_sip_handler(void *data) {
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "sip %s", session->account.username);
 				janus_refcount_increase(&session->ref);
-				session->relayer_thread = g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
+				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
-					session->relayer_thread = NULL;
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
