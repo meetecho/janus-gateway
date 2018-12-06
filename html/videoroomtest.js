@@ -323,7 +323,7 @@ $(document).ready(function() {
 										return;
 									}
 									$('#videos').removeClass('hide').show();
-									if($('#videolocal video').length === 0) {
+									if($('#mute').length === 0) {
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
 										$('#mute').click(toggleMute);
@@ -648,10 +648,6 @@ function newRemoteFeed(id, display, audio, video) {
 					remoteFeed.spinner.stop();
 					remoteFeed.spinner = null;
 				}
-				var addButtons = false;
-				if($('#videoremote'+remoteFeed.rfindex + ' audio').length === 0 && $('#videoremote'+remoteFeed.rfindex + ' video').length === 0) {
-					addButtons = true;
-				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
@@ -680,23 +676,20 @@ function newRemoteFeed(id, display, audio, video) {
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
-				}
-				if(!addButtons)
-					return;
-				// TODO This isn't working right now
-				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-						Janus.webRTCAdapter.browserDetails.browser === "safari") {
-					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
-					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
-						// Display updated bitrate, if supported
-						var bitrate = remoteFeed.getBitrate();
-						$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
-						// Check if the resolution changed too
-						var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-						var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
-						if(width > 0 && height > 0)
-							$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					}, 1000);
+					// Note: we'll need this for additional videos too
+					if(!bitrateTimer) {
+						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
+						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+							// Display updated bitrate, if supported
+							var bitrate = remoteFeed.getBitrate();
+							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+							// Check if the resolution changed too
+							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
+							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+							if(width > 0 && height > 0)
+								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+						}, 1000);
+					}
 				}
 			},
 			oncleanup: function() {

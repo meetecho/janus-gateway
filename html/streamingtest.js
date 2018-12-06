@@ -242,8 +242,23 @@ $(document).ready(function() {
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
 										$('#stream').append('<video class="rounded centered hide" id="remotevideo' + mid + '" width=320 height=240 autoplay playsinline/>');
+										// Note: we'll need this for additional videos too
+										if(!bitrateTimer) {
+											$('#curbitrate').removeClass('hide').show();
+											bitrateTimer = setInterval(function() {
+												// Display updated bitrate, if supported
+												var bitrate = streaming.getBitrate();
+												//~ Janus.debug("Current bitrate is " + streaming.getBitrate());
+												$('#curbitrate').text(bitrate);
+												// Check if the resolution changed too
+												var width = $("#remotevideo" + mid).get(0).videoWidth;
+												var height = $("#remotevideo" + mid).get(0).videoHeight;
+												if(width > 0 && height > 0)
+													$('#curres').removeClass('hide').text(width+'x'+height).show();
+											}, 1000);
+										}
 									}
-									// Show the stream and hide the spinner when we get a playing event
+									// Play the stream and hide the spinner when we get a playing event
 									$("#remotevideo" + mid).bind("playing", function (ev) {
 										$('#waitingvideo').remove();
 										if(spinner !== null && spinner !== undefined)
@@ -267,19 +282,6 @@ $(document).ready(function() {
 									Janus.attachMediaStream($('#remotevideo' + mid).get(0), stream);
 									if(!addButtons)
 										return;
-									// TODO This isn't working right now
-									$('#curbitrate').removeClass('hide').show();
-									bitrateTimer = setInterval(function() {
-										// Display updated bitrate, if supported
-										var bitrate = streaming.getBitrate();
-										//~ Janus.debug("Current bitrate is " + streaming.getBitrate());
-										$('#curbitrate').text(bitrate);
-										// Check if the resolution changed too
-										var width = $("#remotevideo" + mid).get(0).videoWidth;
-										var height = $("#remotevideo" + mid).get(0).videoHeight;
-										if(width > 0 && height > 0)
-											$('#curres').removeClass('hide').text(width+'x'+height).show();
-									}, 1000);
 								},
 								ondataopen: function(data) {
 									Janus.log("The DataChannel is available!");
