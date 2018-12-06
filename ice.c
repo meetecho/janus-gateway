@@ -2594,6 +2594,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						 * (see https://groups.google.com/forum/#!topic/discuss-webrtc/5yuZjV7lkNc)
 						 * Check the local SSRC, compare it to what we have */
 						guint32 rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, len);
+						if(rtcp_ssrc == 0) {
+							/* No SSRC, maybe an empty RR? */
+							return;
+						}
 						if(rtcp_ssrc == stream->audio_ssrc) {
 							video = 0;
 						} else if(rtcp_ssrc == stream->video_ssrc) {
@@ -2611,6 +2615,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						/* Check the remote SSRC, compare it to what we have: in case
 						 * we're simulcasting, let's compare to the other SSRCs too */
 						guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
+						if(rtcp_ssrc == 0) {
+							/* No SSRC, maybe an empty RR? */
+							return;
+						}
 						if(rtcp_ssrc == stream->audio_ssrc_peer) {
 							video = 0;
 						} else if(rtcp_ssrc == stream->video_ssrc_peer[0]) {
