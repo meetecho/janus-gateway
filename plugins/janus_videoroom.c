@@ -6323,7 +6323,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			}
 		} else {
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
-			janus_rtp_header_update(packet->data, &subscriber->acontext, TRUE);
+			janus_rtp_header_update(packet->data, &subscriber->vcontext, TRUE);
 			/* Send the packet */
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, -1, packet->is_video, (char *)packet->data, packet->length);
