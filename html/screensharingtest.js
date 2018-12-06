@@ -61,6 +61,8 @@ var role = null;
 var room = null;
 var source = null;
 
+var localTracks = {}, localVideos = 0,
+	remoteTracks = {}, remoteVideos = 0;
 var spinner = null;
 
 
@@ -135,6 +137,12 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#screencapture").parent().unblock();
@@ -146,6 +154,10 @@ $(document).ready(function() {
 											window.location.reload();
 										});
 									}
+								},
+								slowLink: function(uplink, nacks) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -221,18 +233,72 @@ $(document).ready(function() {
 										screentest.handleRemoteJsep({jsep: jsep});
 									}
 								},
-								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(stream);
-									$('#screenmenu').hide();
-									$('#room').removeClass('hide').show();
-									if($('#screenvideo').length === 0) {
-										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
+								onlocaltrack: function(track, on) {
+									Janus.debug(" ::: Got a local track event :::");
+									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										var stream = localTracks[track.id];
+										if(stream) {
+											try {
+												var tracks = stream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst !== null && mst !== undefined)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										if(track.kind === "video") {
+											$('#screenvideo' + track.id).remove();
+											localVideos--;
+											if(localVideos === 0) {
+												// No video, at least for now: show a placeholder
+												if($('#screencapture .no-video-container').length === 0) {
+													$('#screencapture').append(
+														'<div class="no-video-container">' +
+															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<span class="no-video-text">No webcam available</span>' +
+														'</div>');
+												}
+											}
+										}
+										delete localTracks[track.id];
+										return;
 									}
-									Janus.attachMediaStream($('#screenvideo').get(0), stream);
+									// If we're here, a new track was added
+									var stream = localTracks[track.id];
+									if(stream) {
+										// We've been here already
+										return;
+									}
+									$('#screenmenu').hide();
+									if(track.kind === "audio") {
+										// We ignore local audio tracks, they'd generate echo anyway
+										if(localVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#screencapture .no-video-container').length === 0) {
+												$('#screencapture').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No webcam available</span>' +
+													'</div>');
+											}
+										}
+									} else {
+										// New video track: create a stream out of it
+										localVideos++;
+										$('#screencapture .no-video-container').remove();
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										localTracks[track.id] = stream;
+										Janus.log("Created local stream:", stream);
+										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + track.id + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										Janus.attachMediaStream($('#screenvideo' + track.id).get(0), stream);
+									}
 									if(screentest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											screentest.webrtcStuff.pc.iceConnectionState !== "connected") {
-										$("#screencapture").parent().block({
+										$("#screencapture").parent().parent().block({
 											message: '<b>Publishing...</b>',
 											css: {
 												border: 'none',
@@ -242,7 +308,7 @@ $(document).ready(function() {
 										});
 									}
 								},
-								onremotestream: function(stream) {
+								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
@@ -250,6 +316,8 @@ $(document).ready(function() {
 									$('#screencapture').empty();
 									$("#screencapture").parent().unblock();
 									$('#room').hide();
+									localTracks = {};
+									localVideos = 0;
 								}
 							});
 					},
@@ -394,6 +462,8 @@ function newRemoteFeed(id, display) {
 			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
+				remoteFeed.remoteTracks = {};
+				remoteFeed.remoteVideos = 0;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
@@ -403,6 +473,16 @@ function newRemoteFeed(id, display) {
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
 				bootbox.alert("Error attaching plugin... " + error);
+			},
+			iceState: function(state) {
+				Janus.log("ICE state (feed #" + remoteFeed.rfindex + ") changed to " + state);
+			},
+			webrtcState: function(on) {
+				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
+			},
+			slowLink: function(uplink, nacks) {
+				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+					" packets on this PeerConnection (feed #" + remoteFeed.rfindex + ", " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::");
@@ -446,24 +526,76 @@ function newRemoteFeed(id, display) {
 						});
 				}
 			},
-			onlocalstream: function(stream) {
+			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotestream: function(stream) {
-				if($('#screenvideo').length === 0) {
-					// No remote video yet
-					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
-					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay playsinline/>');
-					// Show the video, hide the spinner and show the resolution when we get a playing event
-					$("#screenvideo").bind("playing", function () {
-						$('#waitingvideo').remove();
-						$('#screenvideo').removeClass('hide');
-						if(spinner !== null && spinner !== undefined)
-							spinner.stop();
-						spinner = null;
-					});
+			onremotetrack: function(track, mid, on) {
+				Janus.debug(" ::: Got a remote track event :::");
+				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+				if(!on) {
+					// Track removed, get rid of the stream and the rendering
+					var stream = remoteTracks[mid];
+					if(stream) {
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					}
+					$('#screenvideo' + mid).remove();
+					if(track.kind === "video") {
+						remoteVideos--;
+						if(remoteVideos === 0) {
+							// No video, at least for now: show a placeholder
+							if($('#screencapture .no-video-container').length === 0) {
+								$('#screencapture').append(
+									'<div class="no-video-container">' +
+										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<span class="no-video-text">No remote video available</span>' +
+									'</div>');
+							}
+						}
+					}
+					delete remoteTracks[mid];
+					return;
 				}
-				Janus.attachMediaStream($('#screenvideo').get(0), stream);
+				// If we're here, a new track was added
+				if(spinner !== undefined && spinner !== null) {
+					spinner.stop();
+					spinner = null;
+				}
+				if(track.kind === "audio") {
+					// New audio track: create a stream out of it, and use a hidden <audio> element
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					remoteTracks[mid] = stream;
+					Janus.log("Created remote audio stream:", stream);
+					$('#screencapture').append('<audio class="hide" id="screenvideo' + mid + '" autoplay playsinline/>');
+					Janus.attachMediaStream($('#screenvideo' + mid).get(0), stream);
+					if(remoteVideos === 0) {
+						// No video, at least for now: show a placeholder
+						if($('#screencapture .no-video-container').length === 0) {
+							$('#screencapture').append(
+								'<div class="no-video-container">' +
+									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<span class="no-video-text">No remote video available</span>' +
+								'</div>');
+						}
+					}
+				} else {
+					// New video track: create a stream out of it
+					remoteVideos++;
+					$('#screencapture .no-video-container').remove();
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					remoteFeed.remoteTracks[mid] = stream;
+					Janus.log("Created remote video stream:", stream);
+					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=320 height=240 autoplay playsinline/>');
+					Janus.attachMediaStream($('#screenvideo' + mid).get(0), stream);
+				}
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
@@ -471,6 +603,8 @@ function newRemoteFeed(id, display) {
 				if(spinner !== null && spinner !== undefined)
 					spinner.stop();
 				spinner = null;
+				remoteFeed.remoteTracks = {};
+				remoteFeed.remoteVideos = 0;
 			}
 		});
 }

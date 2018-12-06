@@ -103,6 +103,16 @@ $(document).ready(function() {
 									Janus.error("  -- Error attaching plugin... ", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+								},
+								slowLink: function(uplink, nacks) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(msg);
