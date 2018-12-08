@@ -13,9 +13,9 @@
 # different queues for each of them (e.g., from-janus-1/to-janus-1 and
 # from-janus-2/to-janus-2), or otherwise both the instances will make
 # use of the same queues and messages will get lost. The integration
-# is disabled by default, so set enable=yes if you want to use it.
+# is disabled by default, so set enabled=true if you want to use it.
 general: {
-	enable = false						# Whether the support must be enabled
+	enabled = false						# Whether the support must be enabled
 	json = "indented"					# Whether the JSON messages should be indented (default),
 										# plain (no indentation) or compact (no indentation and no spaces)
 	host = "localhost"					# The address of the RabbitMQ server
@@ -26,7 +26,7 @@ general: {
 	to_janus = "to-janus"				# Name of the queue for incoming messages
 	from_janus = "from-janus"			# Name of the queue for outgoing messages
 	#janus_exchange = "janus-exchange"	# Exchange for outgoing messages, using default if not provided
-	#ssl_enable = false					# Whether ssl support must be enabled
+	#ssl_enabled = false					# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled
 	#ssl_verify_hostname = true			# Whether hostname verification must be enabled
 
@@ -41,7 +41,7 @@ general: {
 # Admin API messaging. The same RabbitMQ server is supposed to be used.
 # Notice that by default the Admin API support via RabbitMQ is disabled.
 admin: {
-	#admin_enable = false					# Whether the support must be enabled
+	#admin_enabled = false					# Whether the support must be enabled
 	#to_janus_admin = "to-janus-admin"		# Name of the queue for incoming messages
 	#from_janus_admin = "from-janus-admin"	# Name of the queue for outgoing messages
 }

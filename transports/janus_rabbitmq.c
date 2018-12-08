@@ -242,14 +242,21 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		password = g_strdup("guest");
 
 	/* SSL config*/
-	gboolean ssl_enable = FALSE;
+	gboolean ssl_enabled = FALSE;
 	gboolean ssl_verify_peer = FALSE;
 	gboolean ssl_verify_hostname = FALSE;
-	item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enabled");
+	if(item == NULL) {
+		/* Try legacy property */
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
+		if (item && item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'ssl_enable' property, please update it to 'ssl_enabled' instead\n");
+		}
+	}
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_INFO, "RabbitMQ SSL support disabled\n");
 	} else {
-		ssl_enable = TRUE;
+		ssl_enabled = TRUE;
 		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cacert");
 		if(item && item->value)
 			ssl_cacert_file = g_strdup(item->value);
@@ -268,7 +275,14 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	}
 
 	/* Now check if the Janus API must be supported */
-	item = janus_config_get(config, config_general, janus_config_type_item, "enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
+	if(item == NULL) {
+		/* Try legacy property */
+		item = janus_config_get(config, config_general, janus_config_type_item, "enable");
+		if (item && item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'enable' property, please update it to 'enabled' instead\n");
+		}
+	}
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Janus API)\n");
 	} else {
@@ -299,7 +313,14 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_janus_api_enabled = TRUE;
 	}
 	/* Do the same for the admin API */
-	item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enable");
+	item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
+	if(item == NULL) {
+		/* Try legacy property */
+		item = janus_config_get(config, config_general, janus_config_type_item, "admin_enable");
+		if (item && item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'admin_enable' property, please update it to 'admin_enabled' instead\n");
+		}
+	}
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Admin API)\n");
 	} else {
@@ -330,7 +351,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		amqp_socket_t *socket = NULL;
 		int status;
 		JANUS_LOG(LOG_VERB, "Creating RabbitMQ socket...\n");
-		if (ssl_enable) {
+		if (ssl_enabled) {
 			socket = amqp_ssl_socket_new(rmq_client->rmq_conn);
 			if(socket == NULL) {
 				JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
