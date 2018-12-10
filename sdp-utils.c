@@ -137,6 +137,19 @@ janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type) {
 	return NULL;
 }
 
+janus_sdp_mline *janus_sdp_mline_find_by_index(janus_sdp *sdp, int index) {
+	if(sdp == NULL || index < 0)
+		return NULL;
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		if(m->index == index)
+			return m;
+		ml = ml->next;
+	}
+	return NULL;
+}
+
 int janus_sdp_mline_remove(janus_sdp *sdp, janus_sdp_mtype type) {
 	if(sdp == NULL)
 		return -1;
@@ -579,13 +592,13 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	return imported;
 }
 
-int janus_sdp_remove_payload_type(janus_sdp *sdp, int mindex, int pt) {
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int index, int pt) {
 	if(!sdp || pt < 0)
 		return -1;
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		if(mindex != -1 && mindex != m->index) {
+		if(index != -1 && index != m->index) {
 			ml = ml->next;
 			continue;
 		}
@@ -603,14 +616,14 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int mindex, int pt) {
 			}
 			ma = ma->next;
 		}
-		if(mindex != -1)
+		if(index != -1)
 			break;
 		ml = ml->next;
 	}
 	return 0;
 }
 
-int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec) {
+int janus_sdp_get_codec_pt(janus_sdp *sdp, int index, const char *codec) {
 	if(sdp == NULL || codec == NULL)
 		return -1;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
@@ -664,7 +677,7 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec) {
 			ml = ml->next;
 			continue;
 		}
-		if(mindex != -1 && mindex != m->index) {
+		if(index != -1 && index != m->index) {
 			ml = ml->next;
 			continue;
 		}
@@ -679,14 +692,14 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec) {
 			}
 			ma = ma->next;
 		}
-		if(mindex != -1)
+		if(index != -1)
 			break;
 		ml = ml->next;
 	}
 	return -1;
 }
 
-const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt) {
+const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt) {
 	if(sdp == NULL || pt < 0)
 		return NULL;
 	if(pt == 0)
@@ -698,7 +711,7 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt) {
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		if(mindex != -1 && mindex != m->index) {
+		if(index != -1 && index != m->index) {
 			ml = ml->next;
 			continue;
 		}
@@ -736,7 +749,7 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt) {
 			}
 			ma = ma->next;
 		}
-		if(mindex != -1)
+		if(index != -1)
 			break;
 		ml = ml->next;
 	}
@@ -883,7 +896,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 	return sdp;
 }
 
-void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec) {
+void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec) {
 	if(sdp == NULL)
 		return;
 	janus_refcount_increase(&sdp->ref);
@@ -892,7 +905,7 @@ void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mi
 	while(temp) {
 		/* Which media are available? */
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(mindex != -1 && mindex != m->index) {
+		if(index != -1 && index != m->index) {
 			temp = temp->next;
 			continue;
 		}
@@ -908,14 +921,14 @@ void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mi
 				}
 			}
 		}
-		if(found || mindex != -1)
+		if(found || index != -1)
 			break;
 		temp = temp->next;
 	}
 	janus_refcount_decrease(&sdp->ref);
 }
 
-void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec) {
+void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec) {
 	if(sdp == NULL)
 		return;
 	janus_refcount_increase(&sdp->ref);
@@ -924,7 +937,7 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int minde
 	while(temp) {
 		/* Which media are available? */
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(mindex != -1 && mindex != m->index) {
+		if(index != -1 && index != m->index) {
 			temp = temp->next;
 			continue;
 		}
@@ -938,7 +951,7 @@ void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int minde
 					*codec = c;
 			}
 		}
-		if(found || mindex != -1)
+		if(found || index != -1)
 			break;
 		temp = temp->next;
 	}

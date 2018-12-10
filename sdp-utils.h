@@ -108,7 +108,7 @@ const char *janus_sdp_mdirection_str(janus_sdp_mdirection direction);
  * @param[in] type Whether we're looking at an audio or video codec
  * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
  * @param[out] codec The audio or video codec that was found */
-void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec);
+void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec);
 /*! \brief Helper method to return the first audio and video codecs in an SDP offer or answer,
  * (no matter whether we personally prefer them ourselves or not)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
@@ -118,7 +118,7 @@ void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int mi
  * @param[in] type Whether we're looking at an audio or video codec
  * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
  * @param[out] codec The audio or video codec that was found */
-void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int mindex, const char **codec);
+void janus_sdp_find_first_codecs(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec);
 /*! \brief Helper method to match a codec to one of the preferred codecs
  * \note Don't free the returned value, as it's a constant value
  * @param[in] type The type of media to match
@@ -174,17 +174,20 @@ janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, cons
  * @param[in] mline The janus_sdp_mline instance to free */
 void janus_sdp_mline_destroy(janus_sdp_mline *mline);
 /*! \brief Helper method to get the janus_sdp_mline associated to a media type
- * @note This currently returns the first m-line of the specified type it finds: in
- * general, it shouldn't be an issue as we currently only support a single stream
- * of the same type per session anyway... this will need to be fixed in the future.
+ * @note This currently returns the first m-line of the specified type it finds: as
+ * such, it's only here for backwards compatibility with plugins not doing multistream.
  * @param[in] sdp The Janus SDP object to search
  * @param[in] type The type of media to search
  * @returns The janus_sdp_mline instance, if found, or NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type);
+/*! \brief Helper method to get the janus_sdp_mline by its index
+ * @param[in] sdp The Janus SDP object to search
+ * @param[in] index The index of the m-line in the SDP
+ * @returns The janus_sdp_mline instance, if found, or NULL otherwise */
+janus_sdp_mline *janus_sdp_mline_find_by_index(janus_sdp *sdp, int index);
 /*! \brief Helper method to remove the janus_sdp_mline associated to a media type from the SDP
- * @note This currently removes the first m-line of the specified type it finds: in
- * general, it shouldn't be an issue as we currently only support a single stream
- * of the same type per session anyway... this will need to be fixed in the future.
+ * @note This currently removes the first m-line of the specified type it finds: as
+ * such, it's only here for backwards compatibility with plugins not doing multistream.
  * @param[in] sdp The Janus SDP object to modify
  * @param[in] type The type of media to remove
  * @returns 0 if successful, a negative integer otherwise */
@@ -345,24 +348,24 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 
 /*! \brief Helper to get the payload type associated to a specific codec in an m-line
  * @param sdp The Janus SDP instance to process
- * @param mindex The m-line to refer to (use -1 for the first m-line that matches)
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param codec The codec to find, as a string
  * @returns The payload type, if found, or -1 otherwise */
-int janus_sdp_get_codec_pt(janus_sdp *sdp, int mindex, const char *codec);
+int janus_sdp_get_codec_pt(janus_sdp *sdp, int index, const char *codec);
 
 /*! \brief Helper to get the codec name associated to a specific payload type in an m-line
  * @param sdp The Janus SDP instance to process
- * @param mindex The m-line to refer to (use -1 for the first m-line that matches)
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param pt The payload type to find
  * @returns The codec name, if found, or NULL otherwise */
-const char *janus_sdp_get_codec_name(janus_sdp *sdp, int mindex, int pt);
+const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt);
 
 /*! \brief Helper method to quickly remove all traces (m-line, rtpmap, fmtp, etc.) of a payload type
  * @param[in] sdp The janus_sdp object to remove the payload type from
  * @param[in] index The m-line to remove the payload type from (use -1 for the first m-line that matches)
  * @param[in] pt The payload type to remove
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_sdp_remove_payload_type(janus_sdp *sdp, int mindex, int pt);
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int index, int pt);
 
 /*! \brief Helper to get the rtpmap associated to a specific codec
  * @param codec The codec name, as a string (e.g., "opus")
