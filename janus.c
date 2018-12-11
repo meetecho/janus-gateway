@@ -2770,9 +2770,11 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	}
 
 	if(jsep != NULL && janus_events_is_enabled()) {
+		const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
+		const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
 		/* Notify event handlers as well */
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", sdp_type, sdp);
+			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", merged_sdp_type, merged_sdp);
 	}
 
 	janus_refcount_decrease(&plugin_session->ref);
