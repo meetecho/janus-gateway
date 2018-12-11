@@ -415,7 +415,6 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				buffer++;
 				int tot = len-1;
 				uint16_t psize = 0;
-				frameLen = 0;
 				while(tot > 0) {
 					memcpy(&psize, buffer, 2);
 					psize = ntohs(psize);

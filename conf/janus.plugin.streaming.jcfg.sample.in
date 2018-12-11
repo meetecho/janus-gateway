@@ -154,9 +154,9 @@ file-ondemand-sample: {
 # datachannel messages will be sent as usual, and not use RTP at all.
 #
 #data-example: {
-	#type = rtp
+	#type = "rtp"
 	#id = 15
-	#description = Datachannel stream from an UDP source
+	#description = "Datachannel stream from an UDP source"
 	#audio = false
 	#video = false
 	#data = true

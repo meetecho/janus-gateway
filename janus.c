@@ -2744,9 +2744,11 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	}
 
 	if(jsep != NULL && janus_events_is_enabled()) {
+		const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
+		const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
 		/* Notify event handlers as well */
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, handle->handle_id, handle->opaque_id, "local", sdp_type, sdp);
+			session->session_id, handle->handle_id, handle->opaque_id, "local", merged_sdp_type, merged_sdp);
 	}
 
 	janus_refcount_decrease(&plugin_session->ref);
@@ -2894,6 +2896,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				while(tempP) {
 					int ptype = GPOINTER_TO_INT(tempP->data);
 					int rtx_ptype = ptype+1;
+					if(rtx_ptype > 127)
+						rtx_ptype = 96;
 					while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype))
 							|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
 						rtx_ptype++;

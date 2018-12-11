@@ -331,9 +331,11 @@ typedef struct janus_nacked_packet {
 static gboolean janus_nacked_packet_cleanup(gpointer user_data) {
 	janus_nacked_packet *pkt = (janus_nacked_packet *)user_data;
 
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
-		pkt->medium->pc->handle->handle_id, pkt->seq_number, pkt->medium->ssrc_peer[pkt->vindex], pkt->vindex);
-	g_hash_table_remove(pkt->medium->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
+	if(pkt->medium && pkt->medium->pc && pkt->medium->pc->handle) {
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+			pkt->medium->pc->handle->handle_id, pkt->seq_number, pkt->medium->ssrc_peer[pkt->vindex], pkt->vindex);
+		g_hash_table_remove(pkt->medium->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
+	}
 
 	return G_SOURCE_REMOVE;
 }
@@ -3653,7 +3655,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 				}
 				/* Before encrypting, check if we need to copy the unencrypted payload (e.g., for rtx/90000) */
 				janus_rtp_packet *p = NULL;
-				if(max_nack_queue > 0 && medium->do_nacks &&
+				if(max_nack_queue > 0 && !pkt->retransmission && pkt->type == JANUS_ICE_PACKET_VIDEO && medium->do_nacks &&
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
 					/* Save the packet for retransmissions that may be needed later: start by
 					 * making room for two more bytes to store the original sequence number */
@@ -3729,7 +3731,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 						rtcp_context *rtcp_ctx = medium->rtcp_ctx[0];
 						g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
 					}
-					if(max_nack_queue > 0) {
+					if(max_nack_queue > 0 && !pkt->retransmission) {
 						/* Save the packet for retransmissions that may be needed later */
 						if(!medium->do_nacks) {
 							/* ... unless NACKs are disabled for this medium */
