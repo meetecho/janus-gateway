@@ -2946,6 +2946,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempP) {
 				int ptype = GPOINTER_TO_INT(tempP->data);
 				int rtx_ptype = ptype+1;
+				if(rtx_ptype > 127)
+					rtx_ptype = 96;
 				while(g_list_find(m->ptypes, GINT_TO_POINTER(rtx_ptype))
 						|| g_list_find(rtx_ptypes, GINT_TO_POINTER(rtx_ptype))) {
 					rtx_ptype++;
