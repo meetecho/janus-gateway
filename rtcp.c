@@ -942,14 +942,15 @@ uint32_t janus_rtcp_get_remb(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return 0;
 	/* Get REMB bitrate, if any */
 	int total = len;
+	int offset = 0;
 	while(rtcp) {
+		if(rtcp->version != 2)
+			break;
 		if(rtcp->type == RTCP_PSFB) {
 			gint fmt = rtcp->rc;
-			if(fmt == 15) {
+			if(fmt == 15 && offset < len - 24) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				janus_rtcp_fb_remb *remb = (janus_rtcp_fb_remb *)rtcpfb->fci;
 				if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
@@ -974,6 +975,9 @@ uint32_t janus_rtcp_get_remb(char *packet, int len) {
 		total -= length*4+4;
 		if(total <= 0)
 			break;
+		if (offset + (length + 1) * sizeof(uint32_t) + sizeof(rtcp) > len)
+			break;
+		offset += length*4+4;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	return 0;
