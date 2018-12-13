@@ -95,6 +95,8 @@
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
 	"authuser" : "<username to use to authenticate (overrides the one in the SIP URI); optional>",
+	"display_name" : "<display name to use when sending SIP REGISTER; optional>",
+	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
@@ -301,7 +303,8 @@
  *
 \verbatim
 {
-	"request" : "decline"
+	"request" : "decline",
+	"code" : <SIP code to be sent, if not set, 486 is used; optional>"
 }
 \endverbatim
  *
