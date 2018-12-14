@@ -8,12 +8,44 @@ AC_ENABLE_STATIC(no)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_SILENT_RULES([yes])
 
-AC_GNU_SOURCE
+#AC_GNU_SOURCE has been deprecated (https://www.gnu.org/software/autoconf/manual/autoconf-2.69/html_node/Obsolete-Macros.html)
+AC_USE_SYSTEM_EXTENSIONS
 
 AC_PROG_CC
 
 LT_PREREQ([2.2])
 LT_INIT
+
+# Common CFLAGS
+AX_APPEND_COMPILE_FLAGS([ \
+	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
+	-Wunused -fstrict-aliasing -Wextra -Wformat=2 -Winit-self -Winline \
+	-Wpacked -Wpointer-arith -Wmissing-format-attribute -Wmissing-noreturn \
+	-Wnested-externs -Wstrict-prototypes  \
+	-Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
+	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
+	-Wmissing-include-dirs -Wno-aggregate-return  \
+	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537 \
+	-Wno-undef \
+	-Wno-redundant-decls \
+	-fstack-protector-all -ggdb3 -fPIC -pthread \
+])
+
+AM_CONDITIONAL([USE_CLANG], [test "x$CC" = "xclang"])
+AM_COND_IF([USE_CLANG],
+	# Specific clang flags
+	[AX_APPEND_COMPILE_FLAGS([ \
+		-Wl,--export-dynamic \
+		-Wno-initializer-overrides \
+	])],
+	# Specific gcc flags
+	[AX_APPEND_COMPILE_FLAGS([ \
+		-rdynamic \
+		-Wno-override-init \
+		-Wunused-but-set-variable \
+		-Wunsafe-loop-optimizations \
+	])
+])
 
 JANUS_VERSION=60
 AC_SUBST(JANUS_VERSION)
@@ -865,7 +897,9 @@ AC_OUTPUT
 # Summary
 ##
 echo
-
+AM_COND_IF([USE_CLANG],
+	[echo "using clang compiler:      yes"],
+	[echo "using clang compiler:      no"])
 AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
