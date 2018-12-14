@@ -2944,7 +2944,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 					}
 					if(lost_pkt->length < 0) {
 						g_atomic_int_set(&participant->decoding, 0);
-						JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", lost_pkt->length, opus_strerror(lost_pkt->length));
+						JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", lost_pkt->length, opus_strerror(lost_pkt->length));
 						g_free(lost_pkt->data);
 						g_free(lost_pkt);
 						return;
@@ -2975,7 +2975,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		}
 		g_atomic_int_set(&participant->decoding, 0);
 		if(pkt->length < 0) {
-			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %"SCNu16" (%s)\n", pkt->length, opus_strerror(pkt->length));
+			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
 			g_free(pkt->data);
 			g_free(pkt);
 			return;
