@@ -29,7 +29,6 @@ AX_APPEND_COMPILE_FLAGS([ \
 	-Wno-undef \
 	-Wno-redundant-decls \
 	-fstack-protector-all -ggdb3 -fPIC -pthread \
-	-Wl,--export-dynamic \
 ])
 
 AM_CONDITIONAL([USE_CLANG], [test "x$CC" = "xclang"])
@@ -44,6 +43,10 @@ AM_COND_IF([USE_CLANG],
 		-Wunused-but-set-variable \
 		-Wunsafe-loop-optimizations \
 	])
+])
+
+AX_APPEND_LINK_FLAGS([ \
+	-Wl,--export-dynamic \
 ])
 
 JANUS_VERSION=60
