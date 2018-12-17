@@ -29,18 +29,17 @@ AX_APPEND_COMPILE_FLAGS([ \
 	-Wno-undef \
 	-Wno-redundant-decls \
 	-fstack-protector-all -ggdb3 -fPIC -pthread \
+	-Wl,--export-dynamic \
 ])
 
 AM_CONDITIONAL([USE_CLANG], [test "x$CC" = "xclang"])
 AM_COND_IF([USE_CLANG],
 	# Specific clang flags
 	[AX_APPEND_COMPILE_FLAGS([ \
-		-Wl,--export-dynamic \
 		-Wno-initializer-overrides \
 	])],
 	# Specific gcc flags
 	[AX_APPEND_COMPILE_FLAGS([ \
-		-rdynamic \
 		-Wno-override-init \
 		-Wunused-but-set-variable \
 		-Wunsafe-loop-optimizations \
@@ -897,9 +896,7 @@ AC_OUTPUT
 # Summary
 ##
 echo
-AM_COND_IF([USE_CLANG],
-	[echo "using clang compiler:      yes"],
-	[echo "using clang compiler:      no"])
+echo "using compiler:            $CC"
 AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
