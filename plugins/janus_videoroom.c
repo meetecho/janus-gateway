@@ -2004,11 +2004,9 @@ static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *su
 	char mid[5];
 	g_snprintf(mid, sizeof(mid), "%d", stream->mindex);
 	stream->mid = g_strdup(mid);
-	janus_mutex_lock(&subscriber->streams_mutex);
 	subscriber->streams = g_list_append(subscriber->streams, stream);
 	g_hash_table_insert(subscriber->streams_byid, GINT_TO_POINTER(stream->mindex), stream);
 	g_hash_table_insert(subscriber->streams_bymid, g_strdup(stream->mid), stream);
-	janus_mutex_unlock(&subscriber->streams_mutex);
 	/* Initialize the stream */
 	janus_rtp_switching_context_reset(&stream->context);
 	stream->send = TRUE;
@@ -2035,6 +2033,60 @@ static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *su
 	janus_refcount_increase(&stream->ref);
 	janus_refcount_increase(&ps->ref);
 	janus_mutex_unlock(&ps->subscribers_mutex);
+	return;
+}
+
+static int janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subscriber *subscriber,
+		janus_videoroom_publisher_stream *ps) {
+	if(subscriber == NULL || ps == NULL)
+		return -1;
+	/* First of all, let's check if there's an m-line we can reuse */
+	gboolean found = FALSE;
+	GList *temp = subscriber->streams;
+	while(temp) {
+		janus_videoroom_subscriber_stream *stream = (janus_videoroom_subscriber_stream *)temp->data;
+		if(stream->ps != NULL && stream->type == ps->type && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
+			/* We already have a datachannel m-line, no need for others */
+			return -2;
+		}
+		if(stream->ps == NULL && stream->type == ps->type) {
+			/* There's an empty m-line of the right type, check if codecs match */
+			if(stream->type == JANUS_VIDEOROOM_MEDIA_DATA ||
+					(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && stream->acodec == ps->acodec) ||
+					(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO && stream->vcodec == ps->vcodec)) {
+				found = TRUE;
+				JANUS_LOG(LOG_WARN, "Reusing m-line %d for this subscription\n", stream->mindex);
+				stream->ps = ps;
+				janus_rtp_simulcasting_context_reset(&stream->sim_context);
+				if(ps->simulcast) {
+					stream->sim_context.substream_target = 2;
+					stream->sim_context.templayer_target = 2;
+				}
+				janus_vp8_simulcast_context_reset(&stream->vp8_context);
+				if(ps->svc) {
+					/* This stream belongs to a room where VP9 SVC has been enabled,
+					 * let's assume we're interested in all layers for the time being */
+					stream->spatial_layer = -1;
+					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
+					stream->temporal_layer = -1;
+					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+				}
+				janus_mutex_lock(&ps->subscribers_mutex);
+				ps->subscribers = g_slist_append(ps->subscribers, stream);
+				/* The two streams reference each other */
+				janus_refcount_increase(&stream->ref);
+				janus_refcount_increase(&ps->ref);
+				janus_mutex_unlock(&ps->subscribers_mutex);
+				break;
+			}
+		}
+		temp = temp->next;
+	}
+	if(found)
+		return 0;
+	/* We couldn't find any, add a new one */
+	janus_videoroom_subscriber_stream_add(subscriber, ps, FALSE, FALSE, FALSE, FALSE);
+	return 0;
 }
 
 static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s) {
@@ -5389,6 +5441,7 @@ static void *janus_videoroom_handler(void *data) {
 				gboolean do_video = offer_video ? json_is_true(offer_video) : TRUE;
 				gboolean do_data = offer_data ? json_is_true(offer_data) : TRUE;
 				/* Initialize the subscriber streams */
+				gboolean data_added = FALSE;
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *s = json_array_get(feeds, i);
 					json_t *feed = json_object_get(s, "feed");
@@ -5410,13 +5463,26 @@ static void *janus_videoroom_handler(void *data) {
 							janus_mutex_unlock(&publisher->streams_mutex);
 							continue;
 						}
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && data_added) {
+							/* We already have a datachannel m-line */
+							continue;
+						}
 						janus_videoroom_subscriber_stream_add(subscriber, ps, legacy, do_audio, do_video, do_data);
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
+							data_added = TRUE;
 					} else {
 						/* Subscribe to all streams */
 						GList *temp = publisher->streams;
 						while(temp) {
 							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+							if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && data_added) {
+								/* We already have a datachannel m-line */
+								temp = temp->next;
+								continue;
+							}
 							janus_videoroom_subscriber_stream_add(subscriber, ps, legacy, do_audio, do_video, do_data);
+							if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
+								data_added = TRUE;
 							temp = temp->next;
 						}
 					}
@@ -5914,10 +5980,51 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_increase(&publisher->session->ref);
 					publishers = g_list_append(publishers, publisher);
 				}
-
-				/* TODO Update subscriptions, adding streams or replacing existing and inactive ones */
-
+				/* Update subscriptions, adding streams or replacing existing and inactive ones */
+				int changes = 0;
 				janus_mutex_lock(&subscriber->streams_mutex);
+				for(i=0; i<json_array_size(feeds); i++) {
+					json_t *s = json_array_get(feeds, i);
+					json_t *feed = json_object_get(s, "feed");
+					guint64 feed_id = json_integer_value(feed);
+					janus_mutex_lock(&subscriber->room->mutex);
+					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, &feed_id);
+					janus_mutex_unlock(&subscriber->room->mutex);
+					if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) || !publisher->session->started) {
+						JANUS_LOG(LOG_WARN, "Publisher '%"SCNu64"' not found, not subscribing...\n", feed_id);
+						continue;
+					}
+					/* Are we subscribing to this publisher as a whole or only to a single stream? */
+					const char *mid = json_string_value(json_object_get(s, "mid"));
+					if(mid != NULL) {
+						janus_mutex_lock(&publisher->streams_mutex);
+						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
+						janus_mutex_unlock(&publisher->streams_mutex);
+						if(ps == NULL) {
+							JANUS_LOG(LOG_WARN, "No mid '%s' in publisher '%"SCNu64"', not subscribing...\n", mid, feed_id);
+							continue;
+						}
+						if(janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps) == 0)
+							changes++;
+					} else {
+						janus_mutex_lock(&publisher->streams_mutex);
+						GList *temp = publisher->streams;
+						while(temp) {
+							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+							if(janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps) == 0)
+								changes++;
+							temp = temp->next;
+						}
+						janus_mutex_unlock(&publisher->streams_mutex);
+					}
+				}
+				if(changes == 0) {
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					/* Nothing changes, don't do anything */
+					JANUS_LOG(LOG_WARN, "No unsubscription done, skipping renegotiation\n");
+					janus_videoroom_message_free(msg);
+					continue;
+				}
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("updated"));
 				json_object_set_new(event, "room", json_integer(subscriber->room_id));
@@ -6028,6 +6135,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				if(changes == 0) {
+					janus_mutex_unlock(&subscriber->streams_mutex);
 					/* Nothing changes, don't do anything */
 					JANUS_LOG(LOG_WARN, "No unsubscription done, skipping renegotiation\n");
 					janus_videoroom_message_free(msg);
