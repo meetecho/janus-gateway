@@ -504,7 +504,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"ha1_secret", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0},
 	{"display_name", JSON_STRING, 0},
-	{"user_agent", JSON_STRING, 0}
+	{"user_agent", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -1104,7 +1104,7 @@ static void janus_sip_random_string(int length, char *buffer) {
 	}
 }
 
-static void parse_custom_headers(json_t *root, char *custom_headers) {
+static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers) {
 	custom_headers[0] = '\0';
 	json_t *headers = json_object_get(root, "headers");
 	if(headers) {
@@ -2253,7 +2253,7 @@ static void *janus_sip_handler(void *data) {
 			if(send_register) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
-				parse_custom_headers(root, (char *)&custom_headers);
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -2354,7 +2354,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			parse_custom_headers(root, (char *)&custom_headers);
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2675,7 +2675,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Check if the OK needs to be enriched with custom headers */
 			char custom_headers[2048];
-			parse_custom_headers(root, (char *)&custom_headers);
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* Send 200 OK */
 			if(!answer) {
 				if(session->transaction)

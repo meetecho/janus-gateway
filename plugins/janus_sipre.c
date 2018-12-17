@@ -158,7 +158,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
 	{"display_name", JSON_STRING, 0},
-        {"user_agent", JSON_STRING, 0}
+	{"user_agent", JSON_STRING, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -939,7 +939,7 @@ static void janus_sipre_random_string(int length, char *buffer) {
 	}
 }
 
-static void parse_custom_headers(json_t *root, char *custom_headers) {
+static void janus_sipre_parse_custom_headers(json_t *root, char *custom_headers) {
 	custom_headers[0] = '\0';
 	json_t *headers = json_object_get(root, "headers");
 	if(headers) {
@@ -1875,7 +1875,7 @@ static void *janus_sipre_handler(void *data) {
 			if(send_register) {
 				/* Check if the INVITE needs to be enriched with custom headers */
 				char custom_headers[2048];
-				parse_custom_headers(root, (char *)&custom_headers);
+				janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 				char *data = NULL;
 				if(strlen(custom_headers))
 					data = g_strdup(custom_headers);
@@ -1942,7 +1942,7 @@ static void *janus_sipre_handler(void *data) {
 			json_t *authuser = json_object_get(root, "authuser");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			parse_custom_headers(root, (char *)&custom_headers);
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2233,7 +2233,7 @@ static void *janus_sipre_handler(void *data) {
 			session->temp_sdp = sdp;
 			/* Check if the OK needs to be enriched with custom headers */
 			char custom_headers[2048];
-			parse_custom_headers(root, (char *)&custom_headers);
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 			char *data = NULL;
 			if(strlen(custom_headers))
 				data = g_strdup(custom_headers);
