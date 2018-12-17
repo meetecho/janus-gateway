@@ -1673,7 +1673,9 @@ function Janus(gatewayCallbacks) {
 				if(event.track) {
 					// Notify about the new track
 					var mid = event.transceiver ? event.transceiver.mid : event.track.id;
-					pluginHandle.onremotetrack(event.track, mid, true);
+					try {
+						pluginHandle.onremotetrack(event.track, mid, true);
+					} catch(e) {};
 					if(event.track.onended)
 						return;
 					Janus.log("Adding onended callback to track:", event.track);
@@ -1682,7 +1684,9 @@ function Janus(gatewayCallbacks) {
 						if(config.remoteStream) {
 							config.remoteStream.removeTrack(ev.target);
 							var mid = ev.transceiver ? ev.transceiver : ev.target.id;
-							pluginHandle.onremotetrack(ev.target, mid, false);
+							try {
+								pluginHandle.onremotetrack(ev.target, mid, false);
+							} catch(e) {};
 						}
 					}
 				}
@@ -1728,9 +1732,13 @@ function Janus(gatewayCallbacks) {
 				track.onended = function(ev) {
 					// FIXME What does this event contain? Is there a reference to the track?
 					Janus.log("Local track removed:", ev);
-					pluginHandle.onlocaltrack(ev.track, false);
+					try {
+						pluginHandle.onlocaltrack(ev.track, false);
+					} catch(e) {};
 				}
-				pluginHandle.onlocaltrack(track, true);
+				try {
+					pluginHandle.onlocaltrack(track, true);
+				} catch(e) {};
 			}
 		}
 		// Create offer/answer now
@@ -1927,7 +1935,9 @@ function Janus(gatewayCallbacks) {
 					var s = config.myStream.getAudioTracks()[0];
 					Janus.log("Removing audio track:", s);
 					config.myStream.removeTrack(s);
-					pluginHandle.onlocaltrack(s, false);
+					try {
+						pluginHandle.onlocaltrack(s, false);
+					} catch(e) {};
 					try {
 						s.stop();
 					} catch(e) {};
@@ -1954,7 +1964,9 @@ function Janus(gatewayCallbacks) {
 					var s = config.myStream.getVideoTracks()[0];
 					Janus.log("Removing video track:", s);
 					config.myStream.removeTrack(s);
-					pluginHandle.onlocaltrack(s, false);
+					try {
+						pluginHandle.onlocaltrack(s, false);
+					} catch(e) {};
 					try {
 						s.stop();
 					} catch(e) {};
