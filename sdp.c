@@ -1228,13 +1228,13 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* TODO Get rid of this ugly code */
 		if(m->type == JANUS_SDP_AUDIO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
-			a = janus_sdp_attribute_create("msid", "janus janusa0");
+			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
-			a = janus_sdp_attribute_create("msid", "janus janusv0");
+			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
