@@ -562,11 +562,6 @@ function newRemoteFeed(id, display, streams) {
 					room: myroom,
 					ptype: "subscriber",
 					streams: subscription,
-					//~ streams: [
-						//~ { feed: id, mid: "0" },
-						//~ { feed: id, mid: "1" },
-						//~ { feed: id, mid: "1" }
-					//~ ],
 					private_id: mypvtid
 				};
 				remoteFeed.send({"message": subscribe});
