@@ -316,12 +316,14 @@ $(document).ready(function() {
 								onlocaltrack: function(track, on) {
 									Janus.debug(" ::: Got a local track event :::");
 									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
+									// We use the track ID as name of the element, but it may contain invalid characters
+									var trackId = track.id.replace(/[{}]/g, "");
 									// Reset devices controls
 									$('#audio-device, #video-device').removeAttr('disabled');
 									$('#change-devices').removeAttr('disabled');
 									if(!on) {
 										// Track removed, get rid of the stream and the rendering
-										var stream = localTracks[track.id];
+										var stream = localTracks[trackId];
 										if(stream) {
 											try {
 												var tracks = stream.getTracks();
@@ -333,7 +335,7 @@ $(document).ready(function() {
 											} catch(e) {}
 										}
 										if(track.kind === "video") {
-											$('#myvideo' + track.id).remove();
+											$('#myvideo' + trackId).remove();
 											localVideos--;
 											if(localVideos === 0) {
 												// No video, at least for now: show a placeholder
@@ -346,11 +348,11 @@ $(document).ready(function() {
 												}
 											}
 										}
-										delete localTracks[track.id];
+										delete localTracks[trackId];
 										return;
 									}
 									// If we're here, a new track was added
-									var stream = localTracks[track.id];
+									var stream = localTracks[trackId];
 									if(stream) {
 										// We've been here already
 										return;
@@ -376,10 +378,10 @@ $(document).ready(function() {
 										$('#videoleft .no-video-container').remove();
 										stream = new MediaStream();
 										stream.addTrack(track.clone());
-										localTracks[track.id] = stream;
+										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
-										$('#videoleft').append('<video class="rounded centered" id="myvideo' + track.id + '" width=320 height=240 autoplay playsinline muted="muted"/>');
-										Janus.attachMediaStream($('#myvideo' + track.id).get(0), stream);
+										$('#videoleft').append('<video class="rounded centered" id="myvideo' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
 									}
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
