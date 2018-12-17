@@ -157,6 +157,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
+	{"display_name", JSON_STRING, 0},
+        {"user_agent", JSON_STRING, 0}
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -175,7 +177,8 @@ static struct janus_json_parameter call_parameters[] = {
 	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JANUS_JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},

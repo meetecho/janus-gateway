@@ -503,6 +503,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0},
+	{"display_name", JSON_STRING, 0},
+	{"user_agent", JSON_STRING, 0}
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
