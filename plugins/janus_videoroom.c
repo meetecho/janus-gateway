@@ -2089,7 +2089,7 @@ static int janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subs
 	return 0;
 }
 
-static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s) {
+static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s, gboolean lock_ps) {
 	janus_videoroom_subscriber *subscriber = s->subscriber;
 	if(subscriber && subscriber->pvt_id > 0 && subscriber->room != NULL) {
 		janus_mutex_lock(&subscriber->room->mutex);
@@ -2111,9 +2111,11 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 	s->ps = NULL;
 	if(ps) {
 		/* Remove the subscription from the list of recipients */
-		janus_mutex_lock(&ps->subscribers_mutex);
+		if(lock_ps)
+			janus_mutex_lock(&ps->subscribers_mutex);
 		ps->subscribers = g_slist_remove(ps->subscribers, s);
-		janus_mutex_unlock(&ps->subscribers_mutex);
+		if(lock_ps)
+			janus_mutex_unlock(&ps->subscribers_mutex);
 		/* Unref the two streams, as they're not related anymore */
 		janus_refcount_decrease(&ps->ref);
 		janus_refcount_decrease(&s->ref);
@@ -4960,7 +4962,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			while(temp2) {
 				janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)temp2->data;
 				if(ss)
-					janus_videoroom_subscriber_stream_remove(ss);
+					janus_videoroom_subscriber_stream_remove(ss, FALSE);
 				temp2 = temp2->next;
 			}
 			g_slist_free(ps->subscribers);
@@ -4998,7 +5000,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
-				janus_videoroom_subscriber_stream_remove(s);
+				janus_videoroom_subscriber_stream_remove(s, TRUE);
 				temp = temp->next;
 			}
 			/* TODO Free streams */
@@ -6100,7 +6102,7 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_LOG(LOG_WARN, "Subscriber stream with mid '%s' not found, not unsubscribing...\n", sub_mid);
 							continue;
 						}
-						janus_videoroom_subscriber_stream_remove(stream);
+						janus_videoroom_subscriber_stream_remove(stream, TRUE);
 						changes++;
 					} else if(feed_id > 0) {
 						janus_mutex_lock(&subscriber->room->mutex);
@@ -6128,7 +6130,7 @@ static void *janus_videoroom_handler(void *data) {
 								temp = temp->next;
 								continue;
 							}
-							janus_videoroom_subscriber_stream_remove(stream);
+							janus_videoroom_subscriber_stream_remove(stream, TRUE);
 							changes++;
 							temp = temp->next;
 						}
