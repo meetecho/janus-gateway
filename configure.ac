@@ -24,7 +24,7 @@ AX_APPEND_COMPILE_FLAGS([ \
 	-Wpacked -Wpointer-arith -Wmissing-format-attribute -Wmissing-noreturn \
 	-Wnested-externs -Wstrict-prototypes  \
 	-Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
-	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
+	-Wformat-nonliteral -Wformat-security -Wswitch-default \
 	-Wmissing-include-dirs -Wno-aggregate-return  \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537 \
 	-Wno-undef \
@@ -40,6 +40,7 @@ AM_COND_IF([USE_CLANG],
 	])],
 	# Specific gcc flags
 	[AX_APPEND_COMPILE_FLAGS([ \
+		-Wno-cast-align \
 		-Wno-override-init \
 		-Wunused-but-set-variable \
 		-Wunsafe-loop-optimizations \
