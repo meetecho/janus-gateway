@@ -1600,8 +1600,12 @@ static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
 }
 
 static void janus_videoroom_publisher_stream_destroy(janus_videoroom_publisher_stream *ps) {
-	if(ps && g_atomic_int_compare_and_exchange(&ps->destroyed, 0, 1))
+	if(ps && g_atomic_int_compare_and_exchange(&ps->destroyed, 0, 1)) {
+		if(ps->publisher)
+			janus_refcount_decrease(&ps->publisher->ref);
+		ps->publisher = NULL;
 		janus_refcount_decrease(&ps->ref);
+	}
 	/* TODO Should unref the publisher instance? */
 }
 
@@ -6677,6 +6681,7 @@ static void *janus_videoroom_handler(void *data) {
 						ps->type = JANUS_VIDEOROOM_MEDIA_DATA;
 					ps->mindex = g_list_length(participant->streams);
 					ps->publisher = participant;
+					janus_refcount_increase(&participant->ref);	/* Add a reference to the publisher */
 					/* Initialize the stream */
 					ps->active = TRUE;
 					g_atomic_int_set(&ps->destroyed, 0);
