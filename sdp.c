@@ -543,6 +543,33 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			g_snprintf(mid, sizeof(mid), "%d", mlines);
 			medium->mid = g_strdup(mid);
 		}
+		if(m->direction == JANUS_SDP_INACTIVE) {
+			/* FIXME Reset the local SSRCs and RTCP context */
+			if(medium->ssrc != 0)
+				g_hash_table_remove(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc));
+			medium->ssrc = 0;
+			if(medium->ssrc_rtx != 0)
+				g_hash_table_remove(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc_rtx));
+			medium->ssrc_rtx = 0;
+			int tb = medium->rtcp_ctx[0]->tb;
+			memset(medium->rtcp_ctx[0], 0, sizeof(janus_rtcp_context));
+			medium->rtcp_ctx[0]->tb = tb;
+		} else if(m->type != JANUS_SDP_APPLICATION) {
+			if(medium->ssrc == 0) {
+				medium->ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
+					/* Create an SSRC for RFC4588 as well */
+					medium->ssrc_rtx = janus_random_uint32();	/* FIXME Should we look for conflicts? */
+				}
+				/* Update the SSRC-indexed map */
+				g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc), medium);
+				janus_refcount_increase(&medium->ref);
+				if(medium->ssrc_rtx > 0) {
+					g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc_rtx), medium);
+					janus_refcount_increase(&medium->ref);
+				}
+			}
+		}
 		temp = temp->next;
 	}
 	return 0;	/* FIXME Handle errors better */
