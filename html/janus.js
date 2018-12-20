@@ -1687,7 +1687,6 @@ function Janus(gatewayCallbacks) {
 							if(Janus.unifiedPlan) {
 								var transceiver = config.pc.getTransceivers().find(
 									t => t.receiver.track === ev.target);
-								Janus.warn(transceiver);
 								mid = transceiver.mid;
 							}
 							try {

@@ -59,8 +59,9 @@ var mystream = null;
 // We use this other ID just to map our subscriptions to us
 var mypvtid = null;
 
-var localTracks = {}, localVideos = 0;
-var feeds = [], feedStreams = {};
+var remoteFeed = null, state = {};
+var feeds = {}, feedStreams = {}, subStreams = {}, slots = {};
+var localTracks = {}, localVideos = 0, remoteTracks = {};
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
@@ -173,6 +174,7 @@ $(document).ready(function() {
 												var list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:");
 												Janus.debug(list);
+												var sources = null;
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
@@ -182,10 +184,18 @@ $(document).ready(function() {
 														stream["id"] = id;
 														stream["display"] = display;
 													}
-													feedStreams[id] = streams;
+													feedStreams[id] = {
+														id: id,
+														display: display,
+														streams: streams
+													}
 													Janus.debug("  >> [" + id + "] " + display + ":", streams);
-													newRemoteFeed(id, display, streams);
+													if(sources === null)
+														sources = [];
+													sources.push(streams);
 												}
+												if(sources)
+													subscribeTo(sources);
 											}
 										} else if(event === "destroyed") {
 											// The room has been destroyed
@@ -202,11 +212,16 @@ $(document).ready(function() {
 													stream["id"] = myid;
 													stream["display"] = myusername;
 												}
-												feedStreams[myid] = streams;
+												feedStreams[myid] = {
+													id: myid,
+													display: myusername,
+													streams: streams
+												}
 											} else if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
 												var list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:");
 												Janus.debug(list);
+												var sources = null;
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
@@ -216,29 +231,23 @@ $(document).ready(function() {
 														stream["id"] = id;
 														stream["display"] = display;
 													}
-													feedStreams[id] = streams;
+													feedStreams[id] = {
+														id: id,
+														display: display,
+														streams: streams
+													}
 													Janus.debug("  >> [" + id + "] " + display + ":", streams);
-													newRemoteFeed(id, display, streams);
+													if(sources === null)
+														sources = [];
+													sources.push(streams);
 												}
+												if(sources)
+													subscribeTo(sources);
 											} else if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
 												// One of the publishers has gone away?
 												var leaving = msg["leaving"];
 												Janus.log("Publisher left: " + leaving);
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
-													if(feeds[i] != null && feeds[i] != undefined && feeds[i].rfid == leaving) {
-														remoteFeed = feeds[i];
-														break;
-													}
-												}
-												if(remoteFeed != null) {
-													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
-													$('#remote'+remoteFeed.rfindex).empty().hide();
-													$('#videoremote'+remoteFeed.rfindex).empty();
-													feeds[remoteFeed.rfindex] = null;
-													remoteFeed.detach();
-												}
-												delete feedStreams[leaving];
+												unsubscribeFrom(leaving);
 											} else if(msg["unpublished"] !== undefined && msg["unpublished"] !== null) {
 												// One of the publishers has unpublished?
 												var unpublished = msg["unpublished"];
@@ -248,20 +257,7 @@ $(document).ready(function() {
 													sfutest.hangup();
 													return;
 												}
-												var remoteFeed = null;
-												for(var i=1; i<6; i++) {
-													if(feeds[i] != null && feeds[i] != undefined && feeds[i].rfid == unpublished) {
-														remoteFeed = feeds[i];
-														break;
-													}
-												}
-												if(remoteFeed != null) {
-													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
-													$('#remote'+remoteFeed.rfindex).empty().hide();
-													$('#videoremote'+remoteFeed.rfindex).empty();
-													feeds[remoteFeed.rfindex] = null;
-													remoteFeed.detach();
-												}
+												unsubscribeFrom(leaving);
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												if(msg["error_code"] === 426) {
 													// This is a "no such room" error: give a more meaningful description
@@ -519,41 +515,101 @@ function unpublishOwnFeed() {
 	sfutest.send({"message": unpublish});
 }
 
-function newRemoteFeed(id, display, streams) {
-	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
-	var remoteFeed = null;
-	if(!streams)
-		streams = feedStreams[id];
+var creatingFeed = false;
+function subscribeTo(sources) {
+	// New feeds are available, do we need create a new plugin handle first?
+	if(remoteFeed !== null) {
+		// Prepare the streams to subscribe to, as an array: we have the list of
+		// streams the feeds are publishing, so we can choose what to pick or skip
+		var subscription = [];
+		for(var s in sources) {
+			var streams = sources[s];
+			for(var i in streams) {
+				var stream = streams[i];
+				// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
+				if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
+						(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+					toastr.warning("Publisher is using " + stream.codec.toUpperCase +
+						", but Safari doesn't support it: disabling video stream #" + stream.mindex);
+					continue;
+				}
+				// Find an empty slot in the UI for each new source
+				if(!feedStreams[stream.id].slot) {
+					var slot;
+					for(var i=1;i<6;i++) {
+						if(feeds[i] === undefined || feeds[i] === null) {
+							slot = i;
+							feeds[slot] = stream.id;
+							feedStreams[stream.id].slot = slot;
+							feedStreams[stream.id].remoteVideos = 0;
+							$('#remote' + slot).removeClass('hide').html(stream.display).show();
+							break;
+						}
+					}
+				}
+				subscription.push({
+					feed: stream.id,	// This is mandatory
+					mid: stream.mid		// This is optional (all streams, if missing)
+				});
+			}
+		}
+		remoteFeed.send({ message: {
+			request: "subscribe",
+			streams: subscription
+		}});
+		return;
+	}
+	// We don't have a handle yet, but we may be creating one already
+	if(creatingFeed) {
+		// Still working on the handle
+		setTimeout(function() {
+			newRemoteFeed(id, display, streams);
+		}, 500);
+		return;
+	}
+	creatingFeed = true;
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
 			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
-				remoteFeed.remoteTracks = {};
-				remoteFeed.remoteVideos = 0;
-				remoteFeed.simulcastStarted = false;
+				remoteTracks = {};
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
-				Janus.log("  -- This is a subscriber");
+				Janus.log("  -- This is a multistream subscriber");
 				// Prepare the streams to subscribe to, as an array: we have the list of
 				// streams the feed is publishing, so we can choose what to pick or skip
 				var subscription = [];
-				for(var i in streams) {
-					var stream = streams[i];
-					// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
-					if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-							(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
-						toastr.warning("Publisher is using " + stream.codec.toUpperCase +
-							", but Safari doesn't support it: disabling video stream #" + stream.mindex);
-						continue;
+				for(var s in sources) {
+					var streams = sources[s];
+					for(var i in streams) {
+						var stream = streams[i];
+						// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
+						if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
+								(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+							toastr.warning("Publisher is using " + stream.codec.toUpperCase +
+								", but Safari doesn't support it: disabling video stream #" + stream.mindex);
+							continue;
+						}
+						// Find an empty slot in the UI for each new source
+						if(!feedStreams[stream.id].slot) {
+							var slot;
+							for(var i=1;i<6;i++) {
+								if(feeds[i] === undefined || feeds[i] === null) {
+									slot = i;
+									feeds[slot] = stream.id;
+									feedStreams[stream.id].slot = slot;
+									feedStreams[stream.id].remoteVideos = 0;
+									$('#remote' + slot).removeClass('hide').html(stream.display).show();
+									break;
+								}
+							}
+						}
+						subscription.push({
+							feed: stream.id,	// This is mandatory
+							mid: stream.mid		// This is optional (all streams, if missing)
+						});
 					}
-					subscription.push({
-						feed: stream.id,	// This is mandatory
-						mid: stream.mid		// This is optional (all streams, if missing)
-					});
-					// FIXME Right now, this is always the same feed: in the future, it won't
-					remoteFeed.rfid = stream.id;
-					remoteFeed.rfdisplay = stream.display;
 				}
 				// We wait for the plugin to send us an offer
 				var subscribe = {
@@ -563,21 +619,21 @@ function newRemoteFeed(id, display, streams) {
 					streams: subscription,
 					private_id: mypvtid
 				};
-				remoteFeed.send({"message": subscribe});
+				remoteFeed.send({ message: subscribe });
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
 				bootbox.alert("Error attaching plugin... " + error);
 			},
 			iceState: function(state) {
-				Janus.log("ICE state (feed #" + remoteFeed.rfindex + ") changed to " + state);
+				Janus.log("ICE state (remote feed) changed to " + state);
 			},
 			webrtcState: function(on) {
-				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
+				Janus.log("Janus says this WebRTC PeerConnection (remote feed) is " + (on ? "up" : "down") + " now");
 			},
 			slowLink: function(uplink, nacks) {
 				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-					" packets on this PeerConnection (feed #" + remoteFeed.rfindex + ", " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+					" packets on this PeerConnection (remote feed, " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (subscriber) :::");
@@ -588,27 +644,18 @@ function newRemoteFeed(id, display, streams) {
 					bootbox.alert(msg["error"]);
 				} else if(event != undefined && event != null) {
 					if(event === "attached") {
-						// Subscriber created and attached
-						for(var i=1;i<6;i++) {
-							if(feeds[i] === undefined || feeds[i] === null) {
-								feeds[i] = remoteFeed;
-								remoteFeed.rfindex = i;
-								break;
-							}
-						}
-						if(remoteFeed.spinner === undefined || remoteFeed.spinner === null) {
-							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
-							remoteFeed.spinner = new Spinner({top:100}).spin(target);
-						} else {
-							remoteFeed.spinner.spin();
-						}
+						creatingFeed = false;
 						Janus.log("Successfully attached to feed in room " + msg["room"]);
-						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
 					} else if(event === "event") {
 						// Check if we got an event on a simulcast-related event from this publisher
+						var mid = msg["mid"];
 						var substream = msg["substream"];
 						var temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
+							// Check which this feed this refers to
+							var sub = subStreams[mid];
+							var feed = feedStreams[sub.feed_id];
+								// TODO
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
@@ -619,6 +666,16 @@ function newRemoteFeed(id, display, streams) {
 						}
 					} else {
 						// What has just happened?
+					}
+				}
+				if(msg["streams"]) {
+					// Update map of subscriptions by mid
+					for(var i in msg["streams"]) {
+						var mid = msg["streams"][i]["mid"];
+						subStreams[mid] = msg["streams"][i];
+						var feed = feedStreams[msg["streams"][i]["feed_id"]];
+						if(feed && feed.slot)
+							slots[mid] = feed.slot;
 					}
 				}
 				if(jsep !== undefined && jsep !== null) {
@@ -634,8 +691,8 @@ function newRemoteFeed(id, display, streams) {
 							success: function(jsep) {
 								Janus.debug("Got SDP!");
 								Janus.debug(jsep);
-								var body = { "request": "start", "room": myroom };
-								remoteFeed.send({"message": body, "jsep": jsep});
+								var body = { request: "start", room: myroom };
+								remoteFeed.send({ message: body, jsep: jsep });
 							},
 							error: function(error) {
 								Janus.error("WebRTC error:", error);
@@ -648,11 +705,16 @@ function newRemoteFeed(id, display, streams) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotetrack: function(track, mid, on) {
-				Janus.debug(" ::: Got a remote track event ::: (Remote feed #" + remoteFeed.rfindex + ")");
+				Janus.debug(" ::: Got a remote track event ::: (remote feed)");
 				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+				// Which publisher are we getting on this mid?
+				var sub = subStreams[mid];
+				var slot = slots[mid];
+				var feed = feedStreams[sub.feed_id];
+				Janus.debug(" >> This track is coming from feed " + sub.feed_id + ":", feed);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
-					var stream = remoteFeed.remoteTracks[mid];
+					var stream = remoteTracks[mid];
 					if(stream) {
 						try {
 							var tracks = stream.getTracks();
@@ -663,13 +725,13 @@ function newRemoteFeed(id, display, streams) {
 							}
 						} catch(e) {}
 					}
-					$('#remotevideo'+remoteFeed.rfindex + '-' + mid).remove();
-					if(track.kind === "video") {
-						remoteFeed.remoteVideos--;
-						if(remoteFeed.remoteVideos === 0) {
+					$('#remotevideo' + slot + '-' + mid).remove();
+					if(track.kind === "video" && feed) {
+						feed.remoteVideos--;
+						if(feed.remoteVideos === 0) {
 							// No video, at least for now: show a placeholder
-							if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-								$('#videoremote'+remoteFeed.rfindex).append(
+							if($('#videoremote' + slot + ' .no-video-container').length === 0) {
+								$('#videoremote' + slot).append(
 									'<div class="no-video-container">' +
 										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 										'<span class="no-video-text">No remote video available</span>' +
@@ -677,26 +739,27 @@ function newRemoteFeed(id, display, streams) {
 							}
 						}
 					}
-					delete remoteFeed.remoteTracks[mid];
+					delete remoteTracks[mid];
+					delete slots[mid];
 					return;
 				}
 				// If we're here, a new track was added
-				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null) {
-					remoteFeed.spinner.stop();
-					remoteFeed.spinner = null;
+				if(feed.spinner !== undefined && feed.spinner !== null) {
+					feed.spinner.stop();
+					feed.spinner = null;
 				}
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
 					stream.addTrack(track.clone());
-					remoteFeed.remoteTracks[mid] = stream;
+					remoteTracks[mid] = stream;
 					Janus.log("Created remote audio stream:", stream);
-					$('#videoremote'+remoteFeed.rfindex).append('<audio class="hide" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" autoplay playsinline/>');
-					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
-					if(remoteFeed.remoteVideos === 0) {
+					$('#videoremote' + slot).append('<audio class="hide" id="remotevideo' + slot + '-' + mid + '" autoplay playsinline/>');
+					Janus.attachMediaStream($('#remotevideo' + slot + '-' + mid).get(0), stream);
+					if(feed.remoteVideos === 0) {
 						// No video, at least for now: show a placeholder
-						if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-							$('#videoremote'+remoteFeed.rfindex).append(
+						if($('#videoremote' + slot + ' .no-video-container').length === 0) {
+							$('#videoremote' + slot).append(
 								'<div class="no-video-container">' +
 									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 									'<span class="no-video-text">No remote video available</span>' +
@@ -705,49 +768,68 @@ function newRemoteFeed(id, display, streams) {
 					}
 				} else {
 					// New video track: create a stream out of it
-					remoteFeed.remoteVideos++;
-					$('#videoremote'+remoteFeed.rfindex + ' .no-video-container').remove();
+					feed.remoteVideos++;
+					$('#videoremote' + slot + ' .no-video-container').remove();
 					stream = new MediaStream();
 					stream.addTrack(track.clone());
-					remoteFeed.remoteTracks[mid] = stream;
+					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
-					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
+					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					Janus.attachMediaStream($('#remotevideo' + slot + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer) {
-						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
+						$('#curbitrate' + slot).removeClass('hide').show();
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate();
-							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+							$('#curbitrate' + slot).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+							var width = $("#remotevideo" + slot).get(0).videoWidth;
+							var height = $("#remotevideo" + slot).get(0).videoHeight;
 							if(width > 0 && height > 0)
-								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+								$('#curres' + slot).removeClass('hide').text(width+'x'+height).show();
 						}, 1000);
 					}
 				}
 			},
 			oncleanup: function() {
-				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
-				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
-					remoteFeed.spinner.stop();
-				remoteFeed.spinner = null;
-				$('#remotevideo'+remoteFeed.rfindex).remove();
-				$('#waitingvideo'+remoteFeed.rfindex).remove();
-				$('#novideo'+remoteFeed.rfindex).remove();
-				$('#curbitrate'+remoteFeed.rfindex).remove();
-				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
-					clearInterval(bitrateTimer[remoteFeed.rfindex]);
-				bitrateTimer[remoteFeed.rfindex] = null;
-				remoteFeed.simulcastStarted = false;
-				$('#simulcast'+remoteFeed.rfindex).remove();
-				remoteFeed.remoteTracks = {};
-				remoteFeed.remoteVideos = 0;
+				Janus.log(" ::: Got a cleanup notification (remote feed) :::");
+				for(var i=1;i<6;i++) {
+					$('#remotevideo'+i).remove();
+					$('#waitingvideo'+i).remove();
+					$('#novideo'+i).remove();
+					$('#curbitrate'+i).remove();
+					$('#curres'+i).remove();
+					if(bitrateTimer[i] !== null && bitrateTimer[i] !== null)
+						clearInterval(bitrateTimer[i]);
+					bitrateTimer[i] = null;
+					feedStreams[i].simulcastStarted = false;
+					feedStreams[i].remoteVideos = 0;
+					$('#simulcast'+i).remove();
+				}
+				remoteTracks = {};
 			}
 		});
+}
+
+function unsubscribeFrom(id) {
+	// Unsubscribe from this publisher
+	var feed = feedStreams[id];
+	if(!feed)
+		return;
+	Janus.debug("Feed " + id + " (" + feed.display + ") has left the room, detaching");
+	$('#remote' + feed.slot).empty().hide();
+	$('#videoremote' + feed.slot).empty();
+	delete feeds[feed.slot];
+	feeds.slot = 0;
+	delete feedStreams[id];
+	// Send an unsubscribe request
+	var unsubscribe = {
+		request: "unsubscribe",
+		streams: [{ feed: id }]
+	};
+	if(remoteFeed != null)
+		remoteFeed.send({ message: unsubscribe });
 }
 
 // Helper to parse query string
