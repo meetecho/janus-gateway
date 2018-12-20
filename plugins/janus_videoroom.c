@@ -4965,6 +4965,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->remb_latest = 0;
 		/* TODO Get rid of streams */
 		janus_mutex_lock(&participant->streams_mutex);
+		GList *subscribers = NULL;
 		GList *temp = participant->streams;
 		while(temp) {
 			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
@@ -4973,8 +4974,15 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			GSList *temp2 = ps->subscribers;
 			while(temp2) {
 				janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)temp2->data;
-				if(ss)
+				if(ss) {
+					/* Remove the subscription (turns the m-line to inactive) */
 					janus_videoroom_subscriber_stream_remove(ss, FALSE);
+					/* Take note of the subscriber, so that we can send an updated offer */
+					if(g_list_find(subscribers, ss->subscriber) == NULL) {
+						janus_refcount_increase(&ss->subscriber->ref);
+						subscribers = g_list_append(subscribers, ss->subscriber);
+					}
+				}
 				temp2 = temp2->next;
 			}
 			g_slist_free(ps->subscribers);
@@ -4982,7 +4990,49 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			janus_mutex_unlock(&ps->subscribers_mutex);
 			temp = temp->next;
 		}
-		/* TODO Free streams */
+		/* Any subscriber session to update? */
+		if(subscribers != NULL) {
+			temp = subscribers;
+			while(temp) {
+				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)temp->data;
+				/* Send (or schedule) a new offer */
+				janus_mutex_lock(&subscriber->streams_mutex);
+				if(!g_atomic_int_get(&subscriber->answered)) {
+					/* We're still waiting for an answer to a previous offer, postpone this */
+					g_atomic_int_set(&subscriber->pending_offer, 1);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+				} else {
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("updated"));
+					json_object_set_new(event, "room", json_integer(subscriber->room_id));
+					json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+					json_object_set_new(event, "streams", media);
+					/* Generate a new offer */
+					json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
+					janus_mutex_unlock(&subscriber->streams_mutex);
+					/* How long will the Janus core take to push the event? */
+					gint64 start = janus_get_monotonic_time();
+					int res = gateway->push_event(subscriber->session->handle, &janus_videoroom_plugin, NULL, event, jsep);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+					json_decref(event);
+					json_decref(jsep);
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("updated"));
+						json_object_set_new(info, "room", json_integer(subscriber->room_id));
+						json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+						json_object_set_new(info, "streams", media);
+						json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
+						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
+					}
+				}
+				janus_refcount_decrease(&subscriber->ref);
+				temp = temp->next;
+			}
+		}
+		g_list_free(subscribers);
+		/* Free streams */
 		g_list_free(participant->streams);
 		participant->streams = NULL;
 		g_hash_table_remove_all(participant->streams_byid);
