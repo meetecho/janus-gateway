@@ -1683,12 +1683,19 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Remote track removed:", ev);
 						if(config.remoteStream) {
 							config.remoteStream.removeTrack(ev.target);
-							var mid = ev.transceiver ? ev.transceiver : ev.target.id;
+							var mid = ev.target.id;
+							if(Janus.unifiedPlan) {
+								var transceiver = config.pc.getTransceivers().find(
+									t => t.receiver.track === ev.target);
+								Janus.warn(transceiver);
+								mid = transceiver.mid;
+							}
 							try {
 								pluginHandle.onremotetrack(ev.target, mid, false);
 							} catch(e) {};
 						}
 					}
+					event.track.onmute = event.track.onended;
 				}
 			};
 		}
