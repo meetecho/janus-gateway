@@ -2593,7 +2593,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						/* We don't know the remote SSRC: this can happen for recvonly clients
 						 * (see https://groups.google.com/forum/#!topic/discuss-webrtc/5yuZjV7lkNc)
 						 * Check the local SSRC, compare it to what we have */
-						guint32 rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, len);
+						guint32 rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
 						if(rtcp_ssrc == 0) {
 							/* No SSRC, maybe an empty RR? */
 							return;
@@ -2602,7 +2602,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							video = 0;
 						} else if(rtcp_ssrc == stream->video_ssrc) {
 							video = 1;
-						} else if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len) || janus_rtcp_get_remb(buf, len)) {
+						} else if(janus_rtcp_has_fir(buf, buflen) || janus_rtcp_has_pli(buf, buflen) || janus_rtcp_get_remb(buf, buflen)) {
 							/* Mh, no SR or RR? Try checking if there's any FIR, PLI or REMB */
 							video = 1;
 						} else {
@@ -2614,7 +2614,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						/* Check the remote SSRC, compare it to what we have: in case
 						 * we're simulcasting, let's compare to the other SSRCs too */
-						guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
+						guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
 						if(rtcp_ssrc == 0) {
 							/* No SSRC, maybe an empty RR? */
 							return;
@@ -2641,7 +2641,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
 				janus_rtcp_parse(rtcp_ctx, buf, buflen);
-				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", len);
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
