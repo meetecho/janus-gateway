@@ -2110,7 +2110,6 @@ static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_
 	}
 	janus_videoroom_publisher_stream *ps = s->ps;
 	g_atomic_int_set(&s->ready, 0);
-	s->send = FALSE;
 	s->ps = NULL;
 	if(ps) {
 		/* Remove the subscription from the list of recipients */
