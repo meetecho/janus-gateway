@@ -563,7 +563,7 @@ function subscribeTo(sources) {
 	if(creatingFeed) {
 		// Still working on the handle
 		setTimeout(function() {
-			newRemoteFeed(id, display, streams);
+			subscribeTo(sources);
 		}, 500);
 		return;
 	}
