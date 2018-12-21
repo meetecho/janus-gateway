@@ -219,12 +219,12 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 
 gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len) {
 	if (len < (int)(sizeof(janus_rtcp_header) + 1*sizeof(uint32_t))) {
-		JANUS_LOG(LOG_WARN, "Packet size is too small (%d bytes) to contain RTCP\n", len);
+		JANUS_LOG(LOG_VERB, "Packet size is too small (%d bytes) to contain RTCP\n", len);
 		return FALSE;
 	}
 	int header_def_len = 4*(int)ntohs(rtcp->length) + 4;
 	if (len < header_def_len) {
-		JANUS_LOG(LOG_WARN, "RTCP packet length is %d but actual size is %d\n", header_def_len, len);
+		JANUS_LOG(LOG_VERB, "RTCP packet length is %d but actual size is %d\n", header_def_len, len);
 		return FALSE;
 	}
 	return TRUE;
@@ -238,7 +238,7 @@ gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len) {
 	int header_rb_len = (int)(rtcp->rc)*sizeof(report_block);
 	int actual_rb_len = len - sizeof(janus_rtcp_header) - 1*sizeof(uint32_t) - sizeof(sender_info);
 	if (actual_rb_len < header_rb_len) {
-		JANUS_LOG(LOG_WARN, "SR got %d RB count, expected %d bytes greater than actual %d bytes\n", (int)(rtcp->rc), header_rb_len, actual_rb_len);
+		JANUS_LOG(LOG_VERB, "SR got %d RB count, expected %d bytes greater than actual %d bytes\n", (int)(rtcp->rc), header_rb_len, actual_rb_len);
 		return FALSE;
 	}
 	return TRUE;
@@ -248,7 +248,7 @@ gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len) {
 	int header_rb_len = (int)(rtcp->rc)*sizeof(report_block);
 	int actual_rb_len = len - sizeof(janus_rtcp_header) - 1*sizeof(uint32_t);
 	if (actual_rb_len < header_rb_len) {
-		JANUS_LOG(LOG_WARN, "RR got %d RB count, expected %d bytes greater than actual %d bytes\n", (int)(rtcp->rc), header_rb_len, actual_rb_len);
+		JANUS_LOG(LOG_VERB, "RR got %d RB count, expected %d bytes greater than actual %d bytes\n", (int)(rtcp->rc), header_rb_len, actual_rb_len);
 		return FALSE;
 	}
 	return TRUE;
@@ -256,7 +256,7 @@ gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len) {
 
 gboolean janus_rtcp_check_len12(janus_rtcp_header *rtcp, int len) {
 	if (len < (int)(sizeof(janus_rtcp_header) + 2*sizeof(uint32_t))) {
-		JANUS_LOG(LOG_WARN, "Packet is smaller than 12 bytes (%d bytes)\n", len);
+		JANUS_LOG(LOG_VERB, "Packet is smaller than 12 bytes (%d bytes)\n", len);
 		return FALSE;
 	}
 	return TRUE;
@@ -272,7 +272,7 @@ gboolean janus_rtcp_check_nacks(janus_rtcp_header *rtcp, int len) {
 	int nacks = (int)ntohs(rtcp->length) - 2;
 	/* Every Generic NACK is 4 bytes */
 	if (fci_size < 4*nacks) {
-		JANUS_LOG(LOG_WARN, "Got %d NACKS count, expected %d bytes greater than actual %d bytes\n", nacks, 4*nacks, fci_size);
+		JANUS_LOG(LOG_VERB, "Got %d NACKS count, expected %d bytes greater than actual %d bytes\n", nacks, 4*nacks, fci_size);
 		return FALSE;
 	}
 	return TRUE;
@@ -288,7 +288,7 @@ gboolean janus_rtcp_check_fci8(janus_rtcp_header *rtcp, int len) {
 	int fcis = ((int)ntohs(rtcp->length) >> 1) - 1;
 	/* Every FCI is 8 bytes */
 	if (fci_size < 8*fcis) {
-		JANUS_LOG(LOG_WARN, "Got %d FCI count, expected %d bytes greater than actual %d bytes\n", fcis, 8*fcis, fci_size);
+		JANUS_LOG(LOG_VERB, "Got %d FCI count, expected %d bytes greater than actual %d bytes\n", fcis, 8*fcis, fci_size);
 		return FALSE;
 	}
 	return TRUE;
@@ -306,7 +306,7 @@ gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len) {
 	int ssrc_size = len - sizeof(janus_rtcp_header) - 2*sizeof(uint32_t);
 	/* Every SSRC is 4 bytes */
 	if (ssrc_size < 4*numssrc) {
-		JANUS_LOG(LOG_WARN, "REMB got %d SSRC count, expected %d bytes greater than actual %d bytes\n", numssrc, 4*numssrc, ssrc_size);
+		JANUS_LOG(LOG_VERB, "REMB got %d SSRC count, expected %d bytes greater than actual %d bytes\n", numssrc, 4*numssrc, ssrc_size);
 		return FALSE;
 	}
 	return TRUE;
