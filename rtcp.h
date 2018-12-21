@@ -331,6 +331,46 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len);
  * @returns The receiver SSRC, or 0 in case of error */
 guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
 
+/*! \brief Method to check that a RTCP packet size is at least the minimum necessary (8 bytes)
+ *  and to validate the length field against the actual size
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Receiver Report
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Sender Report
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check that a RTCP packet size is at least 12 bytes
+ *  This is useful because many RTCP packets must be at least that size.
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_len12(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Transport Layer
+ * Feedback Generic NACK Message.
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_nacks(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Feedback Message
+ * with an expected FCI size of 8 bytes (e.g. some FIRs or PLIs).
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_fci8(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a AFB REMB Message
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len);
+
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The message data
