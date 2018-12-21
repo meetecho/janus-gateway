@@ -1638,12 +1638,6 @@ static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) 
 	janus_refcount_decrease(&p->ref);
 }
 
-static void janus_videoroom_publisher_dereference_by_subscriber(janus_videoroom_publisher *p) {
-	/* This is used by g_pointer_clear and g_hash_table_new_full so that NULL is only possible if that was inserted into the hash table. */
-	janus_refcount_decrease(&p->session->ref);
-	janus_refcount_decrease(&p->ref);
-}
-
 static void janus_videoroom_publisher_dereference_nodebug(janus_videoroom_publisher *p) {
 	janus_refcount_decrease_nodebug(&p->ref);
 }
@@ -5213,14 +5207,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
 				/* Process the request */
-				json_t *audio = NULL, *video = NULL, *data = NULL,
-					*bitrate = NULL, *record = NULL, *recfile = NULL;
+				json_t *bitrate = NULL, *record = NULL, *recfile = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
-					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
-					/* join_parameters were validated earlier. */
-					audio = json_object_get(root, "audio");
-					video = json_object_get(root, "video");
-					data = json_object_get(root, "data");
 					bitrate = json_object_get(root, "bitrate");
 					record = json_object_get(root, "record");
 					recfile = json_object_get(root, "filename");
@@ -5461,9 +5449,6 @@ static void *janus_videoroom_handler(void *data) {
 					publishers = g_list_append(publishers, publisher);
 				}
 				/* TODO These properties are only there for backwards compatibility */
-				json_t *audio = json_object_get(root, "audio");
-				json_t *video = json_object_get(root, "video");
-				json_t *data = json_object_get(root, "data");
 				json_t *offer_audio = json_object_get(root, "offer_audio");
 				json_t *offer_video = json_object_get(root, "offer_video");
 				json_t *offer_data = json_object_get(root, "offer_data");
@@ -6469,9 +6454,6 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = json_integer_value(feed);
-				json_t *audio = json_object_get(root, "audio");
-				json_t *video = json_object_get(root, "video");
-				json_t *data = json_object_get(root, "data");
 				if(!subscriber->room) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed \n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;

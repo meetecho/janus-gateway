@@ -2835,9 +2835,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", handle->handle_id);
 			if(offer && handle->pc) {
-				/* We might need some new properties set as well */
-				janus_handle_webrtc *pc = handle->pc;
-				/* TODO Reimplement renegotiations here, updating media and mids */
+				/* Check what changed */
 				if(janus_sdp_process_local(handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error processing SDP\n", handle->handle_id);
 					janus_sdp_destroy(parsed_sdp);
