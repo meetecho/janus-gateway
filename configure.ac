@@ -923,7 +923,7 @@ AC_OUTPUT
 # Summary
 ##
 echo
-echo "using compiler:            $CC"
+echo "Compiler:                  $CC"
 AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.x"],
 	[echo "libsrtp version:           1.5.x"])
