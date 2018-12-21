@@ -6316,8 +6316,15 @@ static void *janus_videoroom_handler(void *data) {
 						temp = temp->next;
 						continue;
 					}
-					if(send)
+					if(send) {
+						gboolean oldsend = stream->send;
+						gboolean newsend = json_is_true(send);
+						if(!oldsend && newsend) {
+							/* Medium just resumed, reset the RTP sequence numbers */
+							stream->context.seq_reset = TRUE;
+						}
 						stream->send = json_is_true(send);
+					}
 					/* Next properties are for video only */
 					if(ps->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
 						temp = temp->next;
