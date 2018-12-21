@@ -18,38 +18,60 @@ LT_PREREQ([2.2])
 LT_INIT
 
 # Common CFLAGS
-AX_APPEND_COMPILE_FLAGS([ \
-	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
-	-Wunused -fstrict-aliasing -Wextra -Wformat=2 -Winit-self -Winline \
-	-Wpacked -Wpointer-arith -Wmissing-format-attribute -Wmissing-noreturn \
-	-Wnested-externs -Wstrict-prototypes  \
-	-Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
-	-Wformat-nonliteral -Wformat-security -Wswitch-default \
-	-Wmissing-include-dirs -Wno-aggregate-return  \
-	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537 \
-	-Wno-undef \
+CFLAGS="$CFLAGS \
+	-fPIC \
+	-fstack-protector-all \
+	-fstrict-aliasing \
+	-ggdb3 \
+	-pthread \
+	-Wall \
+	-Warray-bounds \
+	-Wextra \
+	-Wformat-nonliteral \
+	-Wformat-security \
+	-Wformat=2 \
+	-Winit-self \
+	-Winline \
+	-Wlarger-than=65537 \
+	-Wmissing-declarations \
+	-Wmissing-format-attribute \
+	-Wmissing-include-dirs \
+	-Wmissing-noreturn \
+	-Wmissing-prototypes \
+	-Wnested-externs \
+	-Wno-aggregate-return \
+	-Wno-missing-field-initializers \
 	-Wno-redundant-decls \
-	-fstack-protector-all -ggdb3 -fPIC -pthread \
-])
+	-Wno-undef \
+	-Wno-unused-parameter \
+	-Wold-style-definition \
+	-Wpacked \
+	-Wpointer-arith \
+	-Wsign-compare \
+	-Wstrict-prototypes \
+	-Wswitch-default \
+	-Wunused \
+	-Wwrite-strings"
 
 AM_CONDITIONAL([USE_CLANG], [test "x$CC" = "xclang"])
 AM_COND_IF([USE_CLANG],
 	# Specific clang flags
-	[AX_APPEND_COMPILE_FLAGS([ \
-		-Wno-initializer-overrides \
-	])],
-	# Specific gcc flags
-	[AX_APPEND_COMPILE_FLAGS([ \
+	[CFLAGS="$CFLAGS \
 		-Wno-cast-align \
+		-Wno-initializer-overrides"
+	],
+	# Specific gcc flags
+	[CFLAGS="$CFLAGS \
+		-Wcast-align \
 		-Wno-override-init \
-		-Wunused-but-set-variable \
 		-Wunsafe-loop-optimizations \
-	])
-])
+		-Wunused-but-set-variable"	
+	]
+)
 
-AX_APPEND_LINK_FLAGS([ \
-	-Wl,--export-dynamic \
-])
+# add rdynamic to LDFLAGS
+LDFLAGS="$LDFLAGS \
+	-Wl,--export-dynamic"
 
 JANUS_VERSION=60
 AC_SUBST(JANUS_VERSION)
