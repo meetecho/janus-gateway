@@ -4738,14 +4738,8 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int mindex, gbo
 		if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len)) {
 			/* We got a FIR or PLI, forward a PLI to the publisher */
 			janus_videoroom_publisher *p = ps->publisher;
-			if(p && p->session) {
-				char rtcpbuf[12];
-				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				JANUS_LOG(LOG_VERB, "Got a PLI from a subscriber, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-				gateway->relay_rtcp(p->session->handle, ps->mindex, TRUE, rtcpbuf, 12);
-				/* Update the time of when we last sent a keyframe request */
-				ps->pli_latest = janus_get_monotonic_time();
-			}
+			if(p && p->session)
+				janus_videoroom_reqpli(ps, "PLI from subscriber");
 		}
 		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
@@ -7198,10 +7192,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					ps->publisher->session->handle) {
 				/* Send a PLI */
 				JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-				char rtcpbuf[12];
-				memset(rtcpbuf, 0, 12);
-				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				gateway->relay_rtcp(ps->publisher->session->handle, ps->mindex, TRUE, rtcpbuf, 12);
+				janus_videoroom_reqpli(ps, "Simulcast");
 			}
 			if(stream->sim_context.changed_temporal) {
 				/* Notify the user about the temporal layer change */
