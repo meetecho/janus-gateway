@@ -2479,13 +2479,13 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Is this audio or video? */
 				int video = 0, vindex = 0;
-				guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
+				guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, buflen);
 				janus_handle_webrtc_medium *medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(rtcp_ssrc));
 				if(medium == NULL) {
 					/* We don't know the remote SSRC: this can happen for recvonly clients
 					 * (see https://groups.google.com/forum/#!topic/discuss-webrtc/5yuZjV7lkNc)
 					 * Check the local SSRC, compare it to what we have */
-					rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, len);
+					rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, buflen);
 					medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(rtcp_ssrc));
 					if(medium == NULL) {
 						if(rtcp_ssrc > 0) {
@@ -2508,7 +2508,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = medium->rtcp_ctx[vindex];
 				janus_rtcp_parse(rtcp_ctx, buf, buflen);
-				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", len);
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();

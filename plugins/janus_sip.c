@@ -95,6 +95,8 @@
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
 	"authuser" : "<username to use to authenticate (overrides the one in the SIP URI); optional>",
+	"display_name" : "<display name to use when sending SIP REGISTER; optional>",
+	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
@@ -262,7 +264,8 @@
 \verbatim
 {
 	"request" : "accept",
-	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>"
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
 }
 \endverbatim
  *
@@ -301,7 +304,8 @@
  *
 \verbatim
 {
-	"request" : "decline"
+	"request" : "decline",
+	"code" : <SIP code to be sent, if not set, 486 is used; optional>"
 }
 \endverbatim
  *
@@ -499,6 +503,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JANUS_JSON_STRING, 0},
 	{"ha1_secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
+	{"display_name", JANUS_JSON_STRING, 0},
+	{"user_agent", JANUS_JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -518,7 +524,8 @@ static struct janus_json_parameter call_parameters[] = {
 	{"authuser", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JANUS_JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1097,6 +1104,32 @@ static void janus_sip_random_string(int length, char *buffer) {
 	}
 }
 
+static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers) {
+	custom_headers[0] = '\0';
+	json_t *headers = json_object_get(root, "headers");
+	if(headers) {
+		if(json_object_size(headers) > 0) {
+			/* Parse custom headers */
+			const char *key = NULL;
+			json_t *value = NULL;
+			void *iter = json_object_iter(headers);
+			while(iter != NULL) {
+				key = json_object_iter_key(iter);
+				value = json_object_get(headers, key);
+				if(value == NULL || !json_is_string(value)) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
+				char h[255];
+				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+				g_strlcat(custom_headers, h, 2048);
+				iter = json_object_iter_next(headers, iter);
+			}
+		}
+	}
+}
 
 /* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
  * we use this to intercept SIP messages sent by the stack (received
@@ -2223,30 +2256,7 @@ static void *janus_sip_handler(void *data) {
 			if(send_register) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
-				custom_headers[0] = '\0';
-				json_t *headers = json_object_get(root, "headers");
-				if(headers) {
-					if(json_object_size(headers) > 0) {
-						/* Parse custom headers */
-						const char *key = NULL;
-						json_t *value = NULL;
-						void *iter = json_object_iter(headers);
-						while(iter != NULL) {
-							key = json_object_iter_key(iter);
-							value = json_object_get(headers, key);
-							if(value == NULL || !json_is_string(value)) {
-								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-								iter = json_object_iter_next(headers, iter);
-								continue;
-							}
-							char h[255];
-							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-							g_strlcat(custom_headers, h, 2048);
-							iter = json_object_iter_next(headers, iter);
-						}
-					}
-				}
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -2347,30 +2357,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			custom_headers[0] = '\0';
-			json_t *headers = json_object_get(root, "headers");
-			if(headers) {
-				if(json_object_size(headers) > 0) {
-					/* Parse custom headers */
-					const char *key = NULL;
-					json_t *value = NULL;
-					void *iter = json_object_iter(headers);
-					while(iter != NULL) {
-						key = json_object_iter_key(iter);
-						value = json_object_get(headers, key);
-						if(value == NULL || !json_is_string(value)) {
-							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-							iter = json_object_iter_next(headers, iter);
-							continue;
-						}
-						char h[255];
-						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-						g_strlcat(custom_headers, h, 2048);
-						iter = json_object_iter_next(headers, iter);
-					}
-				}
-			}
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2689,6 +2676,9 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
+			/* Check if the OK needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* Send 200 OK */
 			if(!answer) {
 				if(session->transaction)
@@ -2705,6 +2695,7 @@ static void *janus_sip_handler(void *data) {
 				SOATAG_USER_SDP_STR(sdp),
 				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 				NUTAG_AUTOANSWER(0),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			g_free(sdp);
 			/* Send an ack back */

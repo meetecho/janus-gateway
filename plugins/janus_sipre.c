@@ -157,6 +157,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
+	{"display_name", JSON_STRING, 0},
+	{"user_agent", JSON_STRING, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -175,7 +177,8 @@ static struct janus_json_parameter call_parameters[] = {
 	{"authuser", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JANUS_JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -936,6 +939,32 @@ static void janus_sipre_random_string(int length, char *buffer) {
 	}
 }
 
+static void janus_sipre_parse_custom_headers(json_t *root, char *custom_headers) {
+	custom_headers[0] = '\0';
+	json_t *headers = json_object_get(root, "headers");
+	if(headers) {
+		if(json_object_size(headers) > 0) {
+			/* Parse custom headers */
+			const char *key = NULL;
+			json_t *value = NULL;
+			void *iter = json_object_iter(headers);
+			while(iter != NULL) {
+				key = json_object_iter_key(iter);
+				value = json_object_get(headers, key);
+				if(value == NULL || !json_is_string(value)) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
+				char h[255];
+				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+				g_strlcat(custom_headers, h, 2048);
+				iter = json_object_iter_next(headers, iter);
+			}
+		}
+	}
+}
 
 #ifdef HAVE_LIBRE_SIPTRACE
 /* libre SIP logger function: when the Event Handlers mechanism is enabled,
@@ -1849,30 +1878,7 @@ static void *janus_sipre_handler(void *data) {
 			if(send_register) {
 				/* Check if the INVITE needs to be enriched with custom headers */
 				char custom_headers[2048];
-				custom_headers[0] = '\0';
-				json_t *headers = json_object_get(root, "headers");
-				if(headers) {
-					if(json_object_size(headers) > 0) {
-						/* Parse custom headers */
-						const char *key = NULL;
-						json_t *value = NULL;
-						void *iter = json_object_iter(headers);
-						while(iter != NULL) {
-							key = json_object_iter_key(iter);
-							value = json_object_get(headers, key);
-							if(value == NULL || !json_is_string(value)) {
-								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-								iter = json_object_iter_next(headers, iter);
-								continue;
-							}
-							char h[255];
-							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-							g_strlcat(custom_headers, h, 2048);
-							iter = json_object_iter_next(headers, iter);
-						}
-					}
-				}
+				janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 				char *data = NULL;
 				if(strlen(custom_headers))
 					data = g_strdup(custom_headers);
@@ -1939,30 +1945,7 @@ static void *janus_sipre_handler(void *data) {
 			json_t *authuser = json_object_get(root, "authuser");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			custom_headers[0] = '\0';
-			json_t *headers = json_object_get(root, "headers");
-			if(headers) {
-				if(json_object_size(headers) > 0) {
-					/* Parse custom headers */
-					const char *key = NULL;
-					json_t *value = NULL;
-					void *iter = json_object_iter(headers);
-					while(iter != NULL) {
-						key = json_object_iter_key(iter);
-						value = json_object_get(headers, key);
-						if(value == NULL || !json_is_string(value)) {
-							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-							iter = json_object_iter_next(headers, iter);
-							continue;
-						}
-						char h[255];
-						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-						g_strlcat(custom_headers, h, 2048);
-						iter = json_object_iter_next(headers, iter);
-					}
-				}
-			}
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2251,7 +2234,14 @@ static void *janus_sipre_handler(void *data) {
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_incall;
 			session->temp_sdp = sdp;
-			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+			/* Check if the OK needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
+			char *data = NULL;
+			if(strlen(custom_headers))
+				data = g_strdup(custom_headers);
+
+			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
@@ -4240,8 +4230,11 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
 			mbuf_printf(mb, "%s", session->temp_sdp);
 			mbuf_set_pos(mb, 0);
+			/* Check if there are custom headers to add */
+                        char *headers = (char *)payload->data;
 			/* Send the 200 OK */
-			int err = sipsess_answer(session->stack.sess, 200, "OK", mb, NULL);
+			int err = sipsess_answer(session->stack.sess, 200, "OK", mb, (headers ? headers : ""));
+			g_free(headers);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the 200 OK: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */

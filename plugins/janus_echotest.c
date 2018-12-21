@@ -540,7 +540,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int mindex, gbool
 		if(video && session->video_active && session->rtpmapid_extmap_id != -1) {
 			/* FIXME Just a way to debug Firefox simulcasting */
 			janus_rtp_header *header = (janus_rtp_header *)buf;
-			uint32_t seq_number = ntohs(header->seq_number);
+			uint16_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
 			uint32_t ssrc = ntohl(header->ssrc);
 			char sdes_item[16];

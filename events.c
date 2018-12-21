@@ -29,7 +29,8 @@ static struct janus_event_types {
 	{ JANUS_EVENT_TYPE_MEDIA, "media", "Media"},
 	{ JANUS_EVENT_TYPE_PLUGIN, "plugins", "Plugins"},
 	{ JANUS_EVENT_TYPE_TRANSPORT, "transports", "Transports"},
-	{ JANUS_EVENT_TYPE_CORE, "core", "Core"}
+	{ JANUS_EVENT_TYPE_CORE, "core", "Core"},
+	{ -1, NULL, NULL},
 };
 
 static gboolean eventsenabled = FALSE;
@@ -347,7 +348,7 @@ void janus_events_edit_events_mask(const char *list, janus_flags *target) {
 						index++;
 					if(strlen(index)) {
 						struct janus_event_types *ev = event_types_string;
-						while(ev) {
+						while(ev->label) {
 							if(!strcasecmp(index, ev->label)) {
 								janus_flags_set(&mask, ev->type);
 								break;
@@ -369,7 +370,7 @@ void janus_events_edit_events_mask(const char *list, janus_flags *target) {
 /* Helpers to convert an event type to a string label or a more verbose name */
 const char *janus_events_type_to_label(int type) {
 	struct janus_event_types *ev = event_types_string;
-	while(ev) {
+	while(ev->label) {
 		if(type == ev->type)
 			return ev->label;
 		ev++;
@@ -379,7 +380,7 @@ const char *janus_events_type_to_label(int type) {
 
 const char *janus_events_type_to_name(int type) {
 	struct janus_event_types *ev = event_types_string;
-	while(ev) {
+	while(ev->label) {
 		if(type == ev->type)
 			return ev->name;
 		ev++;

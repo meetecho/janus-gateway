@@ -1,23 +1,8 @@
 ACLOCAL_AMFLAGS = -I m4
 
-# FIXME: These flags should be produced in configure.ac using AX_APPEND_COMPILE_FLAGS
-AM_CFLAGS = \
-	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
-	-Wunused -fstrict-aliasing -Wextra -Wformat=2 -Winit-self -Winline \
-	-Wpacked -Wpointer-arith -Wmissing-format-attribute -Wmissing-noreturn \
-	-Wnested-externs -Wstrict-prototypes -Wunsafe-loop-optimizations \
-	-Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
-	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
-	-Wmissing-include-dirs -Wno-aggregate-return -Wunused-but-set-variable \
-	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
-AM_CFLAGS += -Wno-undef  # sofiasip is not -Wundef--safe
-AM_CFLAGS += -Wno-redundant-decls  # sofiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT and JANUS_EVENTHANDLER_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
-
-AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic -pthread
 
 # FIXME: make docs work with distcheck
 DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing
