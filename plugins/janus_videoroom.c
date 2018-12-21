@@ -921,9 +921,11 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "configure",
-	"audio" : <true|false, depending on whether audio should be relayed or not; optional>,
-	"video" : <true|false, depending on whether video should be relayed or not; optional>,
-	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
+	"audio" : <true|false, depending on whether audio should be relayed or not; deprecated, and optional>,
+	"video" : <true|false, depending on whether video should be relayed or not; deprecated, and optional>,
+	"data" : <true|false, depending on whether datachannel messages should be relayed or not; deprecated, and optional>,
+	"mid" : <mid of the m-line to refer to for this configure request; optional>,
+	"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
@@ -1209,9 +1211,11 @@ static struct janus_json_parameter publisher_parameters[] = {
 	{"display", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"mid", JANUS_JSON_STRING, 0},
+	{"send", JANUS_JSON_BOOL, 0},
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -2019,19 +2023,15 @@ static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *su
 	janus_refcount_init(&stream->ref, janus_videoroom_subscriber_stream_free);
 	janus_refcount_increase(&stream->ref);	/* This is for the mid-indexed hashtable */
 	janus_rtp_simulcasting_context_reset(&stream->sim_context);
-	if(ps->simulcast) {
-		stream->sim_context.substream_target = 2;
-		stream->sim_context.templayer_target = 2;
-	}
+	stream->sim_context.substream_target = 2;
+	stream->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&stream->vp8_context);
-	if(ps->svc) {
-		/* This stream belongs to a room where VP9 SVC has been enabled,
-		 * let's assume we're interested in all layers for the time being */
-		stream->spatial_layer = -1;
-		stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
-		stream->temporal_layer = -1;
-		stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
-	}
+	/* This stream may belong to a room where VP9 SVC has been enabled,
+	 * let's assume we're interested in all layers for the time being */
+	stream->spatial_layer = -1;
+	stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
+	stream->temporal_layer = -1;
+	stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
 	janus_mutex_lock(&ps->subscribers_mutex);
 	ps->subscribers = g_slist_append(ps->subscribers, stream);
 	/* The two streams reference each other */
@@ -2828,9 +2828,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					else if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO)
 						json_object_set_new(m, "codec", json_string(janus_videocodec_name(stream->vcodec)));
 					if(stream->simulcast)
-						json_object_set_new(info, "simulcast", json_true());
+						json_object_set_new(m, "simulcast", json_true());
 					if(stream->svc)
-						json_object_set_new(info, "vp9-svc", json_true());
+						json_object_set_new(m, "vp9-svc", json_true());
 					if(stream->rc && stream->rc->filename)
 						json_object_set_new(m, "recording", json_string(stream->rc->filename));
 					if(stream->audio_level_extmap_id > 0) {
@@ -4643,6 +4643,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 					packet.ubit = ubit;
 					packet.bbit = bbit;
 					packet.ebit = ebit;
+					/* Update the stream properties, if needed */
+					if(!ps->svc)
+						ps->svc = TRUE;
 				}
 			}
 		}
@@ -6267,9 +6270,13 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
 					goto error;
 				}
+				/* Audio, video and data are deprecated properties */
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
+				/* Better to specify the 'send' property of a specific 'mid' */
+				const char *mid = json_string_value(json_object_get(root, "mid"));
+				json_t *send = json_object_get(root, "send");
 				json_t *restart = json_object_get(root, "restart");
 				json_t *update = json_object_get(root, "update");
 				json_t *spatial = json_object_get(root, "spatial_layer");
@@ -6319,6 +6326,13 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					if(data && ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
 						stream->send = json_is_true(data);
+					/* Let's also see if this is the right mid */
+					if(mid && strcasecmp(stream->mid, mid)) {
+						temp = temp->next;
+						continue;
+					}
+					if(send)
+						stream->send = json_is_true(send);
 					/* Next properties are for video only */
 					if(ps->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
 						temp = temp->next;
@@ -6337,6 +6351,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_t *event = json_object();
 								json_object_set_new(event, "videoroom", json_string("event"));
 								json_object_set_new(event, "room", json_integer(subscriber->room_id));
+								json_object_set_new(event, "mid", json_string(stream->mid));
 								json_object_set_new(event, "substream", json_integer(stream->sim_context.substream));
 								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -6354,6 +6369,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_t *event = json_object();
 								json_object_set_new(event, "videoroom", json_string("event"));
 								json_object_set_new(event, "room", json_integer(subscriber->room_id));
+								json_object_set_new(event, "mid", json_string(stream->mid));
 								json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
 								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -6374,6 +6390,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_t *event = json_object();
 								json_object_set_new(event, "videoroom", json_string("event"));
 								json_object_set_new(event, "room", json_integer(subscriber->room_id));
+								json_object_set_new(event, "mid", json_string(stream->mid));
 								json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
 								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -6393,6 +6410,7 @@ static void *janus_videoroom_handler(void *data) {
 								json_t *event = json_object();
 								json_object_set_new(event, "videoroom", json_string("event"));
 								json_object_set_new(event, "room", json_integer(subscriber->room_id));
+								json_object_set_new(event, "mid", json_string(stream->mid));
 								json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
 								gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -6740,7 +6758,6 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_init(&ps->subscribers_mutex);
 					janus_mutex_init(&ps->rtp_forwarders_mutex);
 					ps->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
-					/* TODO Set other properties: simulcast (including rid), SCV, etc. */
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						/* Are the extmaps we care about there? */
 						GList *ma = m->attributes;
@@ -6789,6 +6806,22 @@ static void *janus_videoroom_handler(void *data) {
 								ps->vcodec = videoroom->vcodec[i];
 								ps->pt = janus_videocodec_pt(ps->vcodec);
 								break;
+							}
+						}
+						/* Check if simulcast is in place */
+						if(msg_simulcast != NULL && json_array_size(msg_simulcast) > 0 &&
+								(ps->vcodec == JANUS_VIDEOCODEC_VP8 || ps->vcodec == JANUS_VIDEOCODEC_H264)) {
+							size_t i = 0;
+							for(i=0; i<json_array_size(msg_simulcast); i++) {
+								json_t *s = json_array_get(msg_simulcast, i);
+								int mindex = json_integer_value(json_object_get(s, "mindex"));
+								if(mindex != ps->mindex)
+									continue;
+								JANUS_LOG(LOG_WARN, "Publisher is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
+								ps->simulcast = TRUE;
+								ps->vssrc[0] = json_integer_value(json_object_get(s, "ssrc-0"));
+								ps->vssrc[1] = json_integer_value(json_object_get(s, "ssrc-1"));
+								ps->vssrc[2] = json_integer_value(json_object_get(s, "ssrc-2"));
 							}
 						}
 					}
@@ -7060,6 +7093,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string("event"));
 					json_object_set_new(event, "room", json_integer(subscriber->room_id));
+					json_object_set_new(event, "mid", json_string(stream->mid));
 					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
 					gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 					json_decref(event);
@@ -7075,6 +7109,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string("event"));
 					json_object_set_new(event, "room", json_integer(subscriber->room_id));
+					json_object_set_new(event, "mid", json_string(stream->mid));
 					json_object_set_new(event, "temporal_layer", json_integer(stream->temporal_layer));
 					gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 					json_decref(event);
@@ -7099,6 +7134,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string("event"));
 					json_object_set_new(event, "room", json_integer(subscriber->room_id));
+					json_object_set_new(event, "mid", json_string(stream->mid));
 					json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
 					gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 					json_decref(event);
@@ -7114,6 +7150,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string("event"));
 					json_object_set_new(event, "room", json_integer(subscriber->room_id));
+					json_object_set_new(event, "mid", json_string(stream->mid));
 					json_object_set_new(event, "spatial_layer", json_integer(stream->spatial_layer));
 					gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 					json_decref(event);
@@ -7163,6 +7200,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
 				json_object_set_new(event, "substream", json_integer(stream->sim_context.substream));
 				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -7181,6 +7219,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(subscriber->room_id));
+				json_object_set_new(event, "mid", json_string(stream->mid));
 				json_object_set_new(event, "temporal", json_integer(stream->sim_context.templayer));
 				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);

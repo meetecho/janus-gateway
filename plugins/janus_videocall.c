@@ -1205,11 +1205,18 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 				/* Check if this user will simulcast */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-				if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
-					JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
-					session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-					session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-					session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+				if(msg_simulcast && json_array_size(msg_simulcast) > 0 && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
+					size_t i = 0;
+					for(i=0; i<json_array_size(msg_simulcast); i++) {
+						json_t *s = json_array_get(msg_simulcast, i);
+						int mindex = json_integer_value(json_object_get(s, "mindex"));
+						JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting (#%d)\n", session->username, mindex);
+						session->ssrc[0] = json_integer_value(json_object_get(s, "ssrc-0"));
+						session->ssrc[1] = json_integer_value(json_object_get(s, "ssrc-1"));
+						session->ssrc[2] = json_integer_value(json_object_get(s, "ssrc-2"));
+						/* FIXME We're stopping at the first item, there may be more */
+						break;
+					}
 				}
 				/* Send SDP to our peer */
 				json_t *call = json_object();

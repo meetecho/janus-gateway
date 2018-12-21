@@ -59,10 +59,10 @@ var mystream = null;
 // We use this other ID just to map our subscriptions to us
 var mypvtid = null;
 
-var remoteFeed = null, state = {};
-var feeds = {}, feedStreams = {}, subStreams = {}, slots = {};
+var remoteFeed = null;
+var feeds = {}, feedStreams = {}, subStreams = {}, slots = {}, mids = {};
 var localTracks = {}, localVideos = 0, remoteTracks = {};
-var bitrateTimer = [];
+var bitrateTimer = [], simulcastStarted = {};
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 
@@ -655,14 +655,14 @@ function subscribeTo(sources) {
 							// Check which this feed this refers to
 							var sub = subStreams[mid];
 							var feed = feedStreams[sub.feed_id];
-								// TODO
-							if(!remoteFeed.simulcastStarted) {
-								remoteFeed.simulcastStarted = true;
+							var slot = slots[mid];
+							if(!simulcastStarted[slot]) {
+								simulcastStarted[slot] = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
+								addSimulcastButtons(slot, true);
 							}
 							// We just received notice that there's been a switch, update the buttons
-							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
+							updateSimulcastButtons(slot, substream, temporal);
 						}
 					} else {
 						// What has just happened?
@@ -674,8 +674,10 @@ function subscribeTo(sources) {
 						var mid = msg["streams"][i]["mid"];
 						subStreams[mid] = msg["streams"][i];
 						var feed = feedStreams[msg["streams"][i]["feed_id"]];
-						if(feed && feed.slot)
+						if(feed && feed.slot) {
 							slots[mid] = feed.slot;
+							mids[feed.slot] = mid;
+						}
 					}
 				}
 				if(jsep !== undefined && jsep !== null) {
@@ -741,6 +743,7 @@ function subscribeTo(sources) {
 					}
 					delete remoteTracks[mid];
 					delete slots[mid];
+					delete mids[slot];
 					return;
 				}
 				// If we're here, a new track was added
@@ -820,6 +823,8 @@ function unsubscribeFrom(id) {
 	Janus.debug("Feed " + id + " (" + feed.display + ") has left the room, detaching");
 	$('#remote' + feed.slot).empty().hide();
 	$('#videoremote' + feed.slot).empty();
+	delete simulcastStarted[feed.slot];
+	$('#simulcast' + feed.slot).remove();
 	delete feeds[feed.slot];
 	feeds.slot = 0;
 	delete feedStreams[id];
@@ -864,66 +869,72 @@ function addSimulcastButtons(feed, temporal) {
 	// Enable the simulcast selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('sl')[1].split('-')[0];
+			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (lower quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			feeds[index].send({message: { request: "configure", substream: 0 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], substream: 0 }});
 		});
 	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('sl')[1].split('-')[0];
+			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (normal quality)", null, {timeOut: 2000});
 			if(!$('#sl' + index + '-2').hasClass('btn-success'))
 				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", substream: 1 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], substream: 1 }});
 		});
 	$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('sl')[1].split('-')[0];
+			toastr.info("Switching simulcast substream (mid=" + mids[index] + "), wait for it... (higher quality)", null, {timeOut: 2000});
 			$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", substream: 2 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], substream: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
 	$('#tl' + index + '-0').parent().removeClass('hide');
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('tl')[1].split('-')[0];
+			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (lowest FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			feeds[index].send({message: { request: "configure", temporal: 0 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], temporal: 0 }});
 		});
 	$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('tl')[1].split('-')[0];
+			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (medium FPS)", null, {timeOut: 2000});
 			if(!$('#tl' + index + '-2').hasClass('btn-success'))
 				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", temporal: 1 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], temporal: 1 }});
 		});
 	$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
-			toastr.info("Capping simulcast temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
+			var index = $(this).attr('id').split('tl')[1].split('-')[0];
+			toastr.info("Capping simulcast temporal layer (mid=" + mids[index] + "), wait for it... (highest FPS)", null, {timeOut: 2000});
 			$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#tl' + index + '-1').hasClass('btn-success'))
 				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl' + index + '-0').hasClass('btn-success'))
 				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", temporal: 2 }});
+			remoteFeed.send({message: { request: "configure", mid: mids[index], temporal: 2 }});
 		});
 }
 

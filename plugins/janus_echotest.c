@@ -839,13 +839,20 @@ static void *janus_echotest_handler(void *data) {
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-		if(msg_simulcast) {
-			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
-			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-			session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
-			session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+		if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
+			size_t i = 0;
+			for(i=0; i<json_array_size(msg_simulcast); i++) {
+				json_t *s = json_array_get(msg_simulcast, i);
+				int mindex = json_integer_value(json_object_get(s, "mindex"));
+				JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting (#%d)\n", mindex);
+				session->ssrc[0] = json_integer_value(json_object_get(s, "ssrc-0"));
+				session->ssrc[1] = json_integer_value(json_object_get(s, "ssrc-1"));
+				session->ssrc[2] = json_integer_value(json_object_get(s, "ssrc-2"));
+				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
+				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+				/* FIXME We're stopping at the first item, there may be more */
+				break;
+			}
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {

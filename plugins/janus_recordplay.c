@@ -1580,18 +1580,20 @@ recdone:
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
 			/* If the user negotiated simulcasting, prepare it accordingly */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-			if(msg_simulcast) {
-				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
-				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
-				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
-				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
-					/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-					session->ssrc[0] = 0;
-					session->ssrc[1] = 0;
-					session->ssrc[2] = 0;
+			if(msg_simulcast && json_array_size(msg_simulcast) > 0 &&
+					(rec->vcodec == JANUS_VIDEOCODEC_VP8 || rec->vcodec == JANUS_VIDEOCODEC_H264)) {
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *s = json_array_get(msg_simulcast, i);
+					int mindex = json_integer_value(json_object_get(s, "mindex"));
+					JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting (#%d)\n", mindex);
+					session->ssrc[0] = json_integer_value(json_object_get(s, "ssrc-0"));
+					session->ssrc[1] = json_integer_value(json_object_get(s, "ssrc-1"));
+					session->ssrc[2] = json_integer_value(json_object_get(s, "ssrc-2"));
+					session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
+					session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
 				}
 			}
 			/* Done! */

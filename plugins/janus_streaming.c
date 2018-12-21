@@ -573,9 +573,11 @@ rtspiface = network interface IP address or device name to listen on when receiv
 \verbatim
 {
 	"request" : "configure",
-	"audio" : <true|false, depending on whether audio should be relayed or not; optional>,
-	"video" : <true|false, depending on whether video should be relayed or not; optional>,
-	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
+	"audio" : <true|false, depending on whether audio should be relayed or not; deprecated, and optional>,
+	"video" : <true|false, depending on whether video should be relayed or not; deprecated, and optional>,
+	"data" : <true|false, depending on whether datachannel messages should be relayed or not; deprecated, and optional>,
+	"mid" : <mid of the m-line to refer to for this configure request; optional>,
+	"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
@@ -780,9 +782,9 @@ static struct janus_json_parameter rtp_parameters[] = {
 	{"description", JANUS_JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"media", JANUS_JSON_ARRAY, 0},
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},		/* Deprecated */
+	{"video", JANUS_JSON_BOOL, 0},		/* Deprecated */
+	{"data", JANUS_JSON_BOOL, 0},		/* Deprecated */
 	{"collision", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"threads", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtpsuite", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -847,6 +849,7 @@ static struct janus_json_parameter rtp_media_parameters[] = {
 	{"buffermsg", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter rtp_audio_parameters[] = {
+	/* This syntax is deprecated */
 	{"audiomcast", JANUS_JSON_STRING, 0},
 	{"audioport", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"audiortcpport", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -857,6 +860,7 @@ static struct janus_json_parameter rtp_audio_parameters[] = {
 	{"audioskew", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_video_parameters[] = {
+	/* This syntax is deprecated */
 	{"videomcast", JANUS_JSON_STRING, 0},
 	{"videoport", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"videortcpport", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -872,6 +876,7 @@ static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videosvc", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_data_parameters[] = {
+	/* This syntax is deprecated */
 	{"dataport", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"databuffermsg", JANUS_JSON_BOOL, 0},
 	{"datamcast", JANUS_JSON_STRING, 0},
@@ -886,15 +891,15 @@ static struct janus_json_parameter recording_parameters[] = {
 	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter recording_start_parameters[] = {
-	{"audio", JANUS_JSON_STRING, 0},
-	{"video", JANUS_JSON_STRING, 0},
-	{"data", JANUS_JSON_STRING, 0},
+	{"audio", JANUS_JSON_STRING, 0},	/* Deprecated */
+	{"video", JANUS_JSON_STRING, 0},	/* Deprecated */
+	{"data", JANUS_JSON_STRING, 0},		/* Deprecated */
 	{"media", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter recording_stop_parameters[] = {
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},		/* Deprecated */
+	{"video", JANUS_JSON_BOOL, 0},		/* Deprecated */
+	{"data", JANUS_JSON_BOOL, 0},		/* Deprecated */
 	{"media", JANUS_JSON_ARRAY, 0}
 };
 static struct janus_json_parameter simulcast_parameters[] = {
@@ -906,9 +911,11 @@ static struct janus_json_parameter svc_parameters[] = {
 	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"mid", JANUS_JSON_STRING, 0},
+	{"send", JANUS_JSON_BOOL, 0},
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -2203,6 +2210,8 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 				janus_streaming_rtp_source_stream *stream = s->stream;
 				json_t *info = json_object();
 				json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
+				json_object_set_new(info, "mindex", json_integer(stream->mindex));
+				json_object_set_new(info, "mid", json_string(stream->mid));
 				if(stream->simulcast) {
 					json_t *simulcast = json_object();
 					json_object_set_new(simulcast, "substream", json_integer(s->substream));
@@ -4677,23 +4686,34 @@ done:
 			JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			/* Audio, video and data are deprecated properties */
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *data = json_object_get(root, "data");
+			/* Better to specify the 'send' property of a specific 'mid' */
+			const char *mid = json_string_value(json_object_get(root, "mid"));
+			json_t *send = json_object_get(root, "send");
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				GList *temp = session->streams;
 				while(temp) {
 					janus_streaming_session_stream *s = (janus_streaming_session_stream *)temp->data;
 					janus_streaming_rtp_source_stream *stream = s->stream;
-					/* TODO We need a better way of disabling individual streams */
+					/* Check the old and deprecated approach first */
 					if(audio && stream->type == JANUS_STREAMING_MEDIA_AUDIO)
 						s->send = json_is_true(audio);
 					else if(video && stream->type == JANUS_STREAMING_MEDIA_VIDEO)
 						s->send = json_is_true(video);
 					else if(data && stream->type == JANUS_STREAMING_MEDIA_DATA)
 						s->send = json_is_true(data);
+					/* Now let's see if this is the right mid */
+					if(mid && strcasecmp(stream->mid, mid)) {
+						temp = temp->next;
+						continue;
+					}
+					if(send)
+						s->send = json_is_true(send);
 					/* FIXME What if we're simulcasting or doing SVC on two different video streams? */
-					if(stream && stream->simulcast) {
+					if(stream->simulcast) {
 						/* Check if the viewer is requesting a different substream/temporal layer */
 						json_t *substream = json_object_get(root, "substream");
 						if(substream) {
@@ -4730,7 +4750,7 @@ done:
 							}
 						}
 					}
-					if(stream && stream->svc) {
+					if(stream->svc) {
 						/* Check if the viewer is requesting a different SVC spatial/temporal layer */
 						json_t *spatial = json_object_get(root, "spatial_layer");
 						if(spatial) {

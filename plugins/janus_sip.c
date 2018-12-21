@@ -2508,9 +2508,15 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-			if(msg_simulcast) {
+			if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
 				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *s = json_array_get(msg_simulcast, i);
+					session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
+				}
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
@@ -2664,9 +2670,15 @@ static void *janus_sip_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-			if(msg_simulcast) {
+			if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
 				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *s = json_array_get(msg_simulcast, i);
+					session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
+				}
 			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {

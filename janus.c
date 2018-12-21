@@ -1292,22 +1292,26 @@ int janus_process_incoming_request(janus_request *request) {
 		if(jsep_sdp_stripped) {
 			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
 			/* Check if VP8 simulcasting is enabled in one of the media streams */
+			json_t *simulcast = NULL;
 			janus_handle_webrtc_medium *medium = NULL;
 			uint mi=0;
 			for(mi=0; mi<g_hash_table_size(handle->pc->media); mi++) {
 				medium = g_hash_table_lookup(handle->pc->media, GUINT_TO_POINTER(mi));
 				if(medium && medium->ssrc_peer[1]) {
-					json_t *simulcast = json_object();
-					json_object_set_new(simulcast, "mindex", json_integer(medium->mindex));
-					json_object_set_new(simulcast, "ssrc-0", json_integer(medium->ssrc_peer[0]));
-					json_object_set_new(simulcast, "ssrc-1", json_integer(medium->ssrc_peer[1]));
+					if(simulcast == NULL)
+						simulcast = json_array();
+					json_t *msc = json_object();
+					json_object_set_new(msc, "mindex", json_integer(medium->mindex));
+					json_object_set_new(msc, "ssrc-0", json_integer(medium->ssrc_peer[0]));
+					json_object_set_new(msc, "ssrc-1", json_integer(medium->ssrc_peer[1]));
 					if(medium->ssrc_peer[2])
-						json_object_set_new(simulcast, "ssrc-2", json_integer(medium->ssrc_peer[2]));
-					json_object_set_new(body_jsep, "simulcast", simulcast);
-					/* FIXME This will need to change, when we'll support multiple video streams */
+						json_object_set_new(msc, "ssrc-2", json_integer(medium->ssrc_peer[2]));
+					json_array_append_new(simulcast, msc);
 					break;
 				}
 			}
+			if(simulcast)
+				json_object_set_new(body_jsep, "simulcast", simulcast);
 			/* Check if this is a renegotiation or update */
 			if(renegotiation)
 				json_object_set_new(body_jsep, "update", json_true());
