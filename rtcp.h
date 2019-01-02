@@ -365,7 +365,7 @@ gboolean janus_rtcp_check_nacks(janus_rtcp_header *rtcp, int len);
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_fci8(janus_rtcp_header *rtcp, int len);
-/*! \brief Method to check if a RTCP packet could contain a AFB REMB Message
+/*! \brief Method to check if a RTCP packet could contain an AFB REMB Message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */

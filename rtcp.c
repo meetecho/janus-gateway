@@ -232,7 +232,7 @@ gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len) {
 
 gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len) {
 	if (len < (int)(sizeof(janus_rtcp_header) + 1*sizeof(uint32_t) + sizeof(sender_info))) {
-		JANUS_LOG(LOG_WARN, "Packet is too small (%d bytes) to contain SR\n", len);
+		JANUS_LOG(LOG_VERB, "Packet is too small (%d bytes) to contain SR\n", len);
 		return FALSE;
 	}
 	int header_rb_len = (int)(rtcp->rc)*sizeof(report_block);
@@ -297,7 +297,7 @@ gboolean janus_rtcp_check_fci8(janus_rtcp_header *rtcp, int len) {
 gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len) {
 	/* At least 1 SSRC feedback */
 	if (len < (int)(sizeof(janus_rtcp_header) + 2*sizeof(uint32_t) + 3*sizeof(uint32_t))) {
-		JANUS_LOG(LOG_WARN, "Packet is too small (%d bytes) to contain REMB\n", len);
+		JANUS_LOG(LOG_VERB, "Packet is too small (%d bytes) to contain REMB\n", len);
 		return FALSE;
 	}
 	janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
