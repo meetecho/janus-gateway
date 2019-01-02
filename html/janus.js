@@ -1421,6 +1421,7 @@ function Janus(gatewayCallbacks) {
 			gap = 50;	// We choose 50ms as the default gap between tones
 		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms)");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
+		callbacks.success();
 	}
 
 	// Private method to destroy a plugin handle
