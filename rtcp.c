@@ -1239,7 +1239,7 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
 		} else if(npid-pid > 16) {
 			/* We need a new block: this sequence number will be its root PID */
-			JANUS_LOG(LOG_HUGE, "Adding another block of NACKs (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+			JANUS_LOG(LOG_HUGE, "Adding another block of NACKs (%"SCNu16"-%"SCNu16" > 16)...\n", npid, pid);
 			words++;
 			if(len < (words*4+4)) {
 				JANUS_LOG(LOG_ERR, "Buffer too small: %d < %d (at least %d NACK blocks needed)\n", len, words*4+4, words);
