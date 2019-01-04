@@ -347,24 +347,13 @@ gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len);
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len);
-/*! \brief Method to check that a RTCP packet size is at least 12 bytes
- *  This is useful because many RTCP packets must be at least that size.
- * @param[in] packet The message data
- * @param[in] len The message data length in bytes
- * @returns TRUE if packet is OK, or FALSE in case of error */
-gboolean janus_rtcp_check_len12(janus_rtcp_header *rtcp, int len);
-/*! \brief Method to check if a RTCP packet could contain a Transport Layer
- * Feedback Generic NACK Message.
- * @param[in] packet The message data
- * @param[in] len The message data length in bytes
- * @returns TRUE if packet is OK, or FALSE in case of error */
-gboolean janus_rtcp_check_nacks(janus_rtcp_header *rtcp, int len);
 /*! \brief Method to check if a RTCP packet could contain a Feedback Message
- * with an expected FCI size of 8 bytes (e.g. some FIRs or PLIs).
+ * with a defined FCI size.
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
+ * @param[in] sizeof_fci The size of a FCI entry
  * @returns TRUE if packet is OK, or FALSE in case of error */
-gboolean janus_rtcp_check_fci8(janus_rtcp_header *rtcp, int len);
+gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci);
 /*! \brief Method to check if a RTCP packet could contain an AFB REMB Message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
