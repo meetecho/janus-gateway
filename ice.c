@@ -611,12 +611,12 @@ static void janus_ice_notify_trickle(janus_handle *handle, char *buffer) {
 	janus_session_notify_event(session, event);
 }
 
-static void janus_ice_notify_media(janus_handle *handle, gboolean video, gboolean up) {
+static void janus_ice_notify_media(janus_handle *handle, char *mid, gboolean video, gboolean up) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying that we %s receiving %s\n",
-		handle->handle_id, up ? "are" : "are NOT", video ? "video" : "audio");
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying that we %s receiving %s on mid %s\n",
+		handle->handle_id, up ? "are" : "are NOT", video ? "video" : "audio", mid);
 	janus_session *session = (janus_session *)handle->session;
 	if(session == NULL)
 		return;
@@ -624,6 +624,7 @@ static void janus_ice_notify_media(janus_handle *handle, gboolean video, gboolea
 	json_object_set_new(event, "janus", json_string("media"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	json_object_set_new(event, "mid", json_string(mid));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
 	json_object_set_new(event, "receiving", up ? json_true() : json_false());
 	if(!up && no_media_timer > 1)
@@ -2298,7 +2299,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					if(medium->in_stats.info[vindex].bytes == 0 || medium->in_stats.info[vindex].notified_lastsec) {
 						/* We either received our first packet, or we started receiving it again after missing more than a second */
 						medium->in_stats.info[vindex].notified_lastsec = FALSE;
-						janus_ice_notify_media(handle, medium->type == JANUS_MEDIA_VIDEO, TRUE);
+						janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, TRUE);
 					}
 					/* Overall video data for this SSRC */
 					medium->in_stats.info[vindex].packets++;
@@ -3342,7 +3343,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				/* We missed more than no_second_timer seconds of video! */
 				medium->in_stats.info[0].notified_lastsec = TRUE;
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-				janus_ice_notify_media(handle, medium->type == JANUS_MEDIA_VIDEO, FALSE);
+				janus_ice_notify_media(handle, medium->mid, medium->type == JANUS_MEDIA_VIDEO, FALSE);
 			}
 		}
 		/* We also send live stats to event handlers every tot-seconds (configurable) */
