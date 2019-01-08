@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.6.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.6.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -65,27 +65,26 @@ AM_COND_IF([USE_CLANG],
 		-Wcast-align \
 		-Wno-override-init \
 		-Wunsafe-loop-optimizations \
-		-Wunused-but-set-variable"	
+		-Wunused-but-set-variable"
 	]
 )
 
-# add rdynamic to LDFLAGS
-LDFLAGS="$LDFLAGS \
-	-Wl,--export-dynamic"
-
-JANUS_VERSION=60
+JANUS_VERSION=61
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.6.0"
+JANUS_VERSION_STRING="0.6.1"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include -I/usr/local/include"
+	# add rdynamic to LDFLAGS
+	LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
 *)
+	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 	AM_CONDITIONAL([DARWIN_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 esac

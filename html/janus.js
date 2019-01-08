@@ -1440,6 +1440,7 @@ function Janus(gatewayCallbacks) {
 			gap = 50;	// We choose 50ms as the default gap between tones
 		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms)");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
+		callbacks.success();
 	}
 
 	// Private method to destroy a plugin handle
@@ -3029,11 +3030,11 @@ function Janus(gatewayCallbacks) {
 				if(match) {
 					mslabel = match[1];
 				}
-				match = lines[i].match('a=ssrc:' + ssrc + ' label:(.+)')
+				match = lines[i].match('a=ssrc:' + ssrc[0] + ' label:(.+)')
 				if(match) {
 					label = match[1];
 				}
-				if(lines[i].indexOf('a=ssrc:' + ssrc_fid) === 0) {
+				if(lines[i].indexOf('a=ssrc:' + ssrc_fid[0]) === 0) {
 					lines.splice(i, 1); i--;
 					continue;
 				}

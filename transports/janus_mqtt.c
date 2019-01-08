@@ -131,7 +131,7 @@ typedef struct janus_mqtt_context {
 		} publish;
 	} admin;
 	/* SSL config, if needed */
-	gboolean ssl_enable;
+	gboolean ssl_enabled;
 	char *cacert_file;
 	char *cert_file;
 	char *key_file;
@@ -229,20 +229,27 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	/* Check if we need to send events to handlers */
-	janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
-	if(events != NULL && events->value != NULL)
-		notify_events = janus_is_true(events->value);
+	janus_config_item *events_item = janus_config_get(config, config_general, janus_config_type_item, "events");
+	if(events_item && events_item->value)
+		notify_events = janus_is_true(events_item->value);
 	if(!notify_events && callback->events_is_enabled()) {
 		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
 	}
 
 	/* Check if we need to enable SSL support */
-	janus_config_item *ssl = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
-	if(ssl && ssl->value && janus_is_true(ssl->value)) {
+	janus_config_item *ssl_item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enabled");
+	if(ssl_item == NULL) {
+		/* Try legacy property */
+		ssl_item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
+		if (ssl_item && ssl_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'ssl_enable' property, please update it to 'ssl_enabled' instead\n");
+		}
+	}
+	if(ssl_item && ssl_item->value && janus_is_true(ssl_item->value)) {
 		if(strstr(url, "ssl://") != url)
 			JANUS_LOG(LOG_WARN, "SSL enabled, but MQTT url doesn't start with ssl://...\n");
 
-		ctx->ssl_enable = TRUE;
+		ctx->ssl_enabled = TRUE;
 
 		janus_config_item *cacertfile = janus_config_get(config, config_general, janus_config_type_item, "cacertfile");
 		if(!cacertfile || !cacertfile->value) {
@@ -285,8 +292,15 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	janus_config_item *disconnect_timeout_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_timeout");
 	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : 100;
 
-	janus_config_item *enable_item = janus_config_get(config, config_general, janus_config_type_item, "enable");
-	if(enable_item && enable_item->value && janus_is_true(enable_item->value)) {
+	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
+	if(enabled_item == NULL) {
+		/* Try legacy property */
+		enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enable");
+		if (enabled_item && enabled_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'enable' property, please update it to 'enabled' instead\n");
+		}
+	}
+	if(enabled_item && enabled_item->value && janus_is_true(enabled_item->value)) {
 		janus_mqtt_api_enabled_ = TRUE;
 
 		/* Subscribe configuration */
@@ -321,8 +335,15 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	/* Admin configuration */
-	janus_config_item *admin_enable_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enable");
-	if(admin_enable_item && admin_enable_item->value && janus_is_true(admin_enable_item->value)) {
+	janus_config_item *admin_enabled_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
+	if(admin_enabled_item == NULL) {
+		/* Try legacy property */
+		admin_enabled_item = janus_config_get(config, config_general, janus_config_type_item, "admin_enable");
+		if (admin_enabled_item && admin_enabled_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'admin_enable' property, please update it to 'admin_enabled' instead\n");
+		}
+	}
+	if(admin_enabled_item && admin_enabled_item->value && janus_is_true(admin_enabled_item->value)) {
 		janus_mqtt_admin_api_enabled_ = TRUE;
 
 		/* Admin subscribe configuration */
@@ -531,7 +552,7 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	options.onFailure = janus_mqtt_client_connect_failure;
 	/* Is SSL enabled? */
 	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
-	if(ctx->ssl_enable) {
+	if(ctx->ssl_enabled) {
 		ssl_opts.trustStore = ctx->cacert_file;
 		ssl_opts.keyStore = ctx->cert_file;
 		ssl_opts.privateKey = ctx->key_file;
