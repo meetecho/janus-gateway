@@ -638,6 +638,7 @@ static void janus_ice_notify_media(janus_handle *handle, char *mid, gboolean vid
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+		json_object_set_new(info, "mid", json_string(mid));
 		json_object_set_new(info, "receiving", up ? json_true() : json_false());
 		if(!up && no_media_timer > 1)
 			json_object_set_new(info, "seconds", json_integer(no_media_timer));
