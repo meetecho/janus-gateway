@@ -53,7 +53,7 @@ CFLAGS="$CFLAGS \
 	-Wunused \
 	-Wwrite-strings"
 
-AM_CONDITIONAL([USE_CLANG], [test "x$CC" = "xclang"])
+AM_CONDITIONAL([USE_CLANG], [[ "x$CC" == "xclang"* ]])
 AM_COND_IF([USE_CLANG],
 	# Specific clang flags
 	[CFLAGS="$CFLAGS \
