@@ -286,12 +286,14 @@ static gboolean janus_is_dtls(gchar *buf) {
 	return ((*buf >= 20) && (*buf <= 64));
 }
 
-static gboolean janus_is_rtp(gchar *buf) {
+static gboolean janus_is_rtp(gchar *buf, guint len) {
+	if (len < 2) return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	return ((header->type < 64) || (header->type >= 96));
 }
 
-static gboolean janus_is_rtcp(gchar *buf) {
+static gboolean janus_is_rtcp(gchar *buf, guint len) {
+	if (len < 2) return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	return ((header->type >= 64) && (header->type < 96));
 }
@@ -2114,7 +2116,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* What is this? */
-	if(janus_is_dtls(buf) || (!janus_is_rtp(buf) && !janus_is_rtcp(buf))) {
+	if(janus_is_dtls(buf) || (!janus_is_rtp(buf, len) && !janus_is_rtcp(buf, len))) {
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
@@ -2126,7 +2128,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
 	if(len < 12)
 		return;	/* Definitely nothing useful */
-	if(janus_is_rtp(buf)) {
+	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
 		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
@@ -2556,7 +2558,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			}
 		}
 		return;
-	} else if(janus_is_rtcp(buf)) {
+	} else if(janus_is_rtcp(buf, len)) {
 		/* This is RTCP */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTCP packet\n", handle->handle_id);
 		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
