@@ -372,6 +372,15 @@ function startStream() {
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
 	var body = { "request": "watch", id: parseInt(selectedStream) };
+	// Notice that, for RTP mountpoints, you can subscribe to a subset
+	// of the mountpoint media, rather than them all, by adding a "stream"
+	// array containing the list of stream mids you're interested in, e.g.:
+	//
+	//		body.streams = [ "0", "2" ];
+	//
+	// to only subscribe to the first and third stream, and skip the second
+	// (assuming those are the mids you got from a "list" or "info" request).
+	// By default, you always subscribe to all the streams in a mountpoint
 	streaming.send({"message": body});
 	// No remote video yet
 	$('#stream').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');

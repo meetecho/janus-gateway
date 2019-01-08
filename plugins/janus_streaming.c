@@ -194,14 +194,18 @@ rtspiface = network interface IP address or device name to listen on when receiv
 			"description" : "<description of mountpoint #1>",
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
-			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
+			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>,
+			"media" : [
+
+			]
 		},
 		{
 			"id" : <unique ID of mountpoint #2>,
 			"description" : "<description of mountpoint #2>",
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
-			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
+			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>,
+			"media" : [..]
 		},
 		...
 	]
@@ -475,24 +479,40 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"request" : "watch",
 	"id" : <unique ID of the mountpoint to subscribe to; mandatory>,
 	"pin" : "<PIN required to access the mountpoint; mandatory if configured>",
-	"offer_audio" : <true|false; whether or not audio should be negotiated; true by default if the mountpoint has audio>,
-	"offer_video" : <true|false; whether or not video should be negotiated; true by default if the mountpoint has video>,
-	"offer_data" : <true|false; whether or not datachannels should be negotiated; true by default if the mountpoint has datachannels>
+	"media" : [
+		<array of mids to subscribe to, as strings; optional, missing or empty array subscribes to all mids>
+	]
+	"offer_audio" : <true|false; deprecated; whether or not audio should be negotiated; true by default if the mountpoint has audio>,
+	"offer_video" : <true|false; deprecated; whether or not video should be negotiated; true by default if the mountpoint has video>,
+	"offer_data" : <true|false; deprecated; whether or not datachannels should be negotiated; true by default if the mountpoint has datachannels>
 }
 \endverbatim
  *
  * As you can see, it's just a matter of specifying the ID of the mountpoint to
  * subscribe to and, if needed, the PIN to access the mountpoint in case
- * it's protected. The \c offer_audio , \c offer_video and \c offer_data are
- * also particularly interesting, though, as they allow you to only subscribe
- * to a subset of the mountpoint media. By default, in fact, a \c watch
- * request will result in the plugin preparing a new SDP offer trying to
- * negotiate all the media streams available in the mountpoint; in case
- * the viewer knows they don't support one of the mountpoint codecs, though
- * (e.g., the video in the mountpoint is VP8, but they only support H.264),
- * or are not interested in getting all the media (e.g., they're ok with
- * just audio and not video, or don't have enough bandwidth for both),
- * they can use those properties to shape the SDP offer to their needs.
+ * it's protected. The \c media array is particularly interesting, as it
+ * allows you to only subscribe to a subset of the mountpoint media, which
+ * you can address by the related \c mid property of each stream. By default,
+ * in fact, a \c watch request will result in the plugin preparing a new
+ * SDP offer trying to negotiate all the media streams available in the
+ * mountpoint; in case the viewer knows they don't support one of the
+ * mountpoint codecs, though (e.g., the video in the mountpoint is VP8,
+ * but they only support H.264), or are not interested in getting all the
+ * media (e.g., they're ok with just audio and not video, or don't have
+ * enough bandwidth for both), they can use those properties to shape the
+ * SDP offer to their needs. The \c media array is optional, as a missing
+ * or empty array will simply be interpreted as a willingness to subscribe
+ * to all the streams in the mountpoint, which is the default behaviour.
+ * Notice that the order of the mids in the \c media array is irrelevant,
+ * as is how many times the same mid is listed in the array: the presence
+ * of a mid is just interpreted as an "on" switch for that stream, meaning
+ * it will be offered in the SDP.
+ *
+ * \note For backwards compatibility, the deprecated \c offer_audio ,
+ * \c offer_video and \c offer_data properties are also available. They
+ * also allow you to only subscribe to a subset of the mountpoint media,
+ * but with a more crude approach: specifically, they dictate whether or
+ * not any audio, video or data stream should be offered or not.
  *
  * As anticipated, if successful this request will generate a new JSEP SDP
  * offer, which will be attached to a \c preparing status event:
@@ -754,10 +774,12 @@ static struct janus_json_parameter id_parameters[] = {
 static struct janus_json_parameter watch_parameters[] = {
 	{"id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"pin", JANUS_JSON_STRING, 0},
+	{"media", JANUS_JSON_ARRAY, 0},
+	{"restart", JANUS_JSON_BOOL, 0},
+	/* Deprecated parameters: still there for backwards compatibility */
 	{"offer_audio", JANUS_JSON_BOOL, 0},
 	{"offer_video", JANUS_JSON_BOOL, 0},
-	{"offer_data", JANUS_JSON_BOOL, 0},
-	{"restart", JANUS_JSON_BOOL, 0}
+	{"offer_data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
@@ -2320,6 +2342,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				while(temp) {
 					json_t *info = json_object();
 					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+					json_object_set_new(info, "mid", json_string(stream->mid));
 					json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
 						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
@@ -4292,12 +4315,30 @@ static void *janus_streaming_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *id = json_object_get(root, "id");
+			guint64 id_value = json_integer_value(id);
+			/* The proper way is listing the mids of the streams we want to
+			 * receive: a missing or empty list will subscribe to them all */
+			json_t *mids = json_object_get(root, "media");
+			if(mids != NULL && json_array_size(mids) > 0) {
+				size_t i = 0;
+				for(i=0; i<json_array_size(mids); i++) {
+					json_t *s = json_array_get(mids, i);
+					if(!json_is_string(s)) {
+						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "The media array must only contain strings (mid values)");
+						goto error;
+					}
+				}
+			}
+			/* The offer_audio/video/data attribute are deprecated,
+			 * but we keep them there for backwards compatibility */
 			json_t *offer_audio = json_object_get(root, "offer_audio");
 			json_t *offer_video = json_object_get(root, "offer_video");
 			json_t *offer_data = json_object_get(root, "offer_data");
-			guint64 id_value = json_integer_value(id);
+			/* There may be an ICE restart request involved */
 			json_t *restart = json_object_get(root, "restart");
 			do_restart = restart ? json_is_true(restart) : FALSE;
+			/* Find the mountpoint and go on */
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 			if(mp == NULL) {
@@ -4354,7 +4395,15 @@ static void *janus_streaming_handler(void *data) {
 			session->mountpoint = mp;
 			session->sdp_version = 1;	/* This needs to be increased when it changes */
 			session->sdp_sessid = janus_get_real_time();
-			/* Check what we should offer */
+			/* Check what we should offer: the new way of subscribing is
+			 * specifying the streams we're interested in by mid */
+			gboolean legacy = FALSE;
+			if(mids == NULL || json_array_size(mids) == 0) {
+				/* We'll treat this as a legacy request, even though
+				 * it may simply be a "subscribe to all streams" */
+				legacy = TRUE;
+			}
+			/* These are deprecated attributes, that we handle for backwards compatibility */
 			gboolean audio = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
 			if(!mp->audio)
 				audio = FALSE;	/* ... unless the mountpoint isn't sending any audio */
@@ -4411,13 +4460,31 @@ static void *janus_streaming_handler(void *data) {
 				GList *temp = source->media;
 				while(temp) {
 					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
-					/* TODO We need to add a better way to filter out streams to subscribe to (maybe by mid?) */
-					if((stream->type == JANUS_STREAMING_MEDIA_AUDIO && !audio) ||
+					/* If we're using the legacy API, make sure we honor the deprecated attributes */
+					if(legacy && ((stream->type == JANUS_STREAMING_MEDIA_AUDIO && !audio) ||
 							(stream->type == JANUS_STREAMING_MEDIA_VIDEO && !video) ||
-							(stream->type == JANUS_STREAMING_MEDIA_DATA && !data)) {
+							(stream->type == JANUS_STREAMING_MEDIA_DATA && !data))) {
 						/* FIXME Don't subscribe to this stream */
 						temp = temp->next;
 						continue;
+					}
+					/* Check if this stream is among the mids the user subscribed to */
+					if(mids != NULL && json_array_size(mids) > 0) {
+						gboolean found = FALSE;
+						size_t i = 0;
+						for(i=0; i<json_array_size(mids); i++) {
+							json_t *s = json_array_get(mids, i);
+							const char *mid = json_string_value(s);
+							if(mid && stream->mid && !strcasecmp(stream->mid, mid)) {
+								found = TRUE;
+								break;
+							}
+						}
+						if(!found) {
+							/* Not in the mids list, don't subscribe to this stream */
+							temp = temp->next;
+							continue;
+						}
 					}
 					/* Create a new session stream and add a reference to the source stream */
 					s = g_malloc0(sizeof(janus_streaming_session_stream));
