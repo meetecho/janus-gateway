@@ -52,22 +52,22 @@ CFLAGS="$CFLAGS \
 	-Wswitch-default \
 	-Wunused \
 	-Wwrite-strings"
-
-AM_CONDITIONAL([USE_CLANG], [[ "x$CC" == "xclang"* ]])
-AM_COND_IF([USE_CLANG],
+	
+case "$CC" in
+clang*)
 	# Specific clang flags
-	[CFLAGS="$CFLAGS \
+	CFLAGS="$CFLAGS \
 		-Wno-cast-align \
 		-Wno-initializer-overrides"
-	],
+;;
+*)
 	# Specific gcc flags
-	[CFLAGS="$CFLAGS \
+	CFLAGS="$CFLAGS \
 		-Wcast-align \
 		-Wno-override-init \
 		-Wunsafe-loop-optimizations \
 		-Wunused-but-set-variable"
-	]
-)
+esac
 
 JANUS_VERSION=61
 AC_SUBST(JANUS_VERSION)
