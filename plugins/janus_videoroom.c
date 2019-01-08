@@ -1173,20 +1173,22 @@ static struct janus_json_parameter kick_parameters[] = {
 static struct janus_json_parameter join_parameters[] = {
 	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"ptype", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"audio", JANUS_JSON_BOOL, 0},
-	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"descriptions", JANUS_JSON_ARRAY, 0},
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JANUS_JSON_STRING, 0},
 	{"token", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter publish_parameters[] = {
-	{"audio", JANUS_JSON_BOOL, 0},
+	{"descriptions", JANUS_JSON_ARRAY, 0},
 	{"audiocodec", JANUS_JSON_STRING, 0},
-	{"video", JANUS_JSON_BOOL, 0},
 	{"videocodec", JANUS_JSON_STRING, 0},
-	{"data", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"keyframe", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
@@ -1195,6 +1197,10 @@ static struct janus_json_parameter publish_parameters[] = {
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter publish_desc_parameters[] = {
+	{"mid", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"description", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -1245,6 +1251,7 @@ static struct janus_json_parameter publisher_parameters[] = {
 	{"display", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
+	{"descriptions", JANUS_JSON_ARRAY, 0},
 	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
 	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
 	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated */
@@ -1261,9 +1268,10 @@ static struct janus_json_parameter configure_parameters[] = {
 };
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, 0},
-	{"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},	/* Deprecated! */
+	{"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},	/* Deprecated! Use feed in streams instead */
 	{"private_id", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"close_pc", JANUS_JSON_BOOL, 0},
+	/* The following parameters are deprecated: use streams instead */
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0},
@@ -1498,7 +1506,7 @@ typedef struct janus_videoroom_publisher_stream {
 	janus_videoroom_media type;				/* Type of this stream (audio, video or data) */
 	int mindex;								/* mindex of this stream */
 	char *mid;								/* mid of this stream */
-	char *label;							/* Description of this stream (user provided) */
+	char *description;						/* Description of this stream (user provided) */
 	gboolean active;						/* Whether this stream is active or not */
 	janus_audiocodec acodec;				/* Audio codec this publisher is using (if audio) */
 	janus_videocodec vcodec;				/* Video codec this publisher is using (if video) */
@@ -1617,7 +1625,7 @@ static void janus_videoroom_subscriber_stream_unref(janus_videoroom_subscriber_s
 static void janus_videoroom_subscriber_stream_free(const janus_refcount *s_ref) {
 	janus_videoroom_subscriber_stream *s = janus_refcount_containerof(s_ref, janus_videoroom_subscriber_stream, ref);
 	/* This subscriber stream can be destroyed, free all the resources */
-		/* TODO */
+		/* TODO Anything else we should free? */
 	g_free(s->mid);
 	g_free(s);
 }
@@ -1658,8 +1666,9 @@ static void janus_videoroom_publisher_stream_unref(janus_videoroom_publisher_str
 static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) {
 	janus_videoroom_publisher_stream *ps = janus_refcount_containerof(ps_ref, janus_videoroom_publisher_stream, ref);
 	/* This publisher stream can be destroyed, free all the resources */
-		/* TODO */
+		/* TODO Anything else we should free? */
 	g_free(ps->mid);
+	g_free(ps->description);
 	janus_recorder_destroy(ps->rc);
 	g_hash_table_destroy(ps->rtp_forwarders);
 	ps->rtp_forwarders = NULL;
@@ -2226,8 +2235,8 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 			}
 			if(ps->mid)
 				json_object_set_new(m, "feed_mid", json_string(ps->mid));
-			if(ps->label)
-				json_object_set_new(m, "feed_description", json_string(ps->label));
+			if(ps->description)
+				json_object_set_new(m, "feed_description", json_string(ps->description));
 			if(ps->simulcast) {
 				json_t *simulcast = json_object();
 				json_object_set_new(simulcast, "substream", json_integer(stream->sim_context.substream));
@@ -2889,8 +2898,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					json_object_set_new(m, "type", json_string(janus_videoroom_media_str(stream->type)));
 					json_object_set_new(m, "mindex", json_integer(stream->mindex));
 					json_object_set_new(m, "mid", json_string(stream->mid));
-					if(stream->label)
-						json_object_set_new(m, "description", json_string(stream->label));
+					if(stream->description)
+						json_object_set_new(m, "description", json_string(stream->description));
 					if(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO)
 						json_object_set_new(m, "codec", json_string(janus_audiocodec_name(stream->acodec)));
 					else if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO)
@@ -4538,8 +4547,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				json_object_set_new(info, "type", json_string(janus_videoroom_media_str(ps->type)));
 				json_object_set_new(info, "mindex", json_integer(ps->mindex));
 				json_object_set_new(info, "mid", json_string(ps->mid));
-				if(ps->label)
-					json_object_set_new(info, "description", json_string(ps->label));
+				if(ps->description)
+					json_object_set_new(info, "description", json_string(ps->description));
 				if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 					json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
 					/* FIXME For backwards compatibility, we need audio_codec in the global info */
@@ -5341,6 +5350,22 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
+				json_t *descriptions = json_object_get(root, "descriptions");
+				if(descriptions != NULL && json_array_size(descriptions) > 0) {
+					size_t i = 0;
+					for(i=0; i<json_array_size(descriptions); i++) {
+						json_t *d = json_array_get(descriptions, i);
+						JANUS_VALIDATE_JSON_OBJECT(d, publish_desc_parameters,
+							error_code, error_cause, TRUE,
+							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+						if(error_code != 0) {
+							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
+							goto error;
+
+						}
+					}
+				}
 				/* A token might be required to join */
 				if(videoroom->check_allowed) {
 					json_t *token = json_object_get(root, "token");
@@ -5463,12 +5488,26 @@ static void *janus_videoroom_handler(void *data) {
 					GList *temp = p->streams;
 					while(temp) {
 						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+						/* Are we updating the description? */
+						if(descriptions != NULL && json_array_size(descriptions) > 0) {
+							size_t i = 0;
+							for(i=0; i<json_array_size(descriptions); i++) {
+								json_t *d = json_array_get(descriptions, i);
+								const char *d_mid = json_string_value(json_object_get(d, "mid"));
+								const char *d_desc = json_string_value(json_object_get(d, "description"));
+								if(d_desc && d_mid && ps->mid && !strcasecmp(d_mid, ps->mid)) {
+									g_free(ps->description);
+									ps->description = g_strdup(d_desc);
+									break;
+								}
+							}
+						}
 						json_t *info = json_object();
 						json_object_set_new(info, "type", json_string(janus_videoroom_media_str(ps->type)));
 						json_object_set_new(info, "mindex", json_integer(ps->mindex));
 						json_object_set_new(info, "mid", json_string(ps->mid));
-						if(ps->label)
-							json_object_set_new(info, "description", json_string(ps->label));
+						if(ps->description)
+							json_object_set_new(info, "description", json_string(ps->description));
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 							json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
 							/* FIXME For backwards compatibility, we need audio_codec in the global info */
@@ -5840,10 +5879,26 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&participant->ref);
 					goto error;
 				}
-				json_t *audio = json_object_get(root, "audio");
+				json_t *descriptions = json_object_get(root, "descriptions");
+				if(descriptions != NULL && json_array_size(descriptions) > 0) {
+					size_t i = 0;
+					for(i=0; i<json_array_size(descriptions); i++) {
+						json_t *d = json_array_get(descriptions, i);
+						JANUS_VALIDATE_JSON_OBJECT(d, publish_desc_parameters,
+							error_code, error_cause, TRUE,
+							JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+						if(error_code != 0) {
+							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
+							goto error;
+
+						}
+					}
+				}
 				json_t *audiocodec = json_object_get(root, "audiocodec");
-				json_t *video = json_object_get(root, "video");
 				json_t *videocodec = json_object_get(root, "videocodec");
+				json_t *audio = json_object_get(root, "audio");
+				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *keyframe = json_object_get(root, "keyframe");
@@ -5859,7 +5914,6 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Check if there's an SDP to take into account */
 				if(json_string_value(json_object_get(msg->jsep, "sdp"))) {
-						/* TODO Create/update streams */
 					if(audiocodec && !sdp_update) {
 						/* The participant would like to use an audio codec in particular */
 						janus_audiocodec acodec = janus_audiocodec_from_name(json_string_value(audiocodec));
@@ -6897,6 +6951,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Prepare an answer, by iterating on all m-lines */
 				janus_sdp *answer = janus_sdp_generate_answer(offer);
 				json_t *media = json_array();
+				json_t *descriptions = json_object_get(root, "descriptions");
 				const char *audiocodec = NULL, *videocodec = NULL;
 				GList *temp = offer->m_lines;
 				while(temp) {
@@ -7094,6 +7149,19 @@ static void *janus_videoroom_handler(void *data) {
 						g_snprintf(mid, sizeof(mid), "%d", ps->mindex);
 						ps->mid = g_strdup(mid);
 					}
+					/* Do we have a description as well? */
+					if(descriptions != NULL && json_array_size(descriptions) > 0) {
+						size_t i = 0;
+						for(i=0; i<json_array_size(descriptions); i++) {
+							json_t *d = json_array_get(descriptions, i);
+							const char *d_mid = json_string_value(json_object_get(d, "mid"));
+							const char *d_desc = json_string_value(json_object_get(d, "description"));
+							if(d_desc && d_mid && ps->mid && !strcasecmp(d_mid, ps->mid)) {
+								ps->description = g_strdup(d_desc);
+								break;
+							}
+						}
+					}
 					/* Add the stream to the list */
 					janus_mutex_lock(&participant->streams_mutex);
 					participant->streams = g_list_append(participant->streams, ps);
@@ -7106,8 +7174,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "type", json_string(janus_videoroom_media_str(ps->type)));
 					json_object_set_new(info, "mindex", json_integer(ps->mindex));
 					json_object_set_new(info, "mid", json_string(ps->mid));
-					if(ps->label)
-						json_object_set_new(info, "description", json_string(ps->label));
+					if(ps->description)
+						json_object_set_new(info, "description", json_string(ps->description));
 					if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
 						json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
 					} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
