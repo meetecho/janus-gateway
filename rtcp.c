@@ -275,9 +275,6 @@ gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci) 
 		case 8:
 			fcis = ((int)ntohs(rtcp->length) - 2) >> 1;
 			break;
-		case 16:
-			fcis = ((int)ntohs(rtcp->length) - 2) >> 2;
-			break;
 		default:
 			fcis = ((int)ntohs(rtcp->length)- 2) / (sizeof_fci >> 2);
 			break;
@@ -387,7 +384,6 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 			case RTCP_FIR: {
 				/* FIR, rfc2032 */
 				JANUS_LOG(LOG_HUGE, "     #%d FIR (192)\n", pno);
-				/* Skip legacy FIR */
 				break;
 			}
 			case RTCP_RTPFB: {
@@ -477,13 +473,6 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				} else if(fmt == 5) {	/* rfc5104 */
 					/* TSTR: http://tools.ietf.org/html/rfc5104#section-4.3.2.1 */
 					JANUS_LOG(LOG_HUGE, "     #%d PLI -- TSTR (206)\n", pno);
-					if(fixssrc && newssrcr) {
-						/* TSTR FCI size is 8 bytes */
-						if (!janus_rtcp_check_fci(rtcp, total, 8))
-							break;
-						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
-						*ssrc = htonl(newssrcr);
-					}
 				} else if(fmt == 15) {
 					//~ JANUS_LOG(LOG_HUGE, "       -- This is a AFB!\n");
 					janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
@@ -769,45 +758,6 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 	}
 	ctx->last_sent = now;
 	return 0;
-}
-
-
-gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction) {
-	/* Parse RTCP compound packet */
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	int pno = 0, total = len, offset = 0;
-	while(rtcp) {
-		if(rtcp->version != 2)
-			break;
-		pno++;
-		switch(rtcp->type) {
-			case RTCP_RR: {
-				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
-				if(rr->header.rc > 0) {
-					if(fraction)
-						*fraction = ntohl(rr->rb[0].flcnpl) >> 24;
-					if(lost)
-						*lost = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
-					return TRUE;
-				}
-				return FALSE;
-			}
-			default:
-				break;
-		}
-		/* Is this a compound packet? */
-		int length = ntohs(rtcp->length);
-		if(length == 0)
-			break;
-		total -= length*4+4;
-		if(total <= 0)
-			break;
-		if(offset + (length + 1) * (int)sizeof(uint32_t) + (int)sizeof(rtcp) > len)
-			break;
-		offset += length*4+4;
-		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
-	}
-	return FALSE;
 }
 
 int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t base_ts_prev, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video) {
@@ -1274,29 +1224,6 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	/* Set header */
 	rtcp->version = 2;
 	rtcp->type = RTCP_PSFB;
-	rtcp->rc = 4;	/* FMT=4 */
-	rtcp->length = htons((len/4)-1);
-	/* Now set FIR stuff */
-	janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
-	janus_rtcp_fb_fir *fir = (janus_rtcp_fb_fir *)rtcpfb->fci;
-	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
-	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
-	return 20;
-}
-
-/* Generate a new legacy FIR message */
-int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
-	/* FIXME Right now, this is identical to the new FIR, with the difference that we use 192 as PT */
-	if(packet == NULL || len != 20 || seqnr == NULL)
-		return -1;
-	memset(packet, 0, len);
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	*seqnr = *seqnr + 1;
-	if(*seqnr < 0 || *seqnr >= 256)
-		*seqnr = 0;	/* Reset sequence number */
-	/* Set header */
-	rtcp->version = 2;
-	rtcp->type = RTCP_FIR;
 	rtcp->rc = 4;	/* FMT=4 */
 	rtcp->length = htons((len/4)-1);
 	/* Now set FIR stuff */
