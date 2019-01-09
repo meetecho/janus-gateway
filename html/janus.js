@@ -1070,18 +1070,7 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							volume : {
-								value : null,
-								timer : null
-							},
-							bitrate : {
-								value : null,
-								bsnow : null,
-								bsbefore : null,
-								tsnow : null,
-								tsbefore : null,
-								timer : null
-							}
+							bitrate : {}
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
@@ -1155,18 +1144,7 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							volume : {
-								value : null,
-								timer : null
-							},
-							bitrate : {
-								value : null,
-								bsnow : null,
-								bsbefore : null,
-								tsnow : null,
-								tsbefore : null,
-								timer : null
-							}
+							bitrate : {}
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
@@ -1179,7 +1157,7 @@ function Janus(gatewayCallbacks) {
 						isVideoMuted : function(mid) { return isMuted(handleId, mid, true); },
 						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
 						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
-						getBitrate : function(mid) { return getBitrate(handleId); },
+						getBitrate : function(mid) { return getBitrate(handleId, mid); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1630,9 +1608,6 @@ function Janus(gatewayCallbacks) {
 			Janus.debug(pc_constraints);
 			config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 			Janus.debug(config.pc);
-			if(config.pc.getStats) {	// FIXME
-				config.bitrate.value = "0 kbits/sec";
-			}
 			Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 			config.pc.oniceconnectionstatechange = function(e) {
 				if(config.pc)
@@ -2919,14 +2894,41 @@ function Janus(gatewayCallbacks) {
 			return "Invalid handle";
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config.pc === null || config.pc === undefined)
+		if(config.pc === null || config.pc === undefined) {
+			Janus.warn("Invalid PeerConnection");
 			return "Invalid PeerConnection";
+		}
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats) {
-			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
-				Janus.log("Starting bitrate timer (via getStats)");
-				config.bitrate.timer = setInterval(function() {
-					config.pc.getStats()
+			var query = config.pc;
+			var target = mid ? mid : "default";
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return ("No video transceiver with mid " + mid);
+				}
+				if(!transceiver.receiver) {
+					Janus.warn("No video receiver with mid " + mid);
+					return ("No video receiver with mid " + mid);
+				}
+				query = transceiver.receiver;
+			}
+			if(!config.bitrate[target]) {
+				config.bitrate[target] = {
+					timer: null,
+					bsnow: null,
+					bsbefore: null,
+					tsnow: null,
+					tsbefore: null,
+					value: "0 kbits/sec"
+				};
+			}
+			if(!config.bitrate[target].timer) {
+				Janus.log("Starting bitrate timer" + (mid ? (" for mid " + mid) : "") + " (via getStats)");
+				config.bitrate[target].timer = setInterval(function() {
+					query.getStats()
 						.then(function(stats) {
 							stats.forEach(function (res) {
 								if(!res)
@@ -2944,32 +2946,31 @@ function Janus(gatewayCallbacks) {
 								}
 								// Parse stats now
 								if(inStats) {
-									config.bitrate.bsnow = res.bytesReceived;
-									config.bitrate.tsnow = res.timestamp;
-									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+									config.bitrate[target].bsnow = res.bytesReceived;
+									config.bitrate[target].tsnow = res.timestamp;
+									if(config.bitrate[target].bsbefore === null || config.bitrate[target].tsbefore === null) {
 										// Skip this round
-										config.bitrate.bsbefore = config.bitrate.bsnow;
-										config.bitrate.tsbefore = config.bitrate.tsnow;
+										config.bitrate[target].bsbefore = config.bitrate[target].bsnow;
+										config.bitrate[target].tsbefore = config.bitrate[target].tsnow;
 									} else {
 										// Calculate bitrate
-										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
+										var timePassed = config.bitrate[target].tsnow - config.bitrate[target].tsbefore;
 										if(Janus.webRTCAdapter.browserDetails.browser == "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
-										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
+										var bitRate = Math.round((config.bitrate[target].bsnow - config.bitrate[target].bsbefore) * 8 / timePassed);
 										if(Janus.webRTCAdapter.browserDetails.browser === 'safari')
 											bitRate = parseInt(bitRate/1000);
-										config.bitrate.value = bitRate + ' kbits/sec';
-										//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
-										config.bitrate.bsbefore = config.bitrate.bsnow;
-										config.bitrate.tsbefore = config.bitrate.tsnow;
+										config.bitrate[target].value = bitRate + ' kbits/sec';
+										//~ Janus.log("Estimated bitrate is " + config.bitrate[target].value);
+										config.bitrate[target].bsbefore = config.bitrate[target].bsnow;
+										config.bitrate[target].tsbefore = config.bitrate[target].tsnow;
 									}
 								}
 							});
 						});
 				}, 1000);
-				return "0 kbits/sec";	// We don't have a bitrate value yet
 			}
-			return config.bitrate.value;
+			return config.bitrate[target].value;
 		} else {
 			Janus.warn("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
@@ -3012,14 +3013,11 @@ function Janus(gatewayCallbacks) {
 			}
 			// Cleanup stack
 			config.remoteStream = null;
-			if(config.bitrate.timer)
-				clearInterval(config.bitrate.timer);
-			config.bitrate.timer = null;
-			config.bitrate.bsnow = null;
-			config.bitrate.bsbefore = null;
-			config.bitrate.tsnow = null;
-			config.bitrate.tsbefore = null;
-			config.bitrate.value = null;
+			for(var i in config.bitrate) {
+				if(config.bitrate[i].timer)
+					clearInterval(config.bitrate[i].timer);
+			}
+			config.bitrate = {};
 			try {
 				// Try a MediaStreamTrack.stop() for each track
 				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
