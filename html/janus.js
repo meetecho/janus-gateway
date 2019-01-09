@@ -2804,7 +2804,21 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No video track");
 				return true;
 			}
-			return !config.myStream.getVideoTracks()[0].enabled;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return true;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No video sender with mid " + mid);
+					return true;
+				}
+				return !transceiver.sender.track.enabled;
+			} else {
+				return !config.myStream.getVideoTracks()[0].enabled;
+			}
 		} else {
 			// Check audio track
 			if(config.myStream.getAudioTracks() === null
@@ -2813,7 +2827,21 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No audio track");
 				return true;
 			}
-			return !config.myStream.getAudioTracks()[0].enabled;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					return true;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No audio sender with mid " + mid);
+					return true;
+				}
+				return !transceiver.sender.track.enabled;
+			} else {
+				return !config.myStream.getAudioTracks()[0].enabled;
+			}
 		}
 	}
 
@@ -2841,8 +2869,21 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No video track");
 				return false;
 			}
-			config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
-			return true;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return false;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No video sender with mid " + mid);
+					return false;
+				}
+				transceiver.sender.track.enabled = mute ? false : true;
+			} else {
+				config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+			}
 		} else {
 			// Mute/unmute audio track
 			if(config.myStream.getAudioTracks() === null
@@ -2851,9 +2892,23 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No audio track");
 				return false;
 			}
-			config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
-			return true;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					return false;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No audio sender with mid " + mid);
+					return false;
+				}
+				transceiver.sender.track.enabled = mute ? false : true;
+			} else {
+				config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+			}
 		}
+		return true;
 	}
 
 	function getBitrate(handleId, mid) {
