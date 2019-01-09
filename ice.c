@@ -2642,7 +2642,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				janus_rtcp_parse(rtcp_ctx, buf, buflen);
+				if (janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
+					/* Drop the packet if the parsing function returns with an error */
+					return;
+				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
 
 				/* Now let's see if there are any NACKs to handle */

@@ -313,9 +313,9 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 	JANUS_LOG(LOG_HUGE, "   Parsing compound packet (total of %d bytes)\n", total);
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
-			break;
+			return -2;
 		if(rtcp->version != 2)
-			break;
+			return -2;
 		pno++;
 		/* TODO Should we handle any of these packets ourselves, or just relay them? */
 		switch(rtcp->type) {
@@ -323,7 +323,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				/* SR, sender report */
 				JANUS_LOG(LOG_HUGE, "     #%d SR (200)\n", pno);
 				if (!janus_rtcp_check_sr(rtcp, total))
-					break;
+					return -2;
 				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
 				/* If an RTCP context was provided, update it with info on this SR */
 				janus_rtcp_incoming_sr(ctx, sr);
@@ -339,7 +339,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				/* RR, receiver report */
 				JANUS_LOG(LOG_HUGE, "     #%d RR (201)\n", pno);
 				if (!janus_rtcp_check_rr(rtcp, total))
-					break;
+					return -2;
 				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
 				/* If an RTCP context was provided, update it with info on this RR */
 				janus_rtcp_incoming_rr(ctx, rr);
@@ -397,7 +397,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					JANUS_LOG(LOG_HUGE, "     #%d NACK -- RTPFB (205)\n", pno);
 					/* NACK FCI size is 4 bytes */
 					if (!janus_rtcp_check_fci(rtcp, total, 4))
-						break;
+						return -2;
 					if(fixssrc && newssrcr) {
 						rtcpfb->media = htonl(newssrcr);
 					}
@@ -427,7 +427,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					if(fixssrc && newssrcr) {
 						/* TMMBR FCI size is 8 bytes */
 						if (!janus_rtcp_check_fci(rtcp, total, 8))
-							break;
+							return -2;
 						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
 						*ssrc = htonl(newssrcr);
 					}
@@ -452,7 +452,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 						2, and there MUST NOT be any Feedback Control Information. */
 					if(fixssrc && newssrcr) {
 						if (!janus_rtcp_check_fci(rtcp, total, 0))
-							break;
+							return -2;
 						rtcpfb->media = htonl(newssrcr);
 					}
 				} else if(fmt == 2) {
@@ -465,7 +465,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					if(fixssrc && newssrcr) {
 						/* FIR FCI size is 8 bytes */
 						if (!janus_rtcp_check_fci(rtcp, total, 8))
-							break;
+							return -2;
 						rtcpfb->media = htonl(newssrcr);
 						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
 						*ssrc = htonl(newssrcr);
@@ -479,7 +479,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					if(fixssrc && newssrcr) {
 						/* AFB FCI size is variable, check just media SSRC */
 						if (!janus_rtcp_check_fci(rtcp, total, 0))
-							break;
+							return -2;
 						rtcpfb->ssrc = htonl(newssrcr);
 						rtcpfb->media = 0;
 					}
@@ -768,7 +768,7 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
 	int pno = 0, total = len, status = 0;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
-			break;
+			return -2;
 		if(rtcp->version != 2)
 			return -2;
 		pno++;
@@ -923,17 +923,24 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 	/* FIXME Get list of sequence numbers we should send again */
 	GSList *list = NULL;
 	int total = len;
+	gboolean error = FALSE;
 	while(rtcp) {
-		if (!janus_rtcp_check_len(rtcp, total))
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			error = TRUE;
 			break;
-		if(rtcp->version != 2)
-			return NULL;
+		}
+		if (rtcp->version != 2) {
+			error = TRUE;
+			break;
+		}
 		if(rtcp->type == RTCP_RTPFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 1) {
 				/* NACK FCI size is 4 bytes */
-				if (!janus_rtcp_check_fci(rtcp, total, 4))
+				if (!janus_rtcp_check_fci(rtcp, total, 4)) {
+					error = TRUE;
 					break;
+				}
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
 				if(nacks > 0) {
@@ -969,6 +976,10 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 		if(total <= 0)
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	if (error && list) {
+		g_slist_free(list);
+		list = NULL;
 	}
 	return list;
 }
@@ -1079,7 +1090,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate) {
 	int total = len;
 	while(rtcp) {
 		if (!janus_rtcp_check_len(rtcp, total))
-			break;
+			return -2;
 		if(rtcp->version != 2)
 			return -2;
 		if(rtcp->type == RTCP_PSFB) {
