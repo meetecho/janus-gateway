@@ -1085,16 +1085,16 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId, true); },
-						getRemoteVolume : function() { return getVolume(handleId, true); },
-						getLocalVolume : function() { return getVolume(handleId, false); },
-						isAudioMuted : function() { return isMuted(handleId, false); },
-						muteAudio : function() { return mute(handleId, false, true); },
-						unmuteAudio : function() { return mute(handleId, false, false); },
-						isVideoMuted : function() { return isMuted(handleId, true); },
-						muteVideo : function() { return mute(handleId, true, true); },
-						unmuteVideo : function() { return mute(handleId, true, false); },
-						getBitrate : function() { return getBitrate(handleId); },
+						getVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getRemoteVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getLocalVolume : function(mid, result) { return getVolume(handleId, mid, false, result); },
+						isAudioMuted : function(mid) { return isMuted(handleId, mid, false); },
+						muteAudio : function(mid) { return mute(handleId, mid, false, true); },
+						unmuteAudio : function(mid) { return mute(handleId, mid, false, false); },
+						isVideoMuted : function(mid) { return isMuted(handleId, mid, true); },
+						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
+						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
+						getBitrate : function(mid) { return getBitrate(handleId, mid); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1170,16 +1170,16 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId, true); },
-						getRemoteVolume : function() { return getVolume(handleId, true); },
-						getLocalVolume : function() { return getVolume(handleId, false); },
-						isAudioMuted : function() { return isMuted(handleId, false); },
-						muteAudio : function() { return mute(handleId, false, true); },
-						unmuteAudio : function() { return mute(handleId, false, false); },
-						isVideoMuted : function() { return isMuted(handleId, true); },
-						muteVideo : function() { return mute(handleId, true, true); },
-						unmuteVideo : function() { return mute(handleId, true, false); },
-						getBitrate : function() { return getBitrate(handleId); },
+						getVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getRemoteVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getLocalVolume : function(mid, result) { return getVolume(handleId, mid, false, result); },
+						isAudioMuted : function(mid) { return isMuted(handleId, mid, false); },
+						muteAudio : function(mid) { return mute(handleId, mid, false, true); },
+						unmuteAudio : function(mid) { return mute(handleId, mid, false, false); },
+						isVideoMuted : function(mid) { return isMuted(handleId, mid, true); },
+						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
+						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
+						getBitrate : function(mid) { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1631,7 +1631,6 @@ function Janus(gatewayCallbacks) {
 			config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 			Janus.debug(config.pc);
 			if(config.pc.getStats) {	// FIXME
-				config.volume = {};
 				config.bitrate.value = "0 kbits/sec";
 			}
 			Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
@@ -2703,54 +2702,85 @@ function Janus(gatewayCallbacks) {
 		callbacks.success(config.mySdp);
 	}
 
-	function getVolume(handleId, remote) {
+	function getVolume(handleId, mid, remote, result) {
+		result = (typeof result == "function") ? result : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
-			return 0;
+			result(0);
+			return;
 		}
 		var stream = remote ? "remote" : "local";
 		var config = pluginHandle.webrtcStuff;
-		if(!config.volume[stream])
-			config.volume[stream] = { value: 0 };
-		// Start getting the volume, if getStats is supported
-		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+		// Note well: this relies on the audioLevel property as returned
+		// by getStats, so it won't work if the browser doesn't do them.
+		// At the time of writing, only Chrome (and maybe Safari?) support
+		// audioLevel, while Firefox doesn't return it. Besides, it looks
+		// like audioLevel is set only for remote tracks, while it's always
+		// 0 for local tracks: as such, getLocalVolume is useless right now.
+		if(config.pc.getStats) {
 			if(remote && (config.remoteStream === null || config.remoteStream === undefined)) {
 				Janus.warn("Remote stream unavailable");
-				return 0;
+				result(0);
+				return;
 			} else if(!remote && (config.myStream === null || config.myStream === undefined)) {
 				Janus.warn("Local stream unavailable");
-				return 0;
+				result(0);
+				return;
 			}
-			if(config.volume[stream].timer === null || config.volume[stream].timer === undefined) {
-				Janus.log("Starting " + stream + " volume monitor");
-				config.volume[stream].timer = setInterval(function() {
-					config.pc.getStats(function(stats) {
-						var results = stats.result();
-						for(var i=0; i<results.length; i++) {
-							var res = results[i];
-							if(res.type == 'ssrc') {
-								if(remote && res.stat('audioOutputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
-								else if(!remote && res.stat('audioInputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
-							}
+			// Are we interested in a mid in particular? (only if transceivers are in use)
+			var query = config.pc;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					result(0);
+					return;
+				}
+				if(remote && !transceiver.receiver) {
+					Janus.warn("Remote transceiver track unavailable");
+					result(0);
+					return;
+				} else if(!remote && !transceiver.sender) {
+					Janus.warn("Local transceiver track unavailable");
+					result(0);
+					return;
+				}
+				query = remote ? transceiver.receiver : transceiver.sender;
+			}
+			var currentVolume = -1;
+			query.getStats()
+				.then(function(stats) {
+					var size = stats.size;
+					stats.forEach(function (res) {
+						size--;
+						if(!res || !res.id || res.type !== "track") {
+							if(size === 0 && currentVolume === -1)
+								result(0);
+							return;
 						}
+						console.log(res);
+						if((remote && res.id.indexOf("receiver") === -1) ||
+								(!remote && res.id.indexOf("sender") === -1)) {
+							if(size === 0 && currentVolume === -1)
+								result(0);
+							return;
+						}
+						if(currentVolume !== -1)
+							return;
+						currentVolume = res.audioLevel;
+						result(currentVolume);
 					});
-				}, 200);
-				return 0;	// We don't have a volume to return yet
-			}
-			return config.volume[stream].value;
+				});
 		} else {
-			// audioInputLevel and audioOutputLevel seem only available in Chrome? audioLevel
-			// seems to be available on Chrome and Firefox, but they don't seem to work
 			Janus.warn("Getting the " + stream + " volume unsupported by browser");
-			return 0;
+			result(0);
 		}
 	}
 
-	function isMuted(handleId, video) {
+	function isMuted(handleId, mid, video) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2787,7 +2817,7 @@ function Janus(gatewayCallbacks) {
 		}
 	}
 
-	function mute(handleId, video, mute) {
+	function mute(handleId, mid, video, mute) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2826,7 +2856,7 @@ function Janus(gatewayCallbacks) {
 		}
 	}
 
-	function getBitrate(handleId) {
+	function getBitrate(handleId, mid) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2927,13 +2957,6 @@ function Janus(gatewayCallbacks) {
 			}
 			// Cleanup stack
 			config.remoteStream = null;
-			if(config.volume) {
-				if(config.volume["local"] && config.volume["local"].timer)
-					clearInterval(config.volume["local"].timer);
-				if(config.volume["remote"] && config.volume["remote"].timer)
-					clearInterval(config.volume["remote"].timer);
-			}
-			config.volume = {};
 			if(config.bitrate.timer)
 				clearInterval(config.bitrate.timer);
 			config.bitrate.timer = null;
