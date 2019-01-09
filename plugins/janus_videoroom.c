@@ -1495,6 +1495,9 @@ typedef struct janus_videoroom_publisher {
 	GSList *subscriptions;		/* Subscriptions this publisher has created (who this publisher is watching) */
 	janus_mutex subscribers_mutex;
 	GHashTable *srtp_contexts;	/* SRTP contexts that we can share among RTP forwarders */
+	/* Index of RTP (or data) forwarders for this stream, if any */
+	GHashTable *rtp_forwarders;
+	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; 				/* The udp socket on which to forward rtp packets */
 	gboolean kicked;			/* Whether this participant has been kicked */
 	volatile gint destroyed;
@@ -1705,6 +1708,8 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 
 	if(p->udp_sock > 0)
 		close(p->udp_sock);
+	g_hash_table_destroy(p->rtp_forwarders);
+	janus_mutex_destroy(&p->rtp_forwarders_mutex);
 	g_hash_table_destroy(p->srtp_contexts);
 	p->srtp_contexts = NULL;
 
@@ -1964,11 +1969,13 @@ static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(j
 	}
 	janus_refcount_init(&forward->ref, janus_videoroom_rtp_forwarder_free);
 	guint32 stream_id = janus_random_uint32();
-	while(g_hash_table_lookup(stream->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL) {
+	while(g_hash_table_lookup(stream->publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL &&
+			g_hash_table_lookup(stream->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL) {
 		stream_id = janus_random_uint32();
 	}
 	forward->stream_id = stream_id;
 	g_hash_table_insert(stream->rtp_forwarders, GUINT_TO_POINTER(stream_id), forward);
+	g_hash_table_insert(stream->publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id), GUINT_TO_POINTER(stream_id));
 	if(fd > -1) {
 		/* We need RTCP: track this file descriptor, and ref the forwarder */
 		janus_refcount_increase(&forward->ref);
@@ -3777,9 +3784,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto plugin_response;
 		}
 		janus_refcount_increase(&publisher->ref);	/* This is just to handle the request for now */
+		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
 		if(publisher->udp_sock <= 0) {
 			publisher->udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 			if(publisher->udp_sock <= 0) {
+				janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 				janus_refcount_decrease(&publisher->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
@@ -4055,6 +4064,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(rtp_stream, "data", json_integer(data_port));
 			}
 		}
+		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		janus_mutex_unlock(&videoroom->mutex);
 		/* These two unrefs are related to the message handling */
 		janus_refcount_decrease(&publisher->ref);
@@ -4098,6 +4108,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto plugin_response;
 		}
 		janus_refcount_increase(&publisher->ref);	/* Just to handle the message now */
+		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
 		/* FIXME Find the forwarder by iterating on all the streams */
 		gboolean found = FALSE;
 		GList *temp = publisher->streams;
@@ -4106,13 +4117,15 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_mutex_lock(&stream->rtp_forwarders_mutex);
 			if(g_hash_table_remove(stream->rtp_forwarders, GUINT_TO_POINTER(stream_id))) {
 				janus_mutex_unlock(&stream->rtp_forwarders_mutex);
-				/* Found */
+				/* Found, remove from global index too */
+				g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 				found = TRUE;
 				break;
 			}
 			janus_mutex_unlock(&stream->rtp_forwarders_mutex);
 			temp = temp->next;
 		}
+		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		janus_refcount_decrease(&publisher->ref);
 		janus_mutex_unlock(&videoroom->mutex);
 		janus_refcount_decrease(&videoroom->ref);
@@ -5435,6 +5448,8 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->remb_latest = 0;
 				publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
 				publisher->udp_sock = -1;
+				janus_mutex_init(&publisher->rtp_forwarders_mutex);
+				publisher->rtp_forwarders = g_hash_table_new(NULL, NULL);
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
 				publisher->pvt_id = 0;
