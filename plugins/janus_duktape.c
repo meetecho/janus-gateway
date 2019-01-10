@@ -1223,9 +1223,15 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_DUKTAPE_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_DUKTAPE_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_DUKTAPE_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_DUKTAPE_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config == NULL) {
 		/* No config means no JS script */
 		JANUS_LOG(LOG_ERR, "Failed to load configuration file for Duktape plugin...\n");

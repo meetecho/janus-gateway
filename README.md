@@ -42,7 +42,7 @@ Additionally, you'll need the following libraries and tools:
 All of those libraries are usually available on most of the most common distributions. Installing these libraries on a recent Fedora, for instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel \
-       openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
+       openssl-devel libsrtp-devel sofia-sip-devel glib2-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
        libconfig-devel libtool autoconf automake
 
@@ -77,11 +77,11 @@ If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
-The instructions for version 2.x are practically the same. Notice that the following steps are for version 2.0.0, but there may be more recent versions available:
+The instructions for version 2.x are practically the same. Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
 
-	wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
-	tar xfv v2.0.0.tar.gz
-	cd libsrtp-2.0.0
+	wget https://github.com/cisco/libsrtp/archive/v2.2.0.tar.gz
+	tar xfv v2.2.0.tar.gz
+	cd libsrtp-2.2.0
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
