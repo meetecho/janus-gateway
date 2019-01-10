@@ -547,12 +547,19 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 	*newlen = 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	char *filtered = NULL;
-	int total = len, length = 0, bytes = 0, offset = 0;
+	int total = len, length = 0, bytes = 0;
 	/* Iterate on the compound packets */
 	gboolean keep = TRUE;
+	gboolean error = FALSE;
 	while(rtcp) {
-		if(rtcp->version != 2)
-			return NULL;
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			error = TRUE;
+			break;
+		}
+		if(rtcp->version != 2) {
+			error = TRUE;
+			break;
+		}
 		keep = TRUE;
 		length = ntohs(rtcp->length);
 		if(length == 0)
@@ -597,10 +604,12 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 		total -= bytes;
 		if(total <= 0)
 			break;
-		if(offset + (length + 1) * (int)sizeof(uint32_t) + (int)sizeof(rtcp) > len)
-			break;
-		offset += length*4+4;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	if (error) {
+		g_free(filtered);
+		filtered = NULL;
+		*newlen = 0;
 	}
 	return filtered;
 }
