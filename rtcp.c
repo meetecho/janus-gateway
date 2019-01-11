@@ -999,14 +999,20 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	/* Find the NACK message */
 	char *nacks = NULL;
-	int total = len, nacks_len = 0, offset = 0;
+	int total = len, nacks_len = 0;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			break;
+		}
 		if(rtcp->version != 2)
 			break;
 		if(rtcp->type == RTCP_RTPFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 1) {
 				nacks = (char *)rtcp;
+				if (!janus_rtcp_check_fci(rtcp, total, 4)) {
+					break;
+				}
 			}
 		}
 		/* Is this a compound packet? */
@@ -1020,9 +1026,6 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 		total -= length*4+4;
 		if(total <= 0)
 			break;
-		if(offset + (length + 1) * (int)sizeof(uint32_t) + (int)sizeof(rtcp) > len)
-			break;
-		offset += length*4+4;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	if(nacks != NULL) {
