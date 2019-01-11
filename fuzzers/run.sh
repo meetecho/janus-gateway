@@ -14,6 +14,9 @@ mkdir -p "$TARGET"_seed_corpus && unzip -oq "$TARGET"_seed_corpus.zip -d "$TARGE
 ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=1 -jobs=4 "$TARGET"_corpus "$TARGET"_seed_corpus
 # tail -f fuzz*.log
 
+# run standalone fuzzer or libFuzzer without fuzzing (regression testing)
+# ASAN_OPTIONS=detect_leaks=1 ./$TARGET "$TARGET"_seed_corpus/*
+
 # run fuzzer for coverage testing
 # LLVM_PROFILE_FILE="$TARGET".profraw ./$TARGET "$TARGET"_seed_corpus/*
 # llvm-profdata merge -sparse "$TARGET".profraw -o "$TARGET".profdata
