@@ -570,7 +570,7 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse VP9 header now */
 	uint8_t vp9pd = *buffer;
@@ -580,6 +580,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	uint8_t fbit = (vp9pd & 0x10);
 	uint8_t vbit = (vp9pd & 0x02);
 	buffer++;
+	len--;
 	if(ibit) {
 		/* Read the PictureID octet */
 		vp9pd = *buffer;
@@ -587,18 +588,22 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 		uint8_t mbit = (vp9pd & 0x80);
 		if(!mbit) {
 			buffer++;
+			len--;
 		} else {
 			memcpy(&picid, buffer, sizeof(uint16_t));
 			wholepicid = ntohs(picid);
 			picid = (wholepicid & 0x7FFF);
 			buffer += 2;
+			len -= 2;
 		}
 	}
 	if(lbit) {
 		buffer++;
+		len--;
 		if(!fbit) {
 			/* Non-flexible mode, skip TL0PICIDX */
 			buffer++;
+			len--;
 		}
 	}
 	if(fbit && pbit) {
@@ -608,6 +613,9 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			vp9pd = *buffer;
 			nbit = (vp9pd & 0x01);
 			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return FALSE;
 		}
 	}
 	if(vbit) {
@@ -619,16 +627,25 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 		if(ybit) {
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return FALSE;
 			uint i=0;
 			for(i=0; i<n_s; i++) {
 				/* Width */
 				const uint16_t *w = (const uint16_t *)buffer;
 				int vp9w = ntohs(*w);
 				buffer += 2;
+				len -= 2;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return FALSE;
 				/* Height */
 				const uint16_t *h = (const uint16_t *)buffer;
 				int vp9h = ntohs(*h);
 				buffer += 2;
+				len -= 2;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return FALSE;
 				if(vp9w || vp9h) {
 					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
 					return TRUE;
@@ -641,7 +658,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;
