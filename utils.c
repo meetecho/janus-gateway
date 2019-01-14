@@ -693,7 +693,7 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 
 int janus_vp8_parse_descriptor(char *buffer, int len,
 		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 6)
 		return -1;
 	if(picid)
 		*picid = 0;
@@ -753,7 +753,7 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
 }
 
 static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, uint8_t tl0picidx) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 6)
 		return -1;
 	uint8_t vp8pd = *buffer;
 	uint8_t xbit = (vp8pd & 0x80);
