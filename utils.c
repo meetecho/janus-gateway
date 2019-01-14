@@ -832,7 +832,7 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		int *spatial_layer, int *temporal_layer,
 		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 8)
 		return -1;
 	/* VP9 depay: */
 		/* https://tools.ietf.org/html/draft-ietf-payload-vp9-04 */
@@ -912,6 +912,8 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			nbit = (vp9pd & 0x01);
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 		}
 	}
 	if(vbit) {
@@ -926,22 +928,30 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 			int i=0;
 			for(i=0; i<n_s; i++) {
 				/* Been there, done that: skip skip skip */
 				buffer += 4;
 				len -= 4;
+				if(len <= 0)	/* Make sure we don't overvlow */
+					return -1;
 			}
 		}
 		if(gbit) {
 			if(!ybit) {
 				buffer++;
 				len--;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return -1;
 			}
 			uint8_t n_g = *buffer;
 			JANUS_LOG(LOG_HUGE, "There are %u frames in a GOF\n", n_g);
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 			if(n_g > 0) {
 				int i=0;
 				for(i=0; i<n_g; i++) {
@@ -952,9 +962,13 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 						/* Skip reference indices */
 						buffer += r;
 						len -= r;
+						if(len <= 0)	/* Make sure we don't overvlow */
+							return -1;
 					}
 					buffer++;
 					len--;
+					if(len == 0)	/* Make sure we don't overvlow */
+						return -1;
 				}
 			}
 		}
