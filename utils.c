@@ -497,7 +497,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 #endif
 
 gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse VP8 header now */
 	uint8_t vp8pd = *buffer;
