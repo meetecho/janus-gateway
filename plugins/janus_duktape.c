@@ -101,7 +101,7 @@
  * and, more importantly, both \c timeCallback() and \c pokeScheduler() which,
  * together with JavaScript's \c resumeScheduler(), will be clearer in the next section.
  *
- * \section coroutines JavaScript/C coroutines scheduler
+ * \section jcoroutines JavaScript/C coroutines scheduler
  *
  * Duktape is a single threaded environment. While it has a concept similar
  * to threads called coroutines, these are not threads as known in C.
@@ -129,7 +129,7 @@
  * This simple mechanism is what the sample JavaScript scripts provided in this
  * repo use, for instance, to handle incoming messages asynchronously,
  * so you can refer to those to have an idea of how it can be used. The
- * next section will address \ref timers instead.
+ * next section will address \ref jtimers instead.
  *
  * \note You can implement asynchronous behaviour any way you want, and
  * you're not required to use this C scheduler. Anyway, you must implement
@@ -137,7 +137,7 @@
  * its presence and fails if it's not there. If you don't need it, just
  * create an empty function that does nothing and you'll be fine.
  *
- * \section timers JavaScript/C time-based scheduler
+ * \section jtimers JavaScript/C time-based scheduler
  *
  * Another helpful way to implement asynchronous behaviour is with the
  * help of the \c timeCallback() function. Specifically, this function
@@ -1222,19 +1222,26 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_DUKTAPE_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_DUKTAPE_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_DUKTAPE_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_DUKTAPE_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config == NULL) {
 		/* No config means no JS script */
 		JANUS_LOG(LOG_ERR, "Failed to load configuration file for Duktape plugin...\n");
 		return -1;
 	}
 	janus_config_print(config);
-	janus_config_item *folder = janus_config_get_item_drilldown(config, "general", "path");
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+	janus_config_item *folder = janus_config_get(config, config_general, janus_config_type_item, "path");
 	if(folder && folder->value)
 		duktape_folder = g_strdup(folder->value);
-	janus_config_item *script = janus_config_get_item_drilldown(config, "general", "script");
+	janus_config_item *script = janus_config_get(config, config_general, janus_config_type_item, "script");
 	if(script == NULL || script->value == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing script path in Duktape plugin configuration...\n");
 		janus_config_destroy(config);
@@ -1243,7 +1250,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	}
 	char *duktape_file = g_strdup(script->value);
 	char *duktape_config = NULL;
-	janus_config_item *conf = janus_config_get_item_drilldown(config, "general", "config");
+	janus_config_item *conf = janus_config_get(config, config_general, janus_config_type_item, "config");
 	if(conf && conf->value)
 		duktape_config = g_strdup(conf->value);
 	janus_config_destroy(config);

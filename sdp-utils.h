@@ -235,7 +235,7 @@ char *janus_sdp_write(janus_sdp *sdp);
 
 /*! \brief Method to quickly generate a janus_sdp instance from a few selected fields
  * @note This allocates the \c o_addr, \c s_name and \c c_addr properties: if you
- * want to replace them, don't remember to \c g_free the original pointers first.
+ * want to replace them, don't forget to \c g_free the original pointers first.
  * @param[in] name The session name (if NULL, a default value will be set)
  * @param[in] address The IP to set in o= and c= fields (if NULL, a default value will be set)
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
@@ -245,34 +245,36 @@ janus_sdp *janus_sdp_new(const char *name, const char *address);
  * @param[in] sdp The Janus SDP object to free */
 void janus_sdp_destroy(janus_sdp *sdp);
 
+typedef enum janus_sdp_oa_type {
 /*! \brief When generating an offer or answer automatically, accept/reject audio if offered (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO					1
+JANUS_SDP_OA_AUDIO = 1,
 /*! \brief When generating an offer or answer automatically, accept/reject video if offered (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO					2
+JANUS_SDP_OA_VIDEO,
 /*! \brief When generating an offer or answer automatically, accept/reject datachannels if offered (depends on value that follows) */
-#define JANUS_SDP_OA_DATA					3
+JANUS_SDP_OA_DATA,
 /*! \brief When generating an offer or answer automatically, use this direction for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_DIRECTION		4
+JANUS_SDP_OA_AUDIO_DIRECTION,
 /*! \brief When generating an offer or answer automatically, use this direction for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_DIRECTION		5
+JANUS_SDP_OA_VIDEO_DIRECTION,
 /*! \brief When generating an offer or answer automatically, use this codec for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_CODEC			6
+JANUS_SDP_OA_AUDIO_CODEC,
 /*! \brief When generating an offer or answer automatically, use this codec for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_CODEC			7
+JANUS_SDP_OA_VIDEO_CODEC,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_PT				8
+JANUS_SDP_OA_AUDIO_PT,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_PT				9
+JANUS_SDP_OA_VIDEO_PT,
 /*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only) */
-#define JANUS_SDP_OA_AUDIO_DTMF				10
+JANUS_SDP_OA_AUDIO_DTMF,
 /*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
-#define JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS	11
+JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
-#define JANUS_SDP_OA_VIDEO_H264_FMTP		12
+JANUS_SDP_OA_VIDEO_H264_FMTP,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
-#define JANUS_SDP_OA_DATA_LEGACY			13
+JANUS_SDP_OA_DATA_LEGACY,
 /*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
-#define JANUS_SDP_OA_DONE					0
+JANUS_SDP_OA_DONE = 0
+} janus_sdp_oa_type;
 
 /*! \brief Method to generate a janus_sdp offer, using variable arguments to dictate
  * what to negotiate (e.g., in terms of media to offer, directions, etc.). Variable
@@ -297,7 +299,7 @@ void janus_sdp_destroy(janus_sdp *sdp);
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
 /*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer, using variable arguments
- * to dictate how to responde (e.g., in terms of media to accept, reject, directions, etc.). Variable
+ * to dictate how to respond (e.g., in terms of media to accept, reject, directions, etc.). Variable
  * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
  \verbatim
 	janus_sdp *answer = janus_sdp_generate_answer(offer,

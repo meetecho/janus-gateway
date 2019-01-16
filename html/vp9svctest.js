@@ -108,7 +108,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -129,6 +129,9 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									if(!on)
+										return;
+									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
@@ -418,8 +421,15 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
-				remoteFeed.send({"message": listen});
+				var subscribe = { "request": "join", "room": myroom, "ptype": "subscriber", "feed": id, "private_id": mypvtid };
+				if(Janus.webRTCAdapter.browserDetails.browser === "safari") {
+					// Safari doesn't support VP9
+					if(video)
+						video = video.toUpperCase()
+					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
+					subscribe["offer_video"] = false;
+				}
+				remoteFeed.send({"message": subscribe});
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
@@ -573,7 +583,7 @@ function newRemoteFeed(id, display) {
 				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
+				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 				$('#sl'+remoteFeed.rfindex+'-1').unbind('click');

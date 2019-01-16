@@ -941,7 +941,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		JANUS_LOG(LOG_ERR, "No ICE handle related to this alert...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %u (component %u), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
 	janus_ice_webrtc_hangup(handle, "DTLS alert");
 }
 

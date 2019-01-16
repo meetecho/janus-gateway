@@ -151,7 +151,8 @@ $(document).ready(function() {
 										streaming.createAnswer(
 											{
 												jsep: jsep,
-												media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+												// We want recvonly audio/video and, if negotiated, datachannels
+												media: { audioSend: false, videoSend: false, data: true },
 												success: function(jsep) {
 													Janus.debug("Got SDP!");
 													Janus.debug(jsep);
@@ -233,10 +234,25 @@ $(document).ready(function() {
 										}, 1000);
 									}
 								},
+								ondataopen: function(data) {
+									Janus.log("The DataChannel is available!");
+									$('#waitingvideo').remove();
+									$('#stream').append(
+										'<input class="form-control" type="text" id="datarecv" disabled></input>'
+									);
+									if(spinner !== null && spinner !== undefined)
+										spinner.stop();
+									spinner = null;
+								},
+								ondata: function(data) {
+									Janus.debug("We got data from the DataChannel! " + data);
+									$('#datarecv').val(data);
+								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
+									$('#datarecv').remove();
 									$('.no-video-container').remove();
 									$('#bitrate').attr('disabled', true);
 									$('#bitrateset').html('Bandwidth<span class="caret"></span>');

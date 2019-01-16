@@ -131,7 +131,7 @@ typedef struct janus_mqtt_context {
 		} publish;
 	} admin;
 	/* SSL config, if needed */
-	gboolean ssl_enable;
+	gboolean ssl_enabled;
 	char *cacert_file;
 	char *cert_file;
 	char *key_file;
@@ -182,27 +182,35 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_MQTT_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_MQTT_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_MQTT_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_MQTT_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
 	}
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+	janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
 
 	/* Handle configuration */
-	janus_config_item *url_item = janus_config_get_item_drilldown(config, "general", "url");
+	janus_config_item *url_item = janus_config_get(config, config_general, janus_config_type_item, "url");
 	const char *url = g_strdup((url_item && url_item->value) ? url_item->value : "tcp://localhost:1883");
 
-	janus_config_item *client_id_item = janus_config_get_item_drilldown(config, "general", "client_id");
+	janus_config_item *client_id_item = janus_config_get(config, config_general, janus_config_type_item, "client_id");
 	const char *client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
-	janus_config_item *username_item = janus_config_get_item_drilldown(config, "general", "username");
+	janus_config_item *username_item = janus_config_get(config, config_general, janus_config_type_item, "username");
 	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
-
-	janus_config_item *password_item = janus_config_get_item_drilldown(config, "general", "password");
+	
+	janus_config_item *password_item = janus_config_get(config, config_general, janus_config_type_item, "password");
 	ctx->connect.password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
 
-	janus_config_item *json_item = janus_config_get_item_drilldown(config, "general", "json");
+	janus_config_item *json_item = janus_config_get(config, config_general, janus_config_type_item, "json");
 	if(json_item && json_item->value) {
 		/* Check how we need to format/serialize the JSON output */
 		if(!strcasecmp(json_item->value, "indented")) {
@@ -221,32 +229,39 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	/* Check if we need to send events to handlers */
-	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
-	if(events != NULL && events->value != NULL)
-		notify_events = janus_is_true(events->value);
+	janus_config_item *events_item = janus_config_get(config, config_general, janus_config_type_item, "events");
+	if(events_item && events_item->value)
+		notify_events = janus_is_true(events_item->value);
 	if(!notify_events && callback->events_is_enabled()) {
 		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
 	}
 
 	/* Check if we need to enable SSL support */
-	janus_config_item *ssl = janus_config_get_item_drilldown(config, "general", "ssl_enable");
-	if(ssl && ssl->value && janus_is_true(ssl->value)) {
+	janus_config_item *ssl_item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enabled");
+	if(ssl_item == NULL) {
+		/* Try legacy property */
+		ssl_item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
+		if (ssl_item && ssl_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'ssl_enable' property, please update it to 'ssl_enabled' instead\n");
+		}
+	}
+	if(ssl_item && ssl_item->value && janus_is_true(ssl_item->value)) {
 		if(strstr(url, "ssl://") != url)
 			JANUS_LOG(LOG_WARN, "SSL enabled, but MQTT url doesn't start with ssl://...\n");
 
-		ctx->ssl_enable = TRUE;
+		ctx->ssl_enabled = TRUE;
 
-		janus_config_item *cacertfile = janus_config_get_item_drilldown(config, "general", "cacertfile");
+		janus_config_item *cacertfile = janus_config_get(config, config_general, janus_config_type_item, "cacertfile");
 		if(!cacertfile || !cacertfile->value) {
 			JANUS_LOG(LOG_FATAL, "Missing CA certificate for MQTT integration...\n");
 			goto error;
 		}
 		ctx->cacert_file = g_strdup(cacertfile->value);
 
-		janus_config_item *certfile = janus_config_get_item_drilldown(config, "general", "certfile");
+		janus_config_item *certfile = janus_config_get(config, config_general, janus_config_type_item, "certfile");
 		ctx->cert_file = (certfile && certfile->value) ? g_strdup(certfile->value) : NULL;
 
-		janus_config_item *keyfile = janus_config_get_item_drilldown(config, "general", "keyfile");
+		janus_config_item *keyfile = janus_config_get(config, config_general, janus_config_type_item, "keyfile");
 		ctx->key_file = (keyfile && keyfile->value) ? g_strdup(keyfile->value) : NULL;
 
 		if(ctx->cert_file && !ctx->key_file) {
@@ -258,7 +273,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			goto error;
 		}
 
-		janus_config_item *verify = janus_config_get_item_drilldown(config, "general", "verify_peer");
+		janus_config_item *verify = janus_config_get(config, config_general, janus_config_type_item, "verify_peer");
 		ctx->verify_peer = (verify && verify->value && janus_is_true(verify->value)) ? TRUE : FALSE;
 	} else {
 		JANUS_LOG(LOG_INFO, "MQTT SSL support disabled\n");
@@ -267,43 +282,50 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	/* Connect configuration */
-	janus_config_item *keep_alive_interval_item = janus_config_get_item_drilldown(config, "general", "keep_alive_interval");
+	janus_config_item *keep_alive_interval_item = janus_config_get(config, config_general, janus_config_type_item, "keep_alive_interval");
 	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ? atoi(keep_alive_interval_item->value) : 20;
 
-	janus_config_item *cleansession_item = janus_config_get_item_drilldown(config, "general", "cleansession");
+	janus_config_item *cleansession_item = janus_config_get(config, config_general, janus_config_type_item, "cleansession");
 	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ? atoi(cleansession_item->value) : 0;
 
 	/* Disconnect configuration */
-	janus_config_item *disconnect_timeout_item = janus_config_get_item_drilldown(config, "general", "disconnect_timeout");
+	janus_config_item *disconnect_timeout_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_timeout");
 	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : 100;
 
-	janus_config_item *enable_item = janus_config_get_item_drilldown(config, "general", "enable");
-	if(enable_item && enable_item->value && janus_is_true(enable_item->value)) {
+	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
+	if(enabled_item == NULL) {
+		/* Try legacy property */
+		enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enable");
+		if (enabled_item && enabled_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'enable' property, please update it to 'enabled' instead\n");
+		}
+	}
+	if(enabled_item && enabled_item->value && janus_is_true(enabled_item->value)) {
 		janus_mqtt_api_enabled_ = TRUE;
 
 		/* Subscribe configuration */
 		{
-			janus_config_item *topic_item = janus_config_get_item_drilldown(config, "general", "subscribe_topic");
+			janus_config_item *topic_item = janus_config_get(config, config_general, janus_config_type_item, "subscribe_topic");
 			if(!topic_item || !topic_item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing topic for incoming messages for MQTT integration...\n");
 				goto error;
 			}
 			ctx->subscribe.topic = g_strdup(topic_item->value);
 
-			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "subscribe_qos");
+			janus_config_item *qos_item = janus_config_get(config, config_general, janus_config_type_item, "subscribe_qos");
 			ctx->subscribe.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 
 		/* Publish configuration */
 		{
-			janus_config_item *topic_item = janus_config_get_item_drilldown(config, "general", "publish_topic");
+			janus_config_item *topic_item = janus_config_get(config, config_general, janus_config_type_item, "publish_topic");
 			if(!topic_item || !topic_item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing topic for outgoing messages for MQTT integration...\n");
 				goto error;
 			}
 			ctx->publish.topic = g_strdup(topic_item->value);
 
-			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "publish_qos");
+			janus_config_item *qos_item = janus_config_get(config, config_general, janus_config_type_item, "publish_qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 	} else {
@@ -313,33 +335,40 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	/* Admin configuration */
-	janus_config_item *admin_enable_item = janus_config_get_item_drilldown(config, "admin", "admin_enable");
-	if(admin_enable_item && admin_enable_item->value && janus_is_true(admin_enable_item->value)) {
+	janus_config_item *admin_enabled_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
+	if(admin_enabled_item == NULL) {
+		/* Try legacy property */
+		admin_enabled_item = janus_config_get(config, config_general, janus_config_type_item, "admin_enable");
+		if (admin_enabled_item && admin_enabled_item->value) {
+			JANUS_LOG(LOG_WARN, "Found deprecated 'admin_enable' property, please update it to 'admin_enabled' instead\n");
+		}
+	}
+	if(admin_enabled_item && admin_enabled_item->value && janus_is_true(admin_enabled_item->value)) {
 		janus_mqtt_admin_api_enabled_ = TRUE;
 
 		/* Admin subscribe configuration */
 		{
-			janus_config_item *topic_item = janus_config_get_item_drilldown(config, "admin", "subscribe_topic");
+			janus_config_item *topic_item = janus_config_get(config, config_admin, janus_config_type_item, "subscribe_topic");
 			if(!topic_item || !topic_item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing topic for incoming admin messages for MQTT integration...\n");
 				goto error;
 			}
 			ctx->admin.subscribe.topic = g_strdup(topic_item->value);
 
-			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "admin", "subscribe_qos");
+			janus_config_item *qos_item = janus_config_get(config, config_admin, janus_config_type_item, "subscribe_qos");
 			ctx->admin.subscribe.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 
 		/* Admin publish configuration */
 		{
-			janus_config_item *topic_item = janus_config_get_item_drilldown(config, "admin", "publish_topic");
+			janus_config_item *topic_item = janus_config_get(config, config_admin, janus_config_type_item, "publish_topic");
 			if(!topic_item || !topic_item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing topic for outgoing admin messages for MQTT integration...\n");
 				goto error;
 			}
 			ctx->admin.publish.topic = g_strdup(topic_item->value);
 
-			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "admin", "publish_qos");
+			janus_config_item *qos_item = janus_config_get(config, config_admin, janus_config_type_item, "publish_qos");
 			ctx->admin.publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 	} else {
@@ -523,7 +552,7 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	options.onFailure = janus_mqtt_client_connect_failure;
 	/* Is SSL enabled? */
 	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
-	if(ctx->ssl_enable) {
+	if(ctx->ssl_enabled) {
 		ssl_opts.trustStore = ctx->cacert_file;
 		ssl_opts.keyStore = ctx->cert_file;
 		ssl_opts.privateKey = ctx->key_file;

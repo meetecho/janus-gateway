@@ -15,7 +15,7 @@
  * SIP plugin. The API it exposes is exactly the same, meaning it should
  * be pretty straightforward to switch from one plugin to another on the
  * client side. The configuration file looks exactly the same as well.
- * As such, you can mostly refer to the \ref sip for both.
+ * As such, you can mostly refer to the \ref sipsofia for both.
  *
  * \section sipreapi SIPre Plugin API
  *
@@ -157,6 +157,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
+	{"display_name", JSON_STRING, 0},
+	{"user_agent", JSON_STRING, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -175,7 +177,8 @@ static struct janus_json_parameter call_parameters[] = {
 	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JANUS_JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -504,6 +507,7 @@ struct janus_sipre_session {
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
+	GThread *relayer_thread;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -935,6 +939,32 @@ static void janus_sipre_random_string(int length, char *buffer) {
 	}
 }
 
+static void janus_sipre_parse_custom_headers(json_t *root, char *custom_headers) {
+	custom_headers[0] = '\0';
+	json_t *headers = json_object_get(root, "headers");
+	if(headers) {
+		if(json_object_size(headers) > 0) {
+			/* Parse custom headers */
+			const char *key = NULL;
+			json_t *value = NULL;
+			void *iter = json_object_iter(headers);
+			while(iter != NULL) {
+				key = json_object_iter_key(iter);
+				value = json_object_get(headers, key);
+				if(value == NULL || !json_is_string(value)) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
+				char h[255];
+				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+				g_strlcat(custom_headers, h, 2048);
+				iter = json_object_iter_next(headers, iter);
+			}
+		}
+	}
+}
 
 #ifdef HAVE_LIBRE_SIPTRACE
 /* libre SIP logger function: when the Event Handlers mechanism is enabled,
@@ -968,13 +998,20 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIPRE_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SIPRE_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SIPRE_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIPRE_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
 			struct ifaddrs *ifas = NULL;
@@ -996,7 +1033,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value) {
 			register_ttl = atol(item->value);
 			if(register_ttl <= 0) {
@@ -1006,12 +1043,12 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		}
 		JANUS_LOG(LOG_VERB, "SIPre registration TTL set to %d seconds\n", register_ttl);
 
-		item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+		item = janus_config_get(config, config_general, janus_config_type_item, "behind_nat");
 		if(item && item->value) {
 			behind_nat = janus_is_true(item->value);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "user_agent");
+		item = janus_config_get(config, config_general, janus_config_type_item, "user_agent");
 		if(item && item->value) {
 			user_agent = g_strdup(item->value);
 		} else {
@@ -1019,7 +1056,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		}
 		JANUS_LOG(LOG_VERB, "SIPre User-Agent set to %s\n", user_agent);
 
-		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
 			char *maxport = strrchr(item->value, '-');
@@ -1041,7 +1078,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "SIPre RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "events");
+		item = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(item != NULL && item->value != NULL) {
 			notify_events = janus_is_true(item->value);
 		}
@@ -1568,7 +1605,7 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	/* Enqueue the BYE */
 	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 	/* Do cleanup if media thread has not been created */
-	if(!session->media.ready) {
+	if(!session->media.ready && !session->relayer_thread) {
 		janus_sipre_media_cleanup(session);
 	}
 	/* Get rid of the recorders, if available */
@@ -1838,30 +1875,7 @@ static void *janus_sipre_handler(void *data) {
 			if(send_register) {
 				/* Check if the INVITE needs to be enriched with custom headers */
 				char custom_headers[2048];
-				custom_headers[0] = '\0';
-				json_t *headers = json_object_get(root, "headers");
-				if(headers) {
-					if(json_object_size(headers) > 0) {
-						/* Parse custom headers */
-						const char *key = NULL;
-						json_t *value = NULL;
-						void *iter = json_object_iter(headers);
-						while(iter != NULL) {
-							key = json_object_iter_key(iter);
-							value = json_object_get(headers, key);
-							if(value == NULL || !json_is_string(value)) {
-								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-								iter = json_object_iter_next(headers, iter);
-								continue;
-							}
-							char h[255];
-							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-							g_strlcat(custom_headers, h, 2048);
-							iter = json_object_iter_next(headers, iter);
-						}
-					}
-				}
+				janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 				char *data = NULL;
 				if(strlen(custom_headers))
 					data = g_strdup(custom_headers);
@@ -1928,30 +1942,7 @@ static void *janus_sipre_handler(void *data) {
 			json_t *authuser = json_object_get(root, "authuser");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			custom_headers[0] = '\0';
-			json_t *headers = json_object_get(root, "headers");
-			if(headers) {
-				if(json_object_size(headers) > 0) {
-					/* Parse custom headers */
-					const char *key = NULL;
-					json_t *value = NULL;
-					void *iter = json_object_iter(headers);
-					while(iter != NULL) {
-						key = json_object_iter_key(iter);
-						value = json_object_get(headers, key);
-						if(value == NULL || !json_is_string(value)) {
-							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-							iter = json_object_iter_next(headers, iter);
-							continue;
-						}
-						char h[255];
-						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-						g_strlcat(custom_headers, h, 2048);
-						iter = json_object_iter_next(headers, iter);
-					}
-				}
-			}
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2240,7 +2231,14 @@ static void *janus_sipre_handler(void *data) {
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_incall;
 			session->temp_sdp = sdp;
-			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+			/* Check if the OK needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sipre_parse_custom_headers(root, (char *)&custom_headers);
+			char *data = NULL;
+			if(strlen(custom_headers))
+				data = g_strdup(custom_headers);
+
+			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
@@ -2251,8 +2249,10 @@ static void *janus_sipre_handler(void *data) {
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
 				janus_refcount_increase(&session->ref);
-				g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
+				session->relayer_thread = g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 				if(error != NULL) {
+					session->relayer_thread = NULL;
+					session->media.ready = FALSE;
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
@@ -2856,8 +2856,8 @@ void janus_sipre_sdp_process(janus_sipre_session *session, janus_sdp *sdp, gbool
 						gint32 tag = 0;
 						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
-							&tag, profile, crypto);
+						int res = a->value ? (sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto)) : 0;
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
@@ -3843,8 +3843,10 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
 		janus_refcount_increase(&session->ref);
-		g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
+		session->relayer_thread = g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 		if(error != NULL) {
+			session->relayer_thread = NULL;
+			session->media.ready = FALSE;
 			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 		}
@@ -4224,8 +4226,11 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
 			mbuf_printf(mb, "%s", session->temp_sdp);
 			mbuf_set_pos(mb, 0);
+			/* Check if there are custom headers to add */
+                        char *headers = (char *)payload->data;
 			/* Send the 200 OK */
-			int err = sipsess_answer(session->stack.sess, 200, "OK", mb, NULL);
+			int err = sipsess_answer(session->stack.sess, 200, "OK", mb, (headers ? headers : ""));
+			g_free(headers);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the 200 OK: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */

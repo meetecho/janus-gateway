@@ -1,0 +1,11 @@
+general: {
+	# Specify which local IP address to use. If not set it will be automatically
+	# guessed from the system
+	#local_ip = "1.2.3.4"
+
+	# Range of ports to use for RTP/RTCP (default=10000-60000)
+	rtp_port_range = "20000-40000"
+
+	# Whether events should be sent to event handlers (default is yes)
+	#events = false
+}
