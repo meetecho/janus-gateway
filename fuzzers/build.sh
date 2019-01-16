@@ -21,14 +21,15 @@ if [ "$ENV" == "oss-fuzz" ]; then
 elif [ "$ENV" == "local" ]; then
 	# For address and undefined behaviour sanitizer
 	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fsanitize=fuzzer-no-link"}
-	if [ ! -z $FUZZ_ENGINE ]; then
-		FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fsanitize=fuzzer-no-link"}
-	else
-		FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fsanitize=fuzzer"}
-	fi
+	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope"}
 	# For coverage testing use
 	# 	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fprofile-instr-generate -fcoverage-mapping -fsanitize=fuzzer-no-link"}
-	# 	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fprofile-instr-generate -fcoverage-mapping -fsanitize=fuzzer"}
+	# 	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fprofile-instr-generate -fcoverage-mapping"}
+	if [ ! -z $FUZZ_ENGINE ]; then
+		FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer-no-link"
+	else
+		FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer"
+	fi
 	FUZZ_CCLD=$CC
 fi
 
@@ -50,7 +51,7 @@ DEPS_LIB="$(find /usr -name libglib-2.0.a | head -n 1) $(find /usr -name libjans
 engines=$(find $SRC/janus-gateway/fuzzers/ -name "*standalone.c")
 for sourceFile in $engines; do
   name=$(basename $sourceFile .c)
-  echo "Building engine $name"
+  echo "Building engine: $name"
   $CC -c $FUZZ_CFLAGS $sourceFile -o $WORK/$name.o
 done
 
@@ -59,13 +60,13 @@ mkdir -p $OUT
 fuzzers=$(find $SRC/janus-gateway/fuzzers/ -name "fuzz*.c")
 for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
-  echo "Building fuzzer $name"
+  echo "Building fuzzer: $name"
 
   $CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. $sourceFile -o $WORK/$name.o
   $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $DEPS_LIB
   
   if [ -d "$SRC/janus-gateway/fuzzers/corpora/${name}" ]; then
-	echo "Exporting $name corpus"
+	echo "Exporting corpus: $name "
 	zip -jqr --exclude=*LICENSE* $OUT/${name}_seed_corpus.zip $SRC/janus-gateway/fuzzers/corpora/${name}
   fi
 done
