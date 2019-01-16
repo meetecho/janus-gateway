@@ -19,16 +19,22 @@ if [ "$ENV" == "oss-fuzz" ]; then
 	FUZZ_LDFLAGS=$CXXFLAGS
 	FUZZ_CCLD=$CXX
 elif [ "$ENV" == "local" ]; then
-	# For address and undefined behaviour sanitizer
-	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fsanitize=fuzzer-no-link"}
+	# Default configuration: use address and undefined behaviour sanitizers
+	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope"}
 	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope"}
-	# For coverage testing use
-	# 	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fprofile-instr-generate -fcoverage-mapping -fsanitize=fuzzer-no-link"}
-	# 	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -fprofile-instr-generate -fcoverage-mapping"}
-	if [ ! -z $FUZZ_ENGINE ]; then
-		FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer-no-link"
-	else
-		FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer"
+	if [[ $CC == clang* ]]; then
+		# For coverage testing with clang uncomment
+		# FUZZ_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping"
+		# FUZZ_LDFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping"
+
+		# Enable clang libFuzzer: add it to CFLAGS and link against
+		# libFuzzer only if LIB_FUZZING_ENGINE has not been defined
+		FUZZ_CFLAGS="$FUZZ_CFLAGS -fsanitize=fuzzer-no-link"
+		if [ ! -z $FUZZ_ENGINE ]; then
+			FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer-no-link"
+		else
+			FUZZ_LDFLAGS="$FUZZ_LDFLAGS -fsanitize=fuzzer"
+		fi
 	fi
 	FUZZ_CCLD=$CC
 fi
@@ -46,8 +52,8 @@ JANUS_LIB="$WORK/janus-lib.a"
 ar rcs $JANUS_LIB $JANUS_OBJECTS
 
 # Fetch dependencies
-DEPS_CFLAGS=$(pkg-config --cflags glib-2.0)
-DEPS_LIB="$(find /usr -name libglib-2.0.a | head -n 1) $(find /usr -name libjansson.a | head -n 1)"
+DEPS_CFLAGS="$(pkg-config --cflags glib-2.0) -pthread"
+DEPS_LIB="$(find /usr -name libglib-2.0.a | head -n 1) $(find /usr -name libjansson.a | head -n 1) -pthread"
 
 # Build standalone fuzzing engines
 engines=$(find $SRC/janus-gateway/fuzzers/ -name "*standalone.c")
