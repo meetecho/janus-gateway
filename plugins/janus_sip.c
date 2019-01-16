@@ -95,6 +95,8 @@
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
 	"authuser" : "<username to use to authenticate (overrides the one in the SIP URI); optional>",
+	"display_name" : "<display name to use when sending SIP REGISTER; optional>",
+	"user_agent" : "<user agent to use when sending SIP REGISTER; optional>",
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
@@ -262,7 +264,8 @@
 \verbatim
 {
 	"request" : "accept",
-	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>"
+	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
 }
 \endverbatim
  *
@@ -301,7 +304,8 @@
  *
 \verbatim
 {
-	"request" : "decline"
+	"request" : "decline",
+	"code" : <SIP code to be sent, if not set, 486 is used; optional>"
 }
 \endverbatim
  *
@@ -499,6 +503,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0},
+	{"display_name", JSON_STRING, 0},
+	{"user_agent", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -518,7 +524,8 @@ static struct janus_json_parameter call_parameters[] = {
 	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -701,6 +708,7 @@ typedef struct janus_sip_session {
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
+	GThread *relayer_thread;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1096,6 +1104,32 @@ static void janus_sip_random_string(int length, char *buffer) {
 	}
 }
 
+static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers) {
+	custom_headers[0] = '\0';
+	json_t *headers = json_object_get(root, "headers");
+	if(headers) {
+		if(json_object_size(headers) > 0) {
+			/* Parse custom headers */
+			const char *key = NULL;
+			json_t *value = NULL;
+			void *iter = json_object_iter(headers);
+			while(iter != NULL) {
+				key = json_object_iter_key(iter);
+				value = json_object_get(headers, key);
+				if(value == NULL || !json_is_string(value)) {
+					JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+					iter = json_object_iter_next(headers, iter);
+					continue;
+				}
+				char h[255];
+				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+				g_strlcat(custom_headers, h, 2048);
+				iter = json_object_iter_next(headers, iter);
+			}
+		}
+	}
+}
 
 /* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
  * we use this to intercept SIP messages sent by the stack (received
@@ -1217,13 +1251,20 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SIP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SIP_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
 			struct ifaddrs *ifas = NULL;
@@ -1245,28 +1286,28 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
+		item = janus_config_get(config, config_general, janus_config_type_item, "keepalive_interval");
 		if(item && item->value)
 			keepalive_interval = atoi(item->value);
 		JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
 
-		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value)
 			register_ttl = atoi(item->value);
 		JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
 
-		item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+		item = janus_config_get(config, config_general, janus_config_type_item, "behind_nat");
 		if(item && item->value)
 			behind_nat = janus_is_true(item->value);
 
-		item = janus_config_get_item_drilldown(config, "general", "user_agent");
+		item = janus_config_get(config, config_general, janus_config_type_item, "user_agent");
 		if(item && item->value)
 			user_agent = g_strdup(item->value);
 		else
 			user_agent = g_strdup("Janus WebRTC Server SIP Plugin "JANUS_SIP_VERSION_STRING);
 		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 
-		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
 			char *maxport = strrchr(item->value, '-');
@@ -1288,7 +1329,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_VERB, "SIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "events");
+		item = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(item != NULL && item->value != NULL)
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -1862,7 +1903,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	}
 	/* Do cleanup if media thread has not been created */
-	if(!session->media.ready) {
+	if(!session->media.ready && !session->relayer_thread) {
 		janus_sip_media_cleanup(session);
 	}
 	/* Get rid of the recorders, if available */
@@ -2212,30 +2253,7 @@ static void *janus_sip_handler(void *data) {
 			if(send_register) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
-				custom_headers[0] = '\0';
-				json_t *headers = json_object_get(root, "headers");
-				if(headers) {
-					if(json_object_size(headers) > 0) {
-						/* Parse custom headers */
-						const char *key = NULL;
-						json_t *value = NULL;
-						void *iter = json_object_iter(headers);
-						while(iter != NULL) {
-							key = json_object_iter_key(iter);
-							value = json_object_get(headers, key);
-							if(value == NULL || !json_is_string(value)) {
-								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-								iter = json_object_iter_next(headers, iter);
-								continue;
-							}
-							char h[255];
-							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-							g_strlcat(custom_headers, h, 2048);
-							iter = json_object_iter_next(headers, iter);
-						}
-					}
-				}
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -2336,30 +2354,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			custom_headers[0] = '\0';
-			json_t *headers = json_object_get(root, "headers");
-			if(headers) {
-				if(json_object_size(headers) > 0) {
-					/* Parse custom headers */
-					const char *key = NULL;
-					json_t *value = NULL;
-					void *iter = json_object_iter(headers);
-					while(iter != NULL) {
-						key = json_object_iter_key(iter);
-						value = json_object_get(headers, key);
-						if(value == NULL || !json_is_string(value)) {
-							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-							iter = json_object_iter_next(headers, iter);
-							continue;
-						}
-						char h[255];
-						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-						g_strlcat(custom_headers, h, 2048);
-						iter = json_object_iter_next(headers, iter);
-					}
-				}
-			}
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -2692,6 +2687,9 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
+			/* Check if the OK needs to be enriched with custom headers */
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
 			/* Send 200 OK */
 			if(!answer) {
 				if(session->transaction)
@@ -2708,6 +2706,7 @@ static void *janus_sip_handler(void *data) {
 				SOATAG_USER_SDP_STR(sdp),
 				SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
 				NUTAG_AUTOANSWER(0),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
 			g_free(sdp);
 			/* Send an ack back */
@@ -2720,8 +2719,10 @@ static void *janus_sip_handler(void *data) {
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
 				janus_refcount_increase(&session->ref);
-				g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
+				session->relayer_thread = g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 				if(error != NULL) {
+					session->relayer_thread = NULL;
+					session->media.ready = FALSE;
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
@@ -3779,8 +3780,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
 				janus_refcount_increase(&session->ref);
-				g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
+				session->relayer_thread = g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 				if(error != NULL) {
+					session->relayer_thread = NULL;
+					session->media.ready = FALSE;
 					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
@@ -4044,8 +4047,8 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 						gint32 tag = 0;
 						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
-						int res = sscanf(a->value, "%"SCNi32" %100s inline:%100s",
-							&tag, profile, crypto);
+						int res = a->value ? (sscanf(a->value, "%"SCNi32" %100s inline:%100s",
+							&tag, profile, crypto)) : 0;
 						if(res != 3) {
 							JANUS_LOG(LOG_WARN, "Failed to parse crypto line, ignoring... %s\n", a->value);
 						} else {
@@ -4659,6 +4662,7 @@ static void *janus_sip_relay_thread(void *data) {
 	janus_sip_media_cleanup(session);
 	/* Done */
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
+	session->relayer_thread = NULL;
 	janus_refcount_decrease(&session->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;

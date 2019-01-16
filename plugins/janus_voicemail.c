@@ -301,9 +301,15 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VOICEMAIL_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_VOICEMAIL_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_VOICEMAIL_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VOICEMAIL_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL)
 		janus_config_print(config);
 
@@ -314,13 +320,14 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration */
 	if(config != NULL) {
-		janus_config_item *path = janus_config_get_item_drilldown(config, "general", "path");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *path = janus_config_get(config, config_general, janus_config_type_item, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
-		janus_config_item *base = janus_config_get_item_drilldown(config, "general", "base");
+		janus_config_item *base = janus_config_get(config, config_general, janus_config_type_item, "base");
 		if(base && base->value)
 			recordings_base = g_strdup(base->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {

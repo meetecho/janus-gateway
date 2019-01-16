@@ -1,0 +1,5 @@
+# events = yes|no, whether events should be sent to event handlers
+
+general: {
+	#events = false
+}

@@ -130,6 +130,9 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									if(!on)
+										return;
+									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
@@ -463,7 +466,8 @@ function newRemoteFeed(id, display, audio, video) {
 				// 'offer_data' properties to false (they're true by default), e.g.:
 				// 		subscribe["offer_video"] = false;
 				// For example, if the publisher is VP8 and this is Safari, let's avoid video
-				if(video !== "h264" && Janus.webRTCAdapter.browserDetails.browser === "safari") {
+				if(Janus.webRTCAdapter.browserDetails.browser === "safari" &&
+						(video === "vp9" || (video === "vp8" && !Janus.safariVp8))) {
 					if(video)
 						video = video.toUpperCase()
 					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
