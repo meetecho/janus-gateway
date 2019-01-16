@@ -33,6 +33,8 @@ elif [ "$ENV" == "local" ]; then
 	FUZZ_CCLD=$CC
 fi
 
+rm -f $WORK/*.a $WORK/*.o
+
 # Build and archive necessary Janus objects
 cd $SRC/janus-gateway
 ./autogen.sh
