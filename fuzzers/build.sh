@@ -52,8 +52,8 @@ JANUS_LIB="$WORK/janus-lib.a"
 ar rcs $JANUS_LIB $JANUS_OBJECTS
 
 # Fetch dependencies
-DEPS_CFLAGS="$(pkg-config --cflags glib-2.0) -pthread"
-DEPS_LIB="$(find /usr -name libglib-2.0.a | head -n 1) $(find /usr -name libjansson.a | head -n 1) -pthread"
+DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
+DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0) $(pkg-config --libs jansson) -pthread -Wl,-Bdynamic"
 
 # Build standalone fuzzing engines
 engines=$(find $SRC/janus-gateway/fuzzers/ -name "*standalone.c")
