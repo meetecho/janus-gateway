@@ -50,6 +50,7 @@ JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o"
 make -j$(nproc) $JANUS_OBJECTS
 JANUS_LIB="$WORK/janus-lib.a"
 ar rcs $JANUS_LIB $JANUS_OBJECTS
+cd -
 
 # Fetch dependencies
 DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
@@ -70,7 +71,7 @@ for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
   echo "Building fuzzer: $name"
 
-  $CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. $sourceFile -o $WORK/$name.o
+  $CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/janus-gateway $sourceFile -o $WORK/$name.o
   $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $DEPS_LIB
   
   if [ -d "$SRC/janus-gateway/fuzzers/corpora/${name}" ]; then
