@@ -789,6 +789,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		int step = (context->substream < 1 && context->substream_target == 2);
 		if((ssrc == *(ssrcs + context->substream_target)) || (step && ssrc == *(ssrcs + step))) {
 			if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
+					(vcodec == JANUS_VIDEOCODEC_VP9 && janus_vp9_is_keyframe(payload, plen)) ||
 					(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen))) {
 				uint32_t ssrc_old = 0;
 				if(context->substream != -1)
@@ -832,7 +833,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		return FALSE;
 	}
 	context->last_relayed = janus_get_monotonic_time();
-	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	/* Temporal layers are only available for VP8 and VP9, so for now don't do anything else for H.264 */
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		uint16_t picid = 0;
@@ -855,6 +856,28 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 				if(sc)
 					sc->v_base_seq++;
 				return FALSE;
+			}
+		}
+	} else if(vcodec == JANUS_VIDEOCODEC_VP9) {
+		/* Check if there's any temporal scalability to take into account */
+		uint8_t pbit = 0, dbit = 0, ubit = 0, bbit = 0, ebit = 0;
+		int found = 0, spatial_layer = 0, temporal_layer = 0;
+		if(janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit) == 0) {
+			if(found) {
+				if(context->templayer != context->templayer_target && temporal_layer == context->templayer_target) {
+					/* FIXME We should be smarter in deciding when to switch */
+					context->templayer = context->templayer_target;
+					/* Notify the caller that the temporal layer changed */
+					context->changed_temporal = TRUE;
+				}
+				if(temporal_layer > context->templayer) {
+					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+						temporal_layer, context->templayer);
+					/* We increase the base sequence number, or there will be gaps when delivering later */
+					if(sc)
+						sc->v_base_seq++;
+					return FALSE;
+				}
 			}
 		}
 	}

@@ -4117,7 +4117,8 @@ done:
 						session->templayer_target = json_integer_value(temporal);
 						JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 							session->templayer_target, session->templayer);
-						if(mp->codecs.video_codec == JANUS_VIDEOCODEC_VP8 && session->templayer_target == session->templayer) {
+						if((mp->codecs.video_codec == JANUS_VIDEOCODEC_VP8 || mp->codecs.video_codec == JANUS_VIDEOCODEC_VP9) &&
+								session->templayer_target == session->templayer) {
 							/* No need to do anything, we're already getting the right temporal layer, so notify the viewer */
 							json_t *event = json_object();
 							json_object_set_new(event, "streaming", json_string("event"));
@@ -6655,14 +6656,14 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 						if(session->templayer != session->templayer_target) {
 							/* FIXME We should be smarter in deciding when to switch */
 							session->templayer = session->templayer_target;
-								/* Notify the viewer */
-								json_t *event = json_object();
-								json_object_set_new(event, "streaming", json_string("event"));
-								json_t *result = json_object();
-								json_object_set_new(result, "temporal", json_integer(session->templayer));
-								json_object_set_new(event, "result", result);
-								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-								json_decref(event);
+							/* Notify the viewer */
+							json_t *event = json_object();
+							json_object_set_new(event, "streaming", json_string("event"));
+							json_t *result = json_object();
+							json_object_set_new(result, "temporal", json_integer(session->templayer));
+							json_object_set_new(event, "result", result);
+							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
+							json_decref(event);
 						}
 						if(tid > session->templayer) {
 							JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
@@ -6676,6 +6677,35 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
 					memcpy(vp8pd, payload, sizeof(vp8pd));
 					janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
+				} else if(packet->codec == JANUS_VIDEOCODEC_VP9) {
+					/* Check if there's any temporal scalability to take into account */
+					uint8_t pbit = 0, dbit = 0, ubit = 0, bbit = 0, ebit = 0;
+					int found = 0, spatial_layer = 0, temporal_layer = 0;
+					if(janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit) == 0) {
+						if(found) {
+							if(session->templayer != session->templayer_target && temporal_layer == session->templayer_target) {
+								/* FIXME We should be smarter in deciding when to switch */
+								session->templayer = session->templayer_target;
+								/* Notify the viewer */
+								json_t *event = json_object();
+								json_object_set_new(event, "streaming", json_string("event"));
+								json_t *result = json_object();
+								json_object_set_new(result, "temporal", json_integer(session->templayer));
+								json_object_set_new(event, "result", result);
+								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
+								json_decref(event);
+							}
+							if(temporal_layer > session->templayer) {
+								JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+									temporal_layer, session->templayer);
+								/* We increase the base sequence number, or there will be gaps when delivering later */
+								session->context.v_base_seq++;
+								return;
+							}
+						}
+					}
+					/* If we got here, update the RTP header and send the packet */
+					janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
 				}
 				/* Send the packet */
 				if(gateway != NULL)

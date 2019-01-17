@@ -424,7 +424,7 @@ typedef struct janus_recordplay_session {
 	guint64 video_keyframe_request_last;	/* Timestamp of last keyframe request sent */
 	gint video_fir_seq;
 	janus_rtp_switching_context context;
-	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case simulcasting is involved */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	volatile gint hangingup;
@@ -1569,12 +1569,6 @@ recdone:
 				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
-				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
-					/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-					session->ssrc[0] = 0;
-					session->ssrc[1] = 0;
-					session->ssrc[2] = 0;
-				}
 			}
 			/* Done! */
 			result = json_object();

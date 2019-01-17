@@ -210,7 +210,7 @@ typedef struct janus_echotest_session {
 	janus_videocodec vcodec;/* Codec used for video, if available */
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
-	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case simulcasting is involved */
 	janus_rtp_simulcasting_context sim_context;
 	int rtpmapid_extmap_id;	/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
 	char *rid[3];			/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
@@ -968,7 +968,8 @@ static void *janus_echotest_handler(void *data) {
 			session->sim_context.templayer_target = json_integer_value(temporal);
 			JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 				session->sim_context.templayer_target, session->sim_context.templayer);
-			if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->sim_context.templayer_target == session->sim_context.templayer) {
+				if((session->vcodec == JANUS_VIDEOCODEC_VP8 || session->vcodec == JANUS_VIDEOCODEC_VP9) &&
+						session->sim_context.templayer_target == session->sim_context.templayer) {
 				/* No need to do anything, we're already getting the right temporal, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
@@ -1084,12 +1085,6 @@ static void *janus_echotest_handler(void *data) {
 				janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
 					"%d%s %s\r\n", session->rtpmapid_extmap_id, direction, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
 				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
-			}
-			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
-				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				session->ssrc[0] = 0;
-				session->ssrc[1] = 0;
-				session->ssrc[2] = 0;
 			}
 			/* Done */
 			char *sdp = janus_sdp_write(answer);

@@ -1397,7 +1397,7 @@ typedef struct janus_videoroom_publisher {
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
-	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case simulcasting is involved */
 	int rtpmapid_extmap_id;	/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
 	char *rid[3];			/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
@@ -5397,7 +5397,8 @@ static void *janus_videoroom_handler(void *data) {
 							janus_videoroom_reqfir(publisher, "Simulcasting substream change");
 						}
 					}
-					if(subscriber->feed && subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8 &&
+					if(subscriber->feed && (subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP8 ||
+								subscriber->feed->vcodec == JANUS_VIDEOCODEC_VP9) &&
 							sc_temporal && publisher->ssrc[0] != 0) {
 						subscriber->sim_context.templayer_target = json_integer_value(sc_temporal);
 						JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
@@ -6014,8 +6015,7 @@ static void *janus_videoroom_handler(void *data) {
 				char *offer_sdp = janus_sdp_write(offer);
 				if(!sdp_update) {
 					/* Is simulcasting involved */
-					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
-							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
+					if(msg_simulcast) {
 						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
 						participant->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 						participant->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));

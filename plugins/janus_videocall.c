@@ -374,7 +374,7 @@ typedef struct janus_videocall_session {
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
 	janus_rtp_switching_context context;
-	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	uint32_t ssrc[3];		/* Only needed in case simulcasting is involved */
 	janus_rtp_simulcasting_context sim_context;
 	int rtpmapid_extmap_id;	/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
 	janus_vp8_simulcast_context vp8_context;
@@ -1419,7 +1419,8 @@ static void *janus_videocall_handler(void *data) {
 				session->sim_context.templayer_target = json_integer_value(temporal);
 				JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 					session->sim_context.templayer_target, session->sim_context.templayer);
-				if(session->vcodec == JANUS_VIDEOCODEC_VP8 && session->sim_context.templayer_target == session->sim_context.templayer) {
+				if((session->vcodec == JANUS_VIDEOCODEC_VP8 || session->vcodec == JANUS_VIDEOCODEC_VP9) &&
+						session->sim_context.templayer_target == session->sim_context.templayer) {
 					/* No need to do anything, we're already getting the right temporal, so notify the user */
 					json_t *event = json_object();
 					json_object_set_new(event, "videocall", json_string("event"));
