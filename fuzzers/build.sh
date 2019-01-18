@@ -20,11 +20,11 @@ if [ "$ENV" == "oss-fuzz" ]; then
 	FUZZ_CCLD=$CXX
 elif [ "$ENV" == "local" ]; then
 	# Default configuration: use address and undefined behaviour sanitizers
-	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope"}
+	FUZZ_CFLAGS=${CFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"}
 	FUZZ_LDFLAGS=${LDFLAGS-"-O1 -fno-omit-frame-pointer -g -ggdb3 -fsanitize=address,undefined -fsanitize-address-use-after-scope"}
 	if [[ $FUZZ_CC == clang* ]]; then
 		# For coverage testing with clang uncomment
-		# FUZZ_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping"
+		# FUZZ_CFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
 		# FUZZ_LDFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate -fcoverage-mapping"
 
 		# When clang is detected always use libFuzzer but link against
@@ -54,7 +54,7 @@ cd -
 
 # Fetch dependencies
 DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
-DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0) $(pkg-config --libs jansson) -pthread -Wl,-Bdynamic"
+DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0) -pthread -Wl,-Bdynamic"
 
 # Build standalone fuzzing engines
 engines=$(find $SRC/janus-gateway/fuzzers/ -name "*standalone.c")

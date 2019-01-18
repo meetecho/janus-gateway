@@ -145,7 +145,9 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
  * @returns TRUE if the value is valid */
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
+#endif
 
 /*! \brief Validates the JSON object against the description of its parameters
  * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name

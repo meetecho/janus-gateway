@@ -5,11 +5,16 @@ set -eu
 TARGET=${1-"fuzz-rtcp"}
 OUT=${OUT-"$(pwd)/out"}
 SRC=$(dirname $(pwd))
+echo "Executing fuzzer $TARGET"
 
 # run fuzzer
 cd "$OUT"
 mkdir -p "$TARGET"_corpus
-mkdir -p "$TARGET"_seed_corpus && unzip -oq "$TARGET"_seed_corpus.zip -d "$TARGET"_seed_corpus
+mkdir -p "$TARGET"_seed_corpus
+if [ -f "${TARGET}_seed_corpus.zip" ]; then
+	echo "Extracting corpus seed data"
+	unzip -oq "$TARGET"_seed_corpus.zip -d "$TARGET"_seed_corpus
+fi
 # Use -max_len=1472 for RTCP
 ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=1 -jobs=4 "$TARGET"_corpus "$TARGET"_seed_corpus
 # tail -f fuzz*.log
