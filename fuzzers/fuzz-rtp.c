@@ -50,9 +50,9 @@ static int srtp_validate_rtp_header(char *data, int pkt_octet_len) {
     return 0;
 }
 
-//TODO: fixare su Janus
-// - pacchetti RTP con header corretto e payload nullo
-// - pacchetti RTP con versione != 2
+//TODO: fix on Janus
+// - RTP with version != 2
+// - RTP with OK-ish header and null payload
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Sanity Checks */
