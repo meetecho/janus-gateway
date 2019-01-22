@@ -498,7 +498,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 						uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 						brMantissa += (_ptrRTCPData[2] << 8);
 						brMantissa += (_ptrRTCPData[3]);
-						uint32_t bitRate = brMantissa << brExp;
+						uint32_t bitRate = (uint64_t)brMantissa << brExp;
 						JANUS_LOG(LOG_HUGE, "       -- -- -- REMB: %u * 2^%u = %"SCNu32" (%d SSRCs, %u)\n",
 							brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]));
 					} else {
@@ -547,12 +547,19 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 	*newlen = 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	char *filtered = NULL;
-	int total = len, length = 0, bytes = 0, offset = 0;
+	int total = len, length = 0, bytes = 0;
 	/* Iterate on the compound packets */
 	gboolean keep = TRUE;
+	gboolean error = FALSE;
 	while(rtcp) {
-		if(rtcp->version != 2)
-			return NULL;
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			error = TRUE;
+			break;
+		}
+		if(rtcp->version != 2) {
+			error = TRUE;
+			break;
+		}
 		keep = TRUE;
 		length = ntohs(rtcp->length);
 		if(length == 0)
@@ -597,10 +604,12 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 		total -= bytes;
 		if(total <= 0)
 			break;
-		if(offset + (length + 1) * (int)sizeof(uint32_t) + (int)sizeof(rtcp) > len)
-			break;
-		offset += length*4+4;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	if (error) {
+		g_free(filtered);
+		filtered = NULL;
+		*newlen = 0;
 	}
 	return filtered;
 }
@@ -990,14 +999,20 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
 	/* Find the NACK message */
 	char *nacks = NULL;
-	int total = len, nacks_len = 0, offset = 0;
+	int total = len, nacks_len = 0;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			break;
+		}
 		if(rtcp->version != 2)
 			break;
 		if(rtcp->type == RTCP_RTPFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 1) {
 				nacks = (char *)rtcp;
+				if (!janus_rtcp_check_fci(rtcp, total, 4)) {
+					break;
+				}
 			}
 		}
 		/* Is this a compound packet? */
@@ -1011,9 +1026,6 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 		total -= length*4+4;
 		if(total <= 0)
 			break;
-		if(offset + (length + 1) * (int)sizeof(uint32_t) + (int)sizeof(rtcp) > len)
-			break;
-		offset += length*4+4;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	if(nacks != NULL) {
@@ -1061,7 +1073,7 @@ uint32_t janus_rtcp_get_remb(char *packet, int len) {
 					uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 					brMantissa += (_ptrRTCPData[2] << 8);
 					brMantissa += (_ptrRTCPData[3]);
-					uint32_t bitrate = brMantissa << brExp;
+					uint32_t bitrate = (uint64_t)brMantissa << brExp;
 					JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu32"\n", bitrate);
 					return bitrate;
 				}
@@ -1107,7 +1119,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate) {
 					uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 					brMantissa += (_ptrRTCPData[2] << 8);
 					brMantissa += (_ptrRTCPData[3]);
-					uint32_t origbitrate = brMantissa << brExp;
+					uint32_t origbitrate = (uint64_t)brMantissa << brExp;
 					if(origbitrate > bitrate) {
 						JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu32", need to cap it to %"SCNu32"\n", origbitrate, bitrate);
 						JANUS_LOG(LOG_HUGE, "  >> %u * 2^%u = %"SCNu32"\n", brMantissa, brExp, origbitrate);

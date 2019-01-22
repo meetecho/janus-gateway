@@ -3623,7 +3623,7 @@ gint main(int argc, char *argv[])
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
 #endif
 	const char *nat_1_1_mapping = NULL;
@@ -3703,7 +3703,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_key");
 	if(item && item->value)
 		turn_rest_api_key = (char *)item->value;
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_method");
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
@@ -3722,7 +3722,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 		exit(1);
 	}
-#ifndef HAVE_LIBCURL
+#ifndef HAVE_TURNRESTAPI
 	if(turn_rest_api != NULL || turn_rest_api_key != NULL) {
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}
