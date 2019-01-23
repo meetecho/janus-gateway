@@ -358,9 +358,14 @@ Janus.init = function(options) {
 		// Check if this browser supports Unified Plan and transceivers
 		// Based on https://codepen.io/anon/pen/ZqLwWV?editors=0010
 		Janus.unifiedPlan = false;
-		if(Janus.webRTCAdapter.browserDetails.version >= 59) {
+		if(Janus.webRTCAdapter.browserDetails.browser === 'firefox' &&
+				Janus.webRTCAdapter.browserDetails.version >= 59) {
 			// Firefox definitely does, starting from version 59
 			Janus.unifiedPlan = true;
+		} else if(Janus.webRTCAdapter.browserDetails.browser === 'chrome' &&
+				Janus.webRTCAdapter.browserDetails.version < 72) {
+			// Chrome does, but it's only usable from version 72 on
+			Janus.unifiedPlan = false;
 		} else if(!('currentDirection' in RTCRtpTransceiver.prototype)) {
 			// Safari supports addTransceiver() but not Unified Plan when
 			// currentDirection is not defined (see codepen above)
@@ -1504,7 +1509,7 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
 				config.myStream.addTrack(stream.getAudioTracks()[0]);
-				if(media.replaceAudio && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+				if(media.replaceAudio && Janus.unifiedPlan) {
 					Janus.log("Replacing audio track:", stream.getAudioTracks()[0]);
 					for(var index in config.pc.getSenders()) {
 						var s = config.pc.getSenders()[index];
@@ -1515,7 +1520,7 @@ function Janus(gatewayCallbacks) {
 				} else {
 					if(Janus.unifiedPlan) {
 						// Unified Plan is supported, we can use transceivers
-						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
 						var audioTransceiver = null;
 						var transceivers = config.pc.getTransceivers();
 						if(transceivers && transceivers.length > 0) {
@@ -1542,7 +1547,7 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
-				if(media.replaceVideo && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+				if(media.replaceVideo && Janus.unifiedPlan) {
 					Janus.log("Replacing video track:", stream.getVideoTracks()[0]);
 					for(var index in config.pc.getSenders()) {
 						var s = config.pc.getSenders()[index];
@@ -1581,11 +1586,12 @@ function Janus(gatewayCallbacks) {
 		// If we still need to create a PeerConnection, let's do that
 		if(!config.pc) {
 			var pc_config = {
-				sdpSemantics: "unified-plan",
 				iceServers: iceServers,
 				iceTransportPolicy: iceTransportPolicy,
 				bundlePolicy: bundlePolicy
 			};
+			if(Janus.unifiedPlan)
+				pc_config.sdpSemantics = "unified-plan";
 			//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
@@ -1925,7 +1931,8 @@ function Janus(gatewayCallbacks) {
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var ra = true;
-					if(media.replaceAudio && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+					if(media.replaceAudio && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+							(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
 						// On Firefox we can use replaceTrack
 						ra = false;
 					}
@@ -1954,7 +1961,8 @@ function Janus(gatewayCallbacks) {
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var rv = true;
-					if(media.replaceVideo && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
+					if(media.replaceVideo && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+							(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
 						// On Firefox we can use replaceTrack
 						rv = false;
 					}
@@ -2169,9 +2177,8 @@ function Janus(gatewayCallbacks) {
 									isAudioSendEnabled(media) && !media.keepAudio);
 							});
 						}
-					} else if (window.navigator.userAgent.match('Firefox')) {
-						var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-						if(ffver >= 33) {
+					} else if(Janus.webRTCAdapter.browserDetails.browser === 'firefox') {
+						if(Janus.webRTCAdapter.browserDetails.version >= 33) {
 							// Firefox 33+ has experimental support for screen sharing
 							constraints = {
 								video: {
