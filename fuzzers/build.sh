@@ -57,7 +57,7 @@ DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
 DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0) -pthread -Wl,-Bdynamic"
 
 # Build standalone fuzzing engines
-engines=$(find $SRC/janus-gateway/fuzzers/ -name "*standalone.c")
+engines=$(find $SRC/janus-gateway/fuzzers/engines/ -name "*.c")
 for sourceFile in $engines; do
   name=$(basename $sourceFile .c)
   echo "Building engine: $name"
@@ -66,7 +66,7 @@ done
 
 # Build Fuzzers
 mkdir -p $OUT
-fuzzers=$(find $SRC/janus-gateway/fuzzers/ -name "fuzz*.c")
+fuzzers=$(find $SRC/janus-gateway/fuzzers/ -name "*.c" | grep -v "engines/")
 for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
   echo "Building fuzzer: $name"
