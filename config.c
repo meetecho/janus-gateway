@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    Configuration files parsing
  * \details  Implementation of a parser of INI and libconfig configuration files.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -569,6 +569,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 		if(c->type == janus_config_type_item) {
 			if(config->is_jcfg) {
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_STRING);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving string '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 				config_setting_set_string(elem, c->value);
 			} else {
 				fwrite(c->name, sizeof(char), strlen(c->name), file);
@@ -589,6 +594,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 		} else if(c->type == janus_config_type_category) {
 			if(config->is_jcfg) {
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_GROUP);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving group '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 			} else {
 				if(level > 0) {
 					/* INI files don't support indented categories */
@@ -613,6 +623,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 				/* FIXME We don't know in advance if all items will be of the
 				 * same kind, so we use list instead of array in libconfig */
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_LIST);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving list '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 				if(c->list != NULL) {
 					/* Non-empty array */
 					janus_config_save_list(config, file, level+1, FALSE, c->list, elem);
