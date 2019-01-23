@@ -382,6 +382,16 @@ multistream-test: {
 		"type" : "<type of the just created mountpoint>",
 		"description" : "<description of the just created mountpoint>",
 		"is_private" : <true|false, depending on whether the new mountpoint is listable>,
+		"ports" : [		// Only for RTP mountpoints
+			{
+				"type" : "<audio|video|data>",
+				"mid" : "<unique mid of stream #1>",
+				"port" : <port the plugin is listening on for this stream's media>
+			},
+			{
+				// Other streams, if available
+			}
+		]
 		...
 	}
 }
@@ -484,7 +494,10 @@ multistream-test: {
  * using the \c recording request. The same request can also be used to
  * stop recording. Although the same request is used in both cases, though,
  * the syntax for the two use cases differs a bit, namely in terms of the
- * type of some properties.
+ * type of some properties. Notice that, while for backwards compatibility
+ * you can still use the old \c audio, \c video and \c data named properties,
+ * they're now deprecated and so you're encouraged to use the new drill-down
+ * \c media list instead.
  *
  * To start recording a new mountpoint, the request should be formatted
  * like this:
@@ -494,12 +507,18 @@ multistream-test: {
 	"request" : "recording",
 	"action" : "start",
 	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
-	"audio" : "<enable audio recording, and use this base path/filename; optional>",
-	"video" : "<enable video recording, and use this base path/filename; optional>",
-	"data" : "<enable data recording, and use this base path/filename; optional>",
-	"audio" : <true|false; whether or not audio should be recorded>,
-	"video" : <true|false; whether or not video should be recorded>,
-	"data" : <true|false; whether or not datachannel messages should be recorded>
+	"audio" : "<enable audio recording, and use this base path/filename; deprecated, see media>",
+	"video" : "<enable video recording, and use this base path/filename; deprecated, see media>",
+	"data" : "<enable data recording, and use this base path/filename; deprecated, see media>",
+	"media" : [		// Drill-down recording controls
+		{
+			"mid" : "<mid of the stream to start recording>",
+			"filename" : "<base path/filename to use for the recording>"
+		},
+		{
+			// Recording controls for other streams, if provided
+		}
+	]
 }
 \endverbatim
  *
@@ -510,16 +529,26 @@ multistream-test: {
 	"request" : "recording",
 	"action" : "stop",
 	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
-	"audio" : <true|false; whether or not audio recording should be stopped>,
-	"video" : <true|false; whether or not video recording should be stopped>,
-	"data" : <true|false; whether or not datachannel recording should be stopped>
+	"audio" : <true|false; whether or not audio recording should be stopped; deprecated, see media>,
+	"video" : <true|false; whether or not video recording should be stopped; deprecated, see media>,
+	"data" : <true|false; whether or not datachannel recording should be stopped; deprecated, see media>,
+	"media" : [		// Drill-down recording controls
+		{
+			"mid" : "<mid of the stream to stop recording>"
+		},
+		{
+			// Recording controls for other streams, if provided
+		}
+	]
 }
 \endverbatim
  *
- * As you can notice, when you want to start a recording the \c audio ,
+ * When using the deprecated properties, when starting a recording the \c audio ,
  * \c video and \c data properties are strings, and specify the base path
  * to use for the recording filename; when stopping a recording, instead,
- * they're interpreted as boolean properties. Notice that, as with all
+ * they're interpreted as boolean properties. This is one more reason why
+ * you should migrate to the new \c media list instead, as it doesn't have
+ * this ambiguity between the two different requests. Notice that, as with all
  * APIs that wrap .mjr recordings, the filename you specify here is not
  * the actual filename: an \c .mjr extension is always going to be added
  * by the Janus core, so you should take this into account when tracking
@@ -681,16 +710,20 @@ multistream-test: {
 }
 \endverbatim
  *
- * As you can see, the \c audio , \c video and \c data properties can be
- * used as a media-level pause/resume functionality, whereas \c pause
- * and \c start simply pause and resume all streams at the same time.
- * The \c substream and \c temporal properties, instead, only make sense
+ * While the deprecated \c audio , \c video and \c data properties can be
+ * used as a media-level pause/resume functionality, a better option is to
+ * specify the \c mid of the stream instead, and a \c send boolean property
+ * to specify if this specific stream should be relayed or not. The \c pause
+ * and \c start requests instead pause and resume all streams at the same time.
+ * The \c substream and \c temporal properties, finally, only make sense
  * when the mountpoint is configured with video simulcasting support, and
  * as such the viewer is interested in receiving a specific substream
  * or temporal layer, rather than any other of the available ones.
  * The \c spatial_layer and \c temporal_layer have exactly the same meaning,
  * but within the context of VP9-SVC mountpoints, and will have no effect
- * on mountpoints involving a different video codec.
+ * on mountpoints involving a different video codec. In both cases, make
+ * sure you specify the \c mid of the stream in case multiple videos are
+ * available in a mountpoint, or the request may have no effect.
  *
  * Another interesting feature in the Streaming plugin is the so-called
  * mountpoint "switching". Basically, when subscribed to a specific
@@ -3203,6 +3236,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					janus_config_category *m = janus_config_category_create(NULL);
 					janus_config_add(config, media, m);
 					janus_config_add(config, m, janus_config_item_create("type", janus_streaming_media_str(stream->type)));
+					janus_config_add(config, m, janus_config_item_create("mid", stream->mid));
+					janus_config_add(config, m, janus_config_item_create("label", stream->label));
 					if(stream->port[0] > 0) {
 						g_snprintf(value, BUFSIZ, "%d", stream->port[0]);
 						janus_config_add(config, m, janus_config_item_create("port", value));
@@ -3307,6 +3342,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 				json_t *info = json_object();
 				json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
+				json_object_set_new(info, "mid", json_string(stream->mid));
 				if(stream->fd[0] != -1) {
 					json_object_set_new(info, "port", json_integer(stream->port[0]));
 				}
@@ -3316,6 +3352,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(stream->fd[2] != -1) {
 					json_object_set_new(info, "port_3", json_integer(stream->port[2]));
 				}
+				json_array_append_new(media, info);
 				temp = temp->next;
 			}
 			json_object_set_new(ml, "ports", media);
@@ -3487,6 +3524,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						janus_config_category *m = janus_config_category_create(NULL);
 						janus_config_add(config, media, m);
 						janus_config_add(config, m, janus_config_item_create("type", janus_streaming_media_str(stream->type)));
+						janus_config_add(config, m, janus_config_item_create("mid", stream->mid));
+						janus_config_add(config, m, janus_config_item_create("label", stream->label));
 						if(stream->port[0] > 0) {
 							g_snprintf(value, BUFSIZ, "%d", stream->port[0]);
 							janus_config_add(config, m, janus_config_item_create("port", value));
