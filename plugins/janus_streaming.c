@@ -131,6 +131,64 @@ rtsp_failcheck = whether an error should be returned if connecting to the RTSP s
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 \endverbatim
  *
+ * Notice that attributes like \c audioport or \c videopt only make sense
+ * when you're creating a mountpoint with a single audio and/or video stream,
+ * as the plugin in that case assumes that limitation is fine by you. In
+ * case you're interested in creating multistream mountpoints, that is
+ * mountpoints that can contain more than one audio and/or video stream
+ * at the same time, you HAVE to use a different syntax. Specifically,
+ * you'll need to use a \c media array/list, containing the different
+ * streams, in the right order, that you want to make available: each
+ * stream will then need to contain the related info, e.g., port to bind
+ * to, type of media, rtpmap and so on. An example is provided below:
+ *
+\verbatim
+multistream-test: {
+	type = "rtp"
+	id = 123
+	description = "Multistream test (1 audio, 2 video)"
+	media = (
+		{
+			type = "audio"
+			mid = "a"
+			label = "Audio stream"
+			port = 5102
+			pt = 111
+			rtpmap = "opus/48000/2"
+		},
+		{
+			type = "video"
+			mid = "v1"
+			label = "Video stream #1"
+			port = 5104
+			pt = 100
+			rtpmap = "VP8/90000"
+		},
+		{
+			type = "video"
+			mid = "v2"
+			label = "Video stream #2"
+			port = 5106
+			pt = 100
+			rtpmap = "VP8/90000"
+		}
+	)
+}
+\endverbatim
+ *
+ * In the above example, we're creating a mountpoint with a single audio
+ * stream and two different video streams: each stream has a unique \c mid
+ * (that you MUST provide) which is what will be used for the SDP offer
+ * to send to viewers, and their unique configuration properties. As you
+ * can see, it's much cleaner in the way you create and configure
+ * mountpoints: there's no hardcoded audio/video prefix for the name of
+ * properties, you configure media streams the same way and just add them
+ * to a list. Notice that of course this also works with the simple one
+ * audio/one video mountpoints you've used so far, and that has been
+ * documented before: as such, you're encouraged to start using this
+ * new approach as soon as possible, since in the next versions we
+ * might deprecate the old one.
+ *
  * \section streamapi Streaming API
  *
  * The Streaming API supports several requests, some of which are
@@ -193,18 +251,21 @@ rtspiface = network interface IP address or device name to listen on when receiv
 			"id" : <unique ID of mountpoint #1>,
 			"description" : "<description of mountpoint #1>",
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
-			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
-			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>,
 			"media" : [
-
+				{
+					"mid" : "<unique mid of this stream>",
+					"type" : "<audio|video|data">,
+					"age_ms" : <how much time passed since we last received media for this stream; optional>,
+				},
+				{
+					// Other streams, if available
+				}
 			]
 		},
 		{
 			"id" : <unique ID of mountpoint #2>,
 			"description" : "<description of mountpoint #2>",
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
-			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
-			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>,
 			"media" : [..]
 		},
 		...
@@ -213,7 +274,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 \endverbatim
  *
  * As you can see, the \c list request only returns very generic info on
- * each mounpoint. In case you're interested in learning more details about
+ * each mountpoint. In case you're interested in learning more details about
  * a specific mountpoint, you can use the \c info request instead, which
  * returns more information, or all of it if the mountpoint secret is
  * provided in the request. An \c info request must be formatted like this:
@@ -240,15 +301,22 @@ rtspiface = network interface IP address or device name to listen on when receiv
 		"pin" : "<PIN to access mountpoint; only available if a valid secret was provided>",
 		"is_private" : <true|false, depending on whether the mountpoint is listable; only available if a valid secret was provided>,
 		"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
-		"audio" : <true, only present if the mountpoint contains audio>,
-		"audiopt" : <audio payload type, only present if configured and the mountpoint contains audio>,
-		"audiortpmap" : "<audio SDP rtpmap value, only present if configured and the mountpoint contains audio>",
-		"audiofmtp" : "<audio SDP fmtp value, only present if configured and the mountpoint contains audio>",
-		"video" : <true, only present if the mountpoint contains video>,
-		"videopt" : <video payload type, only present if configured and the mountpoint contains video>,
-		"videortpmap" : "<video SDP rtpmap value, only present if configured and the mountpoint contains video>",
-		"videofmtp" : "<video SDP fmtp value, only present if configured and the mountpoint contains video>",
-		...
+		"type" : "<type of mountpoint>",
+		"media" : [
+			{
+				"mid" : "<unique mid of this stream>",
+				"mindex" : "<unique mindex of this stream>",
+				"type" : "<audio|video|data">,
+				"age_ms" : <how much time passed since we last received media for this stream; optional>,
+				"pt" : <payload type, only present if RTP and configured>,
+				"rtpmap" : "<SDP rtpmap value, only present if RTP and configured>",
+				"fmtp" : "<audio SDP fmtp value, only present if RTP and configured>",
+				...
+			},
+			{
+				// Other streams, if available
+			}
+		]
 	}
 }
 \endverbatim
@@ -293,6 +361,14 @@ rtspiface = network interface IP address or device name to listen on when receiv
  * difference to highlight is that, unlike in configuration files, you will
  * NOT have to escape semicolons with a trailing slash, in those properties
  * where a semicolon might be needed (e.g., \c audiofmtp or \c videofmtp ).
+ *
+ * Of course, just as we introduced the possibility of configuring multistream
+ * mountpoints statically with a \c media array, the same applies when using
+ * the API to create them: just add a \c media JSON array containing the
+ * list of streams to create and the related properties as you would do
+ * statically (that is, using generic properties like \c port, \c fmtp,
+ * etc., rather than the hardcoded \c audioport and the like), and it
+ * will work for dynamically created mountpoints as well.
  *
  * A successful \c create will result in a \c created response:
  *
