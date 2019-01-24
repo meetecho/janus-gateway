@@ -62,13 +62,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	GSList *list = janus_rtcp_get_nacks((char *)data, size);
 
 	/* Free resources */
-	for (idx=0; idx < NUM_COPY; idx++) {
-		g_free(copy_data[idx]);
-	}
+	for (idx=0; idx < NUM_COPY; idx++) g_free(copy_data[idx]);
 	g_free(ctx);
 	g_free(output_data);
-	if (list) {
-		g_slist_free(list);
-	}
+	if (list) g_slist_free(list);
 	return 0;
 }
