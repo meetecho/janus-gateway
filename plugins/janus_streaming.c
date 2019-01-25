@@ -2117,6 +2117,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *secret = json_object_get(root, "secret");
 			if(secret && json_string_value(secret) && janus_strcmp_const_time(mp->secret, json_string_value(secret)))
 				admin = TRUE;
+		} else {
+			admin = TRUE;
 		}
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
