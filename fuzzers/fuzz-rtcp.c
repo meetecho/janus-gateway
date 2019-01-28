@@ -7,7 +7,6 @@
 #include "../rtcp.h"
 #include "../rtp.h"
 
-static size_t NUM_COPY = 5;
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
@@ -33,10 +32,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	/* Test context setup */
 	/* Do some copies of input data */
-	char *copy_data[NUM_COPY];
+	uint8_t copy_data0[size], copy_data1[size], copy_data2[size], copy_data3[size], copy_data4[size];
+	uint8_t *copy_data[5] = { copy_data0, copy_data1, copy_data2, copy_data3, copy_data4};
 	int idx, newlen;
-	for (idx=0; idx < NUM_COPY; idx++) {
-		copy_data[idx] = g_malloc0(size);
+	for (idx=0; idx < 5; idx++) {
 		memcpy(copy_data[idx], data, size);
 	}
 	idx = 0;
@@ -52,17 +51,16 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtcp_get_remb((char *)data, size);
 	janus_rtcp_get_sender_ssrc((char *)data, size);
 	/* Functions that alter input data */
-	janus_rtcp_cap_remb(copy_data[idx++], size, 256000);
-	janus_rtcp_fix_report_data(copy_data[idx++], size, 2000, 1000, 1234, 1234, 1234, TRUE);
-	janus_rtcp_fix_ssrc(ctx, copy_data[idx++], size, 1, 2, 3);
-	janus_rtcp_parse(ctx, copy_data[idx++], size);
-	janus_rtcp_remove_nacks(copy_data[idx++], size);
+	janus_rtcp_cap_remb((char *)copy_data[idx++], size, 256000);
+	janus_rtcp_fix_report_data((char *)copy_data[idx++], size, 2000, 1000, 1234, 1234, 1234, TRUE);
+	janus_rtcp_fix_ssrc(ctx, (char *)copy_data[idx++], size, 1, 2, 3);
+	janus_rtcp_parse(ctx, (char *)copy_data[idx++], size);
+	janus_rtcp_remove_nacks((char *)copy_data[idx++], size);
 	/* Functions that allocate new memory */
 	char *output_data = janus_rtcp_filter((char *)data, size, &newlen);
 	GSList *list = janus_rtcp_get_nacks((char *)data, size);
 
 	/* Free resources */
-	for (idx=0; idx < NUM_COPY; idx++) g_free(copy_data[idx]);
 	g_free(ctx);
 	g_free(output_data);
 	if (list) g_slist_free(list);
