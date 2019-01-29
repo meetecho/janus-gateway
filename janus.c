@@ -131,6 +131,9 @@ static struct janus_json_parameter mnq_parameters[] = {
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter ans_parameters[] = {
+	{"accept", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
@@ -204,6 +207,12 @@ static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
 #define DEFAULT_RECLAIM_SESSION_TIMEOUT		0
 static uint reclaim_session_timeout = DEFAULT_RECLAIM_SESSION_TIMEOUT;
 
+/* We can programmatically change whether we want to accept new sessions
+ * or not: the default is of course TRUE, but we may want to temporarily
+ * change that in some cases, e.g., if we don't want the load on this
+ * server to grow too much, or because we're draining the server. */
+static gboolean accept_new_sessions = TRUE;
+
 /* We don't hold (trickle) candidates indefinitely either: by default, we
  * only store them for 45 seconds. After that, they're discarded, in order
  * to avoid leaks or orphaned media details. This means that, if for instance
@@ -233,6 +242,7 @@ static json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_false());
 #endif
+	json_object_set_new(info, "accepting-new-sessions", accept_new_sessions ? json_true() : json_false());
 	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
 	json_object_set_new(info, "reclaim-session-timeout", json_integer(reclaim_session_timeout));
 	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
@@ -827,6 +837,11 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(strcasecmp(message_text, "create")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
+		}
+		/* Make sure we're accepting new sessions */
+		if(!accept_new_sessions) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_NOT_ACCEPTING_SESSIONS, NULL);
 			goto jsondone;
 		}
 		/* Any secret/token to check? */
@@ -1860,6 +1875,25 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "accept_new_sessions")) {
+			/* Configure whether we should accept new incoming sessions or not:
+			 * this can be particularly useful whenever, e.g., we want to stop
+			 * accepting new sessions because we're draining this server */
+			JANUS_VALIDATE_JSON_OBJECT(root, ans_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *accept = json_object_get(root, "accept");
+			accept_new_sessions = json_is_true(accept);
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "accept", accept_new_sessions ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3673,7 +3707,7 @@ gint main(int argc, char *argv[])
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
 #endif
 	const char *nat_1_1_mapping = NULL;
@@ -3753,7 +3787,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_key");
 	if(item && item->value)
 		turn_rest_api_key = (char *)item->value;
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_rest_api_method");
 	if(item && item->value)
 		turn_rest_api_method = (char *)item->value;
@@ -3772,7 +3806,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 		exit(1);
 	}
-#ifndef HAVE_LIBCURL
+#ifndef HAVE_TURNRESTAPI
 	if(turn_rest_api != NULL || turn_rest_api_key != NULL) {
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}

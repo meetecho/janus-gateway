@@ -69,15 +69,15 @@ type = rtp|live|ondemand|rtsp
               available if libcurl support was compiled)
 id = <unique numeric ID>
 description = This is my awesome stream
-is_private = yes|no (private streams don't appear when you do a 'list' request)
+is_private = true|false (private streams don't appear when you do a 'list' request)
 filename = path to the local file to stream (only for live/ondemand)
 secret = <optional password needed for manipulating (e.g., destroying
 		or enabling/disabling) the stream>
 pin = <optional password needed for watching the stream>
-audio = yes|no (do/don't stream audio)
-video = yes|no (do/don't stream video)
+audio = true|false (do/don't stream audio)
+video = true|false (do/don't stream video)
    The following options are only valid for the 'rtp' type:
-data = yes|no (do/don't stream text via datachannels)
+data = true|false (do/don't stream text via datachannels)
 audioport = local port for receiving audio frames
 audiortcpport = local port for receiving and sending audio RTCP feedback
 audiomcast = multicast group for receiving audio frames, if any
@@ -85,7 +85,7 @@ audioiface = network interface or IP address to bind to, if any (binds to all ot
 audiopt = <audio RTP payload type> (e.g., 111)
 audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 audiofmtp = Codec specific parameters, if any
-audioskew = yes|no (whether the plugin should perform skew
+audioskew = true|false (whether the plugin should perform skew
 	analisys and compensation on incoming audio RTP stream, EXPERIMENTAL)
 videoport = local port for receiving video frames (only for rtp)
 videortcpport = local port for receiving and sending video RTCP feedback
@@ -94,20 +94,20 @@ videoiface = network interface or IP address to bind to, if any (binds to all ot
 videopt = <video RTP payload type> (e.g., 100)
 videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
-videobufferkf = yes|no (whether the plugin should store the latest
+videobufferkf = true|false (whether the plugin should store the latest
 	keyframe and send it immediately for new viewers, EXPERIMENTAL)
-videosimulcast = yes|no (do|don't enable video simulcasting)
+videosimulcast = true|false (do|don't enable video simulcasting)
 videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
 videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
-videoskew = yes|no (whether the plugin should perform skew
+videoskew = true|false (whether the plugin should perform skew
 	analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
-videosvc = yes|no (whether the video will have SVC support; works only for VP9-SVC, default=no)
+videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=no)
 collision = in case of collision (more than one SSRC hitting the same port), the plugin
 	will discard incoming RTP packets with a new SSRC unless this many milliseconds
 	passed, which would then change the current SSRC (0=disabled)
 dataport = local port for receiving data messages to relay
 dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
-databuffermsg = yes|no (whether the plugin should store the latest
+databuffermsg = true|false (whether the plugin should store the latest
 	message and send it immediately for new viewers)
 threads = number of threads to assist with the relaying part, which can help
 	if you expect a lot of viewers that may cause the RTP receiving part
@@ -2117,6 +2117,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *secret = json_object_get(root, "secret");
 			if(secret && json_string_value(secret) && janus_strcmp_const_time(mp->secret, json_string_value(secret)))
 				admin = TRUE;
+		} else {
+			admin = TRUE;
 		}
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
@@ -4540,7 +4542,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	if(name == NULL) {
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
-		g_snprintf(tempname, 255, "%"SCNu64, id);
+		g_snprintf(tempname, 255, "mp-%"SCNu64, id);
 	}
 	if(!doaudio && !dovideo && !dodata) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio, video or data have to be streamed...\n");
@@ -4933,7 +4935,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	char tempname[255];
 	if(!name) {
 		memset(tempname, 0, 255);
-		g_snprintf(tempname, 255, "%"SCNu64, file_source->id);
+		g_snprintf(tempname, 255, "mp-%"SCNu64, file_source->id);
 	}
 	file_source->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -5388,10 +5390,10 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 		}
 	}
 	if(source->remote_video_port > 0 && source->video_fd[0] >= 0) {
-		JANUS_LOG(LOG_WARN, "RTSP video latching: %s:%"SCNu16"\n", source->rtsp_vhost, source->remote_video_port);
+		JANUS_LOG(LOG_VERB, "RTSP video latching: %s:%"SCNu16"\n", source->rtsp_vhost, source->remote_video_port);
 		janus_streaming_rtsp_latch(source->video_fd[0], source->rtsp_vhost, source->remote_video_port, &remote);
 		if(source->remote_video_rtcp_port > 0 && source->video_rtcp_fd >= 0) {
-			JANUS_LOG(LOG_WARN, "  -- RTCP: %s:%"SCNu16"\n", source->rtsp_vhost, source->remote_video_rtcp_port);
+			JANUS_LOG(LOG_VERB, "  -- RTCP: %s:%"SCNu16"\n", source->rtsp_vhost, source->remote_video_rtcp_port);
 			janus_streaming_rtsp_latch(source->video_rtcp_fd, source->rtsp_vhost,
 				source->remote_video_rtcp_port, &source->video_rtcp_addr);
 		}

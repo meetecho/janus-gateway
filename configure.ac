@@ -52,7 +52,7 @@ CFLAGS="$CFLAGS \
 	-Wswitch-default \
 	-Wunused \
 	-Wwrite-strings"
-	
+
 case "$CC" in
 clang*)
 	# Specific clang flags
@@ -420,17 +420,17 @@ AM_CONDITIONAL([ENABLE_SCTP], [test "x$enable_data_channels" = "xyes"])
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
+                    AC_DEFINE(HAVE_LIBCURL)
+                    JANUS_MANUAL_LIBS+=" -lcurl"
                     AS_IF(
                       [test "x$enable_turn_rest_api" != "xno"],
                       [
-                        AC_DEFINE(HAVE_LIBCURL)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        AC_DEFINE(HAVE_TURNRESTAPI)
                         enable_turn_rest_api=yes
                       ])
                     AS_IF([test "x$enable_sample_event_handler" != "xno"],
                       [
                         AC_DEFINE(HAVE_SAMPLEEVH)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_sample_event_handler=yes
                       ])
                   ],
