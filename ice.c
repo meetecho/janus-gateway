@@ -2245,10 +2245,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* If this is a retransmission using RFC4588, we have to do something first to get the original packet */
 				janus_rtp_header *header = (janus_rtp_header *)buf;
+				int plen = 0;
+				char *payload = janus_rtp_payload(buf, buflen, &plen);
+				if (!payload) {
+					   JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing payload or invalid RTP: len=%d\n", handle->handle_id, buflen);
+					  return;
+				}
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
-					int plen = 0;
-					char *payload = janus_rtp_payload(buf, buflen, &plen);
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = stream->video_payload_type;
 					packet_ssrc = stream->video_ssrc_peer[vindex];
@@ -2425,8 +2429,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && stream->video_is_keyframe) {
-					int plen = 0;
-					char *payload = janus_rtp_payload(buf, buflen, &plen);
+					plen = 0;
+					payload = janus_rtp_payload(buf, buflen, &plen);
 					if(stream->video_is_keyframe(payload, plen)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received, resetting NACK queue\n", handle->handle_id);
 						if(component->last_seqs_video[vindex])

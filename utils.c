@@ -557,10 +557,13 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
 					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
 				} else {
-					int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-					int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-					int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-					int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+					unsigned short val3, val5;
+					memcpy(&val3,c+3,sizeof(short));
+					int vp8w = swap2(val3)&0x3fff;
+					int vp8ws = swap2(val3)>>14;
+					memcpy(&val5,c+5,sizeof(short));
+					int vp8h = swap2(val5)&0x3fff;
+					int vp8hs = swap2(val5)>>14;
 					JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
 					return TRUE;
 				}
@@ -616,7 +619,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			nbit = (vp9pd & 0x01);
 			buffer++;
 			len--;
-			if(len == 0)	/* Make sure we don't overvlow */
+			if(len == 0)	/* Make sure we don't overflow */
 				return FALSE;
 		}
 	}
@@ -630,23 +633,27 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
 			len--;
-			if(len == 0)	/* Make sure we don't overvlow */
+			if(len == 0)	/* Make sure we don't overflow */
 				return FALSE;
 			uint i=0;
 			for(i=0; i<n_s; i++) {
 				/* Width */
-				const uint16_t *w = (const uint16_t *)buffer;
-				int vp9w = ntohs(*w);
-				buffer += 2;
-				len -= 2;
-				if(len == 0)	/* Make sure we don't overvlow */
+				if(len < 2)		/* Make sure we don't overflow */
 					return FALSE;
-				/* Height */
-				const uint16_t *h = (const uint16_t *)buffer;
-				int vp9h = ntohs(*h);
+				uint16_t w;
+				memcpy(&w, buffer, sizeof(uint16_t));
+				int vp9w = ntohs(w);
 				buffer += 2;
 				len -= 2;
-				if(len == 0)	/* Make sure we don't overvlow */
+				/* Height */
+				if(len < 2)		/* Make sure we don't overflow */
+					return FALSE;
+				uint16_t h;
+				memcpy(&h, buffer, sizeof(uint16_t));
+				int vp9h = ntohs(h);
+				buffer += 2;
+				len -= 2;
+				if(len == 0)    /* Make sure we don't overflow */
 					return FALSE;
 				if(vp9w || vp9h) {
 					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
@@ -673,20 +680,21 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 	} else if(fragment == 24) {
 		/* May we find an SPS in this STAP-A? */
 		buffer++;
-		int tot = len-1;
+		len--;
 		uint16_t psize = 0;
-		while(tot > 0) {
+		/* We're reading 3 bytes */
+		while(len > 2) {
 			memcpy(&psize, buffer, 2);
 			psize = ntohs(psize);
 			buffer += 2;
-			tot -= 2;
+			len -= 2;
 			int nal = *buffer & 0x1F;
 			if(nal == 7) {
 				JANUS_LOG(LOG_HUGE, "Got an SPS/PPS\n");
 				return TRUE;
 			}
 			buffer += psize;
-			tot -= psize;
+			len -= psize;
 		}
 	}
 	/* If we got here it's not a key frame */
@@ -914,7 +922,7 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			nbit = (vp9pd & 0x01);
 			buffer++;
 			len--;
-			if(len == 0)	/* Make sure we don't overvlow */
+			if(len == 0)	/* Make sure we don't overflow */
 				return -1;
 		}
 	}
@@ -930,14 +938,14 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
 			len--;
-			if(len == 0)	/* Make sure we don't overvlow */
+			if(len == 0)	/* Make sure we don't overflow */
 				return -1;
 			int i=0;
 			for(i=0; i<n_s; i++) {
 				/* Been there, done that: skip skip skip */
 				buffer += 4;
 				len -= 4;
-				if(len <= 0)	/* Make sure we don't overvlow */
+				if(len <= 0)	/* Make sure we don't overflow */
 					return -1;
 			}
 		}
@@ -945,14 +953,14 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			if(!ybit) {
 				buffer++;
 				len--;
-				if(len == 0)	/* Make sure we don't overvlow */
+				if(len == 0)	/* Make sure we don't overflow */
 					return -1;
 			}
 			uint8_t n_g = *buffer;
 			JANUS_LOG(LOG_HUGE, "There are %u frames in a GOF\n", n_g);
 			buffer++;
 			len--;
-			if(len == 0)	/* Make sure we don't overvlow */
+			if(len == 0)	/* Make sure we don't overflow */
 				return -1;
 			if(n_g > 0) {
 				int i=0;
@@ -964,12 +972,12 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 						/* Skip reference indices */
 						buffer += r;
 						len -= r;
-						if(len <= 0)	/* Make sure we don't overvlow */
+						if(len <= 0)	/* Make sure we don't overflow */
 							return -1;
 					}
 					buffer++;
 					len--;
-					if(len == 0)	/* Make sure we don't overvlow */
+					if(len == 0)	/* Make sure we don't overflow */
 						return -1;
 				}
 			}

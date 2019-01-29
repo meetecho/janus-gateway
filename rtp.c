@@ -19,8 +19,10 @@
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
-
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return NULL;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -31,6 +33,9 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 		hlen += 4;
 		if(len > (hlen + extlen))
 			hlen += extlen;
+	}
+	if (len-hlen <= 0) {
+		return NULL;
 	}
 	if(plen)
 		*plen = len-hlen;
@@ -112,6 +117,9 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 	if(!buf || len < 12)
 		return -1;
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return -1;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
