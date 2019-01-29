@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -52,7 +52,6 @@ var janus = null;
 var recordplay = null;
 var opaqueId = "recordplaytest-"+Janus.randomString(12);
 
-var started = false;
 var spinner = null;
 var bandwidth = 1024 * 1024;
 
@@ -63,15 +62,14 @@ var recordingId = null;
 var selectedRecording = null;
 var selectedRecordingInfo = null;
 
+var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -236,7 +234,7 @@ $(document).ready(function() {
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
 									if(recordplay.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -251,7 +249,7 @@ $(document).ready(function() {
 										});
 									}
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
@@ -275,7 +273,7 @@ $(document).ready(function() {
 										$('#videotitle').html(selectedRecordingInfo);
 										$('#stop').unbind('click').click(stop);
 										$('#video').removeClass('hide').show();
-										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay playsinline/>');
 										// No remote video yet
 										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 										if(spinner == null) {
@@ -295,7 +293,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
@@ -423,7 +421,11 @@ function startRecording() {
 		
 		recordplay.createOffer(
 			{
-				// By default, it's sendrecv for audio and video...
+				// By default, it's sendrecv for audio and video... no datachannels
+				// If you want to test simulcasting (Chrome and Firefox only), then
+				// pass a ?simulcast=true when opening this demo page: it will turn
+				// the following 'simulcast' property to pass to janus.js to true
+				simulcast: doSimulcast,
 				success: function(jsep) {
 					Janus.debug("Got SDP!");
 					Janus.debug(jsep);
@@ -464,4 +466,12 @@ function stop() {
 	var stop = { "request": "stop" };
 	recordplay.send({"message": stop});
 	recordplay.hangup();
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }

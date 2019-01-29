@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .wav files (headers)
  * \details  Implementation of the post-processing code needed to
  * generate raw .wav files out of G.711 (mu-law or a-law) RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -118,7 +118,7 @@ int16_t janus_pp_g711_alaw_table[256] =
 
 
 /* Processing methods */
-int janus_pp_g711_create(char *destination) {
+int janus_pp_g711_create(char *destination, char *metadata) {
 	/* Create wav file */
 	wav_file = fopen(destination, "wb");
 	if(wav_file == NULL) {
@@ -142,6 +142,8 @@ int janus_pp_g711_create(char *destination) {
 		{'d', 'a', 't', 'a'},
 		0
 	};
+	/* Note: .wav files don't seem to support arbitrary comments
+	 * so there's nothing we can do with the provided metadata*/
 	if(fwrite(&header, 1, sizeof(header), wav_file) != sizeof(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write WAV header, expect problems...\n");
 	}
@@ -185,15 +187,25 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->audiolevel != -1) {
+			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
 		fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(buffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {

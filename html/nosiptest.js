@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -54,17 +54,13 @@ var janus = null;
 var caller = null, callee = null;
 var opaqueId = Janus.randomString(12);
 
-var started = false;
 var spinner = null;
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -198,7 +194,7 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									if(caller.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -243,7 +239,7 @@ $(document).ready(function() {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
+											'<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay playsinline/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -253,13 +249,10 @@ $(document).ready(function() {
 												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
 										}
 										$('.dtmf').click(function() {
-											if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-												// Send DTMF tone (inband)
-												sipcall.dtmf({dtmf: { tones: $(this).text()}});
-											} else {
-												// Try sending the DTMF tone using SIP INFO
-												sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
-											}
+											// Send DTMF tone (inband)
+											caller.dtmf({dtmf: { tones: $(this).text()}});
+											// Notice you can also send DTMF tones using SIP INFO
+											// 		caller.send({message: {request: "dtmf_info", digit: $(this).text()}});
 										});
 										// Show the peer and hide the spinner when we get a playing event
 										$("#peervideo").bind("playing", function () {
@@ -273,7 +266,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#peervideo').hide();
 										if($('#videoright .no-video-container').length === 0) {

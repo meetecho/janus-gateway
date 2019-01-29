@@ -4,6 +4,7 @@ version.c
 docs/html/
 
 /janus
+/janus-cfgconv
 /janus-pp-rec
 /plugins/*.so
 /transports/*.so
@@ -33,6 +34,8 @@ Makefile.in
 /plugins/*.lo
 /plugins/*.la
 /plugins/.libs
+/plugins/duktape-deps/*.lo
+/plugins/duktape-deps/.libs
 /transports/*.o
 /transports/*.lo
 /transports/*.la
@@ -44,11 +47,24 @@ Makefile.in
 /postprocessing/*.o
 
 /conf/janus.cfg.sample
+/conf/janus.plugin.duktape.cfg.sample
+/conf/janus.plugin.lua.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
 /conf/janus.plugin.voicemail.cfg.sample
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
+/conf/janus.jcfg.sample
+/conf/janus.plugin.duktape.jcfg.sample
+/conf/janus.plugin.lua.jcfg.sample
+/conf/janus.plugin.recordplay.jcfg.sample
+/conf/janus.plugin.streaming.jcfg.sample
+/conf/janus.plugin.voicemail.jcfg.sample
+/conf/janus.transport.http.jcfg.sample
+/conf/janus.transport.websockets.jcfg.sample
 
 .deps
 .dirstamp
+
+# OS X
+.DS_Store

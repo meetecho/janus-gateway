@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .wav files out of G.722 (headers)
  * \details  Implementation of the post-processing code needed to
  * generate raw .wav files out of G.722 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -31,6 +31,10 @@
 	 (LIBAVCODEC_VERSION_MAJOR == major && \
 	  LIBAVCODEC_VERSION_MINOR >= minor))
 
+#if LIBAVCODEC_VER_AT_LEAST(57, 14)
+#define USE_CODECPAR
+#endif
+
 
 /* G.722 decoder */
 static AVCodec *dec_codec;			/* FFmpeg decoding codec */
@@ -56,7 +60,7 @@ static FILE *wav_file = NULL;
 
 
 /* Processing methods */
-int janus_pp_g722_create(char *destination) {
+int janus_pp_g722_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -114,6 +118,8 @@ int janus_pp_g722_create(char *destination) {
 		{'d', 'a', 't', 'a'},
 		0
 	};
+	/* Note: .wav files don't seem to support arbitrary comments
+	 * so there's nothing we can do with the provided metadata*/
 	if(fwrite(&header, 1, sizeof(header), wav_file) != sizeof(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write WAV header, expect problems...\n");
 	}
@@ -157,15 +163,25 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->audiolevel != -1) {
+			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
 		fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(buffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
@@ -178,16 +194,27 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		AVPacket avpacket;
 		avpacket.data = (uint8_t *)buffer;
 		avpacket.size = bytes;
-		int err = 0, got_frame = 0;
+		int err = 0;
 #if LIBAVCODEC_VER_AT_LEAST(55,28)
 		AVFrame *frame = av_frame_alloc();
 #else
 		AVFrame *frame = avcodec_alloc_frame();
 #endif
+#ifdef USE_CODECPAR
+		err = avcodec_send_packet(dec_ctx, &avpacket);
+		if(err < 0) {
+			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
+		} else {
+			err = avcodec_receive_frame(dec_ctx, frame);
+		}
+		if(err > -1) {
+#else
+		int got_frame = 0;
 		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, &avpacket);
 		if(err < 0 || !got_frame) {
 			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
 		} else {
+#endif
 			if(wav_file != NULL) {
 				int data_size = av_get_bytes_per_sample(dec_ctx->sample_fmt);
 				int i=0, ch=0;

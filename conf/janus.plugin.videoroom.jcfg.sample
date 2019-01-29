@@ -1,0 +1,73 @@
+# room-<unique room ID>: {
+# description = This is my awesome room
+# is_private = true|false (whether this room should be in the public list, default=yes)
+# secret = <optional password needed for manipulating (e.g. destroying) the room>
+# pin = <optional password needed for joining the room>
+# require_pvtid = true|false (whether subscriptions are required to provide a valid
+#			a valid private_id to associate with a publisher, default=no)
+# publishers = <max number of concurrent senders> (e.g., 6 for a video
+#              conference or 1 for a webinar)
+# bitrate = <max video bitrate for senders> (e.g., 128000)
+# bitrate_cap = true|false (whether the above cap should act as a hard limit to
+#			dynamic bitrate changes by publishers; default=no, publishers can go beyond that)
+# fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
+# audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec(s) to force on publishers, default=opus
+#			can be a comma separated list in order of preference, e.g., opus,pcmu)
+# videocodec = vp8|vp9|h264 (video codec(s) to force on publishers, default=vp8
+#			can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
+# video_svc = true|false (whether SVC support must be enabled# works only for VP9, default=no)
+# audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
+#		be negotiated/used or not for new publishers, default=yes)
+# audiolevel_event = true|false (whether to emit event to other users or not, default=no)
+# audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
+# audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
+# videoorient_ext = true|false (whether the video-orientation RTP extension must
+#		be negotiated/used or not for new publishers, default=yes)
+# playoutdelay_ext = true|false (whether the playout-delay RTP extension must
+#		be negotiated/used or not for new publishers, default=yes)
+# transport_wide_cc_ext = true|false (whether the transport wide CC RTP extension must be
+#		negotiated/used or not for new publishers, default=no)
+# record = true|false (whether this room should be recorded, default=false)
+# rec_dir = <folder where recordings should be stored, when enabled>
+# notify_joining = true|false (optional, whether to notify all participants when a new
+#               participant joins the room. The Videoroom plugin by design only notifies
+#               new feeds (publishers), and enabling this may result extra notification
+#               traffic. This flag is particularly useful when enabled with require_pvtid
+#               for admin to manage listening only participants. default=false)
+#}
+
+general: {
+	#admin_key = "supersecret"		# If set, rooms can be created via API only
+									# if this key is provided in the request
+	#events = false					# Whether events should be sent to event
+									# handlers (default is yes)
+}
+
+room-1234: {
+	description = "Demo Room"
+	secret = "adminpwd"
+	publishers = 6
+	bitrate = 128000
+	fir_freq = 10
+	#audiocodec = "opus"
+	#videocodec = "vp8"
+	#transport_wide_cc_ext = true
+	record = false
+	#rec_dir = "/path/to/recordings-folder"
+}
+
+# This other demo room here is only there in case you want to play with
+# the VP9 SVC support. Notice that you'll need a Chrome launched with
+# the flag that enables that support, or otherwise you'll be using just
+# plain VP9 (which is good if you want to test how this indeed affect
+# what receivers will get, whether they're encoding SVC or not).
+room-5678: {
+	description = "VP9-SVC Demo Room"
+	secret = "adminpwd"
+	publishers = 6
+	bitrate = 512000
+	fir_freq = 10
+	videocodec = "vp9"
+	video_svc = true
+	#transport_wide_cc_ext = true
+}

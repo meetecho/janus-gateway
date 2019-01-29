@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -52,7 +52,6 @@ var janus = null;
 var mixertest = null;
 var opaqueId = "audiobridgetest-"+Janus.randomString(12);
 
-var started = false;
 var spinner = null;
 
 var myroom = 1234;	// Demo room
@@ -66,10 +65,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -160,17 +156,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "roomchanged") {
@@ -186,17 +189,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "destroyed") {
@@ -213,17 +223,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												if(msg["error_code"] === 485) {

@@ -6,7 +6,7 @@ janus \- WebRTC server/gateway
 [options]
 .SH DESCRIPTION
 .B janus
-is a WebRTC server/gateway developed by Meetecho conceived to be a general purpose one. As such, it doesn't provide any functionality per se other than implementing the means to set up a WebRTC media communication with a browser or application, exchanging JSON messages with it over different transports, and relaying RTP/RTCP and messages between clients and the server-side application logic they're attached to. Any specific feature/application is provided by server side plugins, that browsers can then contact via the gateway to take advantage of the functionality they provide. Example of such plugins can be implementations of applications like echo tests, conference bridges, media recorders, SIP gateways and the like.
+is a WebRTC server/gateway developed by Meetecho conceived to be a general purpose one. As such, it doesn't provide any functionality per se other than implementing the means to set up a WebRTC media communication with a browser or application, exchanging JSON messages with it over different transports, and relaying RTP/RTCP and messages between clients and the server-side application logic they're attached to. Any specific feature/application is provided by server side plugins, that browsers can then contact via the server to take advantage of the functionality they provide. Example of such plugins can be implementations of applications like echo tests, conference bridges, media recorders, SIP gateways and the like.
 .TP
 The reason for this is simple: we wanted something that would have a small footprint (hence a C implementation) and that we could only equip with what was really needed (hence pluggable modules). That is, something that would allow us to deploy either a full-fledged WebRTC server on the cloud, or a small nettop/box to handle a specific use case.
 .SH OPTIONS
@@ -47,8 +47,11 @@ DTLS certificate
 .BR \-k ", " \-\-cert-key=\fIfilename\fR
 DTLS certificate key
 .TP
+.BR \-K ", " \-\-cert-pwd=\fItext\fR
+DTLS certificate key passphrase (if needed)
+.TP
 .BR \-S ", " \-\-stun-server=\fIip:port\fR
-STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)
+STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)
 .TP
 .BR \-1 ", " \-\-nat-1-1=\fIip\fR
 Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)
@@ -65,17 +68,17 @@ Whether to enable IPv6 candidates or not (experimental) (default=off)
 .BR \-l ", " \-\-libnice-debug
 Whether to enable libnice debugging or not (default=off)
 .TP
+.BR \-f ", " \-\-full-trickle
+Do full-trickle instead of half-trickle (default=off)
+.TP
 .BR \-I ", " \-\-ice-lite
 Whether to enable the ICE Lite mode or not (default=off)
 .TP
 .BR \-T ", " \-\-ice-tcp
 Whether to enable ICE-TCP or not (warning: only works with ICE Lite) (default=off)
 .TP
-.BR \-U ", " \-\-force-bundle
-Whether to force BUNDLE or not (whether audio, video and data will always be bundled) (default=off)
-.TP
-.BR \-u ", " \-\-force-rtcp-mux
-Whether to force rtcp-mux or not (whether RTP and RTCP will always be muxed) (default=off)
+.BR \-R ", " \-\-rfc-4588
+Whether to enable RFC4588 retransmissions support or not (default=off)
 .TP
 .BR \-q ", " \-\-max-nack-queue=\fInumber\fR
 Maximum size of the NACK queue per user for retransmissions
@@ -89,6 +92,12 @@ Port range to use for RTP/RTCP
 .BR \-n ", " \-\-server-name=\fIname\fR
 Public name of this Janus instance (default=MyJanusInstance)
 .TP
+.BR \-s ", " \-\-session-timeout=\fInumber\fR
+Session timeout value, in seconds (default=60)
+.TP
+.BR \-m ", " \-\-reclaim-session-timeout=\fInumber\fR
+Reclaim session timeout value, in seconds (default=0)
+.TP
 .BR \-d ", " \-\-debug-level=\fI1\-7\fR
 Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)
 .TP
@@ -97,6 +106,9 @@ Enable debug/logging timestamps (default=off)
 .TP
 .BR \-o ", " \-\-disable-colors
 Disable color in the logging (default=off)
+.TP
+.BR \-M ", " \-\-debug-locks
+Enable debugging of locks/mutexes (very verbose! default=off)
 .TP
 .BR \-a ", " \-\-apisecret=\fIrandomstring\fR
 API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)
@@ -113,7 +125,7 @@ Enable event handlers (default=off)
 .TP
 \fBjanus \-6\fR \- Launch Janus with IPv6 support enabled
 .TP
-\fBjanus \-u \-U\fR \- Launch Janus with rtcpmux and BUNDLE always forced on
+\fBjanus \-f \-R\fR \- Launch Janus with full-trickle and RFC4588 retransmissions enabled
 .SH BUGS
 .TP
 If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
@@ -123,7 +135,7 @@ Anyway, before doing that make sure you read the documentation at http://janus.c
 .TP
 https://github.com/meetecho/janus-gateway \- Official repository
 .TP
-http://janus.conf.meetecho.com \- Demos and documentation
+https://janus.conf.meetecho.com \- Demos and documentation
 .TP
 https://groups.google.com/forum/#!forum/meetecho-janus \- Community
 .TP

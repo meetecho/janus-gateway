@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .opus files (headers)
  * \details  Implementation of the post-processing code (based on libogg)
  * needed to generate .opus files out of Opus RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -16,7 +16,7 @@
 
 #include "pp-rtp.h"
 
-int janus_pp_opus_create(char *destination);
+int janus_pp_opus_create(char *destination, char *metadata);
 int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_opus_close(void);
 

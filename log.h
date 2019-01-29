@@ -18,7 +18,8 @@
 #include <glib.h>
 
 /*! \brief Buffered vprintf
-* @param[in] format Format string as defined by glib
+* @param[in] format Format string as defined by glib, followed by the
+* optional parameters to insert into formatted string (printf style)
 * \note This output is buffered and may not appear immediately on stdout. */
 void janus_vprintf(const char *format, ...) G_GNUC_PRINTF(1, 2);
 
