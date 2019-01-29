@@ -499,7 +499,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 #endif
 
 gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse VP8 header now */
 	uint8_t vp8pd = *buffer;
@@ -572,7 +572,7 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse VP9 header now */
 	uint8_t vp9pd = *buffer;
@@ -582,6 +582,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	uint8_t fbit = (vp9pd & 0x10);
 	uint8_t vbit = (vp9pd & 0x02);
 	buffer++;
+	len--;
 	if(ibit) {
 		/* Read the PictureID octet */
 		vp9pd = *buffer;
@@ -589,18 +590,22 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 		uint8_t mbit = (vp9pd & 0x80);
 		if(!mbit) {
 			buffer++;
+			len--;
 		} else {
 			memcpy(&picid, buffer, sizeof(uint16_t));
 			wholepicid = ntohs(picid);
 			picid = (wholepicid & 0x7FFF);
 			buffer += 2;
+			len -= 2;
 		}
 	}
 	if(lbit) {
 		buffer++;
+		len--;
 		if(!fbit) {
 			/* Non-flexible mode, skip TL0PICIDX */
 			buffer++;
+			len--;
 		}
 	}
 	if(fbit && pbit) {
@@ -610,6 +615,9 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			vp9pd = *buffer;
 			nbit = (vp9pd & 0x01);
 			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return FALSE;
 		}
 	}
 	if(vbit) {
@@ -621,16 +629,25 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 		if(ybit) {
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return FALSE;
 			uint i=0;
 			for(i=0; i<n_s; i++) {
 				/* Width */
 				const uint16_t *w = (const uint16_t *)buffer;
 				int vp9w = ntohs(*w);
 				buffer += 2;
+				len -= 2;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return FALSE;
 				/* Height */
 				const uint16_t *h = (const uint16_t *)buffer;
 				int vp9h = ntohs(*h);
 				buffer += 2;
+				len -= 2;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return FALSE;
 				if(vp9w || vp9h) {
 					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
 					return TRUE;
@@ -643,7 +660,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 16)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;
@@ -678,7 +695,7 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 
 int janus_vp8_parse_descriptor(char *buffer, int len,
 		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 6)
 		return -1;
 	if(picid)
 		*picid = 0;
@@ -738,7 +755,7 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
 }
 
 static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, uint8_t tl0picidx) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 6)
 		return -1;
 	uint8_t vp8pd = *buffer;
 	uint8_t xbit = (vp8pd & 0x80);
@@ -817,7 +834,7 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		int *spatial_layer, int *temporal_layer,
 		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
-	if(!buffer || len < 0)
+	if(!buffer || len < 8)
 		return -1;
 	/* VP9 depay: */
 		/* https://tools.ietf.org/html/draft-ietf-payload-vp9-04 */
@@ -897,6 +914,8 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			nbit = (vp9pd & 0x01);
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 		}
 	}
 	if(vbit) {
@@ -911,22 +930,30 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 			/* Iterate on all spatial layers and get resolution */
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 			int i=0;
 			for(i=0; i<n_s; i++) {
 				/* Been there, done that: skip skip skip */
 				buffer += 4;
 				len -= 4;
+				if(len <= 0)	/* Make sure we don't overvlow */
+					return -1;
 			}
 		}
 		if(gbit) {
 			if(!ybit) {
 				buffer++;
 				len--;
+				if(len == 0)	/* Make sure we don't overvlow */
+					return -1;
 			}
 			uint8_t n_g = *buffer;
 			JANUS_LOG(LOG_HUGE, "There are %u frames in a GOF\n", n_g);
 			buffer++;
 			len--;
+			if(len == 0)	/* Make sure we don't overvlow */
+				return -1;
 			if(n_g > 0) {
 				int i=0;
 				for(i=0; i<n_g; i++) {
@@ -937,9 +964,13 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 						/* Skip reference indices */
 						buffer += r;
 						len -= r;
+						if(len <= 0)	/* Make sure we don't overvlow */
+							return -1;
 					}
 					buffer++;
 					len--;
+					if(len == 0)	/* Make sure we don't overvlow */
+						return -1;
 				}
 			}
 		}

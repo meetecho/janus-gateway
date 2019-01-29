@@ -235,7 +235,7 @@ typedef struct rtcp_context
 	uint16_t pt;
 
 	/* RFC 3550 A.8 Interarrival Jitter */
-	uint64_t transit;
+	int64_t transit;
 	double jitter, jitter_remote;
 	/* Timestamp base (e.g., 48000 for opus audio, or 90000 for video) */
 	uint32_t tb;

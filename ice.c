@@ -63,7 +63,7 @@ uint16_t janus_ice_get_turn_port(void) {
 
 /* TURN REST API support, if any */
 char *janus_ice_get_turn_rest_api(void) {
-#ifndef HAVE_LIBCURL
+#ifndef HAVE_TURNRESTAPI
 	return NULL;
 #else
 	return (char *)janus_turnrest_get_backend();
@@ -805,7 +805,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 	plugin_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_plugin_session_dereference);
 	janus_mutex_init(&plugin_sessions_mutex);
 
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
 	janus_turnrest_init();
 #endif
@@ -813,7 +813,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 }
 
 void janus_ice_deinit(void) {
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	janus_turnrest_deinit();
 #endif
 }
@@ -1013,8 +1013,8 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 }
 
 int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method) {
-#ifndef HAVE_LIBCURL
-	JANUS_LOG(LOG_ERR, "Janus has been nuilt with no libcurl support, TURN REST API unavailable\n");
+#ifndef HAVE_TURNRESTAPI
+	JANUS_LOG(LOG_ERR, "Janus has been built with no libcurl support, TURN REST API unavailable\n");
 	return -1;
 #else
 	if(api_server != NULL &&
@@ -3107,7 +3107,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	/* Any dynamic TURN credentials to retrieve via REST API? */
 	gboolean have_turnrest_credentials = FALSE;
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	janus_turnrest_response *turnrest_credentials = janus_turnrest_request();
 	if(turnrest_credentials != NULL) {
 		have_turnrest_credentials = TRUE;
@@ -3270,7 +3270,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 					janus_turn_server, janus_turn_port);
 			}
 		}
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	} else {
 		/* We need relay candidates as well: add all those we got */
 		GList *server = turnrest_credentials->servers;
@@ -3304,7 +3304,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	nice_agent_gather_candidates(handle->agent, handle->stream_id);
 	nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop),
 		janus_ice_cb_nice_recv, component);
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 	if(turnrest_credentials != NULL) {
 		janus_turnrest_response_destroy(turnrest_credentials);
 		turnrest_credentials = NULL;
