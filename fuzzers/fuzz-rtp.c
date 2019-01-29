@@ -50,10 +50,6 @@ static int srtp_validate_rtp_header(char *data, int pkt_octet_len) {
     return 0;
 }
 
-//TODO: fix on Janus
-// - RTP with version != 2
-// - RTP with OK-ish header and null payload
-
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Sanity Checks */
 	/* Max UDP payload with MTU=1500 */
@@ -77,8 +73,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Extract codec payload */
 	int plen = 0;
 	char *payload = janus_rtp_payload((char *)data, size, &plen);
+	if (!payload) return 0;
 	/* Make a copy of payload */
-	char *copy_payload = g_malloc0(plen);
+	char copy_payload[plen];
 	memcpy(copy_payload, payload, plen);
 
 	/* H.264 targets */
@@ -87,20 +84,19 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* VP8 targets */
 	uint16_t picid = 0;
 	uint8_t tlzi = 0, tid = 0, ybit = 0, keyidx = 0;
-	janus_vp8_simulcast_context *vp8_context = g_malloc0(sizeof(janus_vp8_simulcast_context));
-	janus_vp8_is_keyframe((char *)data, size);
+	janus_vp8_simulcast_context vp8_context;
+	memset(&vp8_context, 0, sizeof(janus_vp8_simulcast_context));
+	janus_vp8_is_keyframe(payload, size);
 	janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx);
-	janus_vp8_simulcast_descriptor_update(copy_payload, plen, vp8_context, TRUE);
+	janus_vp8_simulcast_descriptor_update(copy_payload, plen, &vp8_context, TRUE);
 
 	/* VP9 targets */
 	uint8_t pbit = 0, dbit = 0, ubit = 0, bbit = 0, ebit = 0;
 	int found = 0, spatial_layer = 0, temporal_layer = 0;
-	janus_vp9_is_keyframe((char *)data, size);
-	//janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit);
+	janus_vp9_is_keyframe(payload, plen);
+	janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit);
 
 	/* Free resources */
-	g_free(copy_payload);
-	g_free(vp8_context);
 
 	return 0;
 }
