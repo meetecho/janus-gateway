@@ -157,6 +157,7 @@
 \verbatim
 {
 	"request" : "call",
+	"call_id" : "<user-defined value of Call-ID SIP header used in all SIP requests throughout the call; optional>",
 	"uri" : "<SIP URI to call; mandatory>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP INVITE; optional>",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
@@ -2491,9 +2492,16 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
-			/* Create a random call-id */
-			char callid[24];
-			janus_sip_random_string(24, (char *)&callid);
+			char *callid;
+			json_t *request_callid = json_object_get(root, "call_id");
+			/* Take call-id from request, if it exists */
+			if (request_callid) {
+				callid = g_strdup(json_string_value(request_callid));
+			/* If call-id does not exist in request, create a random one */
+			} else {
+				callid = g_malloc0(24);
+				janus_sip_random_string(24, callid);
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
