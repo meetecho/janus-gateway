@@ -1147,7 +1147,9 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 	if(!fmt)
 		return;
 	char line[255];
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	g_vsnprintf(line, sizeof(line), fmt, ap);
+#pragma GCC diagnostic warning "-Wformat-nonliteral"
 	if(skip) {
 		/* This is a message we're not interested in: just check when it ends */
 		if(line[3] == '-') {
