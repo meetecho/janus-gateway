@@ -2504,8 +2504,8 @@ static void *janus_sip_handler(void *data) {
 			/* Take call-id from request, if it exists */
 			if (request_callid) {
 				callid = g_strdup(json_string_value(request_callid));
-			/* If call-id does not exist in request, create a random one */
 			} else {
+				/* If call-id does not exist in request, create a random one */
 				callid = g_malloc0(24);
 				janus_sip_random_string(24, callid);
 			}
@@ -2545,7 +2545,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
 			g_free(session->callid);
-			session->callid = g_strdup(callid);
+			session->callid = callid;
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);

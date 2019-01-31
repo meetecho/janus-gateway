@@ -2070,8 +2070,8 @@ static void *janus_sipre_handler(void *data) {
 			/* Take call-id from request, if it exists */
 			if (request_callid) {
 				callid = g_strdup(json_string_value(request_callid));
-			/* If call-id does not exist in request, create a random one */
 			} else {
+				/* If call-id does not exist in request, create a random one */
 				callid = g_malloc0(24);
 				janus_sipre_random_string(24, callid);
 			}
@@ -2102,7 +2102,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			/* Enqueue the INVITE */
 			session->callee = g_strdup(uri_text);
-			session->callid = g_strdup(callid);
+			session->callid = callid;
 			g_hash_table_insert(callids, session->callid, session);
 			session->temp_sdp = sdp;
 			mqueue_push(mq, janus_sipre_mqueue_event_do_call, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
