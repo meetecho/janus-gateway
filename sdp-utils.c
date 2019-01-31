@@ -794,7 +794,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		/* c= */
 		if(m->c_addr != NULL) {
 			g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
-				m->c_ipv4 ? "IP4" : "IP6", m->c_addr);
+				m->c_ipv4 ? "IP4" : "IP6", janus_get_public_ip());
 			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		}
 		if(m->port > 0) {
