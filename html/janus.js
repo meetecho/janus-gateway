@@ -1604,6 +1604,9 @@ function Janus(gatewayCallbacks) {
 				// This is Edge, enable BUNDLE explicitly
 				pc_config.bundlePolicy = "max-bundle";
 			}
+			if(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 65) {
+				pc_config.sdpSemantics = "plan-b";
+			}
 			Janus.log("Creating PeerConnection");
 			Janus.debug(pc_constraints);
 			config.pc = new RTCPeerConnection(pc_config, pc_constraints);
