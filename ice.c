@@ -1196,8 +1196,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	janus_mutex_unlock(&plugin_sessions_mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
-		/* There was no plugin attached, probably something went wrong there */
-		janus_refcount_decrease(&handle->ref);
+		/* There was no plugin attached, probably something went wrong there */		
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 		if(handle->mainloop != NULL) {
@@ -1208,6 +1207,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 				g_main_loop_quit(handle->mainloop);
 			}
 		}
+        janus_refcount_decrease(&handle->ref);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
