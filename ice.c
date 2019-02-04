@@ -2248,7 +2248,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, buflen, &plen);
 				if (!payload) {
-					   JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing payload or invalid RTP: len=%d\n", handle->handle_id, buflen);
+					  JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
 					  return;
 				}
 				if(rtx) {
@@ -2261,6 +2261,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
+					plen -= 2;
 					size_t hsize = payload-buf;
 					memmove(buf+2, buf, hsize);
 					buf += 2;
@@ -2429,8 +2430,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && stream->video_is_keyframe) {
-					plen = 0;
-					payload = janus_rtp_payload(buf, buflen, &plen);
 					if(stream->video_is_keyframe(payload, plen)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received, resetting NACK queue\n", handle->handle_id);
 						if(component->last_seqs_video[vindex])
