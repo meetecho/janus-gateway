@@ -46,7 +46,7 @@ cd $SRC/janus-gateway
 ./autogen.sh
 ./configure CC="$FUZZ_CC" CFLAGS="$FUZZ_CFLAGS" --disable-docs --disable-post-processing --disable-turn-rest-api --disable-all-transports --disable-all-plugins --disable-all-handlers
 make clean
-JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o"
+JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o janus-rtp.o"
 make -j$(nproc) $JANUS_OBJECTS
 JANUS_LIB="$WORK/janus-lib.a"
 ar rcs $JANUS_LIB $JANUS_OBJECTS
