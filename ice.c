@@ -2108,8 +2108,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
-	if(len < 12)
-		return;	/* Definitely nothing useful */
 	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
 		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
