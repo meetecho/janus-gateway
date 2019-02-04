@@ -11,21 +11,15 @@ int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 
-static gboolean janus_is_rtcp(const uint8_t *buf, size_t len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type >= 64) && (header->type < 96));
-}
-
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Sanity Checks */
 	/* Max UDP payload with MTU=1500 */
 	if (size > 1472) return 0;
 	/* libnice checks that a packet length is positive */
 	if (size <= 0) return 0;
-	/* Janus checks that an entire COMPOUND packet length must be >= 2 bytes
-	 * and RTP header type must be in range [64-95] */
-	if (!janus_is_rtcp(data, size)) return 0;
+	/* Janus checks for a minimum COMPOUND packet length
+	 * and the RTP header type value */
+	if (!janus_is_rtcp((char *)data, size)) return 0;
 	/* libsrtp checks that an entire COMPOUND packet must
 	 * contain at least a full RTCP header */
 	if (size < 8) return 0;

@@ -15,8 +15,8 @@ if [ -f "${TARGET}_seed_corpus.zip" ]; then
 	echo "Extracting corpus seed data"
 	unzip -oq "$TARGET"_seed_corpus.zip -d "$TARGET"_seed_corpus
 fi
-# Use -max_len=1472 for RTCP
-ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=1 -jobs=4 "$TARGET"_corpus "$TARGET"_seed_corpus
+# Use -max_len=65535 for network protocols
+ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=0 -jobs=4 "$TARGET"_corpus "$TARGET"_seed_corpus
 # tail -f fuzz*.log
 
 # run standalone fuzzer or libFuzzer without fuzzing (regression testing)
