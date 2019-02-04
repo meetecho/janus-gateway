@@ -281,24 +281,6 @@ uint16_t rtp_range_min = 0;
 uint16_t rtp_range_max = 0;
 
 
-/* Helpers to demultiplex protocols */
-static gboolean janus_is_dtls(gchar *buf) {
-	return ((*buf >= 20) && (*buf <= 64));
-}
-
-static gboolean janus_is_rtp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type < 64) || (header->type >= 96));
-}
-
-static gboolean janus_is_rtcp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type >= 64) && (header->type < 96));
-}
-
-
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
 #define JANUS_ICE_PACKET_DATA	2

@@ -99,6 +99,9 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
 
+gboolean janus_is_dtls(char *buf) {
+	return ((*buf >= 20) && (*buf <= 64));
+}
 
 /* DTLS stuff */
 #define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
@@ -721,7 +724,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
-				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				const SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
 				if(srtp_profile == NULL) {
 					/* Should never happen, but just in case... */
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No SRTP profile selected...\n", handle->handle_id);
