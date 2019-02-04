@@ -1593,26 +1593,26 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	/* Do cleanup if media thread has not been created */
+	if(!session->media.ready && !session->relayer_thread) {
+		janus_sipre_media_cleanup(session);
+	}
+	session->media.ready = FALSE;
+	session->media.on_hold = FALSE;
+	session->status = janus_sipre_call_status_closing;
+	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->rec_mutex);
+	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
+	janus_mutex_unlock(&session->rec_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 	if(!(session->status == janus_sipre_call_status_inviting ||
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall)) {
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
-	session->media.ready = FALSE;
-	session->media.on_hold = FALSE;
-	session->status = janus_sipre_call_status_closing;
 	/* Enqueue the BYE */
 	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-	/* Do cleanup if media thread has not been created */
-	if(!session->media.ready && !session->relayer_thread) {
-		janus_sipre_media_cleanup(session);
-	}
-	/* Get rid of the recorders, if available */
-	janus_mutex_lock(&session->rec_mutex);
-	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
-	janus_mutex_unlock(&session->rec_mutex);
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

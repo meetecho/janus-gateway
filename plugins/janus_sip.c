@@ -1904,12 +1904,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
 	session->media.simulcast_ssrc = 0;
-	if(!(session->status == janus_sip_call_status_inviting ||
-		 session->status == janus_sip_call_status_invited ||
-		 session->status == janus_sip_call_status_incall)) {
-		g_atomic_int_set(&session->hangingup, 0);
-		return;
-	}
 	/* Do cleanup if media thread has not been created */
 	if(!session->media.ready && !session->relayer_thread) {
 		janus_sip_media_cleanup(session);
@@ -1918,6 +1912,12 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sip_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
+	if(!(session->status == janus_sip_call_status_inviting ||
+		 session->status == janus_sip_call_status_invited ||
+		 session->status == janus_sip_call_status_incall)) {
+		g_atomic_int_set(&session->hangingup, 0);
+		return;
+	}
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
