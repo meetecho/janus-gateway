@@ -205,7 +205,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL;
+static char *local_ip = NULL, *sdp_ip = NULL;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
@@ -1033,6 +1033,12 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
+		if(item && item->value) {
+			sdp_ip = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		}
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value) {
 			register_ttl = atol(item->value);
@@ -1182,6 +1188,7 @@ void janus_sipre_destroy(void) {
 	g_atomic_int_set(&stopping, 0);
 
 	g_free(local_ip);
+	g_free(sdp_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIPRE_NAME);
 }
@@ -2912,6 +2919,10 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 		return NULL;
 	/* Start replacing stuff */
 	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	if(sdp->c_addr) {
+		g_free(sdp->c_addr);
+		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+	}
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -2941,7 +2952,7 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 			}
 		}
 		g_free(m->c_addr);
-		m->c_addr = g_strdup(local_ip);
+		m->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 		if(answer && (m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO)) {
 			/* Check which codec was negotiated eventually */
 			int pt = -1;
