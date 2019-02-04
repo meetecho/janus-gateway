@@ -11,12 +11,6 @@ int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 
-static gboolean janus_is_rtp(const uint8_t *buf, size_t len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type < 64) || (header->type >= 96));
-}
-
 /* Clone libsrtp srtp_validate_rtp_header */
 #define octets_in_rtp_header 12
 #define uint32s_in_rtp_header 3
@@ -56,9 +50,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	if (size > 1472) return 0;
 	/* libnice checks that a packet length is positive */
 	if (size <= 0) return 0;
-	/* Janus checks that an entire packet length must be >= 2 bytes
-	 * and RTP header type must be in range [64-95] */
-	if (!janus_is_rtp(data, size)) return 0;
+	/* Janus checks for a minimum packet length
+	 * and the RTP header type value */
+	if (!janus_is_rtp((char *)data, size)) return 0;
 	/* Do same checks that libsrtp does */
 	if (srtp_validate_rtp_header((char *)data, size) < 0) return 0;
 
