@@ -205,7 +205,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL;
+static char *local_ip = NULL, *sdp_ip = NULL;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
@@ -1033,6 +1033,12 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
+		if(item && item->value) {
+			sdp_ip = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		}
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value) {
 			register_ttl = atol(item->value);
@@ -1182,6 +1188,7 @@ void janus_sipre_destroy(void) {
 	g_atomic_int_set(&stopping, 0);
 
 	g_free(local_ip);
+	g_free(sdp_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIPRE_NAME);
 }
@@ -1593,26 +1600,26 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	/* Do cleanup if media thread has not been created */
+	if(!session->media.ready && !session->relayer_thread) {
+		janus_sipre_media_cleanup(session);
+	}
+	session->media.ready = FALSE;
+	session->media.on_hold = FALSE;
+	session->status = janus_sipre_call_status_closing;
+	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->rec_mutex);
+	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
+	janus_mutex_unlock(&session->rec_mutex);
+	g_atomic_int_set(&session->hangingup, 0);
 	if(!(session->status == janus_sipre_call_status_inviting ||
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall)) {
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
-	session->media.ready = FALSE;
-	session->media.on_hold = FALSE;
-	session->status = janus_sipre_call_status_closing;
 	/* Enqueue the BYE */
 	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-	/* Do cleanup if media thread has not been created */
-	if(!session->media.ready && !session->relayer_thread) {
-		janus_sipre_media_cleanup(session);
-	}
-	/* Get rid of the recorders, if available */
-	janus_mutex_lock(&session->rec_mutex);
-	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
-	janus_mutex_unlock(&session->rec_mutex);
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
@@ -2912,6 +2919,10 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 		return NULL;
 	/* Start replacing stuff */
 	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	if(sdp->c_addr) {
+		g_free(sdp->c_addr);
+		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+	}
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -2941,7 +2952,7 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 			}
 		}
 		g_free(m->c_addr);
-		m->c_addr = g_strdup(local_ip);
+		m->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 		if(answer && (m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO)) {
 			/* Check which codec was negotiated eventually */
 			int pt = -1;
