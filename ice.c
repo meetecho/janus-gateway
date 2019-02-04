@@ -2245,6 +2245,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					size_t hsize = payload-buf;
 					memmove(buf+2, buf, hsize);
 					buf += 2;
+					payload +=2;
 					header = (janus_rtp_header *)buf;
 				}
 				/* Check if we need to handle transport wide cc */
