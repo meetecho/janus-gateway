@@ -6065,8 +6065,8 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Failed to read or not an RTP packet? */
 						continue;
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -6154,8 +6154,8 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Failed to read or not an RTP packet? */
 						continue;
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -6341,7 +6341,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(data_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
+					if(bytes < 1) {
 						/* Failed to read? */
 						continue;
 					}
@@ -6377,8 +6377,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(audio_rtcp_fd != -1 && fds[i].fd == audio_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
 					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
@@ -6397,8 +6397,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(video_rtcp_fd != -1 && fds[i].fd == video_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
 					memcpy(&source->video_rtcp_addr, &remote, addrlen);

@@ -281,24 +281,6 @@ uint16_t rtp_range_min = 0;
 uint16_t rtp_range_max = 0;
 
 
-/* Helpers to demultiplex protocols */
-static gboolean janus_is_dtls(gchar *buf) {
-	return ((*buf >= 20) && (*buf <= 64));
-}
-
-static gboolean janus_is_rtp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type < 64) || (header->type >= 96));
-}
-
-static gboolean janus_is_rtcp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type >= 64) && (header->type < 96));
-}
-
-
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
 #define JANUS_ICE_PACKET_DATA	2
@@ -2126,8 +2108,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
-	if(len < 12)
-		return;	/* Definitely nothing useful */
 	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
 		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {

@@ -360,6 +360,11 @@ gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci);
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len);
 
+/*! \brief Helper method to demultiplex RTCP from other protocols
+ * @param[in] buf Buffer to inspect
+ * @param[in] len Length of the buffer to inspect */
+gboolean janus_is_rtcp(char *buf, guint len);
+
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The message data

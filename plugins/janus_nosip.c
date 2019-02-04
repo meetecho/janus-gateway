@@ -13,7 +13,7 @@
  * RTP bridge. It is named "NoSIP" since, as the name suggests, signalling
  * takes no place here, and is entirely up to the application. The typical
  * usage of this application is something like this:
- * 
+ *
  * 1. a WebRTC application handles signalling on its own (e.g., SIP), but
  * needs to interact with a peer that doesn't support WebRTC (DTLS/ICE);
  * 2. it creates a handle with the NoSIP plugin, creates a JSEP SDP offer,
@@ -56,7 +56,7 @@
  * use; the \c process request, on the other hand, processes a remote
  * barebone SDP, and matches it to the plugin may have generated before,
  * in order to then return a JSEP offer or answer that can be used to
- * setup a PeerConnection. 
+ * setup a PeerConnection.
  *
  * The \c generate request must be formatted as follows:
  *
@@ -1190,7 +1190,7 @@ static void *janus_nosip_handler(void *data) {
 		json_t *result = NULL, *localjsep = NULL;
 
 		if(!strcasecmp(request_text, "generate") || !strcasecmp(request_text, "process")) {
-			/* Shared code for two different requests:	
+			/* Shared code for two different requests:
 			 * 		generate: Take a JSEP offer or answer and generate a barebone SDP the application can use
 			 * 		process: Process a remote barebone SDP, and match it to the one we may have generated before */
 			gboolean generate = !strcasecmp(request_text, "generate") ? TRUE : FALSE;
@@ -1829,7 +1829,7 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 			rtp_port_next = rtp_range_min;
 			rtp_port_wrap = TRUE;
 		}
-		if(janus_nosip_bind_socket(rtp_fd, rtp_port)) { 
+		if(janus_nosip_bind_socket(rtp_fd, rtp_port)) {
 			/* rtp_fd still unbound, reuse it */
 		} else if(janus_nosip_bind_socket(rtcp_fd, rtcp_port)) {
 			close(rtp_fd);
@@ -1892,7 +1892,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 	}
 	/* Start */
-	if(session->media.has_audio && 
+	if(session->media.has_audio &&
 			(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0)) {
 		if(session->media.audio_rtp_fd != -1) {
 			JANUS_LOG(LOG_WARN, "Audio RTP unbound socket detected, closing ...\n");
@@ -1916,7 +1916,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		session->media.local_audio_rtp_port = ports[0];
 		session->media.local_audio_rtcp_port = ports[1];
 	}
-	if(session->media.has_video && 
+	if(session->media.has_video &&
 			(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0)) {
 		if(session->media.video_rtp_fd != -1) {
 			JANUS_LOG(LOG_WARN, "Video RTP unbound socket detected, closing ...\n");
@@ -2195,6 +2195,10 @@ static void *janus_nosip_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Not an RTP packet? */
+						continue;
+					}
 					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
@@ -2252,6 +2256,10 @@ static void *janus_nosip_relay_thread(void *data) {
 					continue;
 				} else {
 					/* Audio or Video RTCP */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Not an RTCP packet? */
+						continue;
+					}
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect_rtcp(

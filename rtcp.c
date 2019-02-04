@@ -22,6 +22,13 @@
 #include "rtcp.h"
 #include "utils.h"
 
+gboolean janus_is_rtcp(char *buf, guint len) {
+	if (len < 2)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type >= 64) && (header->type < 96));
+}
+
 int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len) {
 	return janus_rtcp_fix_ssrc(ctx, packet, len, 0, 0, 0);
 }
