@@ -16,6 +16,13 @@
 #include "debug.h"
 #include "utils.h"
 
+gboolean janus_is_rtp(char *buf, guint len) {
+	if (len < 12)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type < 64) || (header->type >= 96));
+}
+
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
