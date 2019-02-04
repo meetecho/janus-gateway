@@ -80,7 +80,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	uint8_t tlzi = 0, tid = 0, ybit = 0, keyidx = 0;
 	janus_vp8_simulcast_context vp8_context;
 	memset(&vp8_context, 0, sizeof(janus_vp8_simulcast_context));
-	janus_vp8_is_keyframe(payload, size);
+	janus_vp8_is_keyframe(payload, plen);
 	janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx);
 	janus_vp8_simulcast_descriptor_update(copy_payload, plen, &vp8_context, TRUE);
 
