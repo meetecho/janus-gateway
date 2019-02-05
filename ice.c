@@ -286,24 +286,6 @@ uint16_t rtp_range_min = 0;
 uint16_t rtp_range_max = 0;
 
 
-/* Helpers to demultiplex protocols */
-static gboolean janus_is_dtls(gchar *buf) {
-	return ((*buf >= 20) && (*buf <= 64));
-}
-
-static gboolean janus_is_rtp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type < 64) || (header->type >= 96));
-}
-
-static gboolean janus_is_rtcp(gchar *buf, guint len) {
-	if (len < 2) return FALSE;
-	janus_rtp_header *header = (janus_rtp_header *)buf;
-	return ((header->type >= 64) && (header->type < 96));
-}
-
-
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
 #define JANUS_ICE_PACKET_DATA	2
@@ -2112,8 +2094,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
-	if(len < 12)
-		return;	/* Definitely nothing useful */
 	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
 		if(!pc->dtls || !pc->dtls->srtp_valid || !pc->dtls->srtp_in) {
@@ -2187,10 +2167,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* If this is a retransmission using RFC4588, we have to do something first to get the original packet */
 				janus_rtp_header *header = (janus_rtp_header *)buf;
+				int plen = 0;
+				char *payload = janus_rtp_payload(buf, buflen, &plen);
+				if (!payload) {
+					  JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
+					  return;
+				}
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
-					int plen = 0;
-					char *payload = janus_rtp_payload(buf, buflen, &plen);
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
@@ -2199,9 +2183,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Finally, remove the original sequence number from the payload: rather than moving
 					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 					buflen -= 2;
+					plen -= 2;
 					size_t hsize = payload-buf;
 					memmove(buf+2, buf, hsize);
 					buf += 2;
+					payload +=2;
 					header = (janus_rtp_header *)buf;
 				}
 				/* Check if we need to handle transport wide cc */
@@ -2332,8 +2318,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && medium->video_is_keyframe) {
-					int plen = 0;
-					char *payload = janus_rtp_payload(buf, buflen, &plen);
 					if(medium->video_is_keyframe(payload, plen)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received, resetting NACK queue\n", handle->handle_id);
 						if(medium->last_seqs[vindex])

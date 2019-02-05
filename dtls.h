@@ -178,4 +178,8 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role);
  * @returns A string representation of the profile */
 const gchar *janus_get_dtls_srtp_profile(int profile);
 
+/*! \brief Helper method to demultiplex DTLS from other protocols
+ * @param[in] buf Buffer to inspect */
+gboolean janus_is_dtls(char *buf);
+
 #endif

@@ -82,6 +82,11 @@ typedef struct janus_rtp_header_extension {
 /*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
 #define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 
+/*! \brief Helper method to demultiplex RTP from other protocols
+ * @param[in] buf Buffer to inspect
+ * @param[in] len Length of the buffer to inspect */
+gboolean janus_is_rtp(char *buf, guint len);
+
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes

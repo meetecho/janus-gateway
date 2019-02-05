@@ -2495,6 +2495,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *secret = json_object_get(root, "secret");
 			if(secret && json_string_value(secret) && janus_strcmp_const_time(mp->secret, json_string_value(secret)))
 				admin = TRUE;
+		} else {
+			admin = TRUE;
 		}
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
@@ -6806,8 +6808,8 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Failed to read or not an RTP packet? */
 						continue;
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -6895,8 +6897,8 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Failed to read or not an RTP packet? */
 						continue;
 					}
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
@@ -7087,7 +7089,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
+					if(bytes < 1) {
 						/* Failed to read? */
 						continue;
 					}
@@ -7124,8 +7126,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(stream->type == JANUS_STREAMING_MEDIA_AUDIO && fds[i].fd == stream->rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
@@ -7145,8 +7147,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(stream->type == JANUS_STREAMING_MEDIA_VIDEO && fds[i].fd == stream->rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(bytes < 0) {
-						/* Failed to read? */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
