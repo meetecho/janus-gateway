@@ -636,27 +636,19 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 			if(len == 0)	/* Make sure we don't overflow */
 				return FALSE;
 			uint i=0;
-			for(i=0; i<n_s; i++) {
+			for(i=0; i<n_s && len>=4; i++,len-=4) {
 				/* Width */
-				if(len < 2)		/* Make sure we don't overflow */
-					return FALSE;
 				uint16_t w;
 				memcpy(&w, buffer, sizeof(uint16_t));
 				int vp9w = ntohs(w);
 				buffer += 2;
-				len -= 2;
 				/* Height */
-				if(len < 2)		/* Make sure we don't overflow */
-					return FALSE;
 				uint16_t h;
 				memcpy(&h, buffer, sizeof(uint16_t));
 				int vp9h = ntohs(h);
 				buffer += 2;
-				len -= 2;
-				if(len == 0)    /* Make sure we don't overflow */
-					return FALSE;
 				if(vp9w || vp9h) {
-					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
 					return TRUE;
 				}
 			}
