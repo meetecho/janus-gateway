@@ -153,8 +153,10 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 						/* Found! */
 						if(byte)
 							*byte = buf[hlen+i+1];
-						if(word)
-							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+						if(word && idlen >= 3 && (i+3) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
 						if(ref)
 							*ref = &buf[hlen+i];
 						return 0;
@@ -231,6 +233,9 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	if(val_len > (sdes_len-1)) {
 		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), RTP stream ID will be cut\n", val_len, sdes_len);
 		val_len = sdes_len-1;
+	}
+	if (val_len > len-(ext-buf)-1 ) {
+		return -3;
 	}
 	memcpy(sdes_item, ext+1, val_len);
 	*(sdes_item+val_len) = '\0';
