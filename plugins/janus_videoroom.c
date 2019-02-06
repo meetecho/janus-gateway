@@ -2942,16 +2942,17 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 			if(participant && participant->room) {
 				janus_videoroom *room = participant->room;
 				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
-				json_object_set_new(info, "answered", json_integer(g_atomic_int_get(&participant->answered)));
-				json_object_set_new(info, "pending_offer", json_integer(g_atomic_int_get(&participant->pending_offer)));
-				json_object_set_new(info, "pending_restart", json_integer(g_atomic_int_get(&participant->pending_restart)));
+				json_object_set_new(info, "answered", g_atomic_int_get(&participant->answered) ? json_true() : json_false());
+				json_object_set_new(info, "pending_offer", g_atomic_int_get(&participant->pending_offer) ? json_true() : json_false());
+				json_object_set_new(info, "pending_restart", g_atomic_int_get(&participant->pending_restart) ? json_true() : json_false());
+				json_object_set_new(info, "paused", participant->paused ? json_true() : json_false());
 				json_t *media = janus_videoroom_subscriber_streams_summary(participant, FALSE, NULL);
 				json_object_set_new(info, "streams", media);
 			}
 		}
 	}
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
-	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
+	json_object_set_new(info, "destroyed", g_atomic_int_get(&session->destroyed) ? json_true() : json_false());
 	janus_refcount_decrease(&session->ref);
 	return info;
 }
@@ -6895,6 +6896,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_increase(&ps->ref);
 					janus_mutex_unlock(&ps->subscribers_mutex);
 				}
+				janus_mutex_unlock(&subscriber->streams_mutex);
 				/* Decrease the references we took before */
 				while(publishers) {
 					janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;

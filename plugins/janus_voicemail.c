@@ -500,8 +500,8 @@ json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "start_time", json_integer(session->start_time));
 		json_object_set_new(info, "filename", session->filename ? json_string(session->filename) : NULL);
 	}
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
-	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
+	json_object_set_new(info, "destroyed", g_atomic_int_get(&session->destroyed) ? json_true() : json_false());
 	janus_refcount_decrease(&session->ref);
 	return info;
 }

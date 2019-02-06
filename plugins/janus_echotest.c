@@ -476,8 +476,8 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
-	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
+	json_object_set_new(info, "destroyed", g_atomic_int_get(&session->destroyed) ? json_true() : json_false());
 	janus_refcount_decrease(&session->ref);
 	return info;
 }
