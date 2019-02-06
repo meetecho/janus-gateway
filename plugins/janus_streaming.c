@@ -496,7 +496,7 @@ multistream-test: {
  * the syntax for the two use cases differs a bit, namely in terms of the
  * type of some properties. Notice that, while for backwards compatibility
  * you can still use the old \c audio, \c video and \c data named properties,
- * they're now deprecated and so you're encouraged to use the new drill-down
+ * they're now deprecated and so you're highly encouraged to use the new drill-down
  * \c media list instead.
  *
  * To start recording a new mountpoint, the request should be formatted
@@ -507,9 +507,6 @@ multistream-test: {
 	"request" : "recording",
 	"action" : "start",
 	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
-	"audio" : "<enable audio recording, and use this base path/filename; deprecated, see media>",
-	"video" : "<enable video recording, and use this base path/filename; deprecated, see media>",
-	"data" : "<enable data recording, and use this base path/filename; deprecated, see media>",
 	"media" : [		// Drill-down recording controls
 		{
 			"mid" : "<mid of the stream to start recording>",
@@ -529,9 +526,6 @@ multistream-test: {
 	"request" : "recording",
 	"action" : "stop",
 	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
-	"audio" : <true|false; whether or not audio recording should be stopped; deprecated, see media>,
-	"video" : <true|false; whether or not video recording should be stopped; deprecated, see media>,
-	"data" : <true|false; whether or not datachannel recording should be stopped; deprecated, see media>,
 	"media" : [		// Drill-down recording controls
 		{
 			"mid" : "<mid of the stream to stop recording>"
@@ -698,11 +692,8 @@ multistream-test: {
 \verbatim
 {
 	"request" : "configure",
-	"audio" : <true|false, depending on whether audio should be relayed or not; deprecated, and optional>,
-	"video" : <true|false, depending on whether video should be relayed or not; deprecated, and optional>,
-	"data" : <true|false, depending on whether datachannel messages should be relayed or not; deprecated, and optional>,
 	"mid" : <mid of the m-line to refer to for this configure request; optional>,
-	"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
+	"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
@@ -710,7 +701,7 @@ multistream-test: {
 }
 \endverbatim
  *
- * While the deprecated \c audio , \c video and \c data properties can be
+ * While the deprecated \c audio , \c video and \c data properties can still be
  * used as a media-level pause/resume functionality, a better option is to
  * specify the \c mid of the stream instead, and a \c send boolean property
  * to specify if this specific stream should be relayed or not. The \c pause

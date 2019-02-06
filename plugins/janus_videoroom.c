@@ -14,30 +14,48 @@
  * can join and leave at any time. This room is based on a Publish/Subscribe
  * pattern. Each peer can publish his/her own live audio/video feeds: this
  * feed becomes an available stream in the room the other participants can
- * attach to. This means that this plugin allows the realization of several
+ * subscribe to. This means that this plugin allows the realization of several
  * different scenarios, ranging from a simple webinar (one speaker, several
  * watchers) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
  *
- * Considering that this plugin allows for several different WebRTC PeerConnections
- * to be on at the same time for the same peer (specifically, each peer
- * potentially has 1 PeerConnection on for publishing and N on for subscriptions
- * from other peers), each peer may need to attach several times to the same
- * plugin for every stream: this means that each peer needs to have at least one
- * handle active for managing its relation with the plugin (joining a room,
- * leaving a room, muting/unmuting, publishing, receiving events), and needs
- * to open a new one each time he/she wants to subscribe to a feed from
- * another publisher participant. The handle used for a subscription,
- * however, would be logically a "slave" to the master one used for
- * managing the room: this means that it cannot be used, for instance,
- * to unmute in the room, as its only purpose would be to provide a
- * context in which creating the recvonly PeerConnection for the
- * subscription to an active publisher participant.
+ * Notice that, since Janus now supports multistream via Unified Plan,
+ * subscriptions can be done either in "bulks" (you use a single PeerConnection
+ * to subscribe to multiple streams from one or more publishers) or
+ * separately (each PeerConnections represents a subscription to a single
+ * publisher). Same thing for publishers: you may choose to publish, e.g.,
+ * audio and video on one PeerConnection, and share your screen on another,
+ * or publish everything on the same PeerConnection instead. While
+ * functionally both approaches (multistream vs. legacy mode) are the same
+ * (the same media flows in both cases), the differences are in how
+ * resources are used, and in how the client has to handle incoming and
+ * outgoing connections. Besides, one approach might make more sense in
+ * some scenarios, and the other make more sense in different use cases.
+ * As such, the approach to follow is left to the developer and the application.
  *
- * \note Work is going on to implement SSRC multiplexing (Unified Plan),
- * meaning that in the future you'll be able to use the same
- * Janus handle/VideoRoom subscriber/PeerConnection to receive multiple
- * publishers at the same time.
+ * What is important to point out, though, is that publishers and subscribers
+ * will in all cases require different PeerConnections. This means that,
+ * even with multistream, you won't be able to use a single PeerConnection
+ * to send your contributions and receive those from everyone else. This
+ * is a choice done by design, to avoid the issues that would inevitably
+ * arise when doing, for instance, renegotiations to update the streams.
+ *
+ * On a more general note and to give some more context with respect to the
+ * core functionality in Janus, notice that, considering this plugin allows
+ * for several different WebRTC PeerConnections to be on at the same time
+ * for the same peer (different publishers and subscribers for sure, and
+ * potentially more than one of each if multistream is not in use), each
+ * peer will often need to attach several times to the same plugin for each
+ * stream: this means that each peer needs to have at least one handle active
+ * for managing its relation with the plugin (joining a room,
+ * leaving a room, muting/unmuting, publishing, receiving events), and needs
+ * to open others when they want to subscribe to a feed from other participants
+ * (the number depends on the subscription approach of choice). Handles
+ * used for subscriptions, though, would be logically "subjects" to the master one used for
+ * managing the room: this means that they cannot be used, for instance,
+ * to unmute in the room, as their only purpose would be to provide a
+ * context in which creating the recvonly PeerConnections for the
+ * subscription(s).
  *
  * Rooms to make available are listed in the plugin configuration file.
  * A pre-filled configuration file is provided in \c conf/janus.plugin.videoroom.jcfg
@@ -344,7 +362,7 @@ room-<unique room ID>: {
 			"videocodec" : "<comma separated list of allowed video codecs>",
 			"record" : <true|false, whether the room is being recorded>,
 			"record_dir" : "<if recording, the path where the .mjr files are being saved>",
-			"num_participants" : <count of the participants (publishers, active or not; not subscribers)>
+			"num_participants" : <count of the participants (publisher role instances, active or not; not subscribers)>
 		},
 		// Other rooms
 	]
@@ -373,9 +391,8 @@ room-<unique room ID>: {
 		{	// Participant #1
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
-			"internal_audio_ssrc" : <audio SSRC used internally for this active publisher>,
-			"internal_video_ssrc" : <video SSRC used internally for this active publisher>
+			"publisher" : <true|false, whether user is an active publisher or not>,
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
 		},
 		// Other participants
 	]
@@ -436,8 +453,18 @@ room-<unique room ID>: {
 		{
 			"id" : <unique ID of active publisher #1>,
 			"display" : "<display name of active publisher #1, if any>",
-			"audio_codec" : "<audio codec used by active publisher #1, if any>",
-			"video_codec" : "<video codec used by active publisher #1, if any>",
+			"streams" : [
+				{
+					"type" : "<type of published stream #1 (audio|video|data)">,
+					"mindex" : "<unique mindex of published stream #1>",
+					"mid" : "<unique mid of of published stream #1>",
+					"codec" : "<codec used for published stream #1>",
+					"description" : "<text description of published stream #1, if any>",
+					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 only)>"
+				},
+				// Other streams, if any
+			],
 			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
 		},
 		// Other active publishers
@@ -479,7 +506,7 @@ room-<unique room ID>: {
  * to the room configuration (e.g., to make sure the codecs you negotiated
  * are allowed in the room), and will reply with a JSEP SDP answer to
  * close the circle and complete the setup of the PeerConnection. As soon
- * as the PeerConnection has been establisher, the publisher will become
+ * as the PeerConnection has been established, the publisher will become
  * active, and a new active feed other participants can subscribe to.
  *
  * The syntax of a \c publish request is the following:
@@ -487,22 +514,37 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "publish",
-	"audio" : <true|false, depending on whether or not audio should be relayed; true by default>,
-	"video" : <true|false, depending on whether or not video should be relayed; true by default>,
-	"data" : <true|false, depending on whether or not data should be relayed; true by default>,
 	"audiocodec" : "<audio codec to prefer among the negotiated ones; optional>",
 	"videocodec" : "<video codec to prefer among the negotiated ones; optional>",
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
-	"display" : "<new display name to use in the room; optional>"
+	"display" : "<new display name to use in the room; optional>",
+	"descriptions" : [	// Optional
+		{
+			"mid" : "<unique mid of a stream being published>",
+			"description" : "<text description of the stream (e.g., My front webcam)>"
+		},
+		// Other descriptions, if any
+	]
 }
 \endverbatim
  *
  * As anticipated, since this is supposed to be accompanied by a JSEP SDP
  * offer describing the publisher's media streams, the plugin will negotiate
- * and prepare a matching JSEP SDP answer. If successful, a \c configured
- * event will be sent back, formatted like this:
+ * and prepare a matching JSEP SDP answer. Notice that, in principle, all
+ * published streams will be only identifier by their unique \c mid and
+ * by their type (e.g., audio or video). In case you want to provide more
+ * information about the streams being published (e.g., to let other
+ * participants know that the first video is a camera, while the second
+ * video is a screen share), you can use the \c descriptions array for
+ * the purpose: each object in the array can be used to add a text description
+ * to associate to a specific mid, in order to help with the UI rendering.
+ * The \c descriptions property is optional, so no text will be provided
+ * by default: notice these descriptions can be updated dynamically via
+ * \c configure requests.
+ *
+ * If successful, a \c configured event will be sent back, formatted like this:
  *
 \verbatim
 {
@@ -544,8 +586,18 @@ room-<unique room ID>: {
 		{
 			"id" : <unique ID of the new publisher>,
 			"display" : "<display name of the new publisher, if any>",
-			"audio_codec" : "<audio codec used the new publisher, if any>",
-			"video_codec" : "<video codec used by the new publisher, if any>",
+			"streams" : [
+				{
+					"type" : "<type of published stream #1 (audio|video|data)">,
+					"mindex" : "<unique mindex of published stream #1>",
+					"mid" : "<unique mid of of published stream #1>",
+					"codec" : "<codec used for published stream #1>",
+					"description" : "<text description of published stream #1, if any>",
+					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
+					"svc" : "<true if published stream #1 uses SVC (VP9 only)>"
+				},
+				// Other streams, if any
+			],
 			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
 		}
 	]
@@ -597,14 +649,16 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "configure",
-	"audio" : <true|false, depending on whether or not audio should be relayed; true by default>,
-	"video" : <true|false, depending on whether or not video should be relayed; true by default>,
-	"data" : <true|false, depending on whether or not data should be relayed; true by default>,
 	"bitrate" : <bitrate cap to return via REMB; optional, overrides the global room value if present (unless bitrate_cap is set)>,
 	"keyframe" : <true|false, whether we should send this publisher a keyframe request>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
-	"display" : "<new display name to use in the room; optional>"
+	"display" : "<new display name to use in the room; optional>",
+	"mid" : <mid of the m-line to refer to for this configure request; optional>,
+	"send" : <true|false, depending on whether the media addressed by the above mid should be relayed or not; optional>,
+	"descriptions" : [
+		// Updated descriptions for the published streams; see "publish" for syntax; optional
+	]
 }
 \endverbatim
  *
@@ -700,9 +754,7 @@ room-<unique room ID>: {
 			"substream" : <video substream this video forwarder is relaying, if any>,
 			"srtp" : <true|false, whether the RTP stream is encrypted>
 		},
-		{
-			.. other forwarders, if configured..
-		}
+		// Other forwarders, if configured
 	]
 }
 \endverbatim
@@ -808,14 +860,15 @@ room-<unique room ID>: {
  * \subsection vroomsub VideoRoom Subscribers
  *
  * In a VideoRoom, subscribers are NOT participants, but simply handles
- * that will be used exclusively to receive media from a specific publisher
+ * that will be used exclusively to receive media from one or more publishers
  * in the room. Since they're not participants per se, they're basically
  * streams that can be (and typically are) associated to publisher handles
  * as the ones we introduced in the previous section, whether active or not.
  * In fact, the typical use case is publishers being notified about new
  * participants becoming active in the room, and as a result new subscriber
  * sessions being created to receive their media streams; as soon as the
- * publisher goes away, the subscriber handle is removed as well. As such,
+ * publisher goes away, other participants are notified so that the related
+ * subscriber handles can be removed/updated accordingly as well. As such,
  * these subscriber sessions are dependent on feedback obtained by
  * publishers, and can't exist on their own, unless you feed them the
  * right info out of band.
@@ -831,28 +884,45 @@ room-<unique room ID>: {
 	"room" : <unique ID of the room to subscribe in>,
 	"feed" : <unique ID of the publisher to subscribe to; mandatory>,
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
-	"close_pc" : <true|false, depending on whether or not the PeerConnection should be automatically closed when the publisher leaves; true by default>,
-	"audio" : <true|false, depending on whether or not audio should be relayed; true by default>,
-	"video" : <true|false, depending on whether or not video should be relayed; true by default>,
-	"data" : <true|false, depending on whether or not data should be relayed; true by default>,
-	"offer_audio" : <true|false; whether or not audio should be negotiated; true by default if the publisher has audio>,
-	"offer_video" : <true|false; whether or not video should be negotiated; true by default if the publisher has video>,
-	"offer_data" : <true|false; whether or not datachannels should be negotiated; true by default if the publisher has datachannels>
+	"streams" : [
+		{
+			"feed_id" : <unique ID of publisher owning the stream to subscribe to>,
+			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+		},
+		// Other streams to subscribe to
+	]
 }
 \endverbatim
  *
- * As you can see, it's just a matter of specifying the ID of the publisher to
- * subscribe to and, if needed, your own \c private_id (if mandated by the room).
- * The \c offer_audio , \c offer_video and \c offer_data are
- * also particularly interesting, though, as they allow you to only subscribe
- * to a subset of the mountpoint media. By default, in fact, this \c join
- * request will result in the plugin preparing a new SDP offer trying to
- * negotiate all the media streams made available by the publisher; in case
- * the subscriber knows they don't support one of the mountpoint codecs, though
- * (e.g., the video in the mountpoint is VP8, but they only support H.264),
- * or are not interested in getting all the media (e.g., they're ok with
- * just audio and not video, or don't have enough bandwidth for both),
- * they can use those properties to shape the SDP offer to their needs.
+ * As you can see, it's just a matter of specifying the list of streams to
+ * subscribe to: in particular, you have to provide an array of objects,
+ * where each objects represents a specific stream (or group of streams)
+ * you're interested in. For each object, the \c feed_id indicating the
+ * publisher owning the stream(s) is mandatory, while the related \c mid
+ * is optional: this gives you some flexibility when subscribing, as
+ * only providing a \c feed_id will indicate you're interested in ALL
+ * the stream from that publisher, while providing a \c mid as well will
+ * indicate you're interested in a stream in particular. Since you can
+ * provide an array of streams, just specifying the \c feed_id or explicitly
+ * listing all the \c feed_id + \c mid combinations is equivalent: of
+ * course, different objects in the array can indicate different publishers,
+ * allowing you to combine streams from different sources in the same subscription.
+ *
+ * Depending on whether the subscription will refer to a
+ * single publisher (legacy approach) or to streams coming from different
+ * publishers (multistream), the list of streams may differ. The ability
+ * to single out the streams to subscribe to is particularly useful in
+ * case you don't want to, or can't, subscribe to all available media:
+ * e.g., you know a publisher is sending both audio and video, but video
+ * is in a codec you don't support or you don't have bandwidth for both;
+ * or maybe there are 10 participants in the room, but you only want video
+ * from the 3 most active speakers; and so on. The content of the \c streams
+ * array will shape what the SDP offer the plugin will send will look like,
+ * so that eventually a subscription for the specified streams will take place.
+ * Notice that, while for backwards compatibility you can still use the
+ * old \c feed, \c audio, \c video, \c data, \c offer_audio, \c offer_video and
+ * \c offer_data named properties, they're now deprecated and so you're
+ * highly encouraged to use this new drill-down \c streams list instead.
  *
  * As anticipated, if successful this request will generate a new JSEP SDP
  * offer, which will accompany an \c attached event:
@@ -861,10 +931,24 @@ room-<unique room ID>: {
 {
 	"videoroom" : "attached",
 	"room" : <room ID>,
-	"id" : <publisher ID>,
-	"display" : "<the display name of the publisher, if any>"
+	"streams" : [
+		{
+			"mindex" : <unique m-index of this stream>,
+			"mid" : "<unique mid of this stream>",
+			"type" : "<type of this stream's media (audio|video|data)>",
+			"feed_id" : <unique ID of the publisher originating this stream>,
+			"feed_mid" : "<unique mid of this publisher's stream>",
+			"feed_display" : "<display name of this publisher, if any>",
+			"send" : <true|false; whether we configured the stream to relay media>,
+			"ready" : <true|false; whether this stream is ready to start sending media (will be false at the beginning)>
+		},
+		// Other streams in the subscription, if any
+	]
 }
 \endverbatim
+ *
+ * As you can see, a summary of the streams we subscribed to will be sent back,
+ * which will be useful on the client side for both mapping and rendering purposes.
  *
  * At this stage, to complete the setup of the PeerConnection the subscriber is
  * supposed to send a JSEP SDP answer back to the plugin. This is done
@@ -887,14 +971,115 @@ room-<unique room ID>: {
 \endverbatim
  *
  * Once this is done, all that's needed is waiting for the WebRTC PeerConnection
- * establishment to succeed. As soon as that happens, the Streaming plugin
- * can start relaying media from the mountpoint the viewer subscribed to
- * to the viewer themselves.
+ * establishment to succeed. As soon as that happens, the VideoRoom plugin
+ * can start relaying media the recipient subscribed to.
  *
- * Notice that the same exact steps we just went through (\c watch request,
- * followed by JSEP offer by the plugin, followed by \c start request with
- * JSEP answer by the viewer) is what you also use when renegotiations are
- * needed, e.g., for the purpose of ICE restarts.
+ * Once a WebRTC PeerConnection has been established for a subscriber, in
+ * case you want to update a subscription you have to use the \c subscribe
+ * and \c unsubscribe methods: as the names of the requests suggest, the
+ * former allows you to add more streams to subscribe to, while the latter
+ * instructs the plugin to remove streams you're currently subscribe to.
+ * Both requests will trigger a renegotiation, if they were successful,
+ * meaning the plugin will send you a new JSEP offer you'll have to reply
+ * to with an answer: to send the answer, just use the same \c start request
+ * we already described above. Notice that renegotiations may not be
+ * triggered right away, e.g., whenever you're trying to update a session
+ * and the plugin is still in the process of renegoting a previous update
+ * for the same subscription: in that case, an update will be scheduled
+ * and a renegotiation will be triggered as soon as it's viable.
+ *
+ * The syntax of the \c subscribe mirrors the one for new subscriptions,
+ * meaning you use the same \c streams array to address the new streams
+ * you want to receive, and formatted the same way:
+ *
+\verbatim
+{
+	"request" : "subscribe",
+	"streams" : [
+		{
+			"feed_id" : <unique ID of publisher owning the new stream to subscribe to>,
+			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+		},
+		// Other new streams to subscribe to
+	]
+}
+\endverbatim
+ *
+ * This means the exact same considerations we made on \c streams before
+ * apply here as well: whatever they represent, will indicate the willingness
+ * to subscribe to the related stream. Notice that if you were already
+ * subscribed to one of the new streams indicated here, you'll subscribe
+ * to it again in a different m-line, so it's up to you to ensure you
+ * avoid duplicates (unless that's what you wanted, e.g., for testing
+ * purposes). In case the update was successful, you'll get an \c updated
+ * event, containing the updated layout of all subscriptions (pre-existing
+ * and new ones), and a new JSEP offer to renegotiate the session:
+ *
+\verbatim
+{
+	"videoroom" : "updated",
+	"room" : <room ID>,
+	"streams": [
+		{
+			"mindex" : <unique m-index of this stream>,
+			"mid" : "<unique mid of this stream>",
+			"type" : "<type of this stream's media (audio|video|data)>",
+			"feed_id" : <unique ID of the publisher originating this stream>,
+			"feed_mid" : "<unique mid of this publisher's stream>",
+			"feed_display" : "<display name of this publisher, if any>",
+			"send" : <true|false; whether we configured the stream to relay media>,
+			"ready" : <true|false; whether this stream is ready to start sending media (will be false at the beginning)>
+		},
+		// Other streams in the subscription, if any; old and new
+	]
+}
+\endverbatim
+ *
+ * As explained before, in case the message contains a JSEP offer (which may
+ * not be the case if no change occurred), then clients will need to send
+ * a new JSEP answer with a \c start request to close this renegotiation.
+ *
+ * The \c unsubscribe request works pretty much the same way, with the
+ * difference that the \c streams array you provide to specify what to
+ * unsubscribe from may look different. Specifically, the syntax looks
+ * like this:
+ *
+\verbatim
+{
+	"request" : "unsubscribe",
+	"streams" : [
+		{
+			"feed_id" : <unique ID of publisher owning the new stream to unsubscribe from; optional>,
+			"mid" : "<unique mid of the publisher stream to unsubscribe from; optional>"
+			"sub_mid" : "<unique mid of the subscriber stream to unsubscribe; optional>"
+		},
+		// Other streams to unsubscribe from
+	]
+}
+\endverbatim
+ *
+ * This means that you have different ways to specify what to unsubscribe from:
+ * if an object only specifies \c feed_id, then all the subscription streams that
+ * were receiving media from that publisher will be removed; if an object
+ * specifies \c feed_id and \c mid, then all the subscription streams that
+ * were receiving media from the publisher stream with the related mid will be
+ * removed; finally, if an object only specifies \c sub_mid instead, then
+ * only the stream in the subscription that is addressed by the related mid
+ * (subscription mid, no relation to the publishers') will be removed. As
+ * such, you have a great deal of flexibility in how to unsubscribe from
+ * media. Notice that multiple streams may be removed in case you refer
+ * to the "source" ( \c feed_id ), rather than the "sink" ( \c sub_mid ),
+ * especially in case the subscription contained duplicates or multiple
+ * streams from the same publisher.
+ *
+ * A successful \c unsubscribe will result in exactly the same \c updated
+ * event \c subscribe triggers, so the same considerations apply with
+ * respect to the potential need of a renegotiation and how to complete
+ * it with a \c start along a JSEP answer.
+ *
+ * Notice that, in case you want to trigger an ICE restart rather than
+ * updating a subscription, you'll have to use a different request, named
+ * \c configure: this will be explained in a few paragraphs.
  *
  * As a subscriber, you can temporarily pause and resume the whole media delivery
  * with a \c pause and, again, \c start request (in this case without any JSEP
@@ -939,72 +1124,113 @@ room-<unique room ID>: {
 \verbatim
 {
 	"request" : "configure",
-	"audio" : <true|false, depending on whether audio should be relayed or not; deprecated, and optional>,
-	"video" : <true|false, depending on whether video should be relayed or not; deprecated, and optional>,
-	"data" : <true|false, depending on whether datachannel messages should be relayed or not; deprecated, and optional>,
 	"mid" : <mid of the m-line to refer to for this configure request; optional>,
 	"send" : <true|false, depending on whether the mindex media should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
-	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
+	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+	"restart" : <trigger an ICE restart; optional>
 }
 \endverbatim
  *
- * As you can see, the \c audio , \c video and \c data properties can be
- * used as a media-level pause/resume functionality, whereas \c pause
+ * As you can see, the \c mid and \c send properties can be used as a media-level
+ * pause/resume functionality ("only mute/unmute this mid"), whereas \c pause
  * and \c start simply pause and resume all streams at the same time.
  * The \c substream and \c temporal properties, instead, only make sense
  * when the mountpoint is configured with video simulcasting support, and
  * as such the viewer is interested in receiving a specific substream
- * or temporal layer, rather than any other of the available ones.
+ * or temporal layer, rather than any other of the available ones: notice
+ * that for them to work you'll have to specify the \c mid as well, as the same
+ * subscription may be receiving simulcast stream from multiple publishers.
  * The \c spatial_layer and \c temporal_layer have exactly the same meaning,
  * but within the context of VP9-SVC publishers, and will have no effect
  * on subscriptions associated to regular publishers.
  *
+ * As anticipated, \c configure is also the request you use when you want
+ * to trigger an ICE restart for a subscriber: in fact, while publishers
+ * can force a restart themselves by providing the right JSEP offer, subscribers
+ * always receive an offer from Janus instead, and as such have to
+ * explicitly ask for a dedicated offer when an ICE restart is needed;
+ * in that case, just set \c restart to \c true in a \c configure request,
+ * and a new JSEP offer with ICE restart information will be sent to the
+ * client, to which the client will have to reply, as usual, via \c start
+ * along a JSEP answer. This documentation doesn't explain when or why
+ * an ICE restart is needed or appropriate: please refer to the ICE RFC
+ * or other sources of information for that.
+ *
  * Another interesting feature that subscribers can take advantage of is the
- * so-called publisher "switching". Basically, when subscribed to a specific
- * publisher and receiving media from them, you can at any time "switch"
- * to a different publisher, and as such start receiving media from that
- * other mountpoint instead. Think of it as changing channel on a TV: you
- * keep on using the same PeerConnection, the plugin simply changes the
- * source of the media transparently. Of course, while powerful and effective
- * this request has some limitations. First of all, it switches both audio
- * and video, meaning you can't just switch video and keep the audio from
- * the previous publisher, for instance; besides, the two publishers
- * must have the same media configuration, that is, use the same codecs,
- * the same payload types, etc. In fact, since the same PeerConnection is
- * used for this feature, switching to a publisher with a different
- * configuration might result in media incompatible with the PeerConnection
- * setup being relayed to the subscriber, and as such in no audio/video being
- * played. That said, a \c switch request must be formatted like this:
+ * so-called publisher "switching". Basically, when subscribed to one or more
+ * publishers and receiving media from them, you can at any time "switch"
+ * any of the subscription streams to a different publisher, and as such
+ * start receiving media on the related m-line from that publisher instead,
+ * all without doing a new \c subscribe or \c unsubscribe, and so without
+ * the need of doing any renegotiation at all; just some logic changes.
+ * Think of it as changing channel on a TV: you keep on using the same
+ * PeerConnection, the plugin simply changes the source of the media
+ * transparently. Of course, while powerful and effective this request has
+ * some limitations: in fact, the source (audio or video) that you switch
+ * to must have the same media configuration (e.g., same codec) as the source
+ * you're replacing. In fact, since the same PeerConnection is used for this
+ * feature and no renegotiation is taking place, switching to a stream with
+ * a different configuration would result in media incompatible with the
+ * PeerConnection setup being relayed to the subscriber (e.g., negotiated
+ * VP9, but new source is H.264), and as such in no audio/video being played;
+ * in that case, you'll need a \c subscribe instead, and a new m-line.
+ *
+ * That said, a \c switch request must be formatted like this:
  *
 \verbatim
 {
 	"request" : "switch",
-	"feed" : <unique ID of the new publisher to switch to; mandatory>,
-	"audio" : <true|false, depending on whether audio should be relayed or not; optional>,
-	"video" : <true|false, depending on whether video should be relayed or not; optional>,
-	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>
+	"streams" : [
+		{
+			"feed" : <unique ID of the publisher the new source is from>,
+			"mid" : "<unique mid of the source we want to switch to>",
+			"sub_mid" : "<unique mid of the stream we want to pipe the new source to>"
+		},
+		{
+			// Other updates, if any
+		}
+	]
 }
 \endverbatim
  *
- * If successful, you'll be unsubscribed from the previous publisher,
- * and subscribed to the new publisher instead. The event to confirm
- * the switch was successful will look like this:
+ * While apparently convoluted, this is actually a quite effective and powerful
+ * way of updating subscriptions without renegotiating. In fact, it allows for
+ * full or partial switches: for instance, sometimes you may want to replace all
+ * audio and video streams (e.g., switching from Bob to Alice in a "legacy"
+ * VideoRoom usage, where each PeerConnection subscription is a different
+ * publisher), or just replace a subset of them (e.g., you have a subscription
+ * with three video slots, and you change one of them depending on the loudest
+ * speaker). What to replace is dictated by the \c streams array, where each
+ * object in the array contains all the info needed for the switch to take
+ * place: in particular, you must specify which of your subscription m-lines
+ * you're going to update, via \c sub_mid , and which publisher stream should
+ * now start to feed it via \c feed and \c mid.
+ *
+ * If successful, the specified subscriptions will be updated, meaning they'll
+ * be unsubscribed from the previous publisher stream, and subscribed to the
+ * new publisher stream instead, all without a renegotiation (so no new SDP
+ * offer/answer exchange to take care of). The event to confirm the switch
+ * was successful will look like this:
  *
 \verbatim
 {
 	"videoroom" : "event",
 	"switched" : "ok",
 	"room" : <room ID>,
-	"id" : <unique ID of the new publisher>
+	"changes" : <number of successful changes (may be smaller than the size of the streams array provided in the request)>,
+	"streams" : [
+		// Current configuration of the subscription, same format as when subscribing
+		// Will contain info on all streams, not only those that have been updated
+	]
 }
 \endverbatim
  *
- * Finally, to stop the subscription to the mountpoint and tear down the
- * related PeerConnection, you can use the \c leave request. Since context
- * is implicit, no other argument is required:
+ * Finally, to close a subscription and tear down the related PeerConnection,
+ * you can use the \c leave request. Since context is implicit, no other
+ * argument is required:
  *
 \verbatim
 {
@@ -1186,14 +1412,18 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"descriptions", JANUS_JSON_ARRAY, 0},
 	{"audiocodec", JANUS_JSON_STRING, 0},
 	{"videocodec", JANUS_JSON_STRING, 0},
-	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
-	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
-	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	{"bitrate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"keyframe", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JANUS_JSON_STRING, 0},
 	{"display", JANUS_JSON_STRING, 0},
+	/* Only needed when configuring, to make a stream active/inactive */
+	{"mid", JANUS_JSON_STRING, 0},
+	{"send", JANUS_JSON_BOOL, 0},
+	/* Deprecated, use mid+send instead */
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated! */
+	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated! */
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
@@ -1251,10 +1481,6 @@ static struct janus_json_parameter publisher_parameters[] = {
 	{"display", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"descriptions", JANUS_JSON_ARRAY, 0},
-	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
-	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
-	{"data", JANUS_JSON_BOOL, 0},	/* Deprecated */
 	{"mid", JANUS_JSON_STRING, 0},
 	{"send", JANUS_JSON_BOOL, 0},
 	/* For VP8 (or H.264) simulcast */
@@ -1265,6 +1491,10 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0},
+	/* Deprecated properties, use mid+send instead */
+	{"audio", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"video", JANUS_JSON_BOOL, 0},	/* Deprecated */
+	{"data", JANUS_JSON_BOOL, 0}	/* Deprecated */
 };
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, 0},
@@ -5921,15 +6151,19 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				json_t *audiocodec = json_object_get(root, "audiocodec");
 				json_t *videocodec = json_object_get(root, "videocodec");
-				json_t *audio = json_object_get(root, "audio");
-				json_t *video = json_object_get(root, "video");
-				json_t *data = json_object_get(root, "data");
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *keyframe = json_object_get(root, "keyframe");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
 				json_t *update = json_object_get(root, "update");
+				/* Audio, video and data are deprecated properties */
+				json_t *audio = json_object_get(root, "audio");
+				json_t *video = json_object_get(root, "video");
+				json_t *data = json_object_get(root, "data");
+				/* Better to specify the 'send' property of a specific 'mid' */
+				const char *mid = json_string_value(json_object_get(root, "mid"));
+				json_t *send = json_object_get(root, "send");
 				/* A renegotiation may be taking place */
 				gboolean do_update = update ? json_is_true(update) : FALSE;
 				if(do_update && !sdp_update) {
@@ -5973,17 +6207,15 @@ static void *janus_videoroom_handler(void *data) {
 							json_string_value(videocodec), participant->room_id, participant->user_id);
 					}
 				}
-				if(audio) {
-					gboolean audio_active = json_is_true(audio);
-					if(session->started) {
-						/* FIXME This is just here for backwards compatibility: change all audio streams */
-						GList *temp = participant->streams;
-						while(temp) {
-							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-							if(ps->type != JANUS_VIDEOROOM_MEDIA_AUDIO) {
-								temp = temp->next;
-								continue;
-							}
+				/* Update the audio/video/data flags, if set (and just configuring) */
+				if(audio || video || data || (mid && send)) {
+					janus_mutex_lock(&participant->streams_mutex);
+					GList *temp = participant->streams;
+					while(temp) {
+						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+						gboolean mid_found = (mid && send && strcasecmp(ps->mid, mid));
+						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (audio || mid_found)) {
+							gboolean audio_active = mid_found ? json_is_true(send) : json_is_true(audio);
 							if(!ps->active && audio_active) {
 								/* Audio was just resumed, try resetting the RTP headers for viewers */
 								janus_mutex_lock(&ps->subscribers_mutex);
@@ -5999,21 +6231,8 @@ static void *janus_videoroom_handler(void *data) {
 							ps->active = audio_active;
 							JANUS_LOG(LOG_VERB, "Setting audio property (%s): %s (room %"SCNu64", user %"SCNu64")\n",
 								ps->mid, ps->active ? "true" : "false", participant->room_id, participant->user_id);
-							temp = temp->next;
-						}
-					}
-				}
-				if(video) {
-					gboolean video_active = json_is_true(video);
-					if(session->started) {
-						/* FIXME This is just here for backwards compatibility: change all video streams */
-						GList *temp = participant->streams;
-						while(temp) {
-							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-							if(ps->type != JANUS_VIDEOROOM_MEDIA_VIDEO) {
-								temp = temp->next;
-								continue;
-							}
+						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO && (video || mid_found)) {
+							gboolean video_active = mid_found ? json_is_true(send) : json_is_true(video);
 							if(!ps->active && video_active) {
 								/* Video was just resumed, try resetting the RTP headers for viewers */
 								janus_mutex_lock(&participant->subscribers_mutex);
@@ -6029,21 +6248,15 @@ static void *janus_videoroom_handler(void *data) {
 							ps->active = video_active;
 							JANUS_LOG(LOG_VERB, "Setting video property (%s): %s (room %"SCNu64", user %"SCNu64")\n",
 								ps->mid, ps->active ? "true" : "false", participant->room_id, participant->user_id);
-							temp = temp->next;
+						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && (data || mid_found)) {
+							gboolean data_active = mid_found ? json_is_true(send) : json_is_true(data);
+							ps->active = data_active;
+							JANUS_LOG(LOG_VERB, "Setting data property (%s): %s (room %"SCNu64", user %"SCNu64")\n",
+								ps->mid, ps->active ? "true" : "false", participant->room_id, participant->user_id);
 						}
+						temp = temp->next;
 					}
-				}
-				if(data && participant->data_mindex != -1) {
-					/* FIXME This is just here for backwards compatibility: change all video streams */
-					janus_mutex_lock(&participant->streams_mutex);
-					janus_videoroom_publisher_stream *ps = g_hash_table_lookup(participant->streams_byid, GINT_TO_POINTER(participant->data_mindex));
 					janus_mutex_unlock(&participant->streams_mutex);
-					if(ps != NULL) {
-						gboolean data_active = json_is_true(data);
-						ps->active = data_active;
-						JANUS_LOG(LOG_VERB, "Setting data property (%s): %s (room %"SCNu64", user %"SCNu64")\n",
-							ps->mid, ps->active ? "true" : "false", participant->room_id, participant->user_id);
-					}
 				}
 				if(bitrate) {
 					participant->bitrate = json_integer_value(bitrate);
@@ -6101,16 +6314,19 @@ static void *janus_videoroom_handler(void *data) {
 					char *old_display = participant->display;
 					char *new_display = g_strdup(json_string_value(display));
 					participant->display = new_display;
-					g_free(old_display);
-					json_t *display_event = json_object();
-					json_object_set_new(display_event, "videoroom", json_string("event"));
-					json_object_set_new(display_event, "id", json_integer(participant->user_id));
-					json_object_set_new(display_event, "display", json_string(participant->display));
-					if(participant->room && !participant->room->destroyed) {
-						janus_videoroom_notify_participants(participant, display_event);
+					if(old_display != NULL) {
+						/* The display name changed, notify this */
+						json_t *display_event = json_object();
+						json_object_set_new(display_event, "videoroom", json_string("event"));
+						json_object_set_new(display_event, "id", json_integer(participant->user_id));
+						json_object_set_new(display_event, "display", json_string(participant->display));
+						if(participant->room && !participant->room->destroyed) {
+							janus_videoroom_notify_participants(participant, display_event);
+						}
+						json_decref(display_event);
 					}
+					g_free(old_display);
 					janus_mutex_unlock(&participant->room->mutex);
-					json_decref(display_event);
 				}
 				/* Done */
 				event = json_object();
