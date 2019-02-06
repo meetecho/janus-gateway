@@ -1674,8 +1674,14 @@ function Janus(gatewayCallbacks) {
 								pluginHandle.onremotetrack(ev.target, mid, false);
 							} catch(e) {};
 						}
-					}
+					};
 					event.track.onmute = event.track.onended;
+					event.track.onunmute = function(ev) {
+						Janus.log("Remote track flowing again:", ev);
+						try {
+							pluginHandle.onremotetrack(ev.target, mid, true);
+						} catch(e) {};
+					};
 				}
 			};
 		}
