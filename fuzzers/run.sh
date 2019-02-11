@@ -2,7 +2,7 @@
 
 set -eu
 
-TARGET=${1-"fuzz-rtcp"}
+TARGET=${1-"rtcp_fuzzer"}
 OUT=${OUT-"$(pwd)/out"}
 SRC=$(dirname $(pwd))
 echo "Executing fuzzer $TARGET"
