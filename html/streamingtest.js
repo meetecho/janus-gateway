@@ -324,7 +324,8 @@ $(document).ready(function() {
 									dataMid = null;
 									$('#streamset').removeAttr('disabled');
 									$('#streamslist').removeAttr('disabled');
-									$('#watch').html("Watch or Listen").removeAttr('disabled').click(startStream);
+									$('#watch').html("Watch or Listen").removeAttr('disabled')
+										.unbind('click').click(startStream);
 								}
 							});
 					},
@@ -391,7 +392,7 @@ function updateStreamsList() {
 				return false;
 
 			});
-			$('#watch').removeAttr('disabled').click(startStream);
+			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}
 	}});
 }
