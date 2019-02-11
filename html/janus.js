@@ -449,7 +449,7 @@ function Janus(gatewayCallbacks) {
 	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
 		withCredentials = gatewayCallbacks.withCredentials === true;
 	// Optional max events
-	var maxev = null;
+	var maxev = 10;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
 		maxev = gatewayCallbacks.max_poll_events;
 	if(maxev < 1)
@@ -538,7 +538,7 @@ function Janus(gatewayCallbacks) {
 	function handleEvent(json, skipTimeout) {
 		retries = 0;
 		if(!websockets && sessionId !== undefined && sessionId !== null && skipTimeout !== true)
-			setTimeout(eventHandler, 200);
+			eventHandler();
 		if(!websockets && Janus.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {
