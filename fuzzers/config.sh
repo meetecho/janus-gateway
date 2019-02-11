@@ -1,12 +1,14 @@
 #!/bin/bash
 
+SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
+
 # Default environment
 DEFAULT_ENV="local"
 
 # Working paths
-DEFAULT_SRC="$(dirname $(dirname $(pwd)))"
-DEFAULT_OUT="$(pwd)/out"
-DEFAULT_WORK="$(pwd)"
+DEFAULT_SRC="$(dirname $(dirname $SCRIPTPATH))"
+DEFAULT_OUT="$SCRIPTPATH/out"
+DEFAULT_WORK="$SCRIPTPATH"
 
 # CFLAGS and LDFLAGS for local fuzzing
 DEFAULT_CC="clang"

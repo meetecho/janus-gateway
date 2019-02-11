@@ -1,7 +1,7 @@
 #!/bin/bash -eu
 
 # Load script configuration
-source config.sh
+source $(dirname $0)/config.sh
 
 # Set fuzzing environment
 # Fallback to local
