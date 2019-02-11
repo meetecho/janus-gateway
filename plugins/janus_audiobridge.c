@@ -28,13 +28,13 @@
  * \verbatim
 room-<unique room ID>: {
 	description = This is my awesome room
-	is_private = yes|no (private rooms don't appear when you do a 'list' request)
+	is_private = true|false (private rooms don't appear when you do a 'list' request)
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
 	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
-	audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
+	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new joins, default=yes)
-	audiolevel_event = yes|no (whether to emit event to other users or not, default=no)
+	audiolevel_event = true|false (whether to emit event to other users or not, default=no)
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	record = true|false (whether this room should be recorded, default=false)
@@ -112,7 +112,7 @@ room-<unique room ID>: {
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
 	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default true>,
-	"audiolevel_event" : yes|no (whether to emit event to other users or not),
+	"audiolevel_event" : true|false (whether to emit event to other users or not),
 	"audio_active_packets" : 100 (number of packets with audio level, default=100, 2 seconds),
 	"audio_level_average" : 25 (average value of audio level, 127=muted, 0='too loud', default=25),
 	"record" : <true|false, whether to record the room or not, default false>,

@@ -1,7 +1,11 @@
 general: {
-	# Specify which local IP address to use. If not set it will be automatically
-	# guessed from the system
+	# Specify which local IP address to bind to for SIP stack and media.
+	# If not set it will be automatically guessed from the system
 	#local_ip = "1.2.3.4"
+
+	# Specify which (public) IP address to advertise in the SDP.
+	# If not set, the value above or anything autodetected will be used
+	#sdp_ip = "1.2.3.4"
 
 	# User-Agent string to be used
 	# user_agent = "Cool WebRTC Gateway"

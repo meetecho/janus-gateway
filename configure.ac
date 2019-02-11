@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.6.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.6.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -52,7 +52,7 @@ CFLAGS="$CFLAGS \
 	-Wswitch-default \
 	-Wunused \
 	-Wwrite-strings"
-	
+
 case "$CC" in
 clang*)
 	# Specific clang flags
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=61
+JANUS_VERSION=62
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.6.1"
+JANUS_VERSION_STRING="0.6.2"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -449,17 +449,17 @@ AM_CONDITIONAL([ENABLE_SCTP], [test "x$enable_data_channels" = "xyes"])
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
+                    AC_DEFINE(HAVE_LIBCURL)
+                    JANUS_MANUAL_LIBS+=" -lcurl"
                     AS_IF(
                       [test "x$enable_turn_rest_api" != "xno"],
                       [
-                        AC_DEFINE(HAVE_LIBCURL)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        AC_DEFINE(HAVE_TURNRESTAPI)
                         enable_turn_rest_api=yes
                       ])
                     AS_IF([test "x$enable_sample_event_handler" != "xno"],
                       [
                         AC_DEFINE(HAVE_SAMPLEEVH)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_sample_event_handler=yes
                       ])
                   ],
