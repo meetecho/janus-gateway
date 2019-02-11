@@ -4727,9 +4727,9 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->data = FALSE;	/* We'll deal with this later */
 				publisher->acodec = JANUS_AUDIOCODEC_NONE;	/* We'll deal with this later */
 				publisher->vcodec = JANUS_VIDEOCODEC_NONE;	/* We'll deal with this later */
-				publisher->audio_active = FALSE;
-				publisher->video_active = FALSE;
-				publisher->data_active = FALSE;
+				publisher->audio_active = TRUE;
+				publisher->video_active = TRUE;
+				publisher->data_active = TRUE;
 				publisher->recording_active = FALSE;
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
