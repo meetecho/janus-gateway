@@ -254,6 +254,7 @@ multistream-test: {
 			"media" : [
 				{
 					"mid" : "<unique mid of this stream>",
+					"label" : "<unique text label of this stream>",
 					"type" : "<audio|video|data">,
 					"age_ms" : <how much time passed since we last received media for this stream; optional>,
 				},
@@ -307,6 +308,7 @@ multistream-test: {
 				"mid" : "<unique mid of this stream>",
 				"mindex" : "<unique mindex of this stream>",
 				"type" : "<audio|video|data">,
+				"label" : "<unique text label of this stream>",
 				"age_ms" : <how much time passed since we last received media for this stream; optional>,
 				"pt" : <payload type, only present if RTP and configured>,
 				"rtpmap" : "<SDP rtpmap value, only present if RTP and configured>",
@@ -2444,6 +2446,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 					json_object_set_new(info, "mid", json_string(stream->mid));
 					json_object_set_new(info, "type", json_string(janus_streaming_media_str(stream->type)));
+					json_object_set_new(info, "label", json_string(stream->label));
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
 						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received) / 1000));
 					json_array_append_new(media, info);
@@ -5970,8 +5973,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			char *dash = NULL;
 			vsport = strtol(server_ports+strlen(";server_port="), &dash, 10);
 			vsport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-			JANUS_LOG(LOG_VERB, "  -- RTP port (video): %"SCNu16"\n", vsport);
-			JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %"SCNu16"\n", vsport_rtcp);
+			JANUS_LOG(LOG_VERB, "  -- RTP port (video): %d\n", vsport);
+			JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %d\n", vsport_rtcp);
 		}
 	}
 
@@ -6033,8 +6036,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			char *dash = NULL;
 			asport = strtol(server_ports+strlen(";server_port="), &dash, 10);
 			asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-			JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %"SCNu16"\n", asport);
-			JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %"SCNu16"\n", asport_rtcp);
+			JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", asport);
+			JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", asport_rtcp);
 		}
 	}
 
@@ -6152,11 +6155,11 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	while(temp) {
 		janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 		if(stream->remote_port > 0 && stream->fd[0] >= 0) {
-			JANUS_LOG(LOG_VERB, "RTSP %s latching: %s:%"SCNu16"\n",
+			JANUS_LOG(LOG_VERB, "RTSP %s latching: %s:%d\n",
 				janus_streaming_media_str(stream->type), source->rtsp_ahost, stream->remote_port);
 			janus_streaming_rtsp_latch(stream->fd[0], source->rtsp_ahost, stream->remote_port, &remote);
 			if(stream->remote_rtcp_port > 0 && stream->rtcp_fd >= 0) {
-				JANUS_LOG(LOG_VERB, "  -- RTCP: %s:%"SCNu16"\n", source->rtsp_ahost, stream->remote_rtcp_port);
+				JANUS_LOG(LOG_VERB, "  -- RTCP: %s:%d\n", source->rtsp_ahost, stream->remote_rtcp_port);
 				janus_streaming_rtsp_latch(stream->rtcp_fd, source->rtsp_ahost,
 					stream->remote_rtcp_port, &stream->rtcp_addr);
 			}
