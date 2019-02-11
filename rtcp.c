@@ -22,6 +22,13 @@
 #include "rtcp.h"
 #include "utils.h"
 
+gboolean janus_is_rtcp(char *buf, guint len) {
+	if (len < 8)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type >= 64) && (header->type < 96));
+}
+
 int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len) {
 	return janus_rtcp_fix_ssrc(ctx, packet, len, 0, 0, 0);
 }
@@ -648,9 +655,10 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 		ctx->lost = rtp_expected - ctx->received;
 	ctx->expected = rtp_expected;
 
-	uint64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;
-	uint64_t transit = arrival - ntohl(rtp->timestamp);
-	uint64_t d = abs(transit - ctx->transit);
+	int64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;
+	int64_t transit = arrival - ntohl(rtp->timestamp);
+	int64_t d = transit - ctx->transit;
+	if (d < 0) d = -d;
 	ctx->transit = transit;
 	ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
 

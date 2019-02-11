@@ -5,11 +5,11 @@
  * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTP_H
 #define _JANUS_RTP_H
 
@@ -81,6 +81,11 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
 /*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
 #define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+
+/*! \brief Helper method to demultiplex RTP from other protocols
+ * @param[in] buf Buffer to inspect
+ * @param[in] len Length of the buffer to inspect */
+gboolean janus_is_rtp(char *buf, guint len);
 
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data

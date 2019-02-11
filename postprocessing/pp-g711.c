@@ -169,7 +169,7 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			int i=0;
 			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
 				/* FIXME We should actually also look at the timestamp differences */
-				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%d, index=%d)\n",
 					tmp->prev->seq+i+1, i+1);
 				/* Add silence */
 				memset(samples, 0, num_samples*2);
