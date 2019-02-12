@@ -751,6 +751,8 @@ function subscribeTo(sources) {
 					feed.spinner.stop();
 					feed.spinner = null;
 				}
+				if($('#remotevideo' + slot + '-' + mid).length > 0)
+					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
@@ -778,17 +780,20 @@ function subscribeTo(sources) {
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#videoremote' + slot).append(
+						'<span class="label label-primary hide" id="curres'+slot+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="label label-info hide" id="curbitrate'+slot+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 					Janus.attachMediaStream($('#remotevideo' + slot + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
-					if(!bitrateTimer) {
+					if(!bitrateTimer[slot]) {
 						$('#curbitrate' + slot).removeClass('hide').show();
-						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+						bitrateTimer[slot] = setInterval(function() {
 							// Display updated bitrate, if supported
-							var bitrate = remoteFeed.getBitrate();
+							var bitrate = remoteFeed.getBitrate(mid);
 							$('#curbitrate' + slot).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#remotevideo" + slot).get(0).videoWidth;
-							var height = $("#remotevideo" + slot).get(0).videoHeight;
+							var width = $("#videoremote" + slot + ' video').get(0).videoWidth;
+							var height = $("#videoremote" + slot + ' video').get(0).videoHeight;
 							if(width > 0 && height > 0)
 								$('#curres' + slot).removeClass('hide').text(width+'x'+height).show();
 						}, 1000);

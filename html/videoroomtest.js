@@ -685,6 +685,8 @@ function newRemoteFeed(id, display, streams) {
 					remoteFeed.spinner.stop();
 					remoteFeed.spinner = null;
 				}
+				if($('#remotevideo' + remoteFeed.rfindex + '-' + mid).length > 0)
+					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
@@ -712,17 +714,20 @@ function newRemoteFeed(id, display, streams) {
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#videoremote'+remoteFeed.rfindex).append(
+						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
-					if(!bitrateTimer) {
+					if(!bitrateTimer[remoteFeed.rfindex]) {
 						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate();
 							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+							var width = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoWidth;
+							var height = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoHeight;
 							if(width > 0 && height > 0)
 								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
 						}, 1000);
