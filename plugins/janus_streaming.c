@@ -990,7 +990,6 @@ typedef struct janus_streaming_rtp_source {
 	gint64 last_received_audio;
 	gint64 last_received_video;
 	gint64 last_received_data;
-	uint32_t audio_ssrc;		/* Only needed for fixing outgoing RTCP packets */
 	uint32_t video_ssrc;		/* Only needed for fixing outgoing RTCP packets */
 	volatile gint need_pli;		/* Whether we need to send a PLI later */
 	volatile gint sending_pli;	/* Whether we're currently sending a PLI */
@@ -5283,12 +5282,6 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				ka_timeout = temp_timeout;
 		}
 		/* Get the RTP server port, which we'll need for the latching packet */
-		const char *assrc = strstr(curldata->buffer, ";ssrc=");
-		if(assrc != NULL) {
-			uint32_t ssrc = strtol(assrc+strlen(";ssrc="), NULL, 16);
-			JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
-			source->audio_ssrc = ssrc;
-		}
 		const char *server_ports = strstr(curldata->buffer, ";server_port=");
 		if(server_ports != NULL) {
 			char *dash = NULL;
@@ -6105,7 +6098,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.is_keyframe = FALSE;
 					/* Do we have a new stream? */
 					if(ssrc != a_last_ssrc) {
-						source->audio_ssrc = a_last_ssrc = ssrc;
+						a_last_ssrc = ssrc;
 						JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%"SCNu32")\n", name, a_last_ssrc);
 					}
 					packet.data->type = mountpoint->codecs.audio_pt;
