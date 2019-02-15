@@ -55,7 +55,7 @@ room-<unique room ID>: {
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
 	require_pvtid = true|false (whether subscriptions are required to provide a valid
-				 a valid private_id to associate with a publisher, default=no)
+				 a valid private_id to associate with a publisher, default=false)
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
 	bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -64,18 +64,18 @@ room-<unique room ID>: {
 				can be a comma separated list in order of preference, e.g., opus,pcmu)
 	videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8
 				can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
-	video_svc = true|false (whether SVC support must be enabled; works only for VP9, default=no)
+	video_svc = true|false (whether SVC support must be enabled; works only for VP9, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
-		negotiated/used or not for new publishers, default=yes)
+		negotiated/used or not for new publishers, default=true)
 	audiolevel_event = true|false (whether to emit event to other users or not)
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	videoorient_ext = true|false (whether the video-orientation RTP extension must be
-		negotiated/used or not for new publishers, default=yes)
+		negotiated/used or not for new publishers, default=true)
 	playoutdelay_ext = true|false (whether the playout-delay RTP extension must be
-		negotiated/used or not for new publishers, default=yes)
+		negotiated/used or not for new publishers, default=true)
 	transport_wide_cc_ext = true|false (whether the transport wide CC RTP extension must be
-		negotiated/used or not for new publishers, default=no)
+		negotiated/used or not for new publishers, default=false)
 	record = true|false (whether this room should be recorded, default=false)
 	rec_dir = <folder where recordings should be stored, when enabled>
 	notify_joining = true|false (optional, whether to notify all participants when a new
@@ -133,7 +133,7 @@ room-<unique room ID>: {
 {
 	"request" : "create",
 	"room" : <unique numeric ID, optional, chosen by plugin if missing>,
-	"permanent" : <true|false, whether the room should be saved in the config file, default false>,
+	"permanent" : <true|false, whether the room should be saved in the config file, default=false>,
 	"description" : "<pretty name of the room, optional>",
 	"secret" : "<password required to edit/destroy the room, optional>",
 	"pin" : "<password required to join the room, optional>",
@@ -200,7 +200,7 @@ room-<unique room ID>: {
 	"new_bitrate" : <new bitrate cap to force on all publishers (except those with custom overrides)>,
 	"new_fir_freq" : <new period for regular PLI keyframe requests to publishers>,
 	"new_publishers" : <new cap on the number of concurrent active WebRTC publishers>,
-	"permanent" : <true|false, whether the room should be also removed from the config file, default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
  *
@@ -222,7 +222,7 @@ room-<unique room ID>: {
 	"request" : "destroy",
 	"room" : <unique numeric ID of the room to destroy>,
 	"secret" : "<room secret, mandatory if configured>",
-	"permanent" : <true|false, whether the room should be also removed from the config file, default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
  *
@@ -4727,9 +4727,9 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->data = FALSE;	/* We'll deal with this later */
 				publisher->acodec = JANUS_AUDIOCODEC_NONE;	/* We'll deal with this later */
 				publisher->vcodec = JANUS_VIDEOCODEC_NONE;	/* We'll deal with this later */
-				publisher->audio_active = FALSE;
-				publisher->video_active = FALSE;
-				publisher->data_active = FALSE;
+				publisher->audio_active = TRUE;
+				publisher->video_active = TRUE;
+				publisher->data_active = TRUE;
 				publisher->recording_active = FALSE;
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;

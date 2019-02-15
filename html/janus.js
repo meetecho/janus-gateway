@@ -340,20 +340,38 @@ Janus.init = function(options) {
 		Janus.safariVp8 = false;
 		if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
 				Janus.webRTCAdapter.browserDetails.version >= 605) {
-			// We do it in a very ugly way, as there's no alternative...
-			// We create a PeerConnection to see if VP8 is in an offer
-			var testpc = new RTCPeerConnection({}, {});
-			testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
-				Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+			// Let's see if RTCRtpSender.getCapabilities() is there
+			if(RTCRtpSender && RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("video") &&
+					RTCRtpSender.getCapabilities("video").codecs && RTCRtpSender.getCapabilities("video").codecs.length) {
+				for(var i in RTCRtpSender.getCapabilities("video").codecs) {
+					var codec = RTCRtpSender.getCapabilities("video").codecs[i];
+					if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp8") {
+						Janus.safariVp8 = true;
+						break;
+					}
+				}
 				if(Janus.safariVp8) {
 					Janus.log("This version of Safari supports VP8");
 				} else {
 					Janus.warn("This version of Safari does NOT support VP8: if you're using a Technology Preview, " +
 						"try enabling the 'WebRTC VP8 codec' setting in the 'Experimental Features' Develop menu");
 				}
-				testpc.close();
-				testpc = null;
-			});
+			} else {
+				// We do it in a very ugly way, as there's no alternative...
+				// We create a PeerConnection to see if VP8 is in an offer
+				var testpc = new RTCPeerConnection({}, {});
+				testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
+					Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
+					if(Janus.safariVp8) {
+						Janus.log("This version of Safari supports VP8");
+					} else {
+						Janus.warn("This version of Safari does NOT support VP8: if you're using a Technology Preview, " +
+							"try enabling the 'WebRTC VP8 codec' setting in the 'Experimental Features' Develop menu");
+					}
+					testpc.close();
+					testpc = null;
+				});
+			}
 		}
 		Janus.initDone = true;
 		options.callback();
@@ -431,7 +449,7 @@ function Janus(gatewayCallbacks) {
 	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
 		withCredentials = gatewayCallbacks.withCredentials === true;
 	// Optional max events
-	var maxev = null;
+	var maxev = 10;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
 		maxev = gatewayCallbacks.max_poll_events;
 	if(maxev < 1)
@@ -520,7 +538,7 @@ function Janus(gatewayCallbacks) {
 	function handleEvent(json, skipTimeout) {
 		retries = 0;
 		if(!websockets && sessionId !== undefined && sessionId !== null && skipTimeout !== true)
-			setTimeout(eventHandler, 200);
+			eventHandler();
 		if(!websockets && Janus.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {

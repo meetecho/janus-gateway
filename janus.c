@@ -857,7 +857,6 @@ int janus_process_incoming_request(janus_request *request) {
 			session_id = json_integer_value(id);
 			if(session_id > 0 && (session = janus_session_find(session_id)) != NULL) {
 				/* Session ID already taken */
-				janus_refcount_decrease(&session->ref);
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_CONFLICT, "Session ID already in use");
 				goto jsondone;
 			}
@@ -2791,8 +2790,17 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
 	json_object_set_new(plugin_data, "data", message);
 	json_object_set_new(event, "plugindata", plugin_data);
-	if(merged_jsep != NULL)
+	if(merged_jsep != NULL) {
 		json_object_set_new(event, "jsep", merged_jsep);
+		/* In case event handlers are enabled, push the local SDP to all handlers */
+		if(janus_events_is_enabled()) {
+			const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
+			const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
+			/* Notify event handlers as well */
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
+				session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", merged_sdp_type, merged_sdp);
+		}
+	}
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session, event);
@@ -2801,14 +2809,6 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			&& janus_ice_is_full_trickle_enabled()) {
 		/* We're restarting ICE, send our trickle candidates again */
 		janus_ice_resend_trickles(ice_handle);
-	}
-
-	if(jsep != NULL && janus_events_is_enabled()) {
-		const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
-		const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
-		/* Notify event handlers as well */
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", merged_sdp_type, merged_sdp);
 	}
 
 	janus_refcount_decrease(&plugin_session->ref);

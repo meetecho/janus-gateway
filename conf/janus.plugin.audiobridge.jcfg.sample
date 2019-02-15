@@ -1,12 +1,12 @@
 # room-<unique room ID>: {
 # description = This is my awesome room
-# is_private = true|false (whether this room should be in the public list, default=yes)
+# is_private = true|false (whether this room should be in the public list, default=true)
 # secret = <optional password needed for manipulating (e.g. destroying) the room>
 # pin = <optional password needed for joining the room>
 # sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
-#		be negotiated/used or not for new joins, default=yes)
-# audiolevel_event = true|false (whether to emit event to other users or not, default=no)
+#		be negotiated/used or not for new joins, default=true)
+# audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 # audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 # audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 # record = true|false (whether this room should be recorded, default=false)
@@ -30,7 +30,7 @@ general: {
 	#admin_key = "supersecret"		# If set, rooms can be created via API only
 									# if this key is provided in the request
 	#events = false					# Whether events should be sent to event
-									# handlers (default is yes)
+									# handlers (default=true)
 }
 
 room-1234: {
