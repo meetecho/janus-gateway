@@ -1734,8 +1734,8 @@ playdone:
 					gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 				}
 			}
-			/* Stop the recording/playout */
-			janus_recordplay_hangup_media(session->handle);
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			gateway->close_pc(session->handle);
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;
