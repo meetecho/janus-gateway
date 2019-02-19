@@ -26,7 +26,7 @@
 Janus.sessions = {};
 
 Janus.isExtensionEnabled = function() {
-	if(navigator.getDisplayMedia) {
+	if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
 		// No need for the extension, getDisplayMedia is supported
 		return true;
 	}
@@ -2060,11 +2060,11 @@ function Janus(gatewayCallbacks) {
 					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
 					}
-					if(navigator.getDisplayMedia) {
+					if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						navigator.getDisplayMedia({ video: true })
+						navigator.mediaDevices.getDisplayMedia({ video: true })
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media) && !media.keepAudio) {
