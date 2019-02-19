@@ -2240,7 +2240,7 @@ static void *janus_nosip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
 					janus_rtp_header_update(header, &session->media.context, video,
-						(video ? (vstep ? vstep : 4500) : (astep ? astep : 960)));
+						(video ? (vstep ? vstep : VIDEO_STEP_TS) : (astep ? astep : AUDIO_STEP_TS)));
 					if(video) {
 						if(vts == 0) {
 							vts = timestamp;

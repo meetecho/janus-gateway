@@ -28,6 +28,9 @@
 
 #define RTP_HEADER_SIZE	12
 
+#define VIDEO_STEP_TS	4500
+#define AUDIO_STEP_TS	960
+
 /*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
 typedef struct rtp_header
 {

@@ -2281,7 +2281,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		return;
 	}
 	/* Fix sequence number and timestamp (publisher switching may be involved) */
-	janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, packet->is_video ? 4500 : 960);
+	janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, packet->is_video ? VIDEO_STEP_TS: AUDIO_STEP_TS);
 	/* Send the packet */
 	if(janus_core != NULL)
 		janus_core->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);

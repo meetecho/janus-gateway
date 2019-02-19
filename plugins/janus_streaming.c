@@ -6570,7 +6570,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
 					packet->spatial_layer, packet->temporal_layer);
 				/* Fix sequence number and timestamp (video source switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->context, TRUE, 4500);
+				janus_rtp_header_update(packet->data, &session->context, TRUE, VIDEO_STEP_TS);
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 1;
 				}

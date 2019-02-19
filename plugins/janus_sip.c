@@ -4573,7 +4573,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
-					janus_rtp_header_update(header, &session->media.context, FALSE, astep ? astep : 960);
+					janus_rtp_header_update(header, &session->media.context, FALSE, astep ? astep : AUDIO_STEP_TS);
 					if(ats == 0) {
 						ats = timestamp;
 					} else if(astep == 0) {
@@ -4637,7 +4637,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					janus_rtp_header_update(header, &session->media.context, TRUE, vstep ? vstep : 4500);
+					janus_rtp_header_update(header, &session->media.context, TRUE, vstep ? vstep : VIDEO_STEP_TS);
 					guint32 timestamp = ntohl(header->timestamp);
 					if(vts == 0) {
 						vts = timestamp;

@@ -85,7 +85,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			int i=0;
 			for(i=0; i<silence_count; i++) {
 				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
-				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
+				op->granulepos = AUDIO_STEP_TS*(pos); /* FIXME: get this from the toc byte */
 				ogg_stream_packetin(stream, op);
 				ogg_write();
 			}
@@ -127,7 +127,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		pos = (tmp->ts - list->ts) / 48 / 20 + 1;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
-		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
+		op->granulepos = AUDIO_STEP_TS*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
 		g_free(op);
 		ogg_write();

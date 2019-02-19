@@ -593,8 +593,8 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	}
 	ogg_packet *op = op_from_pkt(payload, plen);
-	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
-	op->granulepos = 960*(seq-session->seq+1); // FIXME: get this from the toc byte
+	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, AUDIO_STEP_TS*(seq-session->seq+1));
+	op->granulepos = AUDIO_STEP_TS*(seq-session->seq+1); // FIXME: get this from the toc byte
 	ogg_stream_packetin(session->stream, op);
 	g_free(op);
 	ogg_write(session);
