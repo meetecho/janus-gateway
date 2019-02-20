@@ -3283,8 +3283,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				janus_config_add(config, c, janus_config_item_create("filename", source->filename));
 				janus_config_add(config, c, janus_config_item_create("audio", "yes"));
 			} else if(!strcasecmp(type_text, "rtsp")) {
-#ifdef HAVE_LIBCURL
 				janus_streaming_rtp_source *source = mp->source;
+#ifdef HAVE_LIBCURL
 				if(source->rtsp_url)
 					janus_config_add(config, c, janus_config_item_create("url", source->rtsp_url));
 				if(source->rtsp_username)
