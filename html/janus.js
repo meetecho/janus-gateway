@@ -1551,9 +1551,9 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 						if(audioTransceiver && audioTransceiver.sender) {
-							audioTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
+							audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
 						} else {
-							config.pc.addTrack(stream.getVideoTracks()[0], stream);
+							config.pc.addTrack(stream.getAudioTracks()[0], stream);
 						}
 					} else {
 						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
