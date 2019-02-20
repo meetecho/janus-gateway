@@ -45,6 +45,9 @@ Makefile.in
 /events/*.la
 /events/.libs
 /postprocessing/*.o
+/fuzzers/*.a
+/fuzzers/*.o
+/fuzzers/out
 
 /conf/janus.cfg.sample
 /conf/janus.plugin.duktape.cfg.sample
