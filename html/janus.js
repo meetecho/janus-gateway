@@ -1604,7 +1604,10 @@ function Janus(gatewayCallbacks) {
 		// If we still need to create a PeerConnection, let's do that
 		if(!config.pc) {
 			var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
-			//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
+			if(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version < 72) {
+				// For Chrome versions before 72, we force a plan-b semantic
+				pc_config["sdpSemantics"] = "plan-b";
+			}
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
 			};
