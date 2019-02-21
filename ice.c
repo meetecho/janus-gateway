@@ -3827,10 +3827,6 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				rr->header.rc = 0;
 				rr->header.length = htons((rrlen/4)-1);
 				janus_ice_stream *stream = handle->stream;
-				if(stream && stream->video_rtcp_ctx[0] && stream->video_rtcp_ctx[0]->rtp_recvd) {
-					rr->header.rc = 1;
-					janus_rtcp_report_block(stream->video_rtcp_ctx[0], &rr->rb[0]);
-				}
 				/* Append REMB */
 				memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
 				/* If we're simulcasting, set the extra SSRCs (the first one will be set by janus_rtcp_fix_ssrc) */
