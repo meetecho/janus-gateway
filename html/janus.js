@@ -1606,7 +1606,7 @@ function Janus(gatewayCallbacks) {
 			var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
 			if(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version < 72) {
 				// For Chrome versions before 72, we force a plan-b semantic
-				pc_config["sdpSemantics"] = "plan-b";
+				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
