@@ -125,6 +125,12 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
+ * @param[in] timer The new period value, in milliseconds */
+void janus_set_twcc_period(uint period);
+/*! \brief Method to get the current TWCC period (see above)
+ * @returns The current TWCC period */
+uint janus_get_twcc_period(void);
 /*! \brief Method to enable or disable the RFC4588 support negotiation
  * @param[in] enabled The new timer value, in seconds */
 void janus_set_rfc4588_enabled(gboolean enabled);
@@ -269,8 +275,8 @@ struct janus_ice_handle {
 	GMainLoop *mainloop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
-	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
-	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */

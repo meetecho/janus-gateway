@@ -255,6 +255,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -3532,6 +3533,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add(config, config_media, janus_config_item_create("no_media_timer", nmt));
 	}
+	if(args_info.twcc_period_given) {
+		char tp[20];
+		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
+		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
+	}
 	if(args_info.rfc_4588_given) {
 		janus_config_add(config, config_media, janus_config_item_create("rfc_4588", "yes"));
 	}
@@ -3871,6 +3877,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
 		} else {
 			janus_set_no_media_timer(nmt);
+		}
+	}
+	/* TWCC period */
+	item = janus_config_get(config, config_media, janus_config_type_item, "twcc_period");
+	if(item && item->value) {
+		int tp = atoi(item->value);
+		if(tp <= 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring twcc_period value as it's not a positive integer\n");
+		} else {
+			janus_set_twcc_period(tp);
 		}
 	}
 	/* RFC4588 support */
