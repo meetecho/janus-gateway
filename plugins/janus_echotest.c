@@ -645,7 +645,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int mindex, gboo
 			}
 			return;
 		}
-		gateway->relay_rtcp(handle, -1, video, buf, len);
+		gateway->relay_rtcp(handle, mindex, video, buf, len);
 	}
 }
 
