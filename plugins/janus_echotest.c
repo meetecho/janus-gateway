@@ -1024,11 +1024,12 @@ static void *janus_echotest_handler(void *data) {
 			/* Check if we need to negotiate the rtp-stream-id extension */
 			session->rtpmapid_extmap_id = -1;
 			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;
+			gboolean opus_fec = FALSE;
 			GList *temp = offer->m_lines;
 			while(temp) {
 				/* Which media are available? */
 				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-				if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+				if((m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) && m->port > 0) {
 					/* Are the extmaps we care about there? */
 					GList *ma = m->attributes;
 					while(ma) {
@@ -1038,6 +1039,9 @@ static void *janus_echotest_handler(void *data) {
 								session->rtpmapid_extmap_id = atoi(a->value);
 								extmap_mdir = a->direction;
 								break;
+							} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") &&
+									strstr(a->value, "useinbandfec=1")) {
+								opus_fec = TRUE;
 							}
 						}
 						ma = ma->next;
@@ -1047,6 +1051,7 @@ static void *janus_echotest_handler(void *data) {
 			}
 			janus_sdp *answer = janus_sdp_generate_answer(offer,
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
+				JANUS_SDP_OA_AUDIO_FMTP, opus_fec ? "useinbandfec=1" : NULL,
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
 				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
