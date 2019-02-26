@@ -779,7 +779,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 			header->ssrc = htonl(1);
 			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
-			gateway->relay_rtp(peer->handle, -1, video, buf, len);
+			gateway->relay_rtp(peer->handle, mindex, video, buf, len);
 			/* Restore header or core statistics will be messed up */
 			header->ssrc = htonl(ssrc);
 			header->timestamp = htonl(timestamp);
@@ -789,7 +789,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 				/* Forward the packet to the peer */
-				gateway->relay_rtp(peer->handle, -1, video, buf, len);
+				gateway->relay_rtp(peer->handle, mindex, video, buf, len);
 			}
 		}
 	}
@@ -819,7 +819,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int mindex, gbo
 			gateway->relay_rtcp(peer->handle, -1, TRUE, buf, len);
 			return;
 		}
-		gateway->relay_rtcp(peer->handle, -1, video, buf, len);
+		gateway->relay_rtcp(peer->handle, mindex, video, buf, len);
 	}
 }
 
