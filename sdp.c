@@ -551,9 +551,14 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			if(medium->ssrc_rtx != 0)
 				g_hash_table_remove(pc->media_byssrc, GINT_TO_POINTER(medium->ssrc_rtx));
 			medium->ssrc_rtx = 0;
-			int tb = medium->rtcp_ctx[0]->tb;
-			memset(medium->rtcp_ctx[0], 0, sizeof(janus_rtcp_context));
-			medium->rtcp_ctx[0]->tb = tb;
+			int vindex = 0;
+			for(vindex=0; vindex<3; vindex++) {
+				if(medium->rtcp_ctx[vindex]) {
+					int tb = medium->rtcp_ctx[vindex]->tb;
+					memset(medium->rtcp_ctx[vindex], 0, sizeof(janus_rtcp_context));
+					medium->rtcp_ctx[vindex]->tb = tb;
+				}
+			}
 		} else if(m->type != JANUS_SDP_APPLICATION) {
 			if(medium->ssrc == 0) {
 				medium->ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
