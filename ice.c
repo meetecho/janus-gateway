@@ -395,6 +395,22 @@ uint janus_get_no_media_timer(void) {
 	return no_media_timer;
 }
 
+/* Period, in milliseconds, to refer to for sending TWCC feedback */
+#define DEFAULT_TWCC_PERIOD		1000
+static uint twcc_period = DEFAULT_TWCC_PERIOD;
+void janus_set_twcc_period(uint period) {
+	twcc_period = period;
+	if(twcc_period == 0) {
+		JANUS_LOG(LOG_WARN, "Invalid TWCC period, falling back to default\n");
+		twcc_period = DEFAULT_TWCC_PERIOD;
+	} else {
+		JANUS_LOG(LOG_VERB, "Setting TWCC period to %ds\n", twcc_period);
+	}
+}
+uint janus_get_twcc_period(void) {
+	return twcc_period;
+}
+
 
 /* RFC4588 support */
 static gboolean rfc4588_enabled = FALSE;
@@ -3352,7 +3368,90 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
 	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
 }
-
+static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
+	janus_ice_handle *handle = (janus_ice_handle *)user_data;
+	janus_ice_stream *stream = handle->stream;
+	if(stream && stream->do_transport_wide_cc) {
+		/* Create a transport wide feedback message */
+		size_t size = 1300;
+		char rtcpbuf[1300];
+		/* Order packet list */
+		stream->transport_wide_received_seq_nums = g_slist_sort(stream->transport_wide_received_seq_nums,
+			rtcp_transport_wide_cc_stats_comparator);
+		/* Create full stats queue */
+		GQueue *packets = g_queue_new();
+		/* For all packets */
+		GSList *it = NULL;
+		for(it = stream->transport_wide_received_seq_nums; it; it = it->next) {
+			/* Get stat */
+			janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
+			/* Get transport seq */
+			guint32 transport_seq_num = stats->transport_seq_num;
+			/* Check if it is an out of order  */
+			if(transport_seq_num < stream->transport_wide_cc_last_feedback_seq_num) {
+				/* Skip, it was already reported as lost */
+				g_free(stats);
+				continue;
+			}
+			/* If not first */
+			if(stream->transport_wide_cc_last_feedback_seq_num) {
+				/* For each lost */
+				guint32 i = 0;
+				for(i = stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
+					/* Create new stat */
+					janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
+					/* Add missing packet */
+					missing->transport_seq_num = i;
+					missing->timestamp = 0;
+					/* Add it */
+					g_queue_push_tail(packets, missing);
+				}
+			}
+			/* Store last */
+			stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
+			/* Add this one */
+			g_queue_push_tail(packets, stats);
+		}
+		/* Free and reset stats list */
+		g_slist_free(stream->transport_wide_received_seq_nums);
+		stream->transport_wide_received_seq_nums = NULL;
+		/* Create and enqueue RTCP packets */
+		guint packets_len = 0;
+		while((packets_len = g_queue_get_length(packets)) > 0) {
+			GQueue *packets_to_process;
+			/* If we have more than 400 packets to acknowledge, let's send more than one message */
+			if(packets_len > 400) {
+				/* Split the queue into two */
+				GList *new_head = g_queue_peek_nth_link(packets, 400);
+				GList *new_tail = new_head->prev;
+				new_head->prev = NULL;
+				new_tail->next = NULL;
+				packets_to_process = g_queue_new();
+				packets_to_process->head = packets->head;
+				packets_to_process->tail = new_tail;
+				packets_to_process->length = 400;
+				packets->head = new_head;
+				/* packets->tail is unchanged */
+				packets->length = packets_len - 400;
+			} else {
+				packets_to_process = packets;
+			}
+			/* Get feedback packet count and increase it for next one */
+			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
+			/* Create RTCP packet */
+			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
+				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
+			/* Enqueue it, we'll send it later */
+			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
+			if(packets_to_process != packets) {
+				g_queue_free(packets_to_process);
+			}
+		}
+		/* Free mem */
+		g_queue_free(packets);
+	}
+	return G_SOURCE_CONTINUE;
+}
 
 static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
@@ -3469,84 +3568,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			}
 		}
 	}
-	if(stream && stream->do_transport_wide_cc) {
-		/* Create a transport wide feedback message */
-		size_t size = 1300;
-		char rtcpbuf[1300];
-		/* Order packet list */
-		stream->transport_wide_received_seq_nums = g_slist_sort(stream->transport_wide_received_seq_nums,
-			rtcp_transport_wide_cc_stats_comparator);
-		/* Create full stats queue */
-		GQueue *packets = g_queue_new();
-		/* For all packets */
-		GSList *it = NULL;
-		for(it = stream->transport_wide_received_seq_nums; it; it = it->next) {
-			/* Get stat */
-			janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
-			/* Get transport seq */
-			guint32 transport_seq_num = stats->transport_seq_num;
-			/* Check if it is an out of order  */
-			if(transport_seq_num < stream->transport_wide_cc_last_feedback_seq_num) {
-				/* Skip, it was already reported as lost */
-				g_free(stats);
-				continue;
-			}
-			/* If not first */
-			if(stream->transport_wide_cc_last_feedback_seq_num) {
-				/* For each lost */
-				guint32 i = 0;
-				for(i = stream->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
-					/* Create new stat */
-					janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
-					/* Add missing packet */
-					missing->transport_seq_num = i;
-					missing->timestamp = 0;
-					/* Add it */
-					g_queue_push_tail(packets, missing);
-				}
-			}
-			/* Store last */
-			stream->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
-			/* Add this one */
-			g_queue_push_tail(packets, stats);
-		}
-		/* Free and reset stats list */
-		g_slist_free(stream->transport_wide_received_seq_nums);
-		stream->transport_wide_received_seq_nums = NULL;
-		/* Create and enqueue RTCP packets */
-		guint packets_len = 0;
-		while((packets_len = g_queue_get_length(packets)) > 0) {
-			GQueue *packets_to_process;
-			/* If we have more than 400 packets to acknowledge, let's send more than one message */
-			if(packets_len > 400) {
-				/* Split the queue into two */
-				GList *new_head = g_queue_peek_nth_link(packets, 400);
-				GList *new_tail = new_head->prev;
-				new_head->prev = NULL;
-				new_tail->next = NULL;
-				packets_to_process = g_queue_new();
-				packets_to_process->head = packets->head;
-				packets_to_process->tail = new_tail;
-				packets_to_process->length = 400;
-				packets->head = new_head;
-				/* packets->tail is unchanged */
-				packets->length = packets_len - 400;
-			} else {
-				packets_to_process = packets;
-			}
-			/* Get feedback packet count and increase it for next one */
-			guint8 feedback_packet_count = stream->transport_wide_cc_feedback_count++;
-			/* Create RTCP packet */
-			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
-			/* Enqueue it, we'll send it later */
-			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
-			if(packets_to_process != packets) {
-				g_queue_free(packets_to_process);
-			}
-		}
-		/* Free mem */
-		g_queue_free(packets);
+	if(twcc_period == 1000) {
+		/* The Transport Wide CC feedback period is 1s as well, send it here */
+		janus_ice_outgoing_transport_wide_cc_feedback(handle);
 	}
 	return G_SOURCE_CONTINUE;
 }
@@ -3725,6 +3749,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			g_source_destroy(handle->rtcp_source);
 			g_source_unref(handle->rtcp_source);
 			handle->rtcp_source = NULL;
+		}
+		if(handle->twcc_source) {
+			g_source_destroy(handle->twcc_source);
+			g_source_unref(handle->twcc_source);
+			handle->twcc_source = NULL;
 		}
 		if(handle->stats_source) {
 			g_source_destroy(handle->stats_source);
@@ -4267,6 +4296,13 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	g_source_set_priority(handle->rtcp_source, G_PRIORITY_DEFAULT);
 	g_source_set_callback(handle->rtcp_source, janus_ice_outgoing_rtcp_handle, handle, NULL);
 	g_source_attach(handle->rtcp_source, handle->mainctx);
+	if(twcc_period != 1000) {
+		/* The Transport Wide CC feedback period is different, create another source */
+		handle->twcc_source = g_timeout_source_new(twcc_period);
+		g_source_set_priority(handle->twcc_source, G_PRIORITY_DEFAULT);
+		g_source_set_callback(handle->twcc_source, janus_ice_outgoing_transport_wide_cc_feedback, handle, NULL);
+		g_source_attach(handle->twcc_source, handle->mainctx);
+	}
 	handle->last_event_stats = 0;
 	handle->last_srtp_summary = -1;
 	handle->stats_source = g_timeout_source_new_seconds(1);
