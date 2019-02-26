@@ -58,7 +58,7 @@
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
-is_private = true|false (whether this room should be in the public list, default=yes)
+is_private = true|false (whether this room should be in the public list, default=true)
 secret = <optional password needed for manipulating (e.g. destroying) the room>
 pin = <optional password needed for joining the room>
 post = <optional backend to contact via HTTP post for all incoming messages>
@@ -163,7 +163,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"new_secret" : "<new password required to edit/destroy the room; optional>",
 	"new_pin" : "<new password required to join the room; optional>",
 	"new_is_private" : <true|false, whether the room should appear in a list request; optional>,
-	"permanent" : <true|false, whether the room should be also removed from the config file; default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file; default=false>
 }
 \endverbatim
  *
@@ -186,7 +186,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"textroom" : "destroy",
 	"room" : <unique numeric ID of the room to destroy; mandatory>,
 	"secret" : "<room secret; mandatory if configured>",
-	"permanent" : <true|false, whether the room should be also removed from the config file; default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file; default=false>
 }
 \endverbatim
  *

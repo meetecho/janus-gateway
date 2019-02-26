@@ -270,6 +270,8 @@ const char *janus_sdp_oa_type_str(janus_sdp_oa_type type) {
 			return "JANUS_SDP_OA_PT";
 		case JANUS_SDP_OA_AUDIO_DTMF:
 			return "JANUS_SDP_OA_AUDIO_DTMF";
+		case JANUS_SDP_OA_FMTP:
+			return "JANUS_SDP_OA_FMTP";
 		case JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS:
 			return "JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS";
 		case JANUS_SDP_OA_VIDEO_H264_FMTP:
@@ -1010,7 +1012,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL, *mid = NULL;
+	const char *codec = NULL, *mid = NULL, *fmtp = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	while(property != JANUS_SDP_OA_DONE) {
 		property = va_arg(args, int);
@@ -1033,6 +1035,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_FMTP, fmtp,
 						JANUS_SDP_OA_AUDIO_DTMF, audio_dtmf,
 						JANUS_SDP_OA_DONE
 					) < 0) {
@@ -1047,6 +1050,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_FMTP, fmtp,
 						JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS, video_rtcpfb,
 						JANUS_SDP_OA_VIDEO_H264_FMTP, h264_fmtp,
 						JANUS_SDP_OA_DONE
@@ -1078,6 +1082,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			pt = -1;
 			codec = NULL;
 			mid = NULL;
+			fmtp = NULL;
 			mdir = JANUS_SDP_DEFAULT;
 			/* The value of JANUS_SDP_OA_MLINE MUST be the media we want to add */
 			type = va_arg(args, int);
@@ -1109,6 +1114,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1140,7 +1147,7 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL, *mid = NULL, *rtpmap = NULL;
+	const char *codec = NULL, *mid = NULL, *rtpmap = NULL, *fmtp = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1183,6 +1190,8 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1244,8 +1253,17 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 				m->attributes = g_list_append(m->attributes, a);
 			}
+			/* Check if there's a custom fmtp line to add for audio */
+			if(fmtp) {
+				janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+				m->attributes = g_list_append(m->attributes, a);
+			}
 		} else {
-			if(!strcasecmp(codec, "h264") && h264_fmtp) {
+			/* Check if there's a custom fmtp line to add for video */
+			if(fmtp) {
+				janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+				m->attributes = g_list_append(m->attributes, a);
+			} else if(!strcasecmp(codec, "h264") && h264_fmtp) {
 				/* If it's H.264 and we were asked to, add the default fmtp profile as well */
 				a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
 				m->attributes = g_list_append(m->attributes, a);
@@ -1343,7 +1361,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 	gboolean mline_enabled = TRUE;
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
-	const char *codec = NULL;
+	const char *codec = NULL, *fmtp = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1369,6 +1387,8 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
 			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1509,11 +1529,22 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 						am->attributes = g_list_append(am->attributes, a);
 					}
 				}
+				/* Check if there's a custom fmtp line to add for audio
+				 * FIXME We should actually check if it matches the offer */
+				if(fmtp) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+					am->attributes = g_list_append(am->attributes, a);
+				}
 			} else {
 				/* Add rtpmap attribute */
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
 				am->attributes = g_list_append(am->attributes, a);
-				if(!strcasecmp(codec, "h264") && h264_fmtp) {
+				/* Check if there's a custom fmtp line to add for video
+				 * FIXME We should actually check if it matches the offer */
+				if(fmtp) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+					am->attributes = g_list_append(am->attributes, a);
+				} else if(!strcasecmp(codec, "h264") && h264_fmtp) {
 					/* If it's H.264 and we were asked to, add the default fmtp profile as well */
 					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
 					am->attributes = g_list_append(am->attributes, a);

@@ -549,6 +549,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 /* SRTP stuff: we may need our own randomizer */
 #ifdef HAVE_SRTP_2
 int srtp_crypto_get_random(uint8_t *key, int len) {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
 	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
 	int rc = RAND_bytes(key, len);
@@ -556,6 +557,7 @@ int srtp_crypto_get_random(uint8_t *key, int len) {
 		/* Error generating */
 		return -1;
 	}
+#endif
 	return 0;
 }
 #endif

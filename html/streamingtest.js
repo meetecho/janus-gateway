@@ -174,7 +174,7 @@ $(document).ready(function() {
 													Janus.debug(jsep);
 													var body = { "request": "start" };
 													streaming.send({"message": body, "jsep": jsep});
-													$('#watch').html("Stop").removeAttr('disabled').click(stopStream);
+													$('#watch').html("Stop").removeAttr('disabled').unbind('click').click(stopStream);
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
@@ -349,7 +349,7 @@ function updateStreamsList() {
 	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 	streaming.send({"message": body, success: function(result) {
 		setTimeout(function() {
-			$('#update-streams').removeClass('fa-spin').click(updateStreamsList);
+			$('#update-streams').removeClass('fa-spin').unbind('click').click(updateStreamsList);
 		}, 500);
 		if(result === null || result === undefined) {
 			bootbox.alert("Got no response to our query for available streams");

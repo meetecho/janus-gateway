@@ -401,6 +401,22 @@ uint janus_get_no_media_timer(void) {
 	return no_media_timer;
 }
 
+/* Period, in milliseconds, to refer to for sending TWCC feedback */
+#define DEFAULT_TWCC_PERIOD		1000
+static uint twcc_period = DEFAULT_TWCC_PERIOD;
+void janus_set_twcc_period(uint period) {
+	twcc_period = period;
+	if(twcc_period == 0) {
+		JANUS_LOG(LOG_WARN, "Invalid TWCC period, falling back to default\n");
+		twcc_period = DEFAULT_TWCC_PERIOD;
+	} else {
+		JANUS_LOG(LOG_VERB, "Setting TWCC period to %ds\n", twcc_period);
+	}
+}
+uint janus_get_twcc_period(void) {
+	return twcc_period;
+}
+
 
 /* RFC4588 support */
 static gboolean rfc4588_enabled = FALSE;
@@ -1183,7 +1199,6 @@ gint janus_handle_destroy(void *core_session, janus_handle *handle) {
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
-		janus_refcount_decrease(&handle->ref);
 		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP);
 		if(handle->mainloop != NULL) {
@@ -1194,6 +1209,7 @@ gint janus_handle_destroy(void *core_session, janus_handle *handle) {
 				g_main_loop_quit(handle->mainloop);
 			}
 		}
+		janus_refcount_decrease(&handle->ref);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
@@ -2316,15 +2332,17 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* ... unless NACKs are disabled for this medium */
 					return;
 				}
+				guint16 new_seqn = ntohs(header->seq_number);
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && medium->video_is_keyframe) {
 					if(medium->video_is_keyframe(payload, plen)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received, resetting NACK queue\n", handle->handle_id);
-						if(medium->last_seqs[vindex])
+						if(medium->last_seqs[vindex] && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received with a highest sequence number, resetting NACK queue\n", handle->handle_id);
 							janus_seq_list_free(&medium->last_seqs[vindex]);
+						}
 					}
 				}
-				guint16 new_seqn = ntohs(header->seq_number);
 				guint16 cur_seqn;
 				int last_seqs_len = 0;
 				janus_mutex_lock(&medium->mutex);
@@ -3140,79 +3158,10 @@ void janus_handle_resend_trickles(janus_handle *handle) {
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
 	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
 }
-
-
-static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
+static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_handle *handle = (janus_handle *)user_data;
 	janus_handle_webrtc *pc = handle->pc;
-	/* Iterate on all media */
-	janus_handle_webrtc_medium *medium = NULL;
-	uint mi=0;
-	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
-		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
-		if(!medium)
-			continue;
-		if(medium->out_stats.info[0].packets > 0) {
-			/* Create a SR/SDES compound */
-			int srlen = 28;
-			int sdeslen = 24;
-			char rtcpbuf[srlen+sdeslen];
-			memset(rtcpbuf, 0, sizeof(rtcpbuf));
-			rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
-			sr->header.version = 2;
-			sr->header.type = RTCP_SR;
-			sr->header.rc = 0;
-			sr->header.length = htons((srlen/4)-1);
-			sr->ssrc = htonl(medium->ssrc);
-			struct timeval tv;
-			gettimeofday(&tv, NULL);
-			uint32_t s = tv.tv_sec + 2208988800u;
-			uint32_t u = tv.tv_usec;
-			uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-			sr->si.ntp_ts_msw = htonl(s);
-			sr->si.ntp_ts_lsw = htonl(f);
-			/* Compute an RTP timestamp coherent with the NTP one */
-			rtcp_context *rtcp_ctx = medium->rtcp_ctx[0];
-			if(rtcp_ctx == NULL) {
-				sr->si.rtp_ts = htonl(medium->last_ts);	/* FIXME */
-			} else {
-				int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-				uint32_t rtp_ts = ((ntp - medium->first_ntp_ts[0])*(rtcp_ctx->tb))/1000000 + medium->first_rtp_ts[0];
-				sr->si.rtp_ts = htonl(rtp_ts);
-			}
-			sr->si.s_packets = htonl(medium->out_stats.info[0].packets);
-			sr->si.s_octets = htonl(medium->out_stats.info[0].bytes);
-			rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-			janus_rtcp_sdes_cname((char *)sdes, sdeslen,
-				medium->type == JANUS_MEDIA_VIDEO ? "janusvideo" : "janusaudio", 10);
-			sdes->chunk.ssrc = htonl(medium->ssrc);
-			/* Enqueue it, we'll send it later */
-			janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, srlen+sdeslen, FALSE);
-		}
-		if(medium->recv) {
-			/* Create a RR too (for each SSRC, if we're simulcasting) */
-			int vindex=0;
-			for(vindex=0; vindex<3; vindex++) {
-				if(medium->rtcp_ctx[vindex] && medium->rtcp_ctx[vindex]->rtp_recvd) {
-					/* Create a RR */
-					int rrlen = 32;
-					char rtcpbuf[32];
-					memset(rtcpbuf, 0, sizeof(rtcpbuf));
-					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-					rr->header.version = 2;
-					rr->header.type = RTCP_RR;
-					rr->header.rc = 1;
-					rr->header.length = htons((rrlen/4)-1);
-					rr->ssrc = htonl(medium->ssrc);
-					janus_rtcp_report_block(medium->rtcp_ctx[vindex], &rr->rb[0]);
-					rr->rb[0].ssrc = htonl(medium->ssrc_peer[vindex]);
-					/* Enqueue it, we'll send it later */
-					janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, 32, FALSE);
-				}
-			}
-		}
-	}
-	medium = pc ? g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_VIDEO)) : NULL;
+	janus_handle_webrtc_medium *medium = pc ? g_hash_table_lookup(pc->media_bytype, GINT_TO_POINTER(JANUS_MEDIA_VIDEO)) : NULL;
 	if(pc && pc->do_transport_wide_cc && medium) {
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
@@ -3291,6 +3240,83 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		/* Free mem */
 		g_queue_free(packets);
+	}
+	return G_SOURCE_CONTINUE;
+}
+
+static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
+	janus_handle *handle = (janus_handle *)user_data;
+	janus_handle_webrtc *pc = handle->pc;
+	/* Iterate on all media */
+	janus_handle_webrtc_medium *medium = NULL;
+	uint mi=0;
+	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
+		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
+		if(!medium)
+			continue;
+		if(medium->out_stats.info[0].packets > 0) {
+			/* Create a SR/SDES compound */
+			int srlen = 28;
+			int sdeslen = 24;
+			char rtcpbuf[srlen+sdeslen];
+			memset(rtcpbuf, 0, sizeof(rtcpbuf));
+			rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
+			sr->header.version = 2;
+			sr->header.type = RTCP_SR;
+			sr->header.rc = 0;
+			sr->header.length = htons((srlen/4)-1);
+			sr->ssrc = htonl(medium->ssrc);
+			struct timeval tv;
+			gettimeofday(&tv, NULL);
+			uint32_t s = tv.tv_sec + 2208988800u;
+			uint32_t u = tv.tv_usec;
+			uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+			sr->si.ntp_ts_msw = htonl(s);
+			sr->si.ntp_ts_lsw = htonl(f);
+			/* Compute an RTP timestamp coherent with the NTP one */
+			rtcp_context *rtcp_ctx = medium->rtcp_ctx[0];
+			if(rtcp_ctx == NULL) {
+				sr->si.rtp_ts = htonl(medium->last_ts);	/* FIXME */
+			} else {
+				int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+				uint32_t rtp_ts = ((ntp - medium->first_ntp_ts[0])*(rtcp_ctx->tb))/1000000 + medium->first_rtp_ts[0];
+				sr->si.rtp_ts = htonl(rtp_ts);
+			}
+			sr->si.s_packets = htonl(medium->out_stats.info[0].packets);
+			sr->si.s_octets = htonl(medium->out_stats.info[0].bytes);
+			rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+			janus_rtcp_sdes_cname((char *)sdes, sdeslen,
+				medium->type == JANUS_MEDIA_VIDEO ? "janusvideo" : "janusaudio", 10);
+			sdes->chunk.ssrc = htonl(medium->ssrc);
+			/* Enqueue it, we'll send it later */
+			janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, srlen+sdeslen, FALSE);
+		}
+		if(medium->recv) {
+			/* Create a RR too (for each SSRC, if we're simulcasting) */
+			int vindex=0;
+			for(vindex=0; vindex<3; vindex++) {
+				if(medium->rtcp_ctx[vindex] && medium->rtcp_ctx[vindex]->rtp_recvd) {
+					/* Create a RR */
+					int rrlen = 32;
+					char rtcpbuf[32];
+					memset(rtcpbuf, 0, sizeof(rtcpbuf));
+					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+					rr->header.version = 2;
+					rr->header.type = RTCP_RR;
+					rr->header.rc = 1;
+					rr->header.length = htons((rrlen/4)-1);
+					rr->ssrc = htonl(medium->ssrc);
+					janus_rtcp_report_block(medium->rtcp_ctx[vindex], &rr->rb[0]);
+					rr->rb[0].ssrc = htonl(medium->ssrc_peer[vindex]);
+					/* Enqueue it, we'll send it later */
+					janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, 32, FALSE);
+				}
+			}
+		}
+	}
+	if(twcc_period == 1000) {
+		/* The Transport Wide CC feedback period is 1s as well, send it here */
+		janus_ice_outgoing_transport_wide_cc_feedback(handle);
 	}
 	return G_SOURCE_CONTINUE;
 }
@@ -3423,6 +3449,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 			g_source_unref(handle->rtcp_source);
 			handle->rtcp_source = NULL;
 		}
+		if(handle->twcc_source) {
+			g_source_destroy(handle->twcc_source);
+			g_source_unref(handle->twcc_source);
+			handle->twcc_source = NULL;
+		}
 		if(handle->stats_source) {
 			g_source_destroy(handle->stats_source);
 			g_source_unref(handle->stats_source);
@@ -3530,11 +3561,6 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 				rr->header.type = RTCP_RR;
 				rr->header.rc = 0;
 				rr->header.length = htons((rrlen/4)-1);
-				janus_handle_webrtc *pc = handle->pc;
-				if(pc && medium->rtcp_ctx[0] && medium->rtcp_ctx[0]->rtp_recvd) {
-					rr->header.rc = 1;
-					janus_rtcp_report_block(medium->rtcp_ctx[0], &rr->rb[0]);
-				}
 				/* Append REMB */
 				memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
 				/* If we're simulcasting, set the extra SSRCs (the first one will be set by janus_rtcp_fix_ssrc) */
@@ -3947,6 +3973,13 @@ void janus_handle_dtls_handshake_done(janus_handle *handle) {
 	g_source_set_priority(handle->rtcp_source, G_PRIORITY_DEFAULT);
 	g_source_set_callback(handle->rtcp_source, janus_ice_outgoing_rtcp_handle, handle, NULL);
 	g_source_attach(handle->rtcp_source, handle->mainctx);
+	if(twcc_period != 1000) {
+		/* The Transport Wide CC feedback period is different, create another source */
+		handle->twcc_source = g_timeout_source_new(twcc_period);
+		g_source_set_priority(handle->twcc_source, G_PRIORITY_DEFAULT);
+		g_source_set_callback(handle->twcc_source, janus_ice_outgoing_transport_wide_cc_feedback, handle, NULL);
+		g_source_attach(handle->twcc_source, handle->mainctx);
+	}
 	handle->last_event_stats = 0;
 	handle->last_srtp_summary = -1;
 	handle->stats_source = g_timeout_source_new_seconds(1);

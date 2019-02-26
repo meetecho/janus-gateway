@@ -259,6 +259,8 @@ typedef enum janus_sdp_oa_type {
 	JANUS_SDP_OA_CODEC,
 	/*! \brief When generating an offer (this is ignored for answers), use this payload type (depends on value that follows) */
 	JANUS_SDP_OA_PT,
+	/*! \brief When generating an offer or answer automatically, add this custom fmtp string */
+	JANUS_SDP_OA_FMTP,
 	/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
 	JANUS_SDP_OA_AUDIO_DTMF,
 	/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */

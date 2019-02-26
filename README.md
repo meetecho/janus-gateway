@@ -234,7 +234,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.6.1
+	janus 0.6.2
 
 	Usage: janus [OPTIONS]...
 
@@ -287,6 +287,8 @@ or on the command line:
                                   notifies you about this
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
+	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to
+                                  senders, if negotiated (default=1s)
 	-n, --server-name=name        Public name of this Janus instance
                                   (default=MyJanusInstance)
 	-s, --session-timeout=number  Session timeout value, in seconds (default=60)
