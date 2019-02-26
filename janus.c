@@ -256,6 +256,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -2800,8 +2801,17 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
 	json_object_set_new(plugin_data, "data", message);
 	json_object_set_new(event, "plugindata", plugin_data);
-	if(merged_jsep != NULL)
+	if(merged_jsep != NULL) {
 		json_object_set_new(event, "jsep", merged_jsep);
+		/* In case event handlers are enabled, push the local SDP to all handlers */
+		if(janus_events_is_enabled()) {
+			const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
+			const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
+			/* Notify event handlers as well */
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
+				session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", merged_sdp_type, merged_sdp);
+		}
+	}
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session, event);
@@ -2810,14 +2820,6 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			&& janus_ice_is_full_trickle_enabled()) {
 		/* We're restarting ICE, send our trickle candidates again */
 		janus_ice_resend_trickles(ice_handle);
-	}
-
-	if(jsep != NULL && janus_events_is_enabled()) {
-		const char *merged_sdp_type = json_string_value(json_object_get(merged_jsep, "type"));
-		const char *merged_sdp = json_string_value(json_object_get(merged_jsep, "sdp"));
-		/* Notify event handlers as well */
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-			session->session_id, ice_handle->handle_id, ice_handle->opaque_id, "local", merged_sdp_type, merged_sdp);
 	}
 
 	janus_refcount_decrease(&plugin_session->ref);
@@ -3541,6 +3543,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add(config, config_media, janus_config_item_create("no_media_timer", nmt));
 	}
+	if(args_info.twcc_period_given) {
+		char tp[20];
+		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
+		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
+	}
 	if(args_info.rfc_4588_given) {
 		janus_config_add(config, config_media, janus_config_item_create("rfc_4588", "yes"));
 	}
@@ -3880,6 +3887,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
 		} else {
 			janus_set_no_media_timer(nmt);
+		}
+	}
+	/* TWCC period */
+	item = janus_config_get(config, config_media, janus_config_type_item, "twcc_period");
+	if(item && item->value) {
+		int tp = atoi(item->value);
+		if(tp <= 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring twcc_period value as it's not a positive integer\n");
+		} else {
+			janus_set_twcc_period(tp);
 		}
 	}
 	/* RFC4588 support */

@@ -958,7 +958,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
 		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE,
 		data_legacy = TRUE;
-	const char *audio_codec = NULL, *video_codec = NULL;
+	const char *audio_codec = NULL, *video_codec = NULL, *audio_fmtp = NULL;
 	int audio_pt = 111, video_pt = 96;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
 	int property = va_arg(args, int);
@@ -983,6 +983,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			video_pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_AUDIO_FMTP) {
+			audio_fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
@@ -1031,6 +1033,11 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			int dtmf_pt = 126;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(dtmf_pt));
 			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+			m->attributes = g_list_append(m->attributes, a);
+		}
+		/* Check if there's a custom fmtp line to add for audio */
+		if(audio_fmtp) {
+			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", audio_pt, audio_fmtp);
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		offer->m_lines = g_list_append(offer->m_lines, m);
@@ -1095,7 +1102,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
 		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
-	const char *audio_codec = NULL, *video_codec = NULL;
+	const char *audio_codec = NULL, *video_codec = NULL, *audio_fmtp = NULL;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
 	int property = va_arg(args, int);
 	while(property != JANUS_SDP_OA_DONE) {
@@ -1115,6 +1122,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			video_codec = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_AUDIO_FMTP) {
+			audio_fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
@@ -1301,6 +1310,12 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 						am->attributes = g_list_append(am->attributes, a);
 					}
+				}
+				/* Check if there's a custom fmtp line to add for audio
+				 * FIXME We should actually check if it matches the offer */
+				if(audio_fmtp) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
+					am->attributes = g_list_append(am->attributes, a);
 				}
 			} else {
 				/* Add rtpmap attribute */

@@ -1,36 +1,39 @@
 # room-<unique room ID>: {
-# description = This is my awesome room
-# is_private = true|false (whether this room should be in the public list, default=yes)
-# secret = <optional password needed for manipulating (e.g. destroying) the room>
-# pin = <optional password needed for joining the room>
+# description = "This is my awesome room"
+# is_private = true|false (whether this room should be in the public list, default=true)
+# secret = "<optional password needed for manipulating (e.g. destroying) the room>"
+# pin = "<optional password needed for joining the room>"
 # sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
-#		be negotiated/used or not for new joins, default=yes)
-# audiolevel_event = true|false (whether to emit event to other users or not, default=no)
+#		be negotiated/used or not for new joins, default=true)
+# audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 # audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 # audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 # record = true|false (whether this room should be recorded, default=false)
-# record_file = /path/to/recording.wav (where to save the recording)
+# record_file = "/path/to/recording.wav" (where to save the recording)
 #
 #     The following lines are only needed if you want the mixed audio
 #     to be automatically forwarded via plain RTP to an external component
 #     (e.g., an ffmpeg script, or a gstreamer pipeline) for processing
 #     By default plain RTP is used, SRTP must be configured if needed
 # rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
-# rtp_forward_host = host address to forward RTP packets of mixed audio to
+# rtp_forward_host = "<host address to forward RTP packets of mixed audio to>"
 # rtp_forward_port = port to forward RTP packets of mixed audio to
 # rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 # rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
 # rtp_forward_srtp_suite = length of authentication tag (32 or 80)
-# rtp_forward_srtp_crypto = key to use as crypto (base64 encoded key as in SDES)
+# rtp_forward_srtp_crypto = "<key to use as crypto (base64 encoded key as in SDES)>"
 # rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
 #}
 
 general: {
 	#admin_key = "supersecret"		# If set, rooms can be created via API only
 									# if this key is provided in the request
+	#record_tmp_ext = "tmp"			# Optional temporary extension to add to filenames
+									# while recording: e.g., setting "tmp" would mean
+									# .wav --> .wav.tmp until the file is closed
 	#events = false					# Whether events should be sent to event
-									# handlers (default is yes)
+									# handlers (default=true)
 }
 
 room-1234: {

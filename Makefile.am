@@ -304,7 +304,7 @@ if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
 events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
-events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample

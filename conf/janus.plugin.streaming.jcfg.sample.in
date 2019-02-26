@@ -41,7 +41,7 @@
 # videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 # videoskew = true|false (whether the plugin should perform skew
 #		analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
-# videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=no)
+# videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=false)
 # collision = in case of collision (more than one SSRC hitting the same port), the plugin
 #		will discard incoming RTP packets with a new SSRC unless this many milliseconds
 #		passed, which would then change the current SSRC (0=disabled)
@@ -67,7 +67,7 @@
 # rtsp_user = RTSP authorization username (only if type=rtsp)
 # rtsp_pwd = RTSP authorization password (only if type=rtsp)
 # rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
-# rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
+# rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 #
 # Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
 # SDP rtpmap and fmtp attributes the remote camera or RTSP server sent.
@@ -84,7 +84,7 @@ general: {
 	#admin_key = "supersecret"		# If set, mountpoints can be created via API
 									# only if this key is provided in the request
 	#events = false					# Whether events should be sent to event
-									# handlers (default is yes)
+									# handlers (default=true)
 }
 
 gstreamer-sample: {
