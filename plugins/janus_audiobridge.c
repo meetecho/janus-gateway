@@ -796,6 +796,9 @@ static void *janus_audiobridge_mixer_thread(void *data);
 static void *janus_audiobridge_participant_thread(void *data);
 static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle);
 
+/* Extension to add while recording (e.g., "tmp" --> ".wav.tmp") */
+static char *rec_tempext = NULL;
+
 typedef struct janus_audiobridge_message {
 	janus_plugin_session *handle;
 	char *transaction;
@@ -1328,6 +1331,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *ext = janus_config_get(config, config_general, janus_config_type_item, "record_tmp_ext");
+		if(ext != NULL && ext->value != NULL)
+			rec_tempext = g_strdup(ext->value);
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
@@ -1517,6 +1523,7 @@ void janus_audiobridge_destroy(void) {
 
 	janus_config_destroy(config);
 	g_free(admin_key);
+	g_free(rec_tempext);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -4160,9 +4167,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	if(audiobridge->record) {
 		char filename[255];
 		if(audiobridge->record_file) {
-			g_snprintf(filename, 255, "%s", audiobridge->record_file);
+			g_snprintf(filename, 255, "%s%s%s", audiobridge->record_file,
+				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 		} else {
-			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
+			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav%s%s", audiobridge->room_id,
+				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 		}
 		audiobridge->recording = fopen(filename, "wb");
 		if(audiobridge->recording == NULL) {
@@ -4435,7 +4444,35 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			fseek(audiobridge->recording, 40, SEEK_SET);
 			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
 			fflush(audiobridge->recording);
-			fclose(audiobridge->recording);
+		}
+		fclose(audiobridge->recording);
+		char filename[255];
+		if(audiobridge->record_file) {
+			g_snprintf(filename, 255, "%s", audiobridge->record_file);
+		} else {
+			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
+		}
+		if(rec_tempext) {
+			/* We need to rename the file, to remove the temporary extension */
+			char extfilename[255];
+			if(audiobridge->record_file) {
+				g_snprintf(extfilename, 255, "%s.%s", audiobridge->record_file, rec_tempext);
+			} else {
+				g_snprintf(extfilename, 255, "janus-audioroom-%"SCNu64".wav.%s", audiobridge->room_id, rec_tempext);
+			}
+			if(rename(extfilename, filename) != 0) {
+				JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", extfilename, filename);
+			} else {
+				JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", filename);
+			}
+		}
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("recordingdone"));
+			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
+			json_object_set_new(info, "record_file", json_string(filename));
+			gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
 		}
 	}
 	g_free(rtpbuffer);
