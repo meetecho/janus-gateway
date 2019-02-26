@@ -101,7 +101,7 @@ videoport2 = second local port for receiving video frames (only for rtp, and sim
 videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 videoskew = true|false (whether the plugin should perform skew
 	analisys and compensation on incoming video RTP stream, EXPERIMENTAL)
-videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=no)
+videosvc = true|false (whether the video will have SVC support; works only for VP9-SVC, default=false)
 collision = in case of collision (more than one SSRC hitting the same port), the plugin
 	will discard incoming RTP packets with a new SSRC unless this many milliseconds
 	passed, which would then change the current SSRC (0=disabled)
@@ -126,7 +126,7 @@ The following options are only valid for the 'rstp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
 rtsp_pwd = RTSP authorization password, if needed
-rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=yes)
+rtsp_failcheck = whether an error should be returned if connecting to the RTSP server fails (default=true)
 rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 \endverbatim
  *

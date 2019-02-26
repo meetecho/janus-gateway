@@ -109,14 +109,16 @@ certificates: {
 }
 
 # Media-related stuff: you can configure whether if you want
-# to enable IPv6 support (still WIP, so handle with care), if RFC4588
-# support should be negotiated or not (off by default), the maximum size
+# to enable IPv6 support, if RFC4588 support for retransmissions
+# should be negotiated or not (off by default), the maximum size
 # of the NACK queue (in milliseconds, defaults to 500ms) for retransmissions, the
 # range of ports to use for RTP and RTCP (by default, no range is envisaged), the
-# starting MTU for DTLS (1200 by default, it adapts automatically), and
-# finally how much time, in seconds, should pass with no media (audio or
+# starting MTU for DTLS (1200 by default, it adapts automatically),
+# how much time, in seconds, should pass with no media (audio or
 # video) being received before Janus notifies you about this (default=1s,
-# 0 disables these events entirely). Finally, if you're using BoringSSL
+# 0 disables these events entirely), and how often, in milliseconds,
+# to send the Transport Wide Congestion Control feedback information back
+# to senders, if negotiated (default=1s). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
 # value of 1 second (the default), while BoringSSL can override that. Notice
 # that lower values (e.g., 100ms) will typically get you faster connection
@@ -129,6 +131,7 @@ media: {
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
+	#twcc_period = 200
 	#dtls_timeout = 500
 }
 

@@ -33,8 +33,8 @@ room-<unique room ID>: {
 	pin = <optional password needed for joining the room>
 	sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
-		negotiated/used or not for new joins, default=yes)
-	audiolevel_event = true|false (whether to emit event to other users or not, default=no)
+		negotiated/used or not for new joins, default=true)
+	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	record = true|false (whether this room should be recorded, default=false)
@@ -104,18 +104,18 @@ room-<unique room ID>: {
 {
 	"request" : "create",
 	"room" : <unique numeric ID, optional, chosen by plugin if missing>,
-	"permanent" : <true|false, whether the room should be saved in the config file, default false>,
+	"permanent" : <true|false, whether the room should be saved in the config file, default=false>,
 	"description" : "<pretty name of the room, optional>",
 	"secret" : "<password required to edit/destroy the room, optional>",
 	"pin" : "<password required to join the room, optional>",
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
-	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default true>,
+	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default=true>,
 	"audiolevel_event" : true|false (whether to emit event to other users or not),
 	"audio_active_packets" : 100 (number of packets with audio level, default=100, 2 seconds),
 	"audio_level_average" : 25 (average value of audio level, 127=muted, 0='too loud', default=25),
-	"record" : <true|false, whether to record the room or not, default false>,
+	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 }
 \endverbatim
@@ -168,7 +168,7 @@ room-<unique room ID>: {
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
 	"new_pin" : "<new password required to join the room, optional>",
 	"new_is_private" : <true|false, whether the room should appear in a list request>,
-	"permanent" : <true|false, whether the room should be also removed from the config file, default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
  *
@@ -190,7 +190,7 @@ room-<unique room ID>: {
 	"request" : "destroy",
 	"room" : <unique numeric ID of the room to destroy>,
 	"secret" : "<room secret, mandatory if configured>",
-	"permanent" : <true|false, whether the room should be also removed from the config file, default false>
+	"permanent" : <true|false, whether the room should be also removed from the config file, default=false>
 }
 \endverbatim
  *
@@ -796,6 +796,9 @@ static void *janus_audiobridge_mixer_thread(void *data);
 static void *janus_audiobridge_participant_thread(void *data);
 static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle);
 
+/* Extension to add while recording (e.g., "tmp" --> ".wav.tmp") */
+static char *rec_tempext = NULL;
+
 typedef struct janus_audiobridge_message {
 	janus_plugin_session *handle;
 	char *transaction;
@@ -1143,7 +1146,7 @@ typedef struct wav_header {
 
 /* Opus settings */
 #define	BUFFER_SAMPLES	8000
-#define	OPUS_SAMPLES	160
+#define	OPUS_SAMPLES	960
 #define DEFAULT_COMPLEXITY	4
 
 
@@ -1328,6 +1331,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *ext = janus_config_get(config, config_general, janus_config_type_item, "record_tmp_ext");
+		if(ext != NULL && ext->value != NULL)
+			rec_tempext = g_strdup(ext->value);
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
@@ -1517,6 +1523,7 @@ void janus_audiobridge_destroy(void) {
 
 	janus_config_destroy(config);
 	g_free(admin_key);
+	g_free(rec_tempext);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -2930,7 +2937,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 					janus_audiobridge_rtp_relay_packet *lost_pkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 					lost_pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
 					lost_pkt->ssrc = 0;
-					lost_pkt->timestamp = participant->last_timestamp + (i * 960);
+					lost_pkt->timestamp = participant->last_timestamp + (i * OPUS_SAMPLES);
 					lost_pkt->seq_number = start_lost_seq++;
 					lost_pkt->silence = FALSE;
 					lost_pkt->length = 0;
@@ -4160,9 +4167,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	if(audiobridge->record) {
 		char filename[255];
 		if(audiobridge->record_file) {
-			g_snprintf(filename, 255, "%s", audiobridge->record_file);
+			g_snprintf(filename, 255, "%s%s%s", audiobridge->record_file,
+				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 		} else {
-			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
+			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav%s%s", audiobridge->room_id,
+				rec_tempext ? "." : "", rec_tempext ? rec_tempext : "");
 		}
 		audiobridge->recording = fopen(filename, "wb");
 		if(audiobridge->recording == NULL) {
@@ -4195,11 +4204,11 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 
 	/* Buffer (we allocate assuming 48kHz, although we'll likely use less than that) */
 	int samples = audiobridge->sampling_rate/50;
-	opus_int32 buffer[960], sumBuffer[960];
-	opus_int16 outBuffer[960], *curBuffer = NULL;
-	memset(buffer, 0, 960*4);
-	memset(sumBuffer, 0, 960*4);
-	memset(outBuffer, 0, 960*2);
+	opus_int32 buffer[OPUS_SAMPLES], sumBuffer[OPUS_SAMPLES];
+	opus_int16 outBuffer[OPUS_SAMPLES], *curBuffer = NULL;
+	memset(buffer, 0, OPUS_SAMPLES*4);
+	memset(sumBuffer, 0, OPUS_SAMPLES*4);
+	memset(outBuffer, 0, OPUS_SAMPLES*2);
 
 	/* Base RTP packet, in case there are forwarders involved */
 	unsigned char *rtpbuffer = g_malloc0(1500);
@@ -4259,7 +4268,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		prev_count = count+rf_count;
 		/* Update RTP header information */
 		seq++;
-		ts += 960;
+		ts += OPUS_SAMPLES;
 		/* Mix all contributions */
 		GList *participants_list = g_hash_table_get_values(audiobridge->participants);
 		/* Add a reference to all these participants, in case some leave while we're mixing */
@@ -4410,7 +4419,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						rtph->ssrc = htonl(forwarder->ssrc ? forwarder->ssrc : stream_id);
 						forwarder->seq_number++;
 						rtph->seq_number = htons(forwarder->seq_number);
-						forwarder->timestamp += 960;
+						forwarder->timestamp += OPUS_SAMPLES;
 						rtph->timestamp = htonl(forwarder->timestamp);
 						/* Send RTP packet */
 						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr)) < 0) {
@@ -4435,7 +4444,35 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			fseek(audiobridge->recording, 40, SEEK_SET);
 			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
 			fflush(audiobridge->recording);
-			fclose(audiobridge->recording);
+		}
+		fclose(audiobridge->recording);
+		char filename[255];
+		if(audiobridge->record_file) {
+			g_snprintf(filename, 255, "%s", audiobridge->record_file);
+		} else {
+			g_snprintf(filename, 255, "janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
+		}
+		if(rec_tempext) {
+			/* We need to rename the file, to remove the temporary extension */
+			char extfilename[255];
+			if(audiobridge->record_file) {
+				g_snprintf(extfilename, 255, "%s.%s", audiobridge->record_file, rec_tempext);
+			} else {
+				g_snprintf(extfilename, 255, "janus-audioroom-%"SCNu64".wav.%s", audiobridge->room_id, rec_tempext);
+			}
+			if(rename(extfilename, filename) != 0) {
+				JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", extfilename, filename);
+			} else {
+				JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", filename);
+			}
+		}
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("recordingdone"));
+			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
+			json_object_set_new(info, "record_file", json_string(filename));
+			gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
 		}
 	}
 	g_free(rtpbuffer);
@@ -4531,7 +4568,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Set the payload type */
 	packet->data->type = participant->opus_pt;
 	/* Fix sequence number and timestamp (room switching may be involved) */
-	janus_rtp_header_update(packet->data, &participant->context, FALSE, 960);
+	janus_rtp_header_update(packet->data, &participant->context, FALSE, OPUS_SAMPLES);
 	if(gateway != NULL)
 		gateway->relay_rtp(session->handle, 0, (char *)packet->data, packet->length);
 	/* Restore the timestamp and sequence number to what the publisher set them to */
