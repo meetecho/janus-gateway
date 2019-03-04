@@ -7512,7 +7512,7 @@ static void *janus_videoroom_handler(void *data) {
 								}
 								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
 									"%d%s %s\r\n", ps->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-								janus_sdp_attribute_add_to_mline(m, a);
+								janus_sdp_attribute_add_to_mline(m_answer, a);
 							}
 							if(ps->playout_delay_extmap_id > 0) {
 								/* First of all, let's check if the extmap attribute had a direction */
@@ -7531,12 +7531,12 @@ static void *janus_videoroom_handler(void *data) {
 								}
 								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
 									"%d%s %s\r\n", ps->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
-								janus_sdp_attribute_add_to_mline(m, a);
+								janus_sdp_attribute_add_to_mline(m_answer, a);
 							}
 							if(ps->transport_wide_cc_extmap_id > 0) {
 								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
 									"%d %s\r\n", ps->transport_wide_cc_extmap_id, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-								janus_sdp_attribute_add_to_mline(m, a);
+								janus_sdp_attribute_add_to_mline(m_answer, a);
 							}
 						}
 					} else if(m->type == JANUS_SDP_APPLICATION) {
