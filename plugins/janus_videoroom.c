@@ -462,11 +462,12 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>"
+					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
 			],
-			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
+			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used); deprecated, use the stream specific ones>,
 		},
 		// Other active publishers
 	]
@@ -595,11 +596,12 @@ room-<unique room ID>: {
 					"codec" : "<codec used for published stream #1>",
 					"description" : "<text description of published stream #1, if any>",
 					"simulcast" : "<true if published stream #1 uses simulcast (VP8 and H.264 only)>",
-					"svc" : "<true if published stream #1 uses SVC (VP9 only)>"
+					"svc" : "<true if published stream #1 uses SVC (VP9 only)>",
+					"talking" : <true|false, whether the publisher stream has audio activity or not (only if audio levels are used)>,
 				},
 				// Other streams, if any
 			],
-			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
+			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used); deprecated, use the stream specific ones>,
 		}
 	]
 }
@@ -4969,6 +4971,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 						json_object_set_new(info, "videoroom", json_string(ps->talking ? "talking" : "stopped-talking"));
 						json_object_set_new(info, "room", json_integer(videoroom->room_id));
 						json_object_set_new(info, "id", json_integer(participant->user_id));
+						/* FIXME Which other properties should we notify here? Just mindex and mid? */
+						json_object_set_new(event, "mindex", json_integer(ps->mindex));
+						json_object_set_new(event, "mid", json_string(ps->mid));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
@@ -5803,6 +5808,8 @@ static void *janus_videoroom_handler(void *data) {
 								json_object_set_new(pl, "audio_codec", json_string(janus_audiocodec_name(ps->acodec)));
 							}
 							if(ps->audio_level_extmap_id > 0) {
+								json_object_set_new(info, "talking", talking ? json_true() : json_false());
+								/* FIXME For backwards compatibility, we also need talking in the global info */
 								talking_found = TRUE;
 								talking |= ps->talking;
 							}
@@ -7439,28 +7446,31 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_CODEC, janus_audiocodec_name(ps->acodec),
 								JANUS_SDP_OA_FMTP, ps->opusfec ? "useinbandfec=1" : NULL,
 							JANUS_SDP_OA_DONE);
-						/* TODO Remove, this is just here for backwards compatibility */
-						if(audiocodec == NULL)
-							audiocodec = janus_audiocodec_name(ps->acodec);
-						/* Add the extmap attributes, if needed */
-						if(ps->audio_level_extmap_id > 0) {
-							/* First of all, let's check if the extmap attribute had a direction */
-							const char *direction = NULL;
-							switch(ps->audio_level_mdir) {
-								case JANUS_SDP_SENDONLY:
-									direction = "/recvonly";
-									break;
-								case JANUS_SDP_RECVONLY:
-								case JANUS_SDP_INACTIVE:
-									direction = "/inactive";
-									break;
-								default:
-									direction = "";
-									break;
+						janus_sdp_mline *m_answer = janus_sdp_mline_find_by_index(answer, m->index);
+						if(m_answer != NULL) {
+							/* TODO Remove, this is just here for backwards compatibility */
+							if(audiocodec == NULL)
+								audiocodec = janus_audiocodec_name(ps->acodec);
+							/* Add the extmap attributes, if needed */
+							if(ps->audio_level_extmap_id > 0) {
+								/* First of all, let's check if the extmap attribute had a direction */
+								const char *direction = NULL;
+								switch(ps->audio_level_mdir) {
+									case JANUS_SDP_SENDONLY:
+										direction = "/recvonly";
+										break;
+									case JANUS_SDP_RECVONLY:
+									case JANUS_SDP_INACTIVE:
+										direction = "/inactive";
+										break;
+									default:
+										direction = "";
+										break;
+								}
+								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+									"%d%s %s\r\n", ps->audio_level_extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+								janus_sdp_attribute_add_to_mline(m_answer, a);
 							}
-							janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-								"%d%s %s\r\n", ps->audio_level_extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-							janus_sdp_attribute_add_to_mline(m, a);
 						}
 					} else if(m->type == JANUS_SDP_VIDEO) {
 						janus_sdp_generate_answer_mline(offer, answer, m,
@@ -7468,63 +7478,66 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_DIRECTION, ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE,
 								JANUS_SDP_OA_CODEC, janus_videocodec_name(ps->vcodec),
 							JANUS_SDP_OA_DONE);
-						/* TODO Remove, this is just here for backwards compatibility */
-						if(videocodec == NULL)
-							videocodec = janus_videocodec_name(ps->vcodec);
-						/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
-						if(videoroom->bitrate > 0 && videoroom->bitrate_cap) {
-							if(participant->firefox) {
-								/* Use TIAS (bps) instead of AS (kbps) for the b= attribute, as explained here:
-								 * https://github.com/meetecho/janus-gateway/issues/1277#issuecomment-397677746 */
-								m->b_name = g_strdup("TIAS");
-								m->b_value = videoroom->bitrate;
-							} else {
-								m->b_name = g_strdup("AS");
-								m->b_value = videoroom->bitrate/1000;
+						janus_sdp_mline *m_answer = janus_sdp_mline_find_by_index(answer, m->index);
+						if(m_answer != NULL) {
+							/* TODO Remove, this is just here for backwards compatibility */
+							if(videocodec == NULL)
+								videocodec = janus_videocodec_name(ps->vcodec);
+							/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
+							if(videoroom->bitrate > 0 && videoroom->bitrate_cap) {
+								if(participant->firefox) {
+									/* Use TIAS (bps) instead of AS (kbps) for the b= attribute, as explained here:
+									 * https://github.com/meetecho/janus-gateway/issues/1277#issuecomment-397677746 */
+									m->b_name = g_strdup("TIAS");
+									m->b_value = videoroom->bitrate;
+								} else {
+									m->b_name = g_strdup("AS");
+									m->b_value = videoroom->bitrate/1000;
+								}
 							}
-						}
-						if(ps->video_orient_extmap_id > 0) {
-							/* First of all, let's check if the extmap attribute had a direction */
-							const char *direction = NULL;
-							switch(ps->video_orient_mdir) {
-								case JANUS_SDP_SENDONLY:
-									direction = "/recvonly";
-									break;
-								case JANUS_SDP_RECVONLY:
-								case JANUS_SDP_INACTIVE:
-									direction = "/inactive";
-									break;
-								default:
-									direction = "";
-									break;
+							if(ps->video_orient_extmap_id > 0) {
+								/* First of all, let's check if the extmap attribute had a direction */
+								const char *direction = NULL;
+								switch(ps->video_orient_mdir) {
+									case JANUS_SDP_SENDONLY:
+										direction = "/recvonly";
+										break;
+									case JANUS_SDP_RECVONLY:
+									case JANUS_SDP_INACTIVE:
+										direction = "/inactive";
+										break;
+									default:
+										direction = "";
+										break;
+								}
+								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+									"%d%s %s\r\n", ps->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+								janus_sdp_attribute_add_to_mline(m, a);
 							}
-							janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-								"%d%s %s\r\n", ps->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-							janus_sdp_attribute_add_to_mline(m, a);
-						}
-						if(ps->playout_delay_extmap_id > 0) {
-							/* First of all, let's check if the extmap attribute had a direction */
-							const char *direction = NULL;
-							switch(ps->playout_delay_mdir) {
-								case JANUS_SDP_SENDONLY:
-									direction = "/recvonly";
-									break;
-								case JANUS_SDP_RECVONLY:
-								case JANUS_SDP_INACTIVE:
-									direction = "/inactive";
-									break;
-								default:
-									direction = "";
-									break;
+							if(ps->playout_delay_extmap_id > 0) {
+								/* First of all, let's check if the extmap attribute had a direction */
+								const char *direction = NULL;
+								switch(ps->playout_delay_mdir) {
+									case JANUS_SDP_SENDONLY:
+										direction = "/recvonly";
+										break;
+									case JANUS_SDP_RECVONLY:
+									case JANUS_SDP_INACTIVE:
+										direction = "/inactive";
+										break;
+									default:
+										direction = "";
+										break;
+								}
+								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+									"%d%s %s\r\n", ps->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
+								janus_sdp_attribute_add_to_mline(m, a);
 							}
-							janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-								"%d%s %s\r\n", ps->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
-							janus_sdp_attribute_add_to_mline(m, a);
-						}
-						if(ps->transport_wide_cc_extmap_id > 0) {
-							janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-								"%d %s\r\n", ps->transport_wide_cc_extmap_id, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-							janus_sdp_attribute_add_to_mline(m, a);
+							if(ps->transport_wide_cc_extmap_id > 0) {
+								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+									"%d %s\r\n", ps->transport_wide_cc_extmap_id, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+								janus_sdp_attribute_add_to_mline(m, a);
+							}
 						}
 					} else if(m->type == JANUS_SDP_APPLICATION) {
 						janus_sdp_generate_answer_mline(offer, answer, m,
