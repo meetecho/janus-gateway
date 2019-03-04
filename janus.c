@@ -270,6 +270,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "opaqueid_in_api", janus_is_opaqueid_in_api_enabled() ? json_true() : json_false());
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -1365,6 +1366,8 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Prepare JSON response */
 			json_t *reply = janus_create_message("success", session->session_id, transaction_text);
 			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
+			if(janus_is_opaqueid_in_api_enabled() && handle->opaque_id != NULL)
+				json_object_set_new(reply, "opaque_id", json_string(handle->opaque_id));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
 			json_object_set_new(plugin_data, "data", result->content);
@@ -2787,6 +2790,8 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	/* Prepare JSON event */
 	json_t *event = janus_create_message("event", session->session_id, transaction);
 	json_object_set_new(event, "sender", json_integer(ice_handle->handle_id));
+	if(janus_is_opaqueid_in_api_enabled() && ice_handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(ice_handle->opaque_id));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
 	json_object_set_new(plugin_data, "data", message);
@@ -3699,6 +3704,11 @@ gint main(int argc, char *argv[])
 	if (item && item->value)
 		auth_secret = item->value;
 	janus_auth_init(auth_enabled, auth_secret);
+
+	/* Check if opaque IDs should be sent back in the Janus API too */
+	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
+	if(item && item->value && janus_is_true(item->value))
+		janus_enable_opaqueid_in_api();
 
 	/* Initialize the recorder code */
 	item = janus_config_get(config, config_general, janus_config_type_item, "recordings_tmp_ext");
