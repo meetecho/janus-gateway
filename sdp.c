@@ -738,7 +738,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					c->transport = ctype;
 				}
 #endif
-				strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
+				g_strlcpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
 				c->priority = rpriority;
 				nice_address_set_from_string(&c->addr, rip);
 				nice_address_set_port(&c->addr, rport);

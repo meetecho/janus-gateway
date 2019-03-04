@@ -3805,7 +3805,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	/* Now let's get on with the packet */
 	if(pkt == NULL)
 		return G_SOURCE_CONTINUE;
-	if(pkt->data == NULL) {
+	if(pkt->data == NULL || stream == NULL) {
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}

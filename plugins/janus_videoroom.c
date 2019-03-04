@@ -1830,8 +1830,6 @@ static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder 
 }
 static void janus_videoroom_rtp_forwarder_free(const janus_refcount *f_ref) {
 	janus_videoroom_rtp_forwarder *forward = janus_refcount_containerof(f_ref, janus_videoroom_rtp_forwarder, ref);
-	if(!forward)
-		return;
 	if(forward->rtcp_fd > -1)
 		close(forward->rtcp_fd);
 	if(forward->is_srtp && forward->srtp_ctx) {
