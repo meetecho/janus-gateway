@@ -99,6 +99,17 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+/* Opaque IDs set by applications are by default only passed to event handlers
+ * for correlation purposes, but not sent back to the user or application in
+ * the related Janus API responses or events, unless configured otherwise */
+static gboolean opaqueid_in_api = FALSE;
+void janus_enable_opaqueid_in_api(void) {
+	opaqueid_in_api = TRUE;
+}
+gboolean janus_is_opaqueid_in_api_enabled(void) {
+	return opaqueid_in_api;
+}
+
 /* Only needed in case we're using static event loops spawned at startup (disabled by default) */
 typedef struct janus_ice_static_event_loop {
 	int id;
@@ -596,6 +607,8 @@ static void janus_ice_notify_trickle(janus_handle *handle, char *buffer) {
 	json_object_set_new(event, "janus", json_string("trickle"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(opaqueid_in_api && handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	json_t *candidate = json_object();
 	if(buffer != NULL) {
 		json_object_set_new(candidate, "sdpMid", json_string(handle->pc_mid));
@@ -624,6 +637,8 @@ static void janus_ice_notify_media(janus_handle *handle, char *mid, gboolean vid
 	json_object_set_new(event, "janus", json_string("media"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(opaqueid_in_api && handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	json_object_set_new(event, "mid", json_string(mid));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
 	json_object_set_new(event, "receiving", up ? json_true() : json_false());
@@ -656,6 +671,8 @@ void janus_ice_notify_hangup(janus_handle *handle, const char *reason) {
 	json_object_set_new(event, "janus", json_string("hangup"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(opaqueid_in_api && handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	if(reason != NULL)
 		json_object_set_new(event, "reason", json_string(reason));
 	/* Send the event */
@@ -1578,6 +1595,8 @@ janus_slow_link_update(janus_handle_webrtc_medium *medium, janus_handle *handle,
 			json_object_set_new(event, "janus", json_string("slowlink"));
 			json_object_set_new(event, "session_id", json_integer(session->session_id));
 			json_object_set_new(event, "sender", json_integer(handle->handle_id));
+			if(opaqueid_in_api && handle->opaque_id != NULL)
+				json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
 			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
 			/* Send the event */
@@ -3487,6 +3506,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 		json_object_set_new(event, "janus", json_string("detached"));
 		json_object_set_new(event, "session_id", json_integer(session->session_id));
 		json_object_set_new(event, "sender", json_integer(handle->handle_id));
+		if(opaqueid_in_api && handle->opaque_id != NULL)
+			json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 		/* Send the event */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 		janus_session_notify_event(session, event);
@@ -4003,6 +4024,8 @@ void janus_handle_dtls_handshake_done(janus_handle *handle) {
 	json_object_set_new(event, "janus", json_string("webrtcup"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(opaqueid_in_api && handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);

@@ -99,6 +99,12 @@ general: {
 									# As such, if you want to use this you should
 									# provision the correct value according to the
 									# available resources (e.g., CPUs available).
+	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
+									# only passed to event handlers for correlation
+									# purposes, but not sent back to the user or
+									# application in the related Janus API responses
+									# or events; in case you need them to be in the
+									# Janus API too, set this property to 'true'.
 }
 
 # Certificate and key to use for DTLS (and passphrase if needed).

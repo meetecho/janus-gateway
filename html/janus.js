@@ -405,7 +405,8 @@ Janus.init = function(options) {
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
 	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
-		navigator.getUserMedia !== undefined && navigator.getUserMedia !== null;
+		navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
+		navigator.mediaDevices.getUserMedia !== undefined && navigator.mediaDevices.getUserMedia !== null;
 };
 
 // Helper method to create random identifiers (e.g., transaction)
@@ -2464,15 +2465,18 @@ function Janus(gatewayCallbacks) {
 		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
-			var sender = config.pc.getSenders()[1];
-			Janus.log(sender);
-			var parameters = sender.getParameters();
-			Janus.log(parameters);
-			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
-				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
-			]});
+			var sender = config.pc.getSenders().find(s => s.track.kind == "video");
+			if(sender) {
+				var parameters = sender.getParameters();
+				if(!parameters)
+					parameters = {};
+				parameters.encodings = [
+					{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
+					{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
+					{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+				];
+				sender.setParameters(parameters);
+			}
 		}
 		config.pc.createOffer(mediaConstraints)
 			.then(function(offer) {
