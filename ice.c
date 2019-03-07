@@ -3507,7 +3507,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.audio.bytes);
 		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janusaudio", 10);
+		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->audio_ssrc);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
@@ -3560,7 +3560,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
 		sr->si.s_octets = htonl(stream->component->out_stats.video[0].bytes);
 		rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janusvideo", 10);
+		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->video_ssrc);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
@@ -3869,7 +3869,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			uint32_t bitrate = janus_rtcp_get_remb(pkt->data, pkt->length);
 			if(bitrate > 0) {
 				/* There's a REMB, prepend a RR as it won't work otherwise */
-				int rrlen = 32;
+				int rrlen = 8;
 				char *rtcpbuf = g_malloc0(rrlen+pkt->length+SRTP_MAX_TAG_LEN+4);
 				rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 				rr->header.version = 2;
