@@ -1267,17 +1267,17 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
 			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", medium->ssrc);
+			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
 			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", medium->ssrc);
+			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
 				/* Add rtx SSRC group to negotiate the RFC4588 stuff */
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", medium->ssrc_rtx);
+				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc_rtx);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}

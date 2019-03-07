@@ -107,10 +107,14 @@ general: {
 									# Janus API too, set this property to 'true'.
 }
 
-# Certificate and key to use for DTLS (and passphrase if needed).
+# Certificate and key to use for DTLS (and passphrase if needed). If missing,
+# Janus will autogenerate a self-signed certificate to use. Notice that
+# self-signed certificates are fine for the purpose of WebRTC DTLS
+# connectivity, for the time being, at least until Identity Providers
+# are standardized and implemented in browsers.
 certificates: {
-	cert_pem = "@certdir@/mycert.pem"
-	cert_key = "@certdir@/mycert.key"
+	#cert_pem = "/path/to/certificate.pem"
+	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
 }
 
