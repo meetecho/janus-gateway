@@ -33,8 +33,7 @@ COPY . janus-gateway
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
-    curl libogg libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev \
-    popt-dev \
+    curl libogg libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev popt-dev \
   && apk add --no-cache \
     libnice jansson glib libogg ffmpeg libc6-compat xmlto openssl-dev \
   # INSTALL USRSCTP
