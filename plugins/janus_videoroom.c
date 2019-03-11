@@ -7153,6 +7153,7 @@ static void *janus_videoroom_handler(void *data) {
 					ps->subscribers = g_slist_append(ps->subscribers, stream);
 					janus_refcount_increase(&ps->ref);
 					janus_mutex_unlock(&ps->subscribers_mutex);
+					janus_videoroom_reqpli(ps, "Subscriber switch");
 				}
 				janus_mutex_unlock(&subscriber->streams_mutex);
 				/* Decrease the references we took before */
