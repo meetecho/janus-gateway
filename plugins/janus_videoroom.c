@@ -891,6 +891,7 @@ room-<unique room ID>: {
 		{
 			"feed_id" : <unique ID of publisher owning the stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
 		// Other streams to subscribe to
 	]
@@ -1002,6 +1003,7 @@ room-<unique room ID>: {
 		{
 			"feed_id" : <unique ID of publisher owning the new stream to subscribe to>,
 			"mid" : "<unique mid of the publisher stream to subscribe to; optional>"
+			// Optionally, simulcast or SVC targets (defaults if missing)
 		},
 		// Other new streams to subscribe to
 	]
@@ -1515,7 +1517,13 @@ static struct janus_json_parameter subscriber_parameters[] = {
 };
 static struct janus_json_parameter subscriber_stream_parameters[] = {
 	{"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"mid", JANUS_JSON_STRING, 0}
+	{"mid", JANUS_JSON_STRING, 0},
+	/* For VP8 (or H.264) simulcast */
+	{"substream", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	/* For VP9 SVC */
+	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter subscriber_update_parameters[] = {
 	{"streams", JANUS_JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED}
@@ -2316,7 +2324,7 @@ static void janus_videoroom_srtp_context_free(gpointer data) {
 
 
 /* Helpers for subscription streams */
-static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *subscriber,
+static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *subscriber,
 		janus_videoroom_publisher_stream *ps,
 		gboolean legacy, gboolean do_audio, gboolean do_video, gboolean do_data) {
 	/* If this is a legacy subscription ("feed"), use the deprecated properties */
@@ -2325,7 +2333,7 @@ static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *su
 			(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && !do_data))) {
 		/* Skip this */
 		JANUS_LOG(LOG_WARN, "Skipping %s stream (legacy subscription)\n", janus_videoroom_media_str(ps->type));
-		return;
+		return NULL;
 	}
 	/* Allocate a new subscriber stream instance */
 	janus_videoroom_subscriber_stream *stream = g_malloc0(sizeof(janus_videoroom_subscriber_stream));
@@ -2366,21 +2374,22 @@ static void janus_videoroom_subscriber_stream_add(janus_videoroom_subscriber *su
 	janus_refcount_increase(&stream->ref);
 	janus_refcount_increase(&ps->ref);
 	janus_mutex_unlock(&ps->subscribers_mutex);
-	return;
+	return stream;
 }
 
-static int janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subscriber *subscriber,
+static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subscriber *subscriber,
 		janus_videoroom_publisher_stream *ps) {
 	if(subscriber == NULL || ps == NULL)
-		return -1;
+		return NULL;
 	/* First of all, let's check if there's an m-line we can reuse */
 	gboolean found = FALSE;
+	janus_videoroom_subscriber_stream *stream = NULL;
 	GList *temp = subscriber->streams;
 	while(temp) {
-		janus_videoroom_subscriber_stream *stream = (janus_videoroom_subscriber_stream *)temp->data;
+		stream = (janus_videoroom_subscriber_stream *)temp->data;
 		if(stream->ps != NULL && stream->type == ps->type && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 			/* We already have a datachannel m-line, no need for others */
-			return -2;
+			return NULL;
 		}
 		if(stream->ps == NULL && stream->type == ps->type) {
 			/* There's an empty m-line of the right type, check if codecs match */
@@ -2417,10 +2426,9 @@ static int janus_videoroom_subscriber_stream_add_or_replace(janus_videoroom_subs
 		temp = temp->next;
 	}
 	if(found)
-		return 0;
+		return stream;
 	/* We couldn't find any, add a new one */
-	janus_videoroom_subscriber_stream_add(subscriber, ps, FALSE, FALSE, FALSE, FALSE);
-	return 0;
+	return janus_videoroom_subscriber_stream_add(subscriber, ps, FALSE, FALSE, FALSE, FALSE);
 }
 
 static void janus_videoroom_subscriber_stream_remove(janus_videoroom_subscriber_stream *s, gboolean lock_ps) {
@@ -5951,6 +5959,40 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_mutex_unlock(&publisher->streams_mutex);
 					}
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
+							json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->ref);
+							janus_refcount_decrease(&publisher->session->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						goto error;
+					}
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
+					if(json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2 ||
+							json_integer_value(sc_temporal) < 0 || json_integer_value(sc_temporal) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->ref);
+							janus_refcount_decrease(&publisher->session->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						goto error;
+					}
 					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
 					janus_refcount_increase(&publisher->ref);
 					janus_refcount_increase(&publisher->session->ref);
@@ -6017,6 +6059,10 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_mutex_lock(&publisher->streams_mutex);
 					const char *mid = json_string_value(json_object_get(s, "mid"));
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
 					if(mid) {
 						/* Subscribe to a specific mid */
 						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
@@ -6030,7 +6076,20 @@ static void *janus_videoroom_handler(void *data) {
 							/* We already have a datachannel m-line */
 							continue;
 						}
-						janus_videoroom_subscriber_stream_add(subscriber, ps, legacy, do_audio, do_video, do_data);
+						janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add(subscriber,
+							ps, legacy, do_audio, do_video, do_data);
+						if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
+								(spatial || sc_substream || temporal || sc_temporal)) {
+							/* Override the default spatial/substream/temporal targets */
+							if(sc_substream)
+								stream->sim_context.substream_target = json_integer_value(sc_substream);
+							if(sc_temporal)
+								stream->sim_context.templayer_target = json_integer_value(sc_temporal);
+							if(spatial)
+								stream->target_spatial_layer = json_integer_value(spatial);
+							if(temporal)
+								stream->target_temporal_layer = json_integer_value(temporal);
+						}
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
 							data_added = TRUE;
 					} else {
@@ -6043,7 +6102,20 @@ static void *janus_videoroom_handler(void *data) {
 								temp = temp->next;
 								continue;
 							}
-							janus_videoroom_subscriber_stream_add(subscriber, ps, legacy, do_audio, do_video, do_data);
+							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add(subscriber,
+								ps, legacy, do_audio, do_video, do_data);
+							if(stream && ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
+									(spatial || sc_substream || temporal || sc_temporal)) {
+								/* Override the default spatial/substream/temporal targets */
+								if(sc_substream)
+									stream->sim_context.substream_target = json_integer_value(sc_substream);
+								if(sc_temporal)
+									stream->sim_context.templayer_target = json_integer_value(sc_temporal);
+								if(spatial)
+									stream->target_spatial_layer = json_integer_value(spatial);
+								if(temporal)
+									stream->target_temporal_layer = json_integer_value(temporal);
+							}
 							if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA)
 								data_added = TRUE;
 							temp = temp->next;
@@ -6539,6 +6611,40 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_mutex_unlock(&publisher->streams_mutex);
 					}
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
+							json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->ref);
+							janus_refcount_decrease(&publisher->session->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						goto error;
+					}
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
+					if(json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2 ||
+							json_integer_value(sc_temporal) < 0 || json_integer_value(sc_temporal) > 2) {
+						JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->ref);
+							janus_refcount_decrease(&publisher->session->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
+						goto error;
+					}
 					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
 					janus_refcount_increase(&publisher->ref);
 					janus_refcount_increase(&publisher->session->ref);
@@ -6560,6 +6666,10 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					/* Are we subscribing to this publisher as a whole or only to a single stream? */
 					const char *mid = json_string_value(json_object_get(s, "mid"));
+					json_t *spatial = json_object_get(s, "spatial_layer");
+					json_t *sc_substream = json_object_get(s, "substream");
+					json_t *temporal = json_object_get(s, "temporal_layer");
+					json_t *sc_temporal = json_object_get(s, "temporal");
 					if(mid != NULL) {
 						janus_mutex_lock(&publisher->streams_mutex);
 						janus_videoroom_publisher_stream *ps = g_hash_table_lookup(publisher->streams_bymid, mid);
@@ -6568,15 +6678,43 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_LOG(LOG_WARN, "No mid '%s' in publisher '%"SCNu64"', not subscribing...\n", mid, feed_id);
 							continue;
 						}
-						if(janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps) == 0)
+						janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps);
+						if(stream) {
 							changes++;
+							if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
+									(spatial || sc_substream || temporal || sc_temporal)) {
+								/* Override the default spatial/substream/temporal targets */
+								if(sc_substream)
+									stream->sim_context.substream_target = json_integer_value(sc_substream);
+								if(sc_temporal)
+									stream->sim_context.templayer_target = json_integer_value(sc_temporal);
+								if(spatial)
+									stream->target_spatial_layer = json_integer_value(spatial);
+								if(temporal)
+									stream->target_temporal_layer = json_integer_value(temporal);
+							}
+						}
 					} else {
 						janus_mutex_lock(&publisher->streams_mutex);
 						GList *temp = publisher->streams;
 						while(temp) {
 							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-							if(janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps) == 0)
+							janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add_or_replace(subscriber, ps);
+							if(stream) {
 								changes++;
+								if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO &&
+										(spatial || sc_substream || temporal || sc_temporal)) {
+									/* Override the default spatial/substream/temporal targets */
+									if(sc_substream)
+										stream->sim_context.substream_target = json_integer_value(sc_substream);
+									if(sc_temporal)
+										stream->sim_context.templayer_target = json_integer_value(sc_temporal);
+									if(spatial)
+										stream->target_spatial_layer = json_integer_value(spatial);
+									if(temporal)
+										stream->target_temporal_layer = json_integer_value(temporal);
+								}
+							}
 							temp = temp->next;
 						}
 						janus_mutex_unlock(&publisher->streams_mutex);
