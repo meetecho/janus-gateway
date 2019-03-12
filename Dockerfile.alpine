@@ -1,4 +1,4 @@
-FROM alpine
+FROM alpine:3.7
 MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
 
 ARG USRSCTP_VERSION=0.9.3.0
@@ -15,7 +15,7 @@ ARG JANUS_TRANSPORT_MQTT=--disable-mqtt
 ARG JANUS_TRANSPORT_UNIX_SOCKET=--disable-unix-sockets
 
 ARG JANUS_PLUGIN_AUDIOBRIDGE=--disable-plugin-audiobridge
-ARG JANUS_PLUGIN_ECHOTEST=--disable-plugin-echotest
+ARG JANUS_PLUGIN_ECHOTEST=--enable-plugin-echotest
 ARG JANUS_PLUGIN_RECORDPLAY=--disable-plugin-recordplay
 ARG JANUS_PLUGIN_SIP=--disable-plugin-sip
 ARG JANUS_PLUGIN_NOSIP=--disable-plugin-nosip
@@ -29,13 +29,16 @@ ARG JANUS_PLUGIN_VOICEMAIL=--disable-plugin-voicemail
 WORKDIR /root
 
 COPY . janus-gateway
+COPY launch_janus.sh /launch_janus.sh
+COPY conf/janus.cfg /usr/local/etc/janus/janus.cfg
+COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabbitmq.cfg
 
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
     curl libogg libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev popt-dev \
   && apk add --no-cache \
-    libnice jansson glib libogg ffmpeg libc6-compat xmlto openssl-dev \
+    libnice jansson glib libogg ffmpeg libc6-compat xmlto openssl-dev gettext \
   # INSTALL USRSCTP
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && cd usrsctp-$USRSCTP_VERSION \
@@ -85,15 +88,18 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && cd janus-gateway \
   && sh autogen.sh \
   && ./configure --prefix=/usr/local \
+    # Janus configuration
     $JANUS_BORINGSSL \
     $JANUS_POST_PROCESSING \
     $JANUS_DATA_CHANNELS \
     $JANUS_DOCS \
-    $JANUS_TRANSPORT_REST \
+    # Transport configuration
+    --disable-rest \
     $JANUS_TRANSPORT_WEBSOCKET \
     $JANUS_TRANSPORT_RABBIT_MQ \
     $JANUS_TRANSPORT_MQTT \
     $JANUS_TRANSPORT_UNIX_SOCKET \
+    # Plugins configuration
     $JANUS_PLUGIN_AUDIOBRIDGE \
     $JANUS_PLUGIN_ECHOTEST \
     $JANUS_PLUGIN_RECORDPLAY \
@@ -117,5 +123,4 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
     rabbitmq-c \
     /var/cache/apk/*
 
-ENTRYPOINT ["/usr/local/bin/janus"]
-CMD ["-d4"]
+ENTRYPOINT ["/launch_janus.sh"]
