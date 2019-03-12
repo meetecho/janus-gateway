@@ -2152,8 +2152,29 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						medium = g_hash_table_lookup(pc->media_bymid, sdes_item);
 						if(medium != NULL) {
 							/* Found! Associate this SSRC to this stream */
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] SSRC %"SCNu32" is associated to mid %s\n",
+								handle->handle_id, packet_ssrc, medium->mid);
 							g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc), medium);
 							janus_refcount_increase(&medium->ref);
+							/* Check if simulcasting is involved */
+							if(medium->rid[0] == NULL || pc->mid_ext_id < 1) {
+								medium->ssrc_peer[0] = packet_ssrc;
+							} else {
+								if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, pc->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+									if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer[2] = packet_ssrc;
+									} else if(medium->rid[1] != NULL && !strcmp(medium->rid[1], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer[1] = packet_ssrc;
+									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer[0] = packet_ssrc;
+									} else {
+										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid..?\n", handle->handle_id);
+									}
+								}
+							}
 						}
 					}
 				}

@@ -1225,6 +1225,8 @@ int janus_process_incoming_request(janus_request *request) {
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->pc->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					/* Check if the RTP Stream ID extension is being negotiated */
+					handle->pc->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -2389,6 +2391,12 @@ json_t *janus_admin_webrtc_summary(janus_handle_webrtc *pc) {
 	if(pc->transport_wide_cc_ext_id >= 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(pc->transport_wide_cc_ext_id));
 	json_object_set_new(w, "bwe", bwe);
+	if(pc->mid_ext_id > 0 || pc->rid_ext_id > 0) {
+		json_t *ext = json_object();
+		json_object_set_new(ext, "mid-ext-id", json_integer(pc->mid_ext_id));
+		json_object_set_new(ext, "rid-ext-id", json_integer(pc->rid_ext_id));
+		json_object_set_new(w, "spec-ext", ext);
+	}
 	json_t *media = json_object();
 	/* Iterate on all media */
 	janus_handle_webrtc_medium *medium = NULL;

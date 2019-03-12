@@ -364,6 +364,8 @@ struct janus_handle_webrtc {
 	janus_dtls_srtp *dtls;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
+	/*! \brief RTP Stream extension ID */
+	gint rid_ext_id;
 	/*! \brief Wether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
