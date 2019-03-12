@@ -110,6 +110,7 @@ void janus_sctp_deinit(void) {
 static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	janus_sctp_association *sctp = janus_refcount_containerof(sctp_ref, janus_sctp_association, ref);
 	/* This association can be destroyed, free all the resources */
+	janus_refcount_decrease(&sctp->handle->pc->ref);
 	janus_refcount_decrease(&sctp->handle->ref);
 	janus_refcount_decrease(&sctp->dtls->ref);
 #ifdef DEBUG_SCTP
@@ -137,6 +138,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	janus_refcount_increase(&dtls->ref);
 	sctp->handle = handle;
 	janus_refcount_increase(&handle->ref);
+	janus_refcount_increase(&handle->pc->ref);
 	sctp->handle_id = handle->handle_id;
 	sctp->local_port = 5000;	/* FIXME We always use this one */
 	sctp->remote_port = udp_port;

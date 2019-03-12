@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "sdp-utils.h"
+#include "rtp.h"
 #include "utils.h"
 #include "debug.h"
 
@@ -1362,6 +1363,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
 	const char *codec = NULL, *fmtp = NULL;
+	GList *extmaps = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1395,6 +1397,10 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
 			h264_fmtp = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_ACCEPT_EXTMAP) {
+			const char *extension = va_arg(args, char *);
+			if(extension != NULL)
+				extmaps = g_list_append(extmaps, (char *)extension);
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1564,6 +1570,42 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 					am->attributes = g_list_append(am->attributes, a);
 				}
 			}
+			/* Add the extmap attributes, if needed */
+			if(extmaps != NULL) {
+				GList *ma = offered->attributes;
+				while(ma) {
+					/* Iterate on all attributes, to see if there's an extension to accept */
+					janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+					if(a->name && strstr(a->name, "extmap") && a->value) {
+						GList *temp = extmaps;
+						while(temp != NULL) {
+							char *extension = (char *)temp->data;
+							if(strstr(a->value, extension)) {
+								/* Accept the extension */
+								int id = atoi(a->value);
+								const char *direction = NULL;
+								switch(a->direction) {
+									case JANUS_SDP_SENDONLY:
+										direction = "/recvonly";
+										break;
+									case JANUS_SDP_RECVONLY:
+									case JANUS_SDP_INACTIVE:
+										direction = "/inactive";
+										break;
+									default:
+										direction = "";
+										break;
+								}
+								a = janus_sdp_attribute_create("extmap",
+									"%d%s %s\r\n", id, direction, extension);
+								janus_sdp_attribute_add_to_mline(am, a);
+							}
+							temp = temp->next;
+						}
+					}
+					ma = ma->next;
+				}
+			}
 		} else {
 			/* This is for data, add formats and an sctpmap attribute */
 			am->direction = JANUS_SDP_DEFAULT;
@@ -1578,6 +1620,10 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 		/* Nothing else we need to do */
 		break;
 	}
+
+	/* Done */
+	g_list_free(extmaps);
+	va_end(args);
 
 	return 0;
 }

@@ -362,6 +362,8 @@ struct janus_handle_webrtc {
 	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
 	/*! \brief Wether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
@@ -392,6 +394,8 @@ struct janus_handle_webrtc {
 	GHashTable *media;
 	/*! \brief GLib hash table of media (SSRCs are the keys) */
 	GHashTable *media_byssrc;
+	/*! \brief GLib hash table of media (mids are the keys) */
+	GHashTable *media_bymid;
 	/*! \brief GLib hash table of media (media types are the keys)
 	 * @note Temporary! Will go away very soon*/
 	GHashTable *media_bytype;

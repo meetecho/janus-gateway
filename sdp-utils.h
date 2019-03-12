@@ -269,6 +269,8 @@ typedef enum janus_sdp_oa_type {
 	JANUS_SDP_OA_VIDEO_H264_FMTP,
 	/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
 	JANUS_SDP_OA_DATA_LEGACY,
+	/*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
+	JANUS_SDP_OA_ACCEPT_EXTMAP,
 	/*! \brief MUST be used as the last argument in janus_sdp_generate_offer, janus_sdp_generate_offer_mline and janus_sdp_generate_answer */
 	JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;

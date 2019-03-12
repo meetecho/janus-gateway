@@ -202,8 +202,13 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 			if(a->name) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
-					if(medium->mid == NULL)
+					if(medium->mid == NULL) {
 						medium->mid = g_strdup(a->value);
+						if(!g_hash_table_lookup(pc->media_bymid, medium->mid)) {
+							g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
+							janus_refcount_increase(&medium->ref);
+						}
+					}
 					if(handle->pc_mid == NULL)
 						handle->pc_mid = g_strdup(a->value);
 				} else if(!strcasecmp(a->name, "fingerprint")) {
@@ -528,8 +533,13 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			if(a->name) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
-					if(medium->mid == NULL)
+					if(medium->mid == NULL) {
 						medium->mid = g_strdup(a->value);
+						if(!g_hash_table_lookup(pc->media_bymid, medium->mid)) {
+							g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
+							janus_refcount_increase(&medium->ref);
+						}
+					}
 					if(handle->pc_mid == NULL)
 						handle->pc_mid = g_strdup(a->value);
 				}
@@ -542,6 +552,10 @@ int janus_sdp_process_local(void *ice_handle, janus_sdp *remote_sdp, gboolean up
 			memset(mid, 0, sizeof(mid));
 			g_snprintf(mid, sizeof(mid), "%d", mlines);
 			medium->mid = g_strdup(mid);
+			if(!g_hash_table_lookup(pc->media_bymid, medium->mid)) {
+				g_hash_table_insert(pc->media_bymid, g_strdup(medium->mid), medium);
+				janus_refcount_increase(&medium->ref);
+			}
 		}
 		if(m->direction == JANUS_SDP_INACTIVE) {
 			/* FIXME Reset the local SSRCs and RTCP context */
@@ -1020,8 +1034,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "ssrc-group")
 					|| !strcasecmp(a->name, "sctpmap")
 					|| !strcasecmp(a->name, "sctp-port")
-					|| !strcasecmp(a->name, "max-message-size")
-					|| (a->value && strstr(a->value, "urn:ietf:params:rtp-hdrext:sdes:"))) {
+					|| !strcasecmp(a->name, "max-message-size")) {
 				m->attributes = g_list_remove(m->attributes, a);
 				tempA = m->attributes;
 				janus_sdp_attribute_destroy(a);

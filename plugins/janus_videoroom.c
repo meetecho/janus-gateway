@@ -7542,15 +7542,12 @@ static void *janus_videoroom_handler(void *data) {
 									ps->mid = g_strdup(a->value);
 								} else if(videoroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 									ps->audio_level_extmap_id = atoi(a->value);
-									ps->audio_level_mdir = a->direction;
 								} else if(videoroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
 									ps->video_orient_extmap_id = atoi(a->value);
-									ps->video_orient_mdir = a->direction;
 								} else if(videoroom->transport_wide_cc_ext && strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
 									ps->transport_wide_cc_extmap_id = atoi(a->value);
 								} else if(videoroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
 									ps->playout_delay_extmap_id = atoi(a->value);
-									ps->playout_delay_mdir = a->direction;
 								} else if(videoroom->do_opusfec && m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") && strstr(a->value, "useinbandfec=1")) {
 									ps->opusfec = TRUE;
 								}
@@ -7608,38 +7605,30 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_DIRECTION, ps->acodec != JANUS_AUDIOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE,
 								JANUS_SDP_OA_CODEC, janus_audiocodec_name(ps->acodec),
 								JANUS_SDP_OA_FMTP, ps->opusfec ? "useinbandfec=1" : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 							JANUS_SDP_OA_DONE);
 						janus_sdp_mline *m_answer = janus_sdp_mline_find_by_index(answer, m->index);
 						if(m_answer != NULL) {
 							/* TODO Remove, this is just here for backwards compatibility */
 							if(audiocodec == NULL)
 								audiocodec = janus_audiocodec_name(ps->acodec);
-							/* Add the extmap attributes, if needed */
-							if(ps->audio_level_extmap_id > 0) {
-								/* First of all, let's check if the extmap attribute had a direction */
-								const char *direction = NULL;
-								switch(ps->audio_level_mdir) {
-									case JANUS_SDP_SENDONLY:
-										direction = "/recvonly";
-										break;
-									case JANUS_SDP_RECVONLY:
-									case JANUS_SDP_INACTIVE:
-										direction = "/inactive";
-										break;
-									default:
-										direction = "";
-										break;
-								}
-								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-									"%d%s %s\r\n", ps->audio_level_extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-								janus_sdp_attribute_add_to_mline(m_answer, a);
-							}
 						}
 					} else if(m->type == JANUS_SDP_VIDEO) {
 						janus_sdp_generate_answer_mline(offer, answer, m,
 							JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
 								JANUS_SDP_OA_DIRECTION, ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE,
 								JANUS_SDP_OA_CODEC, janus_videocodec_name(ps->vcodec),
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 							JANUS_SDP_OA_DONE);
 						janus_sdp_mline *m_answer = janus_sdp_mline_find_by_index(answer, m->index);
 						if(m_answer != NULL) {
@@ -7657,49 +7646,6 @@ static void *janus_videoroom_handler(void *data) {
 									m->b_name = g_strdup("AS");
 									m->b_value = videoroom->bitrate/1000;
 								}
-							}
-							if(ps->video_orient_extmap_id > 0) {
-								/* First of all, let's check if the extmap attribute had a direction */
-								const char *direction = NULL;
-								switch(ps->video_orient_mdir) {
-									case JANUS_SDP_SENDONLY:
-										direction = "/recvonly";
-										break;
-									case JANUS_SDP_RECVONLY:
-									case JANUS_SDP_INACTIVE:
-										direction = "/inactive";
-										break;
-									default:
-										direction = "";
-										break;
-								}
-								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-									"%d%s %s\r\n", ps->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-								janus_sdp_attribute_add_to_mline(m_answer, a);
-							}
-							if(ps->playout_delay_extmap_id > 0) {
-								/* First of all, let's check if the extmap attribute had a direction */
-								const char *direction = NULL;
-								switch(ps->playout_delay_mdir) {
-									case JANUS_SDP_SENDONLY:
-										direction = "/recvonly";
-										break;
-									case JANUS_SDP_RECVONLY:
-									case JANUS_SDP_INACTIVE:
-										direction = "/inactive";
-										break;
-									default:
-										direction = "";
-										break;
-								}
-								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-									"%d%s %s\r\n", ps->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
-								janus_sdp_attribute_add_to_mline(m_answer, a);
-							}
-							if(ps->transport_wide_cc_extmap_id > 0) {
-								janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-									"%d %s\r\n", ps->transport_wide_cc_extmap_id, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-								janus_sdp_attribute_add_to_mline(m_answer, a);
 							}
 						}
 					} else if(m->type == JANUS_SDP_APPLICATION) {

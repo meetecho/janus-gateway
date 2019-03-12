@@ -1369,6 +1369,7 @@ void janus_handle_webrtc_destroy(janus_handle_webrtc *pc) {
 	/* Remove all media instances */
 	g_hash_table_remove_all(pc->media);
 	g_hash_table_remove_all(pc->media_byssrc);
+	g_hash_table_remove_all(pc->media_bymid);
 	g_hash_table_remove_all(pc->media_bytype);
 	//~ janus_dtls_srtp_destroy(pc->dtls);
 	janus_handle *handle = pc->handle;
@@ -1383,6 +1384,10 @@ static void janus_handle_webrtc_free(const janus_refcount *pc_ref) {
 	janus_handle_webrtc *pc = janus_refcount_containerof(pc_ref, janus_handle_webrtc, ref);
 	/* This PeerConnection can be destroyed, free all the resources */
 	pc->handle = NULL;
+	g_hash_table_destroy(pc->media);
+	g_hash_table_destroy(pc->media_byssrc);
+	g_hash_table_destroy(pc->media_bymid);
+	g_hash_table_destroy(pc->media_bytype);
 	if(pc->icestate_source != NULL) {
 		g_source_destroy(pc->icestate_source);
 		g_source_unref(pc->icestate_source);
@@ -2140,6 +2145,20 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			int video = 0, vindex = 0, rtx = 0;
 			janus_handle_webrtc_medium *medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc));
 			if(medium == NULL) {
+				/* SSRC not found, try the mid RTP extension if in use */
+				if(pc->mid_ext_id > 0) {
+					char sdes_item[16];
+					if(janus_rtp_header_extension_parse_mid(buf, len, pc->mid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+						medium = g_hash_table_lookup(pc->media_bymid, sdes_item);
+						if(medium != NULL) {
+							/* Found! Associate this SSRC to this stream */
+							g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc), medium);
+							janus_refcount_increase(&medium->ref);
+						}
+					}
+				}
+			}
+			if(medium == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unknown SSRC, dropping packet (SSRC %"SCNu32")...\n",
 					handle->handle_id, packet_ssrc);
 				return;
@@ -2584,18 +2603,21 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								pkt->encrypted = TRUE;
 							} else {
 								/* We are: overwrite the RTP header (which means we'll need a new SRTP encrypt) */
+								pkt->encrypted = FALSE;
 								janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 								header->type = medium->rtx_payload_type;
 								header->ssrc = htonl(medium->ssrc_rtx);
 								medium->rtx_seq_number++;
 								header->seq_number = htons(medium->rtx_seq_number);
 							}
-							if(handle->queued_packets != NULL)
+							if(handle->queued_packets != NULL) {
 #if GLIB_CHECK_VERSION(2, 46, 0)
 								g_async_queue_push_front(handle->queued_packets, pkt);
 #else
 								g_async_queue_push(handle->queued_packets, pkt);
 #endif
+								g_main_context_wakeup(handle->mainctx);
+							}
 						}
 						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
@@ -3132,6 +3154,8 @@ int janus_handle_setup_local(janus_handle *handle, gboolean offer, gboolean tric
 	/* Create the media instances we need */
 	pc->media = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_destroy);
 	pc->media_byssrc = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_dereference);
+	pc->media_bymid = g_hash_table_new_full(g_str_hash, g_str_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)janus_handle_webrtc_medium_dereference);
 	pc->media_bytype = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_handle_webrtc_medium_dereference);
 	return 0;
 }
