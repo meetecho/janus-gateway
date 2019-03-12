@@ -386,7 +386,9 @@ struct janus_ice_stream {
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
 	guint32 video_last_ts;
-	/*! \brief  Wether we do transport wide cc for video */
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
+	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;

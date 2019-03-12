@@ -1036,8 +1036,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "ssrc-group")
 					|| !strcasecmp(a->name, "sctpmap")
 					|| !strcasecmp(a->name, "sctp-port")
-					|| !strcasecmp(a->name, "max-message-size")
-					|| (a->value && strstr(a->value, "urn:ietf:params:rtp-hdrext:sdes:"))) {
+					|| !strcasecmp(a->name, "max-message-size")) {
 				m->attributes = g_list_remove(m->attributes, a);
 				tempA = m->attributes;
 				janus_sdp_attribute_destroy(a);

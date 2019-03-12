@@ -1023,7 +1023,6 @@ static void *janus_echotest_handler(void *data) {
 			}
 			/* Check if we need to negotiate the rtp-stream-id extension */
 			session->rtpmapid_extmap_id = -1;
-			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;
 			gboolean opus_fec = FALSE;
 			GList *temp = offer->m_lines;
 			while(temp) {
@@ -1037,7 +1036,6 @@ static void *janus_echotest_handler(void *data) {
 						if(a->value) {
 							if(strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID)) {
 								session->rtpmapid_extmap_id = atoi(a->value);
-								extmap_mdir = a->direction;
 								break;
 							} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") &&
 									strstr(a->value, "useinbandfec=1")) {
@@ -1053,6 +1051,9 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
 				JANUS_SDP_OA_AUDIO_FMTP, opus_fec ? "useinbandfec=1" : NULL,
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
@@ -1070,26 +1071,6 @@ static void *janus_echotest_handler(void *data) {
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;
 			session->has_video = session->vcodec != JANUS_VIDEOCODEC_NONE;
-			/* Add the extmap attribute, if needed */
-			if(session->rtpmapid_extmap_id > -1) {
-				/* First of all, let's check if the extmap attribute had a direction */
-				const char *direction = NULL;
-				switch(extmap_mdir) {
-					case JANUS_SDP_SENDONLY:
-						direction = "/recvonly";
-						break;
-					case JANUS_SDP_RECVONLY:
-					case JANUS_SDP_INACTIVE:
-						direction = "/inactive";
-						break;
-					default:
-						direction = "";
-						break;
-				}
-				janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-					"%d%s %s\r\n", session->rtpmapid_extmap_id, direction, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
-				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
-			}
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
 				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
 				session->ssrc[0] = 0;
