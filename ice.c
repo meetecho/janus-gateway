@@ -2713,6 +2713,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								pkt->encrypted = TRUE;
 							} else {
 								/* We are: overwrite the RTP header (which means we'll need a new SRTP encrypt) */
+								pkt->encrypted = FALSE;
 								janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 								header->type = stream->video_rtx_payload_type;
 								header->ssrc = htonl(stream->video_ssrc_rtx);
