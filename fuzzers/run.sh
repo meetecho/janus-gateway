@@ -2,10 +2,10 @@
 
 set -eu
 
-TARGET=${1-"rtcp_fuzzer"}
+TARGET=${1:-"rtcp_fuzzer"}
 JOBS=${JOBS:-4}
 WORKERS=${WORKERS:-4}
-OUT=${OUT-"$(pwd)/out"}
+OUT=${OUT:-"$(pwd)/out"}
 SRC=$(dirname $(pwd))
 echo "Executing fuzzer $TARGET"
 
