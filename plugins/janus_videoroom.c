@@ -1233,6 +1233,12 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * Notice that, while a \c switch request usually doesn't require a renegotiation,
+ * it \b MIGHT trigger one nevertheless: in fact, if a "switch" request assigns
+ * a new publisher stream to a previously inactive subscriber stream, then
+ * a renegotiation to re-activate that stream will be needed as well, as
+ * otherwise the packets from the new source will not be relayed.
+ *
  * Finally, to close a subscription and tear down the related PeerConnection,
  * you can use the \c leave request. Since context is implicit, no other
  * argument is required:
@@ -5453,6 +5459,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			GSList *temp2 = ps->subscribers;
 			while(temp2) {
 				janus_videoroom_subscriber_stream *ss = (janus_videoroom_subscriber_stream *)temp2->data;
+				temp2 = temp2->next;
 				if(ss) {
 					/* Remove the subscription (turns the m-line to inactive) */
 					janus_videoroom_subscriber_stream_remove(ss, FALSE);
@@ -5462,7 +5469,6 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 						subscribers = g_list_append(subscribers, ss->subscriber);
 					}
 				}
-				temp2 = temp2->next;
 			}
 			g_slist_free(ps->subscribers);
 			ps->subscribers = NULL;
@@ -7252,6 +7258,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Switch to the new streams, unsubscribing from the ones we replace:
 				 * notice that no renegotiation happens, we just switch the sources */
 				int changes = 0;
+				gboolean update = FALSE;
 				janus_mutex_lock(&subscriber->streams_mutex);
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *s = json_array_get(feeds, i);
@@ -7303,17 +7310,29 @@ static void *janus_videoroom_handler(void *data) {
 					 * do when doing new subscriptions, as that might change payload type, etc. */
 					changes++;
 					/* Unsubscribe from the previous source first */
-					janus_mutex_lock(&stream->ps->subscribers_mutex);
-					stream->ps->subscribers = g_slist_remove(stream->ps->subscribers, stream);
-					janus_refcount_decrease(&stream->ps->ref);
-					janus_mutex_unlock(&stream->ps->subscribers_mutex);
+					janus_refcount_increase(&stream->ref);
+					gboolean unref = FALSE;
+					if(stream->ps == NULL) {
+						/* This stream was inactive, we'll need a renegotiation */
+						update = TRUE;
+					} else {
+						unref = TRUE;
+						janus_mutex_lock(&stream->ps->subscribers_mutex);
+						stream->ps->subscribers = g_slist_remove(stream->ps->subscribers, stream);
+						janus_refcount_decrease(&stream->ps->ref);
+						janus_mutex_unlock(&stream->ps->subscribers_mutex);
+					}
 					/* Subscribe to the new one */
 					janus_mutex_lock(&ps->subscribers_mutex);
 					stream->ps = ps;
 					ps->subscribers = g_slist_append(ps->subscribers, stream);
 					janus_refcount_increase(&ps->ref);
+					janus_refcount_increase(&stream->ref);
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
+					if(unref)
+						janus_refcount_decrease(&stream->ref);
+					janus_refcount_decrease(&stream->ref);
 				}
 				janus_mutex_unlock(&subscriber->streams_mutex);
 				/* Decrease the references we took before */
@@ -7341,6 +7360,42 @@ static void *janus_videoroom_handler(void *data) {
 					media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
 					json_object_set_new(event, "streams", media);
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
+				}
+				/* Check if we need a renegotiation as well */
+				if(update) {
+					/* We do */
+					janus_mutex_lock(&subscriber->streams_mutex);
+					if(!g_atomic_int_get(&subscriber->answered)) {
+						/* We're still waiting for an answer to a previous offer, postpone this */
+						g_atomic_int_set(&subscriber->pending_offer, 1);
+						janus_mutex_unlock(&subscriber->streams_mutex);
+						JANUS_LOG(LOG_VERB, "Post-poning new offer, waiting for previous answer\n");
+					} else {
+						json_t *revent = json_object();
+						json_object_set_new(revent, "videoroom", json_string("updated"));
+						json_object_set_new(revent, "room", json_integer(subscriber->room_id));
+						json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+						json_object_set_new(revent, "streams", media);
+						/* Generate a new offer */
+						json_t *jsep = janus_videoroom_subscriber_offer(subscriber);
+						janus_mutex_unlock(&subscriber->streams_mutex);
+						/* How long will the Janus core take to push the event? */
+						gint64 start = janus_get_monotonic_time();
+						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, revent, jsep);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+						json_decref(revent);
+						json_decref(jsep);
+						/* Also notify event handlers */
+						if(notify_events && gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("updated"));
+							json_object_set_new(info, "room", json_integer(subscriber->room_id));
+							json_t *media = janus_videoroom_subscriber_streams_summary(subscriber, FALSE, NULL);
+							json_object_set_new(info, "streams", media);
+							json_object_set_new(info, "private_id", json_integer(subscriber->pvt_id));
+							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
+						}
+					}
 				}
 			} else if(!strcasecmp(request_text, "leave")) {
 				guint64 room_id = subscriber ? subscriber->room_id : 0;
