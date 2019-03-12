@@ -147,7 +147,7 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
-/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+/*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
