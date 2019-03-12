@@ -2939,6 +2939,24 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 		}
+		/* Make sure we don't send the mid attribute when offering ourselves */
+		GList *temp = parsed_sdp->m_lines;
+		while(temp) {
+			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+			GList *tempA = m->attributes;
+			while(tempA) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+				if(a->name && a->value && (strstr(a->value, JANUS_RTP_EXTMAP_MID) ||
+						strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID))) {
+					m->attributes = g_list_remove(m->attributes, a);
+					tempA = m->attributes;
+					janus_sdp_attribute_destroy(a);
+					continue;
+				}
+				tempA = tempA->next;
+			}
+			temp = temp->next;
+		}
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
