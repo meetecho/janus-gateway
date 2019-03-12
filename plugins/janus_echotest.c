@@ -1053,6 +1053,7 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
