@@ -3,8 +3,10 @@
 set -eu
 
 TARGET=${1:-"rtcp_fuzzer"}
-JOBS=${JOBS:-4}
-WORKERS=${WORKERS:-4}
+HALF_NCORES=$(expr $(nproc) / 2)
+HALF_NCORES=$(($HALF_NCORES > 0 ? $HALF_NCORES : 1))
+JOBS=${JOBS:-${HALF_NCORES}}
+WORKERS=${WORKERS:-${HALF_NCORES}}
 OUT=${OUT:-"$(pwd)/out"}
 SRC=$(dirname $(pwd))
 echo "Executing fuzzer $TARGET"
