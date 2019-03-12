@@ -2720,12 +2720,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								component->rtx_seq_number++;
 								header->seq_number = htons(component->rtx_seq_number);
 							}
-							if(handle->queued_packets != NULL)
+							if(handle->queued_packets != NULL) {
 #if GLIB_CHECK_VERSION(2, 46, 0)
 								g_async_queue_push_front(handle->queued_packets, pkt);
 #else
 								g_async_queue_push(handle->queued_packets, pkt);
 #endif
+								g_main_context_wakeup(handle->mainctx);
+							}
 						}
 						if(rtcp_ctx != NULL && in_rb) {
 							g_atomic_int_inc(&rtcp_ctx->nack_count);
