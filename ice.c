@@ -2162,10 +2162,28 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			if(!video && stream->audio_ssrc_peer != packet_ssrc) {
 				/* FIXME In case it happens, we should check what it is */
 				if(stream->audio_ssrc_peer == 0 || stream->video_ssrc_peer[0] == 0) {
-					/* Apparently we were not told the peer SSRCs, try to guess from the payload type */
+					/* Apparently we were not told the peer SSRCs, try the RTP mid extension (or payload types) */
 					gboolean found = FALSE;
 					guint16 pt = header->type;
-					if(stream->audio_ssrc_peer == 0 && stream->audio_payload_types) {
+					if(handle->stream->mid_ext_id > 0) {
+						char sdes_item[16];
+						if(janus_rtp_header_extension_parse_mid(buf, len, handle->stream->mid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+							if(handle->audio_mid && !strcmp(handle->audio_mid, sdes_item)) {
+								/* It's audio */
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
+								video = 0;
+								stream->audio_ssrc_peer = packet_ssrc;
+								found = TRUE;
+							} else if(handle->video_mid && !strcmp(handle->video_mid, sdes_item)) {
+								/* It's video */
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
+								video = 1;
+								stream->video_ssrc_peer[0] = packet_ssrc;
+								found = TRUE;
+							}
+						}
+					}
+					if(!found && stream->audio_ssrc_peer == 0 && stream->audio_payload_types) {
 						GList *pts = stream->audio_payload_types;
 						while(pts) {
 							guint16 audio_pt = GPOINTER_TO_UINT(pts->data);
