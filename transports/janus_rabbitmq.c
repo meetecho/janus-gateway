@@ -748,7 +748,7 @@ void *janus_rmq_in_thread(void *data) {
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
-		gateway->incoming_request(&janus_rabbitmq_transport, rmq_client, request_id, admin, root, &error);
+		gateway->incoming_request(&janus_rabbitmq_transport, rmq_session, request_id, admin, root, &error);
 	}
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
 	return NULL;
