@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <glib.h>
+#include <jansson.h>
 
 #define RTP_HEADER_SIZE	12
 
@@ -238,6 +239,8 @@ int janus_videocodec_pt(janus_videocodec vcodec);
 
 /*! \brief Helper struct for processing and tracking simulcast streams */
 typedef struct janus_rtp_simulcasting_context {
+	/*! \brief RTP Stream extension ID, if any */
+	gint rid_ext_id;
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
@@ -260,17 +263,28 @@ typedef struct janus_rtp_simulcasting_context {
  * @param[in] context The context to (re)set */
 void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context);
 
+/*! \brief Helper method to prepare the simulcasting info (rids and/or SSRCs) from
+ * the simulcast object the core passes to plugins for new PeerConnections
+ * @param[in] simulcast JSON object containing SSRCs and rids
+ * @param[in] rid_ext_id The rid RTP extension ID to set, if any
+ * @param[in] ssrcs The list of simulcast SSRCs to update, if any
+ * @param[in] rids The list of rids to update, if any (items will be allocated) */
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids);
+
 /*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
  * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
  * properties, and updates them according to the decisions made after processinf the packet
  * @param[in] context The simulcasting context to use
  * @param[in] buf The RTP packet to process
  * @param[in] len The length of the RTP packet (header, extension and payload)
- * @param[in] ssrcs The simulcast SSRCs to refer to
+ * @param[in] ssrcs The simulcast SSRCs to refer to (may be updated if rids are involved)
+ * @param[in] rids The simulcast rids to refer to, if any
+ * @param[in] rid_ext_id The rid RTP extension id to check, if any
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-	char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc);
+	char *buf, int len, uint32_t *ssrcs, char **rids,
+	janus_videocodec vcodec, janus_rtp_switching_context *sc);
 
 #endif

@@ -1243,6 +1243,8 @@ int janus_process_incoming_request(janus_request *request) {
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					/* Check if the RTP Stream ID extension is being negotiated */
+					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1328,14 +1330,29 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *body_jsep = NULL;
 		if(jsep_sdp_stripped) {
 			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
-			/* Check if VP8 simulcasting is enabled */
+			/* Check if simulcasting is enabled */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-				if(handle->stream && handle->stream->video_ssrc_peer[1]) {
+				if(handle->stream && (handle->stream->rid[0] || handle->stream->video_ssrc_peer[1])) {
 					json_t *simulcast = json_object();
-					json_object_set_new(simulcast, "ssrc-0", json_integer(handle->stream->video_ssrc_peer[0]));
-					json_object_set_new(simulcast, "ssrc-1", json_integer(handle->stream->video_ssrc_peer[1]));
-					if(handle->stream->video_ssrc_peer[2])
-						json_object_set_new(simulcast, "ssrc-2", json_integer(handle->stream->video_ssrc_peer[2]));
+					/* If we have rids, pass those, otherwise pass the SSRCs */
+					if(handle->stream->rid[0]) {
+						json_t *rids = json_array();
+						json_array_append_new(rids, json_string(handle->stream->rid[0]));
+						if(handle->stream->rid[1])
+							json_array_append_new(rids, json_string(handle->stream->rid[1]));
+						if(handle->stream->rid[2])
+							json_array_append_new(rids, json_string(handle->stream->rid[2]));
+						json_object_set_new(simulcast, "rids", rids);
+						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
+					} else {
+						json_t *ssrcs = json_array();
+						json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[0]));
+						if(handle->stream->video_ssrc_peer[1])
+							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[1]));
+						if(handle->stream->video_ssrc_peer[2])
+							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[2]));
+						json_object_set_new(simulcast, "ssrcs", ssrcs);
+					}
 					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
@@ -2358,6 +2375,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[2]));
 		json_object_set_new(ss, "rid", rid);
+		if(stream->legacy_rid)
+			json_object_set_new(ss, "rid-syntax", json_string("legacy"));
 	}
 	json_object_set_new(s, "ssrc", ss);
 	json_t *sd = json_object();

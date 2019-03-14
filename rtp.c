@@ -808,16 +808,70 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 		return;
 	/* Reset the context values */
 	memset(context, 0, sizeof(*context));
+	context->rid_ext_id = -1;
 	context->substream = -1;
 	context->templayer = -1;
 }
 
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
+	if(simulcast == NULL)
+		return;
+	json_t *r = json_object_get(simulcast, "rids");
+	json_t *s = json_object_get(simulcast, "ssrcs");
+	if(r && json_array_size(r) > 0) {
+		JANUS_LOG(LOG_VERB, "  -- Simulcasting is rid based\n");
+		size_t i = 0;
+		for(i=0; i<json_array_size(r); i++) {
+			if(i == 3)
+				break;
+			json_t *rid = json_array_get(r, i);
+			if(rid && json_is_string(rid) && rids)
+				rids[i] = g_strdup(json_string_value(rid));
+		}
+		json_t *rid_ext = json_object_get(simulcast, "rid-ext");
+		if(rid_ext_id != NULL)
+			*rid_ext_id = json_integer_value(rid_ext);
+	} else if(s && json_array_size(s) > 0) {
+		JANUS_LOG(LOG_VERB, "  -- Simulcasting is SSRC based\n");
+		size_t i = 0;
+		for(i=0; i<json_array_size(s); i++) {
+			if(i == 3)
+				break;
+			json_t *ssrc = json_array_get(s, i);
+			if(ssrc && json_is_integer(ssrc) && ssrcs)
+				ssrcs[i] = json_integer_value(ssrc);
+		}
+	}
+}
+
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-		char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc) {
+		char *buf, int len, uint32_t *ssrcs, char **rids,
+		janus_videocodec vcodec, janus_rtp_switching_context *sc) {
 	if(!context || !buf || len < 1)
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	uint32_t ssrc = ntohl(header->ssrc);
+	if(ssrc != ssrcs[0] && ssrc != ssrcs[1] && ssrc != ssrcs[2]) {
+		/* We don't recognize this SSRC, check if rid can help us */
+		if(context->rid_ext_id < 1 || rids == NULL)
+			return FALSE;
+		char sdes_item[16];
+		if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
+			return FALSE;
+		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs) = ssrc;
+		} else if(rids[1] != NULL && !strcmp(rids[1], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs+1) = ssrc;
+		} else if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs+2) = ssrc;
+		} else {
+			JANUS_LOG(LOG_WARN, "Simulcasting: unknown rid '%s'...\n", sdes_item);
+			return FALSE;
+		}
+	}
 	/* Reset the flags */
 	context->changed_substream = FALSE;
 	context->changed_temporal = FALSE;

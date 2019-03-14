@@ -2160,56 +2160,74 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				|| stream->video_ssrc_peer[2] == packet_ssrc
 				|| stream->video_ssrc_peer_rtx[2] == packet_ssrc) ? 1 : 0);
 			if(!video && stream->audio_ssrc_peer != packet_ssrc) {
-				/* FIXME In case it happens, we should check what it is */
-				if(stream->audio_ssrc_peer == 0 || stream->video_ssrc_peer[0] == 0) {
-					/* Apparently we were not told the peer SSRCs, try the RTP mid extension (or payload types) */
-					gboolean found = FALSE;
-					guint16 pt = header->type;
-					if(handle->stream->mid_ext_id > 0) {
-						char sdes_item[16];
-						if(janus_rtp_header_extension_parse_mid(buf, len, handle->stream->mid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
-							if(handle->audio_mid && !strcmp(handle->audio_mid, sdes_item)) {
-								/* It's audio */
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
-								video = 0;
-								stream->audio_ssrc_peer = packet_ssrc;
-								found = TRUE;
-							} else if(handle->video_mid && !strcmp(handle->video_mid, sdes_item)) {
-								/* It's video */
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
-								video = 1;
+				/* Apparently we were not told the peer SSRCs, try the RTP mid extension (or payload types) */
+				gboolean found = FALSE;
+				guint16 pt = header->type;
+				if(handle->stream->mid_ext_id > 0) {
+					char sdes_item[16];
+					if(janus_rtp_header_extension_parse_mid(buf, len, handle->stream->mid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+						if(handle->audio_mid && !strcmp(handle->audio_mid, sdes_item)) {
+							/* It's audio */
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
+							video = 0;
+							stream->audio_ssrc_peer = packet_ssrc;
+							found = TRUE;
+						} else if(handle->video_mid && !strcmp(handle->video_mid, sdes_item)) {
+							/* It's video */
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (mid %s)\n", handle->handle_id, packet_ssrc, sdes_item);
+							video = 1;
+							found = TRUE;
+							/* Check if simulcasting is involved */
+							if(stream->rid[0] == NULL || stream->rid_ext_id < 1) {
 								stream->video_ssrc_peer[0] = packet_ssrc;
-								found = TRUE;
+							} else {
+								if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, stream->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+									if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
+										stream->video_ssrc_peer[0] = packet_ssrc;
+										vindex = 0;
+									} else if(stream->rid[1] != NULL && !strcmp(stream->rid[1], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s\n", handle->handle_id, sdes_item);
+										stream->video_ssrc_peer[1] = packet_ssrc;
+										vindex = 1;
+									} else if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s\n", handle->handle_id, sdes_item);
+										stream->video_ssrc_peer[2] = packet_ssrc;
+										vindex = 2;
+									} else {
+										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid %s..?\n", handle->handle_id, sdes_item);
+									}
+								}
 							}
 						}
 					}
-					if(!found && stream->audio_ssrc_peer == 0 && stream->audio_payload_types) {
-						GList *pts = stream->audio_payload_types;
-						while(pts) {
-							guint16 audio_pt = GPOINTER_TO_UINT(pts->data);
-							if(pt == audio_pt) {
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
-								video = 0;
-								stream->audio_ssrc_peer = packet_ssrc;
-								found = TRUE;
-								break;
-							}
-							pts = pts->next;
+				}
+				if(!found && stream->audio_ssrc_peer == 0 && stream->audio_payload_types) {
+					GList *pts = stream->audio_payload_types;
+					while(pts) {
+						guint16 audio_pt = GPOINTER_TO_UINT(pts->data);
+						if(pt == audio_pt) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
+							video = 0;
+							stream->audio_ssrc_peer = packet_ssrc;
+							found = TRUE;
+							break;
 						}
+						pts = pts->next;
 					}
-					if(!found && stream->video_ssrc_peer[0] == 0 && stream->video_payload_types) {
-						GList *pts = stream->video_payload_types;
-						while(pts) {
-							guint16 video_pt = GPOINTER_TO_UINT(pts->data);
-							if(pt == video_pt) {
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
-								video = 1;
-								stream->video_ssrc_peer[0] = packet_ssrc;
-								found = TRUE;
-								break;
-							}
-							pts = pts->next;
+				}
+				if(!found && stream->video_ssrc_peer[0] == 0 && stream->video_payload_types) {
+					GList *pts = stream->video_payload_types;
+					while(pts) {
+						guint16 video_pt = GPOINTER_TO_UINT(pts->data);
+						if(pt == video_pt) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
+							video = 1;
+							stream->video_ssrc_peer[0] = packet_ssrc;
+							found = TRUE;
+							break;
 						}
+						pts = pts->next;
 					}
 				}
 				if(!video && stream->audio_ssrc_peer != packet_ssrc) {
@@ -2466,7 +2484,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && stream->video_is_keyframe) {
 					if(stream->video_is_keyframe(payload, plen)) {
-						if(component->last_seqs_video[vindex] && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
+						if(rtcp_ctx && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received with a highest sequence number, resetting NACK queue\n", handle->handle_id);
 							janus_seq_list_free(&component->last_seqs_video[vindex]);
 						}
