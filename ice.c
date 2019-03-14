@@ -2282,7 +2282,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				char *payload = janus_rtp_payload(buf, buflen, &plen);
 				if (!payload) {
 					  JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
-					  return;
 				}
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
@@ -2290,16 +2289,18 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->type = stream->video_payload_type;
 					packet_ssrc = stream->video_ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					memcpy(&header->seq_number, payload, 2);
-					/* Finally, remove the original sequence number from the payload: rather than moving
-					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
-					buflen -= 2;
-					plen -= 2;
-					size_t hsize = payload-buf;
-					memmove(buf+2, buf, hsize);
-					buf += 2;
-					payload +=2;
-					header = (janus_rtp_header *)buf;
+					if (plen > 0) {
+						memcpy(&header->seq_number, payload, 2);
+						/* Finally, remove the original sequence number from the payload: rather than moving
+						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
+						buflen -= 2;
+						plen -= 2;
+						size_t hsize = payload-buf;
+						memmove(buf+2, buf, hsize);
+						buf += 2;
+						payload +=2;
+						header = (janus_rtp_header *)buf;
+					}
 				}
 				/* Check if we need to handle transport wide cc */
 				if(stream->do_transport_wide_cc) {
