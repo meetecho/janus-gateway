@@ -1,4 +1,4 @@
-#Janus 0.3.1 gengetopt file
+#Janus 0.6.3 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -9,7 +9,8 @@ option "config" C "Configuration file to use" string typestr="filename" optional
 option "configs-folder" F "Configuration files folder (default=./conf)" string typestr="path" optional
 option "cert-pem" c "DTLS certificate" string typestr="filename" optional
 option "cert-key" k "DTLS certificate key" string typestr="filename" optional
-option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)" string typestr="ip:port" optional
+option "cert-pwd" K "DTLS certificate key passphrase (if needed)" string typestr="text" optional
+option "stun-server" S "STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)" string typestr="ip:port" optional
 option "nat-1-1" 1 "Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)" string typestr="ip" optional
 option "ice-enforce-list" E "Comma-separated list of the only interfaces to use for ICE gathering; partial strings are supported (e.g., eth0 or eno1,wlan0, default=none)" string typestr="list" optional
 option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)" string typestr="list" optional
@@ -22,11 +23,14 @@ option "rfc-4588" R "Whether to enable RFC4588 retransmissions support or not" f
 option "max-nack-queue" q "Maximum size of the NACK queue (in ms) per user for retransmissions" int typestr="number" optional
 option "no-media-timer" t "Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
+option "twcc-period" B "How often (in ms) to send TWCC feedback back to senders, if negotiated (default=1s)" int typestr="number" optional
 option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
 option "session-timeout" s "Session timeout value, in seconds (default=60)" int typestr="number" optional
+option "reclaim-session-timeout" m "Reclaim session timeout value, in seconds (default=0)" int typestr="number" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
+option "debug-locks" M "Enable debugging of locks/mutexes (very verbose!)" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
 option "token-auth" A "Enable token-based authentication for all requests" flag off
 option "token-auth-secret" - "Secret to verify HMAC-signed tokens with, to be used with -A" string typestr="randomstring" optional

@@ -4,11 +4,11 @@
  * \brief    Utilities and helpers (headers)
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_UTILS_H
 #define _JANUS_UTILS_H
 
@@ -82,7 +82,7 @@ guint64 *janus_uint64_dup(guint64 num);
  */
 ///@{
 /*! \brief Janus flags container */
-typedef uint32_t janus_flags;
+typedef gsize janus_flags;
 
 /*! \brief Janus flags reset method
  * \param[in] flags The janus_flags instance to reset */
@@ -91,18 +91,18 @@ void janus_flags_reset(janus_flags *flags);
 /*! \brief Janus flags set method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to set */
-void janus_flags_set(janus_flags *flags, uint32_t flag);
+void janus_flags_set(janus_flags *flags, gsize flag);
 
 /*! \brief Janus flags clear method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to clear */
-void janus_flags_clear(janus_flags *flags, uint32_t flag);
+void janus_flags_clear(janus_flags *flags, gsize flag);
 
 /*! \brief Janus flags check method
  * \param[in] flags The janus_flags instance to check
  * \param[in] flag The flag to check
  * \returns true if the flag is set, false otherwise */
-gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
+gboolean janus_flags_is_set(janus_flags *flags, gsize flag);
 ///@}
 
 /*! \brief Helper to create a new directory, and recursively create parent directories if needed
@@ -145,7 +145,9 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
  * @returns TRUE if the value is valid */
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
+#endif
 
 /*! \brief Validates the JSON object against the description of its parameters
  * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name
@@ -227,19 +229,19 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_vp8_is_keyframe(char* buffer, int len);
+gboolean janus_vp8_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if a VP9 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_vp9_is_keyframe(char* buffer, int len);
+gboolean janus_vp9_is_keyframe(const char *buffer, int len);
 
 /*! \brief Helper method to check if an H.264 frame is a keyframe or not
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
-gboolean janus_h264_is_keyframe(char* buffer, int len);
+gboolean janus_h264_is_keyframe(const char *buffer, int len);
 
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {

@@ -1,4 +1,4 @@
-/*! \file   event.h
+/*! \file   eventhandler.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Modular Janus event handlers (headers)
@@ -17,12 +17,12 @@
  * Whatever the aim, the structures to make the interaction between core
  * and event handlers possible are defined here.
  * 
- * An event handler plugin that wants to register at the gateway needs to
+ * An event handler plugin that wants to register at the Janus core needs to
  * implement the \c janus_eventhandler interface. This includes callbacks
  * the Janus core can use to pass and request information, and a mask of
  * the events the plugin is interested in subscribing to. Besides, as an
  * event handler plugin is a shared object, and as such external to the
- * gateway itself, in order to be dynamically loaded at startup it needs
+ * core itself, in order to be dynamically loaded at startup it needs
  * to implement the \c create_e() hook as well, that should return a
  * pointer to the plugin instance. This is an example of such a step:
  * 
@@ -38,16 +38,16 @@ janus_eventhandler *create(void) {
 \endverbatim
  * 
  * This will make sure that your event handler plugin is loaded at startup
- * by the gateway, if it is deployed in the proper folder.
+ * by the Janus core, if it is deployed in the proper folder.
  * 
  * As anticipated and described in the above example, an event handler plugin
  * must basically be an instance of the \c janus_eventhandler type. As such,
- * it must implement the following methods and callbacks for the gateway:
+ * it must implement the following methods and callbacks for the core:
  * 
- * - \c init(): this is called by the gateway as soon as your event handler
+ * - \c init(): this is called by the Janus core as soon as your event handler
  * plugin is started; this is where you should setup your event handler plugin
  * (e.g., static stuff and reading the configuration file);
- * - \c destroy(): on the other hand, this is called by the gateway when it
+ * - \c destroy(): on the other hand, this is called by the core when it
  * is shutting down, and your event handler plugin should too;
  * - \c get_api_compatibility(): this method MUST return JANUS_EVENTHANDLER_API_VERSION;
  * - \c get_version(): this method should return a numeric version identifier (e.g., 3);
@@ -69,13 +69,13 @@ janus_eventhandler *create(void) {
  * 
  * Unlike other kind of modules (transports, plugins), the \c init() method
  * here only passes the path to the configurations files folder, as event
- * handlers never need to contact the gateway themselves. This path can be used to read and
+ * handlers never need to contact the Janus core themselves. This path can be used to read and
  * parse a configuration file for the event handler plugin: the event handler
  * plugins we made available out of the box use the package name as a
  * name for the file (e.g., \c janus.eventhandler.fake.cfg for the sample
  * event handler plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing eventhandler
- * plugins use the same INI format for configuration files the gateway
+ * plugins use the same INI format for configuration files the core
  * uses (relying on the \c janus_config helpers for the purpose) but
  * again, if you prefer a different format (XML, JSON, etc.) that's up to you. 
  * 
@@ -101,7 +101,7 @@ janus_eventhandler *create(void) {
 
 
 /*! \brief Version of the API, to match the one event handler plugins were compiled against */
-#define JANUS_EVENTHANDLER_API_VERSION	2
+#define JANUS_EVENTHANDLER_API_VERSION	3
 
 /*! \brief Initialization of all event handler plugin properties to NULL
  * 
@@ -131,6 +131,8 @@ static janus_eventhandler janus_fake_eventhandler handler plugin =
 #define JANUS_EVENT_TYPE_SESSION		(1 << 0)
 /*! \brief Handle related events (e.g., handle attached/detached, etc.) */
 #define JANUS_EVENT_TYPE_HANDLE			(1 << 1)
+/*! \brief External events originated via Admin API (e.g., custom events coming from external scripts) */
+#define JANUS_EVENT_TYPE_EXTERNAL		(1 << 2)
 /*! \brief JSEP related events (e.g., got/sent offer/answer) */
 #define JANUS_EVENT_TYPE_JSEP			(1 << 3)
 /*! \brief WebRTC related events (e.g., PeerConnection up/down, ICE updates, DTLS updates, etc.) */
@@ -231,7 +233,7 @@ struct janus_eventhandler {
 	janus_flags events_mask;
 };
 
-/*! \brief The hook that event handler plugins need to implement to be created from the gateway */
+/*! \brief The hook that event handler plugins need to implement to be created from the Janus core */
 typedef janus_eventhandler* create_e(void);
 
 #endif

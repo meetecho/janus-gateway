@@ -3,10 +3,10 @@
  * \copyright GNU General Public License v3
  * \brief    RTCP processing (headers)
  * \details  Implementation of the RTCP messages. RTCP messages coming
- * through the gateway are parsed and, if needed (according to
+ * through the server are parsed and, if needed (according to
  * http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00),
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
- * have been changed by the gateway). Methods to generate FIR messages
+ * have been changed by the server). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
  *
  * \ingroup protocols
@@ -228,14 +228,14 @@ typedef struct rtcp_context
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
 	uint8_t rtp_recvd:1;
 
-	uint16_t last_seq_nr;
+	uint16_t max_seq_nr;
 	uint16_t seq_cycle;
 	uint16_t base_seq;
 	/* Payload type */
 	uint16_t pt;
 
 	/* RFC 3550 A.8 Interarrival Jitter */
-	uint64_t transit;
+	int64_t transit;
 	double jitter, jitter_remote;
 	/* Timestamp time base (e.g., 48000 for opus audio, or 90000 for video) */
 	uint32_t tb;
@@ -334,12 +334,58 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len);
  * @returns The receiver SSRC, or 0 in case of error */
 guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
 
+/*! \brief Method to check that a RTCP packet size is at least the minimum necessary (8 bytes)
+ *  and to validate the length field against the actual size
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Receiver Report
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Sender Report
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len);
+/*! \brief Method to check if a RTCP packet could contain a Feedback Message
+ * with a defined FCI size.
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[in] sizeof_fci The size of a FCI entry
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci);
+/*! \brief Method to check if a RTCP packet could contain an AFB REMB Message
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE if packet is OK, or FALSE in case of error */
+gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len);
+
+/*! \brief Helper method to demultiplex RTCP from other protocols
+ * @param[in] buf Buffer to inspect
+ * @param[in] len Length of the buffer to inspect */
+gboolean janus_is_rtcp(char *buf, guint len);
+
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len);
+
+/*! \brief Method to fix incoming RTCP SR and RR data
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[in] base_ts RTP context base timestamp to compute offset
+ * @param[in] base_ts_prev RTP context base timestamp to compute offset
+ * @param[in] ssrc_peer The remote SSRC in usage for this stream
+ * @param[in] ssrc_local The local SSRC in usage for this stream
+ * @param[in] ssrc_expected The expected SSRC for this RTCP packet
+ * @param[in] video Whether the RTCP packet contains report for video data
+ * @returns The number of fields updated, negative values on errors */
+int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t base_ts_prev, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video);
 
 /*! \brief Method to fix an RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] ctx RTCP context to update, if needed (optional)
@@ -363,14 +409,25 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
+ * @param[in] count_lost Whether we should try and compute a count of the lost packets
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len);
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean count_lost);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report
  * @param[in] rb Pointer to a valid report_block area of the RTCP data
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb);
+
+/*! \brief Method to quickly fetch the lost packets info from an RR packet, if present
+ * \note This is just means as a simple way for plugins to extract this information from
+ * a packet, without the need to setup a dedicated RTCP context for tracking the stats flow
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[out] lost The number of lost packets as a whole
+ * @param[out] fraction The fraction of lost packets since the last RR/SR
+ * @returns TRUE in case of success, FALSE otherwise */
+gboolean janus_rtcp_parse_lost_info(char *packet, int len, uint32_t *lost, int *fraction);
 
 /*! \brief Method to check whether an RTCP message contains a BYE message
  * @param[in] packet The message data
@@ -473,10 +530,10 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
 /*! \brief Method to generate a new RTCP transport wide message to report reception stats
  * @param[in] packet The buffer data (MUST be at least 16 chars)
  * @param[in] len The message data length in bytes
- * @param[ssrc] ssrc SSRC of the origin stream
- * @param[media] madia SSRC of the destination stream
- * @param[media] feedback_packet_count Feedback paccket count
- * @param[media] transport_wide_cc_stats List of rtp packet reception stats
+ * @param[in] ssrc SSRC of the origin stream
+ * @param[in] media SSRC of the destination stream
+ * @param[in] feedback_packet_count Feedback paccket count
+ * @param[in] transport_wide_cc_stats List of rtp packet reception stats
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t len, guint32 ssrc, guint32 media, guint8 feedback_packet_count, GQueue *transport_wide_cc_stats);
 

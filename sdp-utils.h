@@ -7,17 +7,19 @@
  * of such object by playing with its properties, and a serialization
  * to an SDP string that can be passed around. Since they don't have any
  * core dependencies, these utilities can be used by plugins as well.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_SDP_UTILS_H
 #define _JANUS_SDP_UTILS_H
 
 
 #include <inttypes.h>
 #include <glib.h>
+
+#include "refcount.h"
 
 /*! \brief Janus SDP internal object representation */
 typedef struct janus_sdp {
@@ -47,6 +49,10 @@ typedef struct janus_sdp {
 	GList *attributes;
 	/*! \brief List of m= m-lines */
 	GList *m_lines;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_sdp;
 
 /*! \brief Helper enumeration to quickly identify m-line media types */
@@ -139,11 +145,15 @@ typedef struct janus_sdp_mline {
 	/*! \brief Media b= type */
 	char *b_name;
 	/*! \brief Media b= value */
-	int b_value;
+	uint32_t b_value;
 	/*! \brief Media direction */
 	janus_sdp_mdirection direction;
 	/*! \brief List of m-line attributes */
 	GList *attributes;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_sdp_mline;
 /*! \brief Helper method to quickly create a janus_sdp_mline instance
  * @note The \c type_str property of the new m-line is created automatically
@@ -152,7 +162,7 @@ typedef struct janus_sdp_mline {
  * @param[in] type Type of the media (audio/video/application) as a janus_sdp_mtype
  * @param[in] port Port to advertise
  * @param[in] proto Profile to advertise
- * @param[in] type Direction of the media as a janus_sdp_direction
+ * @param[in] direction Direction of the media as a janus_sdp_direction
  * @returns A pointer to a valid janus_sdp_mline instance, if successfull, NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, const char *proto, janus_sdp_mdirection direction);
 /*! \brief Helper method to free a janus_sdp_mline instance
@@ -184,6 +194,10 @@ typedef struct janus_sdp_attribute {
 	char *value;
 	/*! \brief Attribute direction (e.g., for extmap) */
 	janus_sdp_mdirection direction;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_sdp_attribute;
 /*! \brief Helper method to quickly create a janus_sdp_attribute instance
  * @param[in] name Name of the attribute
@@ -221,42 +235,50 @@ char *janus_sdp_write(janus_sdp *sdp);
 
 /*! \brief Method to quickly generate a janus_sdp instance from a few selected fields
  * @note This allocates the \c o_addr, \c s_name and \c c_addr properties: if you
- * want to replace them, don't remember to \c g_free the original pointers first.
+ * want to replace them, don't forget to \c g_free the original pointers first.
  * @param[in] name The session name (if NULL, a default value will be set)
  * @param[in] address The IP to set in o= and c= fields (if NULL, a default value will be set)
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_new(const char *name, const char *address);
 
-/*! \brief Method to free a Janus SDP object
+/*! \brief Method to destroy a Janus SDP object
  * @param[in] sdp The Janus SDP object to free */
-void janus_sdp_free(janus_sdp *sdp);
+void janus_sdp_destroy(janus_sdp *sdp);
 
+typedef enum janus_sdp_oa_type {
 /*! \brief When generating an offer or answer automatically, accept/reject audio if offered (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO					1
+JANUS_SDP_OA_AUDIO = 1,
 /*! \brief When generating an offer or answer automatically, accept/reject video if offered (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO					2
+JANUS_SDP_OA_VIDEO,
 /*! \brief When generating an offer or answer automatically, accept/reject datachannels if offered (depends on value that follows) */
-#define JANUS_SDP_OA_DATA					3
+JANUS_SDP_OA_DATA,
 /*! \brief When generating an offer or answer automatically, use this direction for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_DIRECTION		4
+JANUS_SDP_OA_AUDIO_DIRECTION,
 /*! \brief When generating an offer or answer automatically, use this direction for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_DIRECTION		5
+JANUS_SDP_OA_VIDEO_DIRECTION,
 /*! \brief When generating an offer or answer automatically, use this codec for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_CODEC			6
+JANUS_SDP_OA_AUDIO_CODEC,
 /*! \brief When generating an offer or answer automatically, use this codec for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_CODEC			7
+JANUS_SDP_OA_VIDEO_CODEC,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
-#define JANUS_SDP_OA_AUDIO_PT				8
+JANUS_SDP_OA_AUDIO_PT,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for video (depends on value that follows) */
-#define JANUS_SDP_OA_VIDEO_PT			9
+JANUS_SDP_OA_VIDEO_PT,
 /*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only) */
-#define JANUS_SDP_OA_AUDIO_DTMF				10
+JANUS_SDP_OA_AUDIO_DTMF,
+/*! \brief When generating an offer or answer automatically, add this custom fmtp string for audio */
+JANUS_SDP_OA_AUDIO_FMTP,
 /*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
-#define JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS	11
+JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
-#define JANUS_SDP_OA_VIDEO_H264_FMTP		12
-/*! \brief MUST be used as the last argument in janus_sdp_generate_answer */
-#define JANUS_SDP_OA_DONE					0
+JANUS_SDP_OA_VIDEO_H264_FMTP,
+/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
+JANUS_SDP_OA_DATA_LEGACY,
+/*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
+JANUS_SDP_OA_ACCEPT_EXTMAP,
+/*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
+JANUS_SDP_OA_DONE = 0
+} janus_sdp_oa_type;
 
 /*! \brief Method to generate a janus_sdp offer, using variable arguments to dictate
  * what to negotiate (e.g., in terms of media to offer, directions, etc.). Variable
@@ -281,7 +303,7 @@ void janus_sdp_free(janus_sdp *sdp);
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
 /*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer, using variable arguments
- * to dictate how to responde (e.g., in terms of media to accept, reject, directions, etc.). Variable
+ * to dictate how to respond (e.g., in terms of media to accept, reject, directions, etc.). Variable
  * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
  \verbatim
 	janus_sdp *answer = janus_sdp_generate_answer(offer,

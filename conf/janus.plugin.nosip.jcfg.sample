@@ -1,0 +1,15 @@
+general: {
+	# Specify which local IP address to bind to for media.
+	# If not set it will be automatically guessed from the system
+	#local_ip = "1.2.3.4"
+
+	# Specify which (public) IP address to advertise in the SDP.
+	# If not set, the value above or anything autodetected will be used
+	#sdp_ip = "1.2.3.4"
+
+	# Range of ports to use for RTP/RTCP (default=10000-60000)
+	rtp_port_range = "20000-40000"
+
+	# Whether events should be sent to event handlers (default=true)
+	#events = false
+}

@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -273,7 +273,7 @@ $(document).ready(function() {
 												if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 													if(!simulcastStarted) {
 														simulcastStarted = true;
-														addSimulcastButtons();
+														addSimulcastButtons(result["videocodec"] === "vp8");
 													}
 													// We just received notice that there's been a switch, update the buttons
 													updateSimulcastButtons(substream, temporal);
@@ -314,7 +314,7 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									if(videocall.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -358,7 +358,7 @@ $(document).ready(function() {
 									var addButtons = false;
 									if($('#remotevideo').length === 0) {
 										addButtons = true;
-										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
 										// Show the video, hide the spinner and show the resolution when we get a playing event
 										$("#remotevideo").bind("playing", function () {
 											$('#waitingvideo').remove();
@@ -602,7 +602,7 @@ function getQueryStringValue(name) {
 }
 
 // Helpers to create Simulcast-related UI, if enabled
-function addSimulcastButtons() {
+function addSimulcastButtons(temporal) {
 	$('#curres').parent().append(
 		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
@@ -613,14 +613,14 @@ function addSimulcastButtons() {
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
 		'			<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>' +
 		'			<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>' +
 		'			<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'</div>');
-	// Enable the VP8 simulcast selection buttons
+	// Enable the simulcast selection buttons
 	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
@@ -651,6 +651,9 @@ function addSimulcastButtons() {
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			videocall.send({message: { request: "set", substream: 2 }});
 		});
+	if(!temporal)	// No temporal layer support
+		return;
+	$('#tl-0').parent().removeClass('hide');
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});

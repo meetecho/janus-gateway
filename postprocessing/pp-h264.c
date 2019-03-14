@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .mp4 files
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -58,7 +58,7 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 
-int janus_pp_h264_create(char *destination) {
+int janus_pp_h264_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -76,6 +76,9 @@ int janus_pp_h264_create(char *destination) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
 	}
+	/* We save the metadata part as a comment (see #1189) */
+	if(metadata)
+		av_dict_set(&fctx->metadata, "comment", metadata, 0);
 	fctx->oformat = av_guess_format("mp4", NULL, NULL);
 	if(fctx->oformat == NULL) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
@@ -175,8 +178,21 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 	index += 3;
 	uint32_t offset = 0;
 	uint8_t *base = (uint8_t *)(buffer+index);
-	/* Skip seq_parameter_set_id and log2_max_frame_num_minus4 */
+	/* Skip seq_parameter_set_id */
 	janus_pp_h264_eg_decode(base, &offset);
+	if(profile_idc >= 100) {
+		/* Skip chroma_format_idc */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip bit_depth_luma_minus8 */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip bit_depth_chroma_minus8 */
+		janus_pp_h264_eg_decode(base, &offset);
+		/* Skip qpprime_y_zero_transform_bypass_flag */
+		janus_pp_h264_eg_getbit(base, offset++);
+		/* Skip seq_scaling_matrix_present_flag */
+		janus_pp_h264_eg_getbit(base, offset++);
+	}
+	/* Skip log2_max_frame_num_minus4 */
 	janus_pp_h264_eg_decode(base, &offset);
 	/* Evaluate pic_order_cnt_type */
 	int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
@@ -234,6 +250,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
+	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	while(tmp) {
@@ -247,15 +264,22 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			}
 			if(tmp->seq - tmp->prev->seq > 1) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
 		/* Parse H264 header now */
 		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 		int len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(prebuffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if((prebuffer[0] & 0x1F) == 7) {
 			/* SPS, see if we can extract the width/height as well */
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
@@ -298,6 +322,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->rotation != -1 && tmp->rotation != rotation) {
+			rotation = tmp->rotation;
+			JANUS_LOG(LOG_INFO, "Video rotation: %d degrees\n", rotation);
+		}
 		tmp = tmp->next;
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
@@ -306,6 +334,14 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(max_width == 0 && max_height == 0) {
 		JANUS_LOG(LOG_WARN, "No resolution info?? assuming 640x480...\n");
 		max_width = 640;
+		max_height = 480;
+	}
+	if(max_width < 160) {
+		JANUS_LOG(LOG_WARN, "Width seems weirdly low (%d), setting 640 instead...\n", max_width);
+		max_width = 640;
+	}
+	if(max_height < 120) {
+		JANUS_LOG(LOG_WARN, "Height seems weirdly low (%d), setting 480 instead...\n", max_height);
 		max_height = 480;
 	}
 	if(fps == 0) {
@@ -325,7 +361,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
-	uint32_t keyframe_ts = 0;
+	gboolean keyframe_found = FALSE;
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
@@ -345,9 +381,16 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			buffer = start;
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			len = tmp->len-12-tmp->skip;
+			if(len < 1) {
+				tmp = tmp->next;
+				continue;
+			}
 			bytes = fread(buffer, sizeof(char), len, file);
-			if(bytes != len)
+			if(bytes != len) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				tmp = tmp->next;
+				continue;
+			}
 			/* H.264 depay */
 			int jump = 0;
 			uint8_t fragment = *buffer & 0x1F;
@@ -362,8 +405,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
 				keyFrame = 1;
 				/* Is this the first keyframe we find? */
-				if(keyframe_ts == 0) {
-					keyframe_ts = tmp->ts;
+				if(!keyframe_found) {
+					keyframe_found = TRUE;
 					JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 				}
 			}
@@ -379,7 +422,6 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				buffer++;
 				int tot = len-1;
 				uint16_t psize = 0;
-				frameLen = 0;
 				while(tot > 0) {
 					memcpy(&psize, buffer, 2);
 					psize = ntohs(psize);
@@ -398,6 +440,8 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					tot -= psize;
 				}
 				/* Done, we'll wait for the next video data to write the frame */
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */

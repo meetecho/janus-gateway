@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -108,7 +108,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -129,6 +129,9 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									if(!on)
+										return;
+									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
@@ -255,7 +258,7 @@ $(document).ready(function() {
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
-										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
 										$('#mute').click(toggleMute);
@@ -418,8 +421,15 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
-				remoteFeed.send({"message": listen});
+				var subscribe = { "request": "join", "room": myroom, "ptype": "subscriber", "feed": id, "private_id": mypvtid };
+				if(Janus.webRTCAdapter.browserDetails.browser === "safari") {
+					// Safari doesn't support VP9
+					if(video)
+						video = video.toUpperCase()
+					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
+					subscribe["offer_video"] = false;
+				}
+				remoteFeed.send({"message": subscribe});
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
@@ -505,7 +515,7 @@ function newRemoteFeed(id, display) {
 					addButtons = true;
 					// No remote video yet
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
 						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
@@ -573,7 +583,7 @@ function newRemoteFeed(id, display) {
 				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
+				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 				$('#sl'+remoteFeed.rfindex+'-1').unbind('click');
@@ -606,7 +616,7 @@ function addSvcButtons(feed) {
 		'	</div>' +
 		'</div>'
 	);
-	// Enable the VP8 simulcast selection buttons
+	// Enable the VP9 SVC selection buttons
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});

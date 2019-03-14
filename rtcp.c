@@ -3,10 +3,10 @@
  * \copyright GNU General Public License v3
  * \brief    RTCP processing
  * \details  Implementation (based on the oRTP structures) of the RTCP
- * messages. RTCP messages coming through the gateway are parsed and,
+ * messages. RTCP messages coming through the server are parsed and,
  * if needed (according to http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00),
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
- * have been changed by the gateway). Methods to generate FIR messages
+ * have been changed by the server). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
  *
  * \ingroup protocols
@@ -22,6 +22,13 @@
 #include "rtcp.h"
 #include "utils.h"
 
+gboolean janus_is_rtcp(char *buf, guint len) {
+	if (len < 8)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type >= 64) && (header->type < 96));
+}
+
 int janus_rtcp_parse(janus_rtcp_context *ctx, char *packet, int len) {
 	return janus_rtcp_fix_ssrc(ctx, packet, len, 0, 0, 0);
 }
@@ -30,10 +37,12 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return 0;
 	int pno = 0, total = len;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
 		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
@@ -70,9 +79,8 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
 			break;
 		}
 		total -= length*4+4;
-		if(total <= 0) {
+		if(total <= 0)
 			break;
-		}
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	return 0;
@@ -82,14 +90,18 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return 0;
 	int pno = 0, total = len;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
 		pno++;
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
+				if (!janus_rtcp_check_sr(rtcp, total))
+					break;
 				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
 				if(sr->header.rc > 0) {
 					return ntohl(sr->rb[0].ssrc);
@@ -98,6 +110,8 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 			}
 			case RTCP_RR: {
 				/* RR, receiver report */
+				if (!janus_rtcp_check_rr(rtcp, total))
+					break;
 				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
 				if(rr->header.rc > 0) {
 					return ntohl(rr->rb[0].ssrc);
@@ -113,9 +127,8 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 			break;
 		}
 		total -= length*4+4;
-		if(total <= 0) {
+		if(total <= 0)
 			break;
-		}
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	return 0;
@@ -137,7 +150,8 @@ static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 #define LINK_QUALITY_FILTER_K 3.0
 
 static double janus_rtcp_link_quality_filter(double last, double in) {
-	if (last == 0 || last != last) {
+	/* Note: the last!=last is there to check for NaN */
+	if(last == 0 || last == in || last != last) {
 		return in;
 	} else {
 		return (1.0 - 1.0/LINK_QUALITY_FILTER_K) * last + (1.0/LINK_QUALITY_FILTER_K) * in;
@@ -157,13 +171,13 @@ static void janus_rtcp_rr_update_stats(rtcp_context *ctx, janus_report_block rb)
 		uint32_t sent = g_atomic_int_get(&ctx->sent_packets_since_last_rr);
 		uint32_t expect = ntohl(rb.ehsnr) - ctx->rr_last_ehsnr;
 		int32_t nacks = g_atomic_int_get(&ctx->nack_count) - ctx->rr_last_nack_count;
-		double link_q = 100.0 - (100.0 * nacks / (double)sent);
+		double link_q = !sent ? 0 : 100.0 - (100.0 * nacks / (double)sent);
 		ctx->out_link_quality = janus_rtcp_link_quality_filter(ctx->out_link_quality, link_q);
 		int32_t lost = total_lost - ctx->rr_last_lost;
 		if(lost < 0) {
 			lost = 0;
 		}
-		double media_link_q = 100.0 - (100.0 * lost / (double)expect);
+		double media_link_q = !expect ? 0 : 100.0 - (100.0 * lost / (double)expect);
 		ctx->out_media_link_quality = janus_rtcp_link_quality_filter(ctx->out_media_link_quality, media_link_q);
 		JANUS_LOG(LOG_HUGE, "Out link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_out_link_quality(ctx), janus_rtcp_context_get_out_media_link_quality(ctx));
 	}
@@ -196,57 +210,151 @@ static void janus_rtcp_incoming_rr(janus_rtcp_context *ctx, janus_rtcp_rr *rr) {
 		uint32_t s = tv.tv_sec + 2208988800u;
 		uint32_t u = tv.tv_usec;
 		uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-		uint32_t ntp_ts_msw = htonl(s);
-		uint32_t ntp_ts_lsw = htonl(f);
-		uint64_t temp = ntohl(ntp_ts_msw);
-		temp = (temp << 32) | ntohl(ntp_ts_lsw);
+		uint32_t ntp_ts_msw = s;
+		uint32_t ntp_ts_lsw = f;
+		uint64_t temp = ((uint64_t)ntp_ts_msw << 32 ) | ntp_ts_lsw;
 		uint32_t a = (uint32_t)(temp >> 16);
 		uint32_t rtt = a - lsr - dlsr;
 		uint32_t rtt_msw = (rtt & 0xFFFF0000) >> 16;
-		uint32_t rtt_lsw = (rtt & 0x0000FFFF) << 16;
+		uint32_t rtt_lsw = rtt & 0x0000FFFF;
 		tv.tv_sec = rtt_msw;
-		tv.tv_usec = ((rtt_lsw << 6) / 3650) - (rtt_lsw >> 12) - (rtt_lsw >> 8);
-		ctx->rtt = tv.tv_sec + tv.tv_usec / 1000;	/* We need milliseconds */
+		tv.tv_usec = (rtt_lsw * 15625) >> 10;
+		ctx->rtt = tv.tv_sec*1000 + tv.tv_usec/1000;	/* We need milliseconds */
+		JANUS_LOG(LOG_HUGE, "rtt=%"SCNu32"\n", ctx->rtt);
 	}
+}
+
+gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len) {
+	if (len < (int)sizeof(janus_rtcp_header) + (int)sizeof(uint32_t)) {
+		JANUS_LOG(LOG_VERB, "Packet size is too small (%d bytes) to contain RTCP\n", len);
+		return FALSE;
+	}
+	int header_def_len = 4*(int)ntohs(rtcp->length) + 4;
+	if (len < header_def_len) {
+		JANUS_LOG(LOG_VERB, "Invalid RTCP packet defined length, expected %d bytes > actual %d bytes\n", header_def_len, len);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len) {
+	if (len < (int)sizeof(janus_rtcp_header) + (int)sizeof(uint32_t) + (int)sizeof(sender_info)) {
+		JANUS_LOG(LOG_VERB, "RTCP Packet is too small (%d bytes) to contain SR\n", len);
+		return FALSE;
+	}
+	int header_rb_len = (int)(rtcp->rc)*(int)sizeof(report_block);
+	int actual_rb_len = len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t) - (int)sizeof(sender_info);
+	if (actual_rb_len < header_rb_len) {
+		JANUS_LOG(LOG_VERB, "SR got %d RB count, expected %d bytes > actual %d bytes\n", rtcp->rc, header_rb_len, actual_rb_len);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len) {
+	int header_rb_len = (int)(rtcp->rc)*(int)sizeof(report_block);
+	int actual_rb_len = len - (int)sizeof(janus_rtcp_header) - (int)sizeof(uint32_t);
+	if (actual_rb_len < header_rb_len) {
+		JANUS_LOG(LOG_VERB, "RR got %d RB count, expected %d bytes > actual %d bytes\n", rtcp->rc, header_rb_len, actual_rb_len);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci) {
+	/* At least one sizeof_fci bytes FCI */
+	if (len < (int)sizeof(janus_rtcp_header) + 2*(int)sizeof(uint32_t) + sizeof_fci) {
+		JANUS_LOG(LOG_VERB, "RTCP Packet is too small (%d bytes) to contain at least one %d bytes FCI\n", len, sizeof_fci);
+		return FALSE;
+	}
+	/* Evaluate fci total size */
+	int fci_size = len - (int)sizeof(janus_rtcp_header) - 2*(int)sizeof(uint32_t);
+	/*  The length of the feedback message is set to 2+(sizeof_fci/4)*N where
+		N is the number of FCI entries */
+	int fcis;
+	switch(sizeof_fci) {
+		case 0:
+			fcis = 0;
+			break;
+		case 4:
+			fcis = (int)ntohs(rtcp->length) - 2;
+			break;
+		case 8:
+			fcis = ((int)ntohs(rtcp->length) - 2) >> 1;
+			break;
+		default:
+			fcis = ((int)ntohs(rtcp->length)- 2) / (sizeof_fci >> 2);
+			break;
+	}
+	/* Every FCI is sizeof_fci bytes */
+	if (fci_size < sizeof_fci*fcis) {
+		JANUS_LOG(LOG_VERB, "Got %d FCI count, expected %d bytes > actual %d bytes\n", fcis, sizeof_fci*fcis, fci_size);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len) {
+	/* At least 1 SSRC feedback */
+	if (len < (int)sizeof(janus_rtcp_header) + 2*(int)sizeof(uint32_t) + 3*(int)sizeof(uint32_t)) {
+		JANUS_LOG(LOG_VERB, "Packet is too small (%d bytes) to contain REMB\n", len);
+		return FALSE;
+	}
+	janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
+	uint8_t numssrc = *(rtcpfb->fci+4);
+	/* Evaluate ssrcs total size */
+	int ssrc_size = len - (int)sizeof(janus_rtcp_header) - 2*(int)sizeof(uint32_t);
+	/* Every SSRC is 4 bytes */
+	if (ssrc_size < 4*numssrc) {
+		JANUS_LOG(LOG_VERB, "REMB got %d SSRC count, expected %d bytes > actual %d bytes\n", numssrc, 4*numssrc, ssrc_size);
+		return FALSE;
+	}
+	return TRUE;
 }
 
 int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr) {
 	if(packet == NULL || len <= 0)
 		return -1;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return -2;
 	int pno = 0, total = len;
 	JANUS_LOG(LOG_HUGE, "   Parsing compound packet (total of %d bytes)\n", total);
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			return -2;
+		if(rtcp->version != 2)
+			return -2;
 		pno++;
 		/* TODO Should we handle any of these packets ourselves, or just relay them? */
 		switch(rtcp->type) {
 			case RTCP_SR: {
 				/* SR, sender report */
 				JANUS_LOG(LOG_HUGE, "     #%d SR (200)\n", pno);
+				if (!janus_rtcp_check_sr(rtcp, total))
+					return -2;
 				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
 				/* If an RTCP context was provided, update it with info on this SR */
 				janus_rtcp_incoming_sr(ctx, sr);
 				if(fixssrc && newssrcl) {
 					sr->ssrc = htonl(newssrcl);
-				}
-				if(fixssrc && newssrcr && sr->header.rc > 0) {
-					sr->rb[0].ssrc = htonl(newssrcr);
+					if (sr->header.rc > 0) {
+						sr->rb[0].ssrc = htonl(newssrcr);
+					}
 				}
 				break;
 			}
 			case RTCP_RR: {
 				/* RR, receiver report */
 				JANUS_LOG(LOG_HUGE, "     #%d RR (201)\n", pno);
+				if (!janus_rtcp_check_rr(rtcp, total))
+					return -2;
 				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
 				/* If an RTCP context was provided, update it with info on this RR */
 				janus_rtcp_incoming_rr(ctx, rr);
 				if(fixssrc && newssrcl) {
 					rr->ssrc = htonl(newssrcl);
-				}
-				if(fixssrc && newssrcr && rr->header.rc > 0) {
-					rr->rb[0].ssrc = htonl(newssrcr);
+					if (rr->header.rc > 0) {
+						rr->rb[0].ssrc = htonl(newssrcr);
+					}
 				}
 				break;
 			}
@@ -283,14 +391,6 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 			case RTCP_FIR: {
 				/* FIR, rfc2032 */
 				JANUS_LOG(LOG_HUGE, "     #%d FIR (192)\n", pno);
-				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
-				if(fixssrc && newssrcr && (ntohs(rtcp->length) >= 20)) {
-					rtcpfb->media = htonl(newssrcr);
-				}
-				if(fixssrc && newssrcr) {
-					uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
-					*ssrc = htonl(newssrcr);
-				}
 				break;
 			}
 			case RTCP_RTPFB: {
@@ -302,6 +402,9 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(rtcpfb->ssrc));
 				if(fmt == 1) {
 					JANUS_LOG(LOG_HUGE, "     #%d NACK -- RTPFB (205)\n", pno);
+					/* NACK FCI size is 4 bytes */
+					if (!janus_rtcp_check_fci(rtcp, total, 4))
+						return -2;
 					if(fixssrc && newssrcr) {
 						rtcpfb->media = htonl(newssrcr);
 					}
@@ -329,6 +432,9 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					/* TMMBR: http://tools.ietf.org/html/rfc5104#section-4.2.1.1 */
 					JANUS_LOG(LOG_HUGE, "     #%d TMMBR -- RTPFB (205)\n", pno);
 					if(fixssrc && newssrcr) {
+						/* TMMBR FCI size is 8 bytes */
+						if (!janus_rtcp_check_fci(rtcp, total, 8))
+							return -2;
 						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
 						*ssrc = htonl(newssrcr);
 					}
@@ -349,7 +455,11 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(rtcpfb->ssrc));
 				if(fmt == 1) {
 					JANUS_LOG(LOG_HUGE, "     #%d PLI -- PSFB (206)\n", pno);
+					/* PLI does not require parameters.  Therefore, the length field MUST be
+						2, and there MUST NOT be any Feedback Control Information. */
 					if(fixssrc && newssrcr) {
+						if (!janus_rtcp_check_fci(rtcp, total, 0))
+							return -2;
 						rtcpfb->media = htonl(newssrcr);
 					}
 				} else if(fmt == 2) {
@@ -360,28 +470,28 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 					/* FIR: http://tools.ietf.org/html/rfc5104#section-4.3.1.1 */
 					JANUS_LOG(LOG_HUGE, "     #%d FIR -- PSFB (206)\n", pno);
 					if(fixssrc && newssrcr) {
+						/* FIR FCI size is 8 bytes */
+						if (!janus_rtcp_check_fci(rtcp, total, 8))
+							return -2;
 						rtcpfb->media = htonl(newssrcr);
-					}
-					if(fixssrc && newssrcr) {
 						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
 						*ssrc = htonl(newssrcr);
 					}
 				} else if(fmt == 5) {	/* rfc5104 */
-					/* FIR: http://tools.ietf.org/html/rfc5104#section-4.3.2.1 */
+					/* TSTR: http://tools.ietf.org/html/rfc5104#section-4.3.2.1 */
 					JANUS_LOG(LOG_HUGE, "     #%d PLI -- TSTR (206)\n", pno);
-					if(fixssrc && newssrcr) {
-						uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
-						*ssrc = htonl(newssrcr);
-					}
 				} else if(fmt == 15) {
 					//~ JANUS_LOG(LOG_HUGE, "       -- This is a AFB!\n");
 					janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 					if(fixssrc && newssrcr) {
+						/* AFB FCI size is variable, check just media SSRC */
+						if (!janus_rtcp_check_fci(rtcp, total, 0))
+							return -2;
 						rtcpfb->ssrc = htonl(newssrcr);
 						rtcpfb->media = 0;
 					}
 					janus_rtcp_fb_remb *remb = (janus_rtcp_fb_remb *)rtcpfb->fci;
-					if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
+					if(janus_rtcp_check_remb(rtcp, total) && remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
 						JANUS_LOG(LOG_HUGE, "     #%d REMB -- PSFB (206)\n", pno);
 						if(fixssrc && newssrcr) {
 							remb->ssrc[0] = htonl(newssrcr);
@@ -395,7 +505,7 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 						uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 						brMantissa += (_ptrRTCPData[2] << 8);
 						brMantissa += (_ptrRTCPData[3]);
-						uint32_t bitRate = brMantissa << brExp;
+						uint32_t bitRate = (uint64_t)brMantissa << brExp;
 						JANUS_LOG(LOG_HUGE, "       -- -- -- REMB: %u * 2^%u = %"SCNu32" (%d SSRCs, %u)\n",
 							brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]));
 					} else {
@@ -431,10 +541,8 @@ int janus_rtcp_fix_ssrc(janus_rtcp_context *ctx, char *packet, int len, int fixs
 		}
 		total -= length*4+4;
 		//~ JANUS_LOG(LOG_HUGE, "     Packet has length %d (%d bytes, %d remaining), moving to next one...\n", length, length*4+4, total);
-		if(total <= 0) {
-			JANUS_LOG(LOG_HUGE, "  End of compound packet\n");
+		if(total <= 0)
 			break;
-		}
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	return 0;
@@ -445,13 +553,20 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 		return NULL;
 	*newlen = 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return NULL;
 	char *filtered = NULL;
 	int total = len, length = 0, bytes = 0;
 	/* Iterate on the compound packets */
 	gboolean keep = TRUE;
+	gboolean error = FALSE;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			error = TRUE;
+			break;
+		}
+		if(rtcp->version != 2) {
+			error = TRUE;
+			break;
+		}
 		keep = TRUE;
 		length = ntohs(rtcp->length);
 		if(length == 0)
@@ -498,11 +613,16 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
+	if (error) {
+		g_free(filtered);
+		filtered = NULL;
+		*newlen = 0;
+	}
 	return filtered;
 }
 
 
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len) {
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean count_lost) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
@@ -521,28 +641,29 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
 		ctx->base_seq = seq_number;
 
-	ctx->received++;
-	if(seq_number < ctx->last_seq_nr) {
+	if((int16_t)(seq_number - ctx->max_seq_nr) < 0) {
+		/* Late packet or retransmission */
 		ctx->retransmitted++;
-		if(ctx->last_seq_nr - seq_number < 1000) {
-			/* FIXME Just a retransmission, not a reset, ignore */
-			return 0;
-		}
-		ctx->seq_cycle++;
+	} else {
+		if(seq_number < ctx->max_seq_nr)
+			ctx->seq_cycle++;
+		ctx->max_seq_nr = seq_number;
+		ctx->received++;
 	}
-	ctx->last_seq_nr = seq_number;
 	uint32_t rtp_expected = 0x0;
 	if(ctx->seq_cycle > 0) {
 		rtp_expected = ctx->seq_cycle;
 		rtp_expected = rtp_expected << 16;
 	}
-	rtp_expected = rtp_expected + 1 + seq_number - ctx->base_seq;
-	ctx->lost = rtp_expected - ctx->received;
+	rtp_expected = rtp_expected + 1 + ctx->max_seq_nr - ctx->base_seq;
+	if(count_lost && rtp_expected >= ctx->received)
+		ctx->lost = rtp_expected - ctx->received;
 	ctx->expected = rtp_expected;
 
-	uint64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;
-	uint64_t transit = arrival - ntohl(rtp->timestamp);
-	uint64_t d = abs(transit - ctx->transit);
+	int64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;
+	int64_t transit = arrival - ntohl(rtp->timestamp);
+	int64_t d = transit - ctx->transit;
+	if (d < 0) d = -d;
 	ctx->transit = transit;
 	ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
 
@@ -624,14 +745,14 @@ static void janus_rtcp_estimate_in_link_quality(janus_rtcp_context *ctx) {
 	uint32_t retransmitted_interval = ctx->retransmitted - ctx->retransmitted_prior;
 
 	int32_t link_lost = expected_interval - (received_interval - retransmitted_interval);
-	double link_q = 100.0 - (100.0 * (double)link_lost / (double)expected_interval);
+	double link_q = !expected_interval ? 0 : 100.0 - (100.0 * (double)link_lost / (double)expected_interval);
 	ctx->in_link_quality = janus_rtcp_link_quality_filter(ctx->in_link_quality, link_q);
 
 	int32_t lost = expected_interval - received_interval;
 	if (lost < 0) {
 		lost = 0;
 	}
-	double media_link_q = 100.0 - (100.0 * (double)lost / (double)expected_interval);
+	double media_link_q = !expected_interval ? 0 : 100.0 - (100.0 * (double)lost / (double)expected_interval);
 	ctx->in_media_link_quality = janus_rtcp_link_quality_filter(ctx->in_media_link_quality, media_link_q);
 
 	JANUS_LOG(LOG_HUGE, "In link quality=%"SCNu32", media link quality=%"SCNu32"\n", janus_rtcp_context_get_in_link_quality(ctx), janus_rtcp_context_get_in_media_link_quality(ctx));
@@ -642,7 +763,7 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 		return -1;
 	gint64 now = janus_get_monotonic_time();
 	rb->jitter = htonl((uint32_t) ctx->jitter);
-	rb->ehsnr = htonl((((uint32_t) 0x0 + ctx->seq_cycle) << 16) + ctx->last_seq_nr);
+	rb->ehsnr = htonl((((uint32_t) 0x0 + ctx->seq_cycle) << 16) + ctx->max_seq_nr);
 	uint32_t lost = janus_rtcp_context_get_lost(ctx);
 	uint32_t fraction = janus_rtcp_context_get_lost_fraction(ctx);
 	janus_rtcp_estimate_in_link_quality(ctx);
@@ -661,77 +782,59 @@ int janus_rtcp_report_block(janus_rtcp_context *ctx, janus_report_block *rb) {
 	return 0;
 }
 
-
-int janus_rtcp_has_bye(char *packet, int len) {
-	gboolean got_bye = FALSE;
+int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t base_ts_prev, uint32_t ssrc_peer, uint32_t ssrc_local, uint32_t ssrc_expected, gboolean video) {
+	if(packet == NULL || len <= 0)
+		return -1;
 	/* Parse RTCP compound packet */
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return FALSE;
-	int pno = 0, total = len;
+	int pno = 0, total = len, status = 0;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			return -2;
+		if(rtcp->version != 2)
+			return -2;
 		pno++;
 		switch(rtcp->type) {
-			case RTCP_BYE:
-				got_bye = TRUE;
+			case RTCP_RR: {
+				if (!janus_rtcp_check_rr(rtcp, total))
+					return -2;
+				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
+				rr->ssrc = htonl(ssrc_peer);
+				status++;
+				if (rr->header.rc > 0) {
+					rr->rb[0].ssrc = htonl(ssrc_local);
+					status++;
+					/* FIXME we need to fix the extended highest sequence number received */
+					/* FIXME we need to fix the cumulative number of packets lost */
+					break;
+				}
 				break;
-			default:
-				break;
-		}
-		/* Is this a compound packet? */
-		int length = ntohs(rtcp->length);
-		if(length == 0)
-			break;
-		total -= length*4+4;
-		if(total <= 0)
-			break;
-		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
-	}
-	return got_bye ? TRUE : FALSE;
-}
-
-int janus_rtcp_has_fir(char *packet, int len) {
-	gboolean got_fir = FALSE;
-	/* Parse RTCP compound packet */
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return FALSE;
-	int pno = 0, total = len;
-	while(rtcp) {
-		pno++;
-		switch(rtcp->type) {
-			case RTCP_FIR:
-				got_fir = TRUE;
-				break;
-			default:
-				break;
-		}
-		/* Is this a compound packet? */
-		int length = ntohs(rtcp->length);
-		if(length == 0)
-			break;
-		total -= length*4+4;
-		if(total <= 0)
-			break;
-		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
-	}
-	return got_fir ? TRUE : FALSE;
-}
-
-int janus_rtcp_has_pli(char *packet, int len) {
-	gboolean got_pli = FALSE;
-	/* Parse RTCP compound packet */
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return FALSE;
-	int pno = 0, total = len;
-	while(rtcp) {
-		pno++;
-		switch(rtcp->type) {
-			case RTCP_PSFB: {
-				gint fmt = rtcp->rc;
-				if(fmt == 1)
-					got_pli = TRUE;
+			}
+			case RTCP_SR: {
+				if (!janus_rtcp_check_sr(rtcp, total))
+					return -2;
+				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
+				uint32_t recv_ssrc = ntohl(sr->ssrc);
+				if (recv_ssrc != ssrc_expected) {
+					if(ssrc_expected != 0) {
+						JANUS_LOG(LOG_WARN,"Incoming RTCP SR SSRC (%"SCNu32") does not match the expected one (%"SCNu32") video=%d\n", recv_ssrc, ssrc_expected, video);
+					}
+					return -3;
+				}
+				sr->ssrc = htonl(ssrc_peer);
+				/* FIXME we need to fix the sender's packet count */
+				/* FIXME we need to fix the sender's octet count */
+				uint32_t sr_ts = ntohl(sr->si.rtp_ts);
+				uint32_t fix_ts = (sr_ts - base_ts) + base_ts_prev;
+				sr->si.rtp_ts = htonl(fix_ts);
+				status++;
+				if (sr->header.rc > 0) {
+					sr->rb[0].ssrc = htonl(ssrc_local);
+					status++;
+					/* FIXME we need to fix the extended highest sequence number received */
+					/* FIXME we need to fix the cumulative number of packets lost */
+					break;
+				}
 				break;
 			}
 			default:
@@ -746,22 +849,122 @@ int janus_rtcp_has_pli(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
-	return got_pli ? TRUE : FALSE;
+	return status;
+}
+
+gboolean janus_rtcp_has_bye(char *packet, int len) {
+	/* Parse RTCP compound packet */
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	int pno = 0, total = len;
+	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_BYE:
+				return TRUE;
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return FALSE;
+}
+
+gboolean janus_rtcp_has_fir(char *packet, int len) {
+	/* Parse RTCP compound packet */
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	int pno = 0, total = len;
+	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_FIR:
+				return TRUE;
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return FALSE;
+}
+
+gboolean janus_rtcp_has_pli(char *packet, int len) {
+	/* Parse RTCP compound packet */
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	int pno = 0, total = len;
+	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_PSFB: {
+				gint fmt = rtcp->rc;
+				if(fmt == 1)
+					return TRUE;
+				break;
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return FALSE;
 }
 
 GSList *janus_rtcp_get_nacks(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return NULL;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return NULL;
 	/* FIXME Get list of sequence numbers we should send again */
 	GSList *list = NULL;
 	int total = len;
+	gboolean error = FALSE;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			error = TRUE;
+			break;
+		}
+		if (rtcp->version != 2) {
+			error = TRUE;
+			break;
+		}
 		if(rtcp->type == RTCP_RTPFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 1) {
+				/* NACK FCI size is 4 bytes */
+				if (!janus_rtcp_check_fci(rtcp, total, 4)) {
+					error = TRUE;
+					break;
+				}
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
 				if(nacks > 0) {
@@ -786,6 +989,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
 					}
 				}
+				break;
 			}
 		}
 		/* Is this a compound packet? */
@@ -797,6 +1001,10 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 			break;
 		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
+	if (error && list) {
+		g_slist_free(list);
+		list = NULL;
+	}
 	return list;
 }
 
@@ -804,16 +1012,22 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return len;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return len;
 	/* Find the NACK message */
 	char *nacks = NULL;
 	int total = len, nacks_len = 0;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total)) {
+			break;
+		}
+		if(rtcp->version != 2)
+			break;
 		if(rtcp->type == RTCP_RTPFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 1) {
 				nacks = (char *)rtcp;
+				if (!janus_rtcp_check_fci(rtcp, total, 4)) {
+					break;
+				}
 			}
 		}
 		/* Is this a compound packet? */
@@ -853,17 +1067,19 @@ uint32_t janus_rtcp_get_remb(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return 0;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return 0;
 	/* Get REMB bitrate, if any */
 	int total = len;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
 		if(rtcp->type == RTCP_PSFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 15) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				janus_rtcp_fb_remb *remb = (janus_rtcp_fb_remb *)rtcpfb->fci;
-				if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
+				if(janus_rtcp_check_remb(rtcp, total) && remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
 					/* FIXME From rtcp_utility.cc */
 					unsigned char *_ptrRTCPData = (unsigned char *)remb;
 					_ptrRTCPData += 4;	/* Skip unique identifier and num ssrc */
@@ -872,7 +1088,7 @@ uint32_t janus_rtcp_get_remb(char *packet, int len) {
 					uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 					brMantissa += (_ptrRTCPData[2] << 8);
 					brMantissa += (_ptrRTCPData[3]);
-					uint32_t bitrate = brMantissa << brExp;
+					uint32_t bitrate = (uint64_t)brMantissa << brExp;
 					JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu32"\n", bitrate);
 					return bitrate;
 				}
@@ -895,19 +1111,21 @@ int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate) {
 	if(packet == NULL || len == 0)
 		return -1;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	if(rtcp->version != 2)
-		return -2;
 	if(bitrate == 0)
 		return 0;	/* No need to cap */
 	/* Cap REMB bitrate */
 	int total = len;
 	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			return -2;
+		if(rtcp->version != 2)
+			return -2;
 		if(rtcp->type == RTCP_PSFB) {
 			gint fmt = rtcp->rc;
 			if(fmt == 15) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				janus_rtcp_fb_remb *remb = (janus_rtcp_fb_remb *)rtcpfb->fci;
-				if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
+				if(janus_rtcp_check_remb(rtcp, total) && remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
 					/* FIXME From rtcp_utility.cc */
 					unsigned char *_ptrRTCPData = (unsigned char *)remb;
 					_ptrRTCPData += 4;	/* Skip unique identifier and num ssrc */
@@ -916,7 +1134,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint32_t bitrate) {
 					uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
 					brMantissa += (_ptrRTCPData[2] << 8);
 					brMantissa += (_ptrRTCPData[3]);
-					uint32_t origbitrate = brMantissa << brExp;
+					uint32_t origbitrate = (uint64_t)brMantissa << brExp;
 					if(origbitrate > bitrate) {
 						JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu32", need to cap it to %"SCNu32"\n", origbitrate, bitrate);
 						JANUS_LOG(LOG_HUGE, "  >> %u * 2^%u = %"SCNu32"\n", brMantissa, brExp, origbitrate);
@@ -966,9 +1184,9 @@ int janus_rtcp_sdes_cname(char *packet, int len, const char *cname, int cnamelen
 	rtcp->type = RTCP_SDES;
 	rtcp->rc = 1;
 	int plen = 8;	/* Header + chunk + item header */
-	plen += cnamelen+2;
-	if((cnamelen+2)%4)	/* Account for padding */
-		plen += 4;
+	plen += cnamelen+3; /* cname item header(2) + cnamelen + terminator(1) */
+	/* calculate padding length. assume that plen is shorter than 65535 */
+	plen = (plen + 3) & 0xFFFC;
 	if(len < plen) {
 		JANUS_LOG(LOG_ERR, "Buffer too small for SDES message: %d < %d\n", len, plen);
 		return -1;
@@ -1054,29 +1272,6 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	return 20;
 }
 
-/* Generate a new legacy FIR message */
-int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
-	/* FIXME Right now, this is identical to the new FIR, with the difference that we use 192 as PT */
-	if(packet == NULL || len != 20 || seqnr == NULL)
-		return -1;
-	memset(packet, 0, len);
-	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
-	*seqnr = *seqnr + 1;
-	if(*seqnr < 0 || *seqnr >= 256)
-		*seqnr = 0;	/* Reset sequence number */
-	/* Set header */
-	rtcp->version = 2;
-	rtcp->type = RTCP_FIR;
-	rtcp->rc = 4;	/* FMT=4 */
-	rtcp->length = htons((len/4)-1);
-	/* Now set FIR stuff */
-	janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
-	janus_rtcp_fb_fir *fir = (janus_rtcp_fb_fir *)rtcpfb->fci;
-	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
-	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
-	return 20;
-}
-
 /* Generate a new PLI message */
 int janus_rtcp_pli(char *packet, int len) {
 	if(packet == NULL || len != 12)
@@ -1115,7 +1310,7 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
 		} else if(npid-pid > 16) {
 			/* We need a new block: this sequence number will be its root PID */
-			JANUS_LOG(LOG_HUGE, "Adding another block of NACKs (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+			JANUS_LOG(LOG_HUGE, "Adding another block of NACKs (%"SCNu16"-%"SCNu16" > 16)...\n", npid, pid);
 			words++;
 			if(len < (words*4+4)) {
 				JANUS_LOG(LOG_ERR, "Buffer too small: %d < %d (at least %d NACK blocks needed)\n", len, words*4+4, words);
@@ -1261,7 +1456,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				len += 2;
 				/* Remove all statuses */
 				g_queue_clear(statuses);
-				/* Rsset status */
+				/* Reset status */
 				last_status = janus_rtp_packet_status_reserved;
 				max_status = janus_rtp_packet_status_notreceived;
 				all_same = TRUE;
@@ -1362,7 +1557,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			}
 		}
 		/* Free mem */
-		free(stat);
+		g_free(stat);
 
 		/* Get next packet stat */
 		stat = (janus_rtcp_transport_wide_cc_stats *) g_queue_pop_head (transport_wide_cc_stats);
@@ -1388,14 +1583,13 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			/* Write chunk */
 			word = janus_push_bits(word, 1, 1);
 			word = janus_push_bits(word, 1, 1);
-			/* Get fist status */
-			janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
-			/* Write rest */
-			while(!g_queue_is_empty(statuses)) {
+			/* Write all the statuses */
+			unsigned int i = 0;
+			for (i=0;i<statuses_len;i++) {
+				/* Get each status */
+				janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 				/* Write */
 				word = janus_push_bits(word, 2, (guint8)status);
-				/* Next */
-				status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			}
 			/* Write pending */
 			word = janus_push_bits(word, 14-statuses_len*2, 0);
@@ -1407,14 +1601,13 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			/* Write chunck */
 			word = janus_push_bits(word, 1, 1);
 			word = janus_push_bits(word, 1, 0);
-			/* Get fist status */
-			janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
-			/* Write rest */
-			while(!g_queue_is_empty(statuses)) {
+			/* Write all the statuses */
+			unsigned int i = 0;
+			for (i=0;i<statuses_len;i++) {
+				/* Get each status */
+				janus_rtp_packet_status status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 				/* Write */
 				word = janus_push_bits(word, 1, (guint8)status);
-				/* Next */
-				status = (janus_rtp_packet_status) GPOINTER_TO_UINT(g_queue_pop_head (statuses));
 			}
 			/* Write pending */
 			word = janus_push_bits(word, 14-statuses_len, 0);

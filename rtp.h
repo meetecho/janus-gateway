@@ -2,14 +2,14 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    RTP processing (headers)
- * \details  Implementation of the RTP header. Since the gateway does not
+ * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_RTP_H
 #define _JANUS_RTP_H
 
@@ -79,8 +79,15 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC	"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
 /*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+/*! \brief a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
+#define JANUS_RTP_EXTMAP_MID				"urn:ietf:params:rtp-hdrext:sdes:mid"
 /*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
 #define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+
+/*! \brief Helper method to demultiplex RTP from other protocols
+ * @param[in] buf Buffer to inspect
+ * @param[in] len Length of the buffer to inspect */
+gboolean janus_is_rtp(char *buf, guint len);
 
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
@@ -132,6 +139,16 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	uint16_t *min_delay, uint16_t *max_delay);
 
+/*! \brief Helper to parse a sdes-mid RTP extension (https://tools.ietf.org/html/draft-ietf-mmusic-sdp-bundle-negotiation-54)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] sdes_item Buffer where the RTP stream ID will be written
+ * @param[in] sdes_len Size of the input/output buffer
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
+	char *sdes_item, int sdes_len);
+
 /*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
@@ -142,11 +159,11 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
-/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+/*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
- * @param[out] transport wide sequence number
+ * @param[out] transSeqNum transport wide sequence number
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
 	uint16_t *transSeqNum);
@@ -163,8 +180,8 @@ typedef struct janus_rtp_switching_context {
 			v_seq_offset;
 	gint32 a_prev_delay, a_active_delay, a_ts_offset,
 			v_prev_delay, v_active_delay, v_ts_offset;
-	gint64 a_last_time, a_reference_time, a_start_time,
-			v_last_time, v_reference_time, v_start_time;
+	gint64 a_last_time, a_reference_time, a_start_time, a_evaluating_start_time,
+			v_last_time, v_reference_time, v_start_time, v_evaluating_start_time;
 } janus_rtp_switching_context;
 
 /*! \brief Set (or reset) the context fields to their default values
@@ -178,9 +195,9 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] step \b deprecated The expected timestamp step */
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
-#define RTP_AUDIO_SKEW_TH_MS 40
-#define RTP_VIDEO_SKEW_TH_MS 40
-#define SKEW_DETECTION_WAIT_TIME_SECS 15
+#define RTP_AUDIO_SKEW_TH_MS 120
+#define RTP_VIDEO_SKEW_TH_MS 120
+#define SKEW_DETECTION_WAIT_TIME_SECS 10
 
 /*! \brief Use the context info to compensate for audio source skew, if needed
  * @param[in] header The RTP header to update
@@ -194,5 +211,66 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
  * @param[in] now \b The packet arrival monotonic time
  * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
+
+typedef enum janus_audiocodec {
+	JANUS_AUDIOCODEC_NONE,
+	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_PCMU,
+	JANUS_AUDIOCODEC_PCMA,
+	JANUS_AUDIOCODEC_G722,
+	JANUS_AUDIOCODEC_ISAC_32K,
+	JANUS_AUDIOCODEC_ISAC_16K
+} janus_audiocodec;
+const char *janus_audiocodec_name(janus_audiocodec acodec);
+janus_audiocodec janus_audiocodec_from_name(const char *name);
+int janus_audiocodec_pt(janus_audiocodec acodec);
+
+typedef enum janus_videocodec {
+	JANUS_VIDEOCODEC_NONE,
+	JANUS_VIDEOCODEC_VP8,
+	JANUS_VIDEOCODEC_VP9,
+	JANUS_VIDEOCODEC_H264
+} janus_videocodec;
+const char *janus_videocodec_name(janus_videocodec vcodec);
+janus_videocodec janus_videocodec_from_name(const char *name);
+int janus_videocodec_pt(janus_videocodec vcodec);
+
+
+/*! \brief Helper struct for processing and tracking simulcast streams */
+typedef struct janus_rtp_simulcasting_context {
+	/*! \brief Which simulcast substream we should forward back */
+	int substream;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
+	int substream_target;
+	/*! \brief Which simulcast temporal layer we should forward back */
+	int templayer;
+	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
+	int templayer_target;
+	/*! \brief When we relayed the last packet (used to detect when substreams become unavailable) */
+	gint64 last_relayed;
+	/*! \brief Whether the substream has changed after processing a packet */
+	gboolean changed_substream;
+	/*! \brief Whether the temporal layer has changed after processing a packet */
+	gboolean changed_temporal;
+	/*! \brief Whether we need to send the user a keyframe request (PLI) */
+	gboolean need_pli;
+} janus_rtp_simulcasting_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context);
+
+/*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
+ * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
+ * properties, and updates them according to the decisions made after processinf the packet
+ * @param[in] context The simulcasting context to use
+ * @param[in] buf The RTP packet to process
+ * @param[in] len The length of the RTP packet (header, extension and payload)
+ * @param[in] ssrcs The simulcast SSRCs to refer to
+ * @param[in] vcodec Video codec of the RTP payload
+ * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
+ * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
+gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
+	char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc);
 
 #endif

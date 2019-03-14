@@ -6,7 +6,7 @@
  * there to showcase how you can handle an event coming from the Janus core
  * or one of the plugins. This specific plugin forwards every event it receives
  * to a web server via an HTTP POST request, using libcurl.
- * 
+ *
  * \ingroup eventhandlers
  * \ref eventhandlers
  */
@@ -20,6 +20,7 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../utils.h"
+#include "../events.h"
 
 
 /* Plugin information */
@@ -57,7 +58,7 @@ static janus_eventhandler janus_sampleevh =
 		.get_name = janus_sampleevh_get_name,
 		.get_author = janus_sampleevh_get_author,
 		.get_package = janus_sampleevh_get_package,
-		
+
 		.incoming_event = janus_sampleevh_incoming_event,
 		.handle_request = janus_sampleevh_handle_request,
 
@@ -76,6 +77,9 @@ static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
 static void *janus_sampleevh_handler(void *data);
 static janus_mutex evh_mutex;
+
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
@@ -119,60 +123,6 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_SAMPLEEVH_ERROR_UNKNOWN_ERROR			499
 
 
-/* Helper method to change the events mask */
-static void janus_sampleevh_edit_events_mask(const char *list) {
-	if(!list)
-		return;
-	janus_flags mask;
-	if(!strcasecmp(list, "none")) {
-		/* Don't subscribe to anything at all */
-		janus_flags_reset(&mask);
-	} else if(!strcasecmp(list, "all")) {
-		/* Subscribe to everything */
-		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
-	} else {
-		/* Check what we need to subscribe to */
-		janus_flags_reset(&mask);
-		gchar **subscribe = g_strsplit(list, ",", -1);
-		if(subscribe != NULL) {
-			gchar *index = subscribe[0];
-			if(index != NULL) {
-				int i=0;
-				while(index != NULL) {
-					while(isspace(*index))
-						index++;
-					if(strlen(index)) {
-						if(!strcasecmp(index, "sessions")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_SESSION);
-						} else if(!strcasecmp(index, "handles")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_HANDLE);
-						} else if(!strcasecmp(index, "jsep")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_JSEP);
-						} else if(!strcasecmp(index, "webrtc")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_WEBRTC);
-						} else if(!strcasecmp(index, "media")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_MEDIA);
-						} else if(!strcasecmp(index, "plugins")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_PLUGIN);
-						} else if(!strcasecmp(index, "transports")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_TRANSPORT);
-						} else if(!strcasecmp(index, "core")) {
-							janus_flags_set(&mask, JANUS_EVENT_TYPE_CORE);
-						} else {
-							JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
-						}
-					}
-					i++;
-					index = subscribe[i];
-				}
-			}
-			g_strfreev(subscribe);
-		}
-	}
-	memcpy(&janus_sampleevh.events_mask, &mask, sizeof(janus_flags));
-}
-
-
 /* Plugin implementation */
 int janus_sampleevh_init(const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -187,31 +137,38 @@ int janus_sampleevh_init(const char *config_path) {
 	/* Read configuration */
 	gboolean enabled = FALSE;
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SAMPLEEVH_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_SAMPLEEVH_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_SAMPLEEVH_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SAMPLEEVH_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		/* Handle configuration */
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 
 		/* Setup the sample event handler, if required */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Sample event handler disabled (Janus API)\n");
 		} else {
 			/* Backend to send events to */
-			item = janus_config_get_item_drilldown(config, "general", "backend");
+			item = janus_config_get(config, config_general, janus_config_type_item, "backend");
 			if(!item || !item->value || strstr(item->value, "http") != item->value) {
 				JANUS_LOG(LOG_WARN, "Missing or invalid backend\n");
 			} else {
 				backend = g_strdup(item->value);
 				/* Any credentials needed? */
-				item = janus_config_get_item_drilldown(config, "general", "backend_user");
+				item = janus_config_get(config, config_general, janus_config_type_item, "backend_user");
 				backend_user = (item && item->value) ? g_strdup(item->value) : NULL;
-				item = janus_config_get_item_drilldown(config, "general", "backend_pwd");
+				item = janus_config_get(config, config_general, janus_config_type_item, "backend_pwd");
 				backend_pwd = (item && item->value) ? g_strdup(item->value) : NULL;
 				/* Any specific setting for retransmissions? */
-				item = janus_config_get_item_drilldown(config, "general", "max_retransmissions");
+				item = janus_config_get(config, config_general, janus_config_type_item, "max_retransmissions");
 				if(item && item->value) {
 					int mr = atoi(item->value);
 					if(mr < 0) {
@@ -223,7 +180,7 @@ int janus_sampleevh_init(const char *config_path) {
 						max_retransmissions = mr;
 					}
 				}
-				item = janus_config_get_item_drilldown(config, "general", "retransmissions_backoff");
+				item = janus_config_get(config, config_general, janus_config_type_item, "retransmissions_backoff");
 				if(item && item->value) {
 					int rb = atoi(item->value);
 					if(rb <= 0) {
@@ -233,13 +190,31 @@ int janus_sampleevh_init(const char *config_path) {
 					}
 				}
 				/* Which events should we subscribe to? */
-				item = janus_config_get_item_drilldown(config, "general", "events");
+				item = janus_config_get(config, config_general, janus_config_type_item, "events");
 				if(item && item->value)
-					janus_sampleevh_edit_events_mask(item->value);
+					janus_events_edit_events_mask(item->value, &janus_sampleevh.events_mask);
 				/* Is grouping of events ok? */
-				item = janus_config_get_item_drilldown(config, "general", "grouping");
+				item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
 				if(item && item->value)
 					group_events = janus_is_true(item->value);
+				/* Check the JSON indentation */
+				item = janus_config_get(config, config_general, janus_config_type_item, "json");
+				if(item && item->value) {
+					/* Check how we need to format/serialize the JSON output */
+					if(!strcasecmp(item->value, "indented")) {
+						/* Default: indented, we use three spaces for that */
+						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+					} else if(!strcasecmp(item->value, "plain")) {
+						/* Not indented and no new lines, but still readable */
+						json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+					} else if(!strcasecmp(item->value, "compact")) {
+						/* Compact, so no spaces between separators */
+						json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+					} else {
+						JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+					}
+				}
 				/* Done */
 				enabled = TRUE;
 			}
@@ -327,8 +302,7 @@ const char *janus_sampleevh_get_package(void) {
 
 void janus_sampleevh_incoming_event(json_t *event) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
-		/* Janus is closing or the plugin is: unref the event as we won't handle it */
-		json_decref(event);
+		/* Janus is closing or the plugin is */
 		return;
 	}
 
@@ -395,7 +369,7 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 			req_backoff = json_integer_value(json_object_get(request, "retransmissions_backoff"));
 		/* If we got here, we can enforce */
 		if(req_events)
-			janus_sampleevh_edit_events_mask(req_events);
+			janus_events_edit_events_mask(req_events, &janus_sampleevh.events_mask);
 		if(req_grouping > -1)
 			group_events = req_grouping ? TRUE : FALSE;
 		if(req_backend || req_backend_user || req_backend_pwd) {
@@ -659,6 +633,26 @@ static void *janus_sampleevh_handler(void *data) {
 							   }
 							}
 						*/
+					case JANUS_EVENT_TYPE_EXTERNAL:
+						/* This is an external event, not originated by Janus itself
+						 * or any of its plugins, but from an ad-hoc Admin API request
+						 * instead. As such, the content of the event is not bound to
+						 * any rules (apart from the fact that it needs to be a JSON
+						 * object), but can be whatever the external source thought
+						 * appropriate. In order to facilitare life to recipients, all
+						 * external events must contain a "schema" property, which anyway
+						 * is not bound to any rules either. As an example:
+							{
+							   "type": 4,
+							   "timestamp": 28381185382,
+							   "event": {
+								  "schema": "my.custom.source",
+								  "data": {
+								     "whatever": "youwant"
+								  }
+							   }
+							}
+						*/
 						break;
 					default:
 						JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
@@ -683,7 +677,7 @@ static void *janus_sampleevh_handler(void *data) {
 			}
 
 			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
-			event_text = json_dumps(output, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			event_text = json_dumps(output, json_format);
 		}
 		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
 		CURLcode res;

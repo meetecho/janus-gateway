@@ -1,12 +1,14 @@
 /*! \file    text2pcap.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Dumping of RTP/RTCP packets to text2pcap format (headers)
+ * \brief    Dumping of RTP/RTCP packets to text2pcap or pcap format (headers)
  * \details  Implementation of a simple helper utility that can be used
- * to dump incoming and outgoing RTP/RTCP packets to text2pcap format.
- * The resulting file can then be passed to the \c text2pcap application
- * in order to get a \c .pcap or \c .pcapng file that can be analyzed
- * via Wireshark or similar applications, e.g.:
+ * to dump incoming and outgoing RTP/RTCP packets to pcap or text2pcap format.
+ * Saving to pcap natively can be more efficient but will lack some features,
+ * as the target will be a legacy (v2.4) \c .pcap file and not a \c .pcapng one.
+ * When saving to a text file, instead, the resulting file can be passed to
+ * the \c text2pcap application in order to get a \c .pcap or \c .pcapng file
+ * that can be analyzed via Wireshark or similar applications, e.g.:
  *
 \verbatim
 /usr/sbin/text2pcap -D -n -l 1 -i 17 -u 1000,2000 -t '%H:%M:%S.' dump.txt dump.pcapng
@@ -30,7 +32,7 @@
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_TEXT2PCAP_H
 #define _JANUS_TEXT2PCAP_H
 
@@ -45,15 +47,17 @@
 
 /*! \brief Instance of a text2pcap recorder */
 typedef struct janus_text2pcap {
-	/*! \brief Absolute path to where the text2pcap file is stored */ 
+	/*! \brief Absolute path to where the text2pcap file is stored */
 	char *filename;
 	/*! \brief Pointer to the file handle */
 	FILE *file;
 	/*! \brief Number of bytes to truncate at */
 	int truncate;
+	/*! \brief Whether we'll save as text, or directly to pcap */
+	gboolean text;
 	/*! \brief Whether we can write to this file or not */
 	volatile int writable;
-	/*! \brief Mutex to lock/unlock this recorder instance */ 
+	/*! \brief Mutex to lock/unlock this recorder instance */
 	janus_mutex mutex;
 } janus_text2pcap;
 
@@ -71,8 +75,9 @@ const char *janus_text2pcap_packet_string(janus_text2pcap_packet type);
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
  * @param[in] filename Filename to use for the recording
  * @param[in] truncate Number of bytes to truncate each packet at (0 to not truncate at all)
+ * @param[in] text Whether we'll save as text, or directly to pcap
  * @returns A valid janus_text2pcap instance in case of success, NULL otherwise */
-janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, int truncate);
+janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, int truncate, gboolean text);
 
 /*! \brief Dump an RTP or RTCP packet
  * @param[in] instance Instance of the janus_text2pcap recorder to dump the packet to

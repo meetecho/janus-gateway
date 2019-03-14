@@ -1,6 +1,6 @@
 {
   "name": "janus-gateway",
-  "version": "0.3.1",
+  "version": "0.6.3",
   "homepage": "https://github.com/meetecho/janus-gateway",
   "authors": [
     "Lorenzo Miniero <lorenzo@meetecho.com>",
@@ -20,7 +20,7 @@
     "Damon Oehlman <damon.oehlman@gmail.com>",
     "Scott <scottmortonashton@gmail.com>"
   ],
-  "description": "A javascript library for interacting with the C based Janus WebRTC Gateway",
+  "description": "A javascript library for interacting with the C based Janus WebRTC Server",
   "main": "./html/janus.js",
   "license": "GPLv3",
   "ignore": [

@@ -2,25 +2,34 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    RTP processing
- * \details  Implementation of the RTP header. Since the gateway does not
+ * \details  Implementation of the RTP header. Since the server does not
  * much more than relaying frames around, the only thing we're interested
  * in is the RTP header and how to get its payload, and parsing extensions.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <string.h>
 #include "rtp.h"
 #include "rtpsrtp.h"
 #include "debug.h"
 #include "utils.h"
 
+gboolean janus_is_rtp(char *buf, guint len) {
+	if (len < 12)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type < 64) || (header->type >= 96));
+}
+
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
-
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return NULL;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -31,6 +40,9 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 		hlen += 4;
 		if(len > (hlen + extlen))
 			hlen += extlen;
+	}
+	if (len-hlen <= 0) {
+		return NULL;
 	}
 	if(plen)
 		*plen = len-hlen;
@@ -112,6 +124,9 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 	if(!buf || len < 12)
 		return -1;
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return -1;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -138,8 +153,10 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 						/* Found! */
 						if(byte)
 							*byte = buf[hlen+i+1];
-						if(word)
-							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+						if(word && idlen >= 3 && (i+3) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
 						if(ref)
 							*ref = &buf[hlen+i];
 						return 0;
@@ -204,6 +221,27 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	return 0;
 }
 
+int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
+		char *sdes_item, int sdes_len) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	/* a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if(val_len > (sdes_len-1)) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), MID will be cut\n", val_len, sdes_len);
+		val_len = sdes_len-1;
+	}
+	if (val_len > len-(ext-buf)-1 ) {
+		return -3;
+	}
+	memcpy(sdes_item, ext+1, val_len);
+	*(sdes_item+val_len) = '\0';
+	return 0;
+}
+
 int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 		char *sdes_item, int sdes_len) {
 	char *ext = NULL;
@@ -216,6 +254,9 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	if(val_len > (sdes_len-1)) {
 		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), RTP stream ID will be cut\n", val_len, sdes_len);
 		val_len = sdes_len-1;
+	}
+	if (val_len > len-(ext-buf)-1 ) {
+		return -3;
 	}
 	memcpy(sdes_item, ext+1, val_len);
 	*(sdes_item+val_len) = '\0';
@@ -231,7 +272,7 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	   |  ID   | L=1   |transport-wide sequence number | zero padding  |
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	*/ 
+	*/
 	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
 	return 0;
 }
@@ -247,9 +288,11 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->a_new_ssrc) {
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" resetting status\n", context->a_last_ssrc);
 		context->a_reference_time = now;
-		context->a_start_ts = 0;
 		context->a_start_time = 0;
+		context->a_evaluating_start_time = 0;
+		context->a_start_ts = 0;
 		context->a_active_delay = 0;
 		context->a_prev_delay = 0;
 		context->a_seq_offset = 0;
@@ -264,10 +307,12 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 	int exit_status = 0;
 
 	/* Do not execute skew analysis in the first seconds */
-	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+	if (now-context->a_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->a_start_time) {
+		JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase start\n", context->a_last_ssrc);
 		context->a_start_time = now;
+		context->a_evaluating_start_time = now;
 		context->a_start_ts = context->a_last_ts;
 	}
 
@@ -289,14 +334,32 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate current delay */
 			gint32 delay_now = context->a_last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (31*context->a_prev_delay + delay_now)/32;
+			gint32 delay_estimate = (63*context->a_prev_delay + delay_now)/64;
 			/* Save previous delay for the next iteration*/
 			context->a_prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint32 offset = context->a_active_delay - delay_estimate;
 			JANUS_LOG(LOG_HUGE, "audio skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->a_last_ssrc, context->a_last_ts, expected_ts, offset, context->a_ts_offset, context->a_seq_offset);
-			/* Check if the offset has surpassed the threshold */
 			gint32 skew_th = RTP_AUDIO_SKEW_TH_MS*akhz;
+			/* Evaluation phase */
+			if (context->a_evaluating_start_time > 0) {
+				/* Check if the offset has surpassed half the threshold during the evaluating phase */
+				if (now-context->a_evaluating_start_time <= SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
+					if (abs(offset) <= skew_th/2) {
+						JANUS_LOG(LOG_HUGE, "audio skew SSRC=%"SCNu32" evaluation phase continue\n", context->a_last_ssrc);
+					} else {
+						JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase reset\n", context->a_last_ssrc);
+						context->a_start_time = now;
+						context->a_evaluating_start_time = now;
+						context->a_start_ts = context->a_last_ts;
+					}
+				} else {
+					JANUS_LOG(LOG_VERB, "audio skew SSRC=%"SCNu32" evaluation phase stop\n", context->a_last_ssrc);
+					context->a_evaluating_start_time = 0;
+				}
+				return 0;
+			}
+			/* Check if the offset has surpassed the threshold */
 			if (offset >= skew_th) {
 				/* The source is slowing down */
 				/* Update active delay */
@@ -341,9 +404,11 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now) {
 	/* Reset values if a new ssrc has been detected */
 	if (context->v_new_ssrc) {
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" resetting status\n", context->v_last_ssrc);
 		context->v_reference_time = now;
-		context->v_start_ts = 0;
 		context->v_start_time = 0;
+		context->v_evaluating_start_time = 0;
+		context->v_start_ts = 0;
 		context->v_active_delay = 0;
 		context->v_prev_delay = 0;
 		context->v_seq_offset = 0;
@@ -358,10 +423,12 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	int exit_status = 0;
 
 	/* Do not execute skew analysis in the first seconds */
-	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS*G_USEC_PER_SEC) {
+	if (now-context->v_reference_time < SKEW_DETECTION_WAIT_TIME_SECS/2 *G_USEC_PER_SEC) {
 		return 0;
 	} else if (!context->v_start_time) {
+		JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase start\n", context->v_last_ssrc);
 		context->v_start_time = now;
+		context->v_evaluating_start_time = now;
 		context->v_start_ts = context->v_last_ts;
 	}
 
@@ -381,14 +448,32 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 			/* Evaluate current delay */
 			gint32 delay_now = context->v_last_ts - expected_ts;
 			/* Exponentially weighted moving average estimation */
-			gint32 delay_estimate = (31*context->v_prev_delay + delay_now)/32;
+			gint32 delay_estimate = (63*context->v_prev_delay + delay_now)/64;
 			/* Save previous delay for the next iteration*/
 			context->v_prev_delay = delay_estimate;
 			/* Evaluate the distance between active delay and current delay estimate */
 			gint32 offset = context->v_active_delay - delay_estimate;
 			JANUS_LOG(LOG_HUGE, "video skew status SSRC=%"SCNu32" RECVD_TS=%"SCNu32" EXPTD_TS=%"SCNu32" OFFSET=%"SCNi32" TS_OFFSET=%"SCNi32" SEQ_OFFSET=%"SCNi16"\n", context->v_last_ssrc, context->v_last_ts, expected_ts, offset, context->v_ts_offset, context->v_seq_offset);
-			/* Check if the offset has surpassed the threshold */
 			gint32 skew_th = RTP_VIDEO_SKEW_TH_MS*vkhz;
+			/* Evaluation phase */
+			if (context->v_evaluating_start_time > 0) {
+				/* Check if the offset has surpassed half the threshold during the evaluating phase */
+				if (now-context->v_evaluating_start_time <= SKEW_DETECTION_WAIT_TIME_SECS/2 * G_USEC_PER_SEC) {
+					if (abs(offset) <= skew_th/2) {
+						JANUS_LOG(LOG_HUGE, "video skew SSRC=%"SCNu32" evaluation phase continue\n", context->v_last_ssrc);
+					} else {
+						JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase reset\n", context->v_last_ssrc);
+						context->v_start_time = now;
+						context->v_evaluating_start_time = now;
+						context->v_start_ts = context->v_last_ts;
+					}
+				} else {
+					JANUS_LOG(LOG_VERB, "video skew SSRC=%"SCNu32" evaluation phase stop\n", context->v_last_ssrc);
+					context->v_evaluating_start_time = 0;
+				}
+				return 0;
+			}
+			/* Check if the offset has surpassed the threshold */
 			if (offset >= skew_th) {
 				/* The source is slowing down */
 				/* Update active delay */
@@ -529,6 +614,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 /* SRTP stuff: we may need our own randomizer */
 #ifdef HAVE_SRTP_2
 int srtp_crypto_get_random(uint8_t *key, int len) {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
 	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
 	int rc = RAND_bytes(key, len);
@@ -536,6 +622,7 @@ int srtp_crypto_get_random(uint8_t *key, int len) {
 		/* Error generating */
 		return -1;
 	}
+#endif
 	return 0;
 }
 #endif
@@ -600,4 +687,220 @@ const char *janus_srtp_error_str(int error) {
 	if(error < 0 || error > 24)
 		return NULL;
 	return janus_srtp_error[error];
+}
+
+/* Payload types we'll offer internally */
+#define OPUS_PT		111
+#define ISAC32_PT	104
+#define ISAC16_PT	103
+#define PCMU_PT		0
+#define PCMA_PT		8
+#define G722_PT		9
+#define VP8_PT		96
+#define VP9_PT		101
+#define H264_PT		107
+const char *janus_audiocodec_name(janus_audiocodec acodec) {
+	switch(acodec) {
+		case JANUS_AUDIOCODEC_NONE:
+			return "none";
+		case JANUS_AUDIOCODEC_OPUS:
+			return "opus";
+		case JANUS_AUDIOCODEC_PCMU:
+			return "pcmu";
+		case JANUS_AUDIOCODEC_PCMA:
+			return "pcma";
+		case JANUS_AUDIOCODEC_G722:
+			return "g722";
+		case JANUS_AUDIOCODEC_ISAC_32K:
+			return "isac32";
+		case JANUS_AUDIOCODEC_ISAC_16K:
+			return "isac16";
+		default:
+			/* Shouldn't happen */
+			return "opus";
+	}
+}
+janus_audiocodec janus_audiocodec_from_name(const char *name) {
+	if(name == NULL)
+		return JANUS_AUDIOCODEC_NONE;
+	else if(!strcasecmp(name, "opus"))
+		return JANUS_AUDIOCODEC_OPUS;
+	else if(!strcasecmp(name, "isac32"))
+		return JANUS_AUDIOCODEC_ISAC_32K;
+	else if(!strcasecmp(name, "isac16"))
+		return JANUS_AUDIOCODEC_ISAC_16K;
+	else if(!strcasecmp(name, "pcmu"))
+		return JANUS_AUDIOCODEC_PCMU;
+	else if(!strcasecmp(name, "pcma"))
+		return JANUS_AUDIOCODEC_PCMA;
+	else if(!strcasecmp(name, "g722"))
+		return JANUS_AUDIOCODEC_G722;
+	JANUS_LOG(LOG_WARN, "Unsupported audio codec '%s'\n", name);
+	return JANUS_AUDIOCODEC_NONE;
+}
+int janus_audiocodec_pt(janus_audiocodec acodec) {
+	switch(acodec) {
+		case JANUS_AUDIOCODEC_NONE:
+			return -1;
+		case JANUS_AUDIOCODEC_OPUS:
+			return OPUS_PT;
+		case JANUS_AUDIOCODEC_ISAC_32K:
+			return ISAC32_PT;
+		case JANUS_AUDIOCODEC_ISAC_16K:
+			return ISAC16_PT;
+		case JANUS_AUDIOCODEC_PCMU:
+			return PCMU_PT;
+		case JANUS_AUDIOCODEC_PCMA:
+			return PCMA_PT;
+		case JANUS_AUDIOCODEC_G722:
+			return G722_PT;
+		default:
+			/* Shouldn't happen */
+			return OPUS_PT;
+	}
+}
+
+const char *janus_videocodec_name(janus_videocodec vcodec) {
+	switch(vcodec) {
+		case JANUS_VIDEOCODEC_NONE:
+			return "none";
+		case JANUS_VIDEOCODEC_VP8:
+			return "vp8";
+		case JANUS_VIDEOCODEC_VP9:
+			return "vp9";
+		case JANUS_VIDEOCODEC_H264:
+			return "h264";
+		default:
+			/* Shouldn't happen */
+			return "vp8";
+	}
+}
+janus_videocodec janus_videocodec_from_name(const char *name) {
+	if(name == NULL)
+		return JANUS_VIDEOCODEC_NONE;
+	else if(!strcasecmp(name, "vp8"))
+		return JANUS_VIDEOCODEC_VP8;
+	else if(!strcasecmp(name, "vp9"))
+		return JANUS_VIDEOCODEC_VP9;
+	else if(!strcasecmp(name, "h264"))
+		return JANUS_VIDEOCODEC_H264;
+	JANUS_LOG(LOG_WARN, "Unsupported video codec '%s'\n", name);
+	return JANUS_VIDEOCODEC_NONE;
+}
+int janus_videocodec_pt(janus_videocodec vcodec) {
+	switch(vcodec) {
+		case JANUS_VIDEOCODEC_NONE:
+			return -1;
+		case JANUS_VIDEOCODEC_VP8:
+			return VP8_PT;
+		case JANUS_VIDEOCODEC_VP9:
+			return VP9_PT;
+		case JANUS_VIDEOCODEC_H264:
+			return H264_PT;
+		default:
+			/* Shouldn't happen */
+			return VP8_PT;
+	}
+}
+
+void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	memset(context, 0, sizeof(*context));
+	context->substream = -1;
+	context->templayer = -1;
+}
+
+gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
+		char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc) {
+	if(!context || !buf || len < 1)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	uint32_t ssrc = ntohl(header->ssrc);
+	/* Reset the flags */
+	context->changed_substream = FALSE;
+	context->changed_temporal = FALSE;
+	context->need_pli = FALSE;
+	/* Access the packet payload */
+	int plen = 0;
+	char *payload = janus_rtp_payload(buf, len, &plen);
+	if(payload == NULL)
+		return FALSE;
+	if(context->substream != context->substream_target) {
+		/* There has been a change: let's wait for a keyframe on the target */
+		int step = (context->substream < 1 && context->substream_target == 2);
+		if((ssrc == *(ssrcs + context->substream_target)) || (step && ssrc == *(ssrcs + step))) {
+			if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
+					(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen))) {
+				uint32_t ssrc_old = 0;
+				if(context->substream != -1)
+					ssrc_old = *(ssrcs + context->substream);
+				JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
+				context->substream = (ssrc == *(ssrcs + context->substream_target) ? context->substream_target : step);
+				/* Notify the caller that the substream changed */
+				context->changed_substream = TRUE;
+			//~ } else {
+				//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+			}
+		}
+	}
+	/* If we haven't received our desired substream yet, let's drop temporarily */
+	if(context->last_relayed == 0) {
+		/* Let's start slow */
+		context->last_relayed = janus_get_monotonic_time();
+	} else {
+		/* Check if 250ms went by with no packet relayed */
+		gint64 now = janus_get_monotonic_time();
+		if(now-context->last_relayed >= 250000) {
+			context->last_relayed = now;
+			int substream = context->substream-1;
+			if(substream < 0)
+				substream = 0;
+			if(context->substream != substream) {
+				JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+					context->substream, substream);
+				context->substream = substream;
+				/* Notify the caller that we need a PLI */
+				context->need_pli = TRUE;
+				/* Notify the caller that the substream changed as well */
+				context->changed_substream = TRUE;
+			}
+		}
+	}
+	/* Do we need to drop this? */
+	if(ssrc != *(ssrcs + context->substream)) {
+		JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
+			ssrc, *(ssrcs + context->substream));
+		return FALSE;
+	}
+	context->last_relayed = janus_get_monotonic_time();
+	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	if(vcodec == JANUS_VIDEOCODEC_VP8) {
+		/* Check if there's any temporal scalability to take into account */
+		uint16_t picid = 0;
+		uint8_t tlzi = 0;
+		uint8_t tid = 0;
+		uint8_t ybit = 0;
+		uint8_t keyidx = 0;
+		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+				/* FIXME We should be smarter in deciding when to switch */
+				context->templayer = context->templayer_target;
+				/* Notify the caller that the temporal layer changed */
+				context->changed_temporal = TRUE;
+			}
+			if(tid > context->templayer) {
+				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+					tid, context->templayer);
+				/* We increase the base sequence number, or there will be gaps when delivering later */
+				if(sc)
+					sc->v_base_seq++;
+				return FALSE;
+			}
+		}
+	}
+	/* If we got here, the packet can be relayed */
+	return TRUE;
 }
