@@ -4028,6 +4028,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					/* Check where the payload starts */
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
+					if(plen == 0) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Discarding outgoing empty RTP packet\n", handle->handle_id);
+						janus_ice_free_rtp_packet(p);
+						janus_ice_free_queued_packet(pkt);
+						return G_SOURCE_CONTINUE;
+					}
 					size_t hsize = payload - pkt->data;
 					/* Copy the header first */
 					memcpy(p->data, pkt->data, hsize);
