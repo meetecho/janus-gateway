@@ -2368,20 +2368,22 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "video-peer-sim-1-rtx", json_integer(stream->video_ssrc_peer_rtx[1]));
 	if(stream->video_ssrc_peer_rtx[2])
 		json_object_set_new(ss, "video-peer-sim-2-rtx", json_integer(stream->video_ssrc_peer_rtx[2]));
+	json_object_set_new(s, "ssrc", ss);
 	if(stream->rid[0]) {
+		json_t *sr = json_object();
 		json_t *rid = json_array();
 		json_array_append_new(rid, json_string(stream->rid[0]));
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[1]));
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[2]));
-		json_object_set_new(ss, "rid", rid);
-		json_object_set_new(ss, "rid-ext", json_integer(stream->rid_ext_id));
-		json_object_set_new(ss, "ridrtx-ext", json_integer(stream->ridrtx_ext_id));
+		json_object_set_new(sr, "rid", rid);
+		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
+		json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
 		if(stream->legacy_rid)
-			json_object_set_new(ss, "rid-syntax", json_string("legacy"));
+			json_object_set_new(sr, "rid-syntax", json_string("legacy"));
+		json_object_set_new(s, "rid-simulcast", sr);
 	}
-	json_object_set_new(s, "ssrc", ss);
 	json_t *sd = json_object();
 	json_object_set_new(sd, "audio-send", stream->audio_send ? json_true() : json_false());
 	json_object_set_new(sd, "audio-recv", stream->audio_recv ? json_true() : json_false());
