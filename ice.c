@@ -2246,7 +2246,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				char *payload = janus_rtp_payload(buf, buflen, &plen);
 				if (!payload) {
 					  JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
-					  return;
 				}
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
@@ -2254,16 +2253,18 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					memcpy(&header->seq_number, payload, 2);
-					/* Finally, remove the original sequence number from the payload: rather than moving
-					 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
-					buflen -= 2;
-					plen -= 2;
-					size_t hsize = payload-buf;
-					memmove(buf+2, buf, hsize);
-					buf += 2;
-					payload +=2;
-					header = (janus_rtp_header *)buf;
+					if (plen > 0) {
+						memcpy(&header->seq_number, payload, 2);
+						/* Finally, remove the original sequence number from the payload: rather than moving
+						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
+						buflen -= 2;
+						plen -= 2;
+						size_t hsize = payload-buf;
+						memmove(buf+2, buf, hsize);
+						buf += 2;
+						payload +=2;
+						header = (janus_rtp_header *)buf;
+					}
 				}
 				/* Check if we need to handle transport wide cc */
 				if(pc->do_transport_wide_cc) {
@@ -2382,12 +2383,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Update the RTCP context as well */
 				rtcp_context *rtcp_ctx = medium->rtcp_ctx[vindex];
-				gboolean count_lost = !medium->do_nacks;
-				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen, count_lost);
-
+				gboolean retransmissions_disabled = !medium->do_nacks;
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen,
+					(video && rtx),
+					(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)),
+					retransmissions_disabled);
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
-				if(!medium->do_nacks) {
+				if(retransmissions_disabled) {
 					/* ... unless NACKs are disabled for this medium */
 					return;
 				}
@@ -2450,7 +2453,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else if(cur_seq->state == SEQ_MISSING && now - cur_seq->ts > SEQ_MISSING_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
 								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							rtcp_ctx->lost++;
 							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
 							cur_seq->state = SEQ_NACKED;
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -3749,6 +3751,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 					/* Check where the payload starts */
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
+					if(plen == 0) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Discarding outgoing empty RTP packet\n", handle->handle_id);
+						janus_rtp_packet_free(p);
+						janus_ice_free_queued_packet(pkt);
+						return G_SOURCE_CONTINUE;
+					}
 					size_t hsize = payload - pkt->data;
 					/* Copy the header first */
 					memcpy(p->data, pkt->data, hsize);

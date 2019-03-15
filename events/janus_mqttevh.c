@@ -440,6 +440,7 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	int rc;
 
 	MQTTAsync_responseOptions options;
+	memset(&options, 0, sizeof(MQTTAsync_responseOptions));
 	MQTTAsync_message msg = MQTTAsync_message_initializer;
 
 	msg.payload = payload;
