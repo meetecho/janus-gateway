@@ -1344,10 +1344,7 @@ int janus_process_incoming_request(janus_request *request) {
 						if(handle->stream->rid[2])
 							json_array_append_new(rids, json_string(handle->stream->rid[2]));
 						json_object_set_new(simulcast, "rids", rids);
-						if(handle->stream->rid_ext_id > 0)
-							json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
-						if(handle->stream->ridrtx_ext_id > 0)
-							json_object_set_new(simulcast, "ridrtx-ext", json_integer(handle->stream->ridrtx_ext_id));
+						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
 					} else {
 						json_t *ssrcs = json_array();
 						json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[0]));
@@ -2379,6 +2376,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[2]));
 		json_object_set_new(ss, "rid", rid);
+		json_object_set_new(ss, "rid-ext", json_integer(stream->rid_ext_id));
+		json_object_set_new(ss, "ridrtx-ext", json_integer(stream->ridrtx_ext_id));
 		if(stream->legacy_rid)
 			json_object_set_new(ss, "rid-syntax", json_string("legacy"));
 	}
