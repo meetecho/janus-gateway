@@ -206,7 +206,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	janus_config_item *username_item = janus_config_get(config, config_general, janus_config_type_item, "username");
 	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
-	
+
 	janus_config_item *password_item = janus_config_get(config, config_general, janus_config_type_item, "password");
 	ctx->connect.password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
 
@@ -727,6 +727,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 	msg.retained = 0;
 
 	MQTTAsync_responseOptions options;
+	memset(&options, 0, sizeof(MQTTAsync_responseOptions));
 	options.context = ctx;
 	if(admin) {
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
