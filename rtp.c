@@ -289,6 +289,49 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	return 0;
 }
 
+int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id) {
+	if(!buf || len < 12)
+		return -1;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return -2;
+	}
+	int hlen = 12;
+	if(rtp->csrccount)	/* Skip CSRC if needed */
+		hlen += rtp->csrccount*4;
+	if(rtp->extension) {
+		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
+		int extlen = ntohs(ext->length)*4;
+		hlen += 4;
+		if(len > (hlen + extlen)) {
+			/* 1-Byte extension */
+			if(ntohs(ext->type) == 0xBEDE) {
+				const uint8_t padding = 0x00, reserved = 0xF;
+				uint8_t extid = 0, idlen = 0;
+				int i = 0;
+				while(i < extlen) {
+					extid = buf[hlen+i] >> 4;
+					if(extid == reserved) {
+						break;
+					} else if(extid == padding) {
+						i++;
+						continue;
+					}
+					idlen = (buf[hlen+i] & 0xF)+1;
+					if(extid == id) {
+						/* Found! */
+						buf[hlen+i] = (new_id << 4) + (idlen - 1);
+						return 0;
+					}
+					i += 1 + idlen;
+				}
+			}
+			hlen += extlen;
+		}
+	}
+	return -3;
+}
+
 /* RTP context related methods */
 void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 	if(context == NULL)

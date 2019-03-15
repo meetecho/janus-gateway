@@ -171,6 +171,15 @@ int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
 	uint16_t *transSeqNum);
 
+/*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
+ * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for and replace
+ * @param[in] new_id The new value for the extension ID
+ * @returns 0 if found, a negative integer otherwise */
+int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id);
+
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {
 	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev, a_prev_ts, a_target_ts, a_start_ts,
