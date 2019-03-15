@@ -276,7 +276,7 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	if(ext == NULL)
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
-	if (val_len > len-(ext-buf)-1) {
+	if (val_len < 2 || val_len > len-(ext-buf)-1) {
 		return -3;
 	}
 	memcpy(transSeqNum, ext+1, sizeof(uint16_t));
