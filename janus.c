@@ -1244,7 +1244,8 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
 					/* Check if the RTP Stream ID extension is being negotiated */
-					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
+					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
+					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -2968,7 +2969,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value && (strstr(a->value, JANUS_RTP_EXTMAP_MID) ||
-						strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID))) {
+						strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
+						strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))) {
 					m->attributes = g_list_remove(m->attributes, a);
 					tempA = m->attributes;
 					janus_sdp_attribute_destroy(a);

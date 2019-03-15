@@ -390,8 +390,8 @@ struct janus_ice_stream {
 	guint32 video_last_ts;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
-	/*! \brief RTP Stream extension ID */
-	gint rid_ext_id;
+	/*! \brief RTP Stream extension ID, and the related rtx one */
+	gint rid_ext_id, ridrtx_ext_id;
 	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */

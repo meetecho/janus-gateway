@@ -2181,7 +2181,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							if(stream->rid[0] == NULL || stream->rid_ext_id < 1) {
 								stream->video_ssrc_peer[0] = packet_ssrc;
 							} else {
-								if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, stream->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+								if(janus_rtp_header_extension_parse_rid(buf, len, stream->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
 									if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer[0] = packet_ssrc;
@@ -2194,6 +2194,27 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s\n", handle->handle_id, sdes_item);
 										stream->video_ssrc_peer[2] = packet_ssrc;
 										vindex = 2;
+									} else if(stream->ridrtx_ext_id > 0 &&
+											janus_rtp_header_extension_parse_rid(buf, len, stream->ridrtx_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+										/* Try the repaired RTP stream ID */
+										if(stream->rid[0] != NULL && !strcmp(stream->rid[0], sdes_item)) {
+											JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+											stream->video_ssrc_peer[0] = packet_ssrc;
+											vindex = 0;
+											rtx = 1;
+										} else if(stream->rid[1] != NULL && !strcmp(stream->rid[1], sdes_item)) {
+											JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+											stream->video_ssrc_peer[1] = packet_ssrc;
+											vindex = 1;
+											rtx = 1;
+										} else if(stream->rid[2] != NULL && !strcmp(stream->rid[2], sdes_item)) {
+											JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+											stream->video_ssrc_peer[2] = packet_ssrc;
+											vindex = 2;
+											rtx = 1;
+										} else {
+											JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid %s..?\n", handle->handle_id, sdes_item);
+										}
 									} else {
 										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid %s..?\n", handle->handle_id, sdes_item);
 									}

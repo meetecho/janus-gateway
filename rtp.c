@@ -105,8 +105,12 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_ABS_SEND_TIME;
 					if(strstr(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						return JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC;
-					if(strstr(extension, JANUS_RTP_EXTMAP_RTP_STREAM_ID))
-						return JANUS_RTP_EXTMAP_RTP_STREAM_ID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_MID))
+						return JANUS_RTP_EXTMAP_MID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_RID))
+						return JANUS_RTP_EXTMAP_RID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_REPAIRED_RID))
+						return JANUS_RTP_EXTMAP_REPAIRED_RID;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -242,12 +246,13 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 	return 0;
 }
 
-int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 		char *sdes_item, int sdes_len) {
 	char *ext = NULL;
 	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
 		return -1;
-	/* a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+	/* a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+	/* a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 	if(ext == NULL)
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
@@ -863,7 +868,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		if(context->rid_ext_id < 1 || rids == NULL)
 			return FALSE;
 		char sdes_item[16];
-		if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
+		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
 			return FALSE;
 		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);

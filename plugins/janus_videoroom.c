@@ -1420,7 +1420,7 @@ typedef struct janus_videoroom_publisher {
 	gboolean do_opusfec;	/* Whether this publisher is sending inband Opus FEC */
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
 	char *rid[3];			/* Only needed if simulcasting is rid-based */
-	guint8 rid_extmap_id;		/* rid extmap ID */
+	int rid_extmap_id;		/* rid extmap ID */
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;		/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;		/* Playout delay extmap ID */
@@ -4068,7 +4068,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			else if(participant->rid_extmap_id > 0) {
 				/* We may not know the SSRC yet, try the rid RTP extension */
 				char sdes_item[16];
-				if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, participant->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
+				if(janus_rtp_header_extension_parse_rid(buf, len, participant->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
 					if(participant->rid[0] != NULL && !strcmp(participant->rid[0], sdes_item)) {
 						participant->ssrc[0] = ssrc;
 						sc = 0;
@@ -5941,7 +5941,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,

@@ -82,8 +82,10 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
 /*! \brief a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
 #define JANUS_RTP_EXTMAP_MID				"urn:ietf:params:rtp-hdrext:sdes:mid"
-/*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
-#define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+/*! \brief a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+#define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+/*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
+#define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
 
 /*! \brief Helper method to demultiplex RTP from other protocols
  * @param[in] buf Buffer to inspect
@@ -157,7 +159,7 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
  * @param[out] sdes_item Buffer where the RTP stream ID will be written
  * @param[in] sdes_len Size of the input/output buffer
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
