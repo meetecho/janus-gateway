@@ -89,6 +89,9 @@ Time (in s) that should pass with no media (audio or video) being received befor
 .BR \-r ", " \-\-rtp-port-range=\fImin\-max\fR
 Port range to use for RTP/RTCP
 .TP
+.BR \-B ", " \-\-twcc-period=\fInumber\fR
+How often (in ms) to send TWCC feedback back to senders, if negotiated (default=1s)
+.TP
 .BR \-n ", " \-\-server-name=\fIname\fR
 Public name of this Janus instance (default=MyJanusInstance)
 .TP

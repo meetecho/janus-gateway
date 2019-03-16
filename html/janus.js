@@ -381,7 +381,8 @@ Janus.init = function(options) {
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
 	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
-		navigator.getUserMedia !== undefined && navigator.getUserMedia !== null;
+		navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
+		navigator.mediaDevices.getUserMedia !== undefined && navigator.mediaDevices.getUserMedia !== null;
 };
 
 // Helper method to create random identifiers (e.g., transaction)
@@ -1604,9 +1605,9 @@ function Janus(gatewayCallbacks) {
 		// If we still need to create a PeerConnection, let's do that
 		if(!config.pc) {
 			var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
-			if(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version < 72) {
-				// For Chrome versions before 72, we force a plan-b semantic
-				pc_config["sdpSemantics"] = "plan-b";
+			if(Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
+				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
@@ -2426,15 +2427,18 @@ function Janus(gatewayCallbacks) {
 		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
-			var sender = config.pc.getSenders()[1];
-			Janus.log(sender);
-			var parameters = sender.getParameters();
-			Janus.log(parameters);
-			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
-				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
-			]});
+			var sender = config.pc.getSenders().find(s => s.track.kind == "video");
+			if(sender) {
+				var parameters = sender.getParameters();
+				if(!parameters)
+					parameters = {};
+				parameters.encodings = [
+					{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
+					{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
+					{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+				];
+				sender.setParameters(parameters);
+			}
 		}
 		config.pc.createOffer(mediaConstraints)
 			.then(function(offer) {

@@ -79,6 +79,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC	"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
 /*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+/*! \brief a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
+#define JANUS_RTP_EXTMAP_MID				"urn:ietf:params:rtp-hdrext:sdes:mid"
 /*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
 #define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 
@@ -137,6 +139,16 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	uint16_t *min_delay, uint16_t *max_delay);
 
+/*! \brief Helper to parse a sdes-mid RTP extension (https://tools.ietf.org/html/draft-ietf-mmusic-sdp-bundle-negotiation-54)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] sdes_item Buffer where the RTP stream ID will be written
+ * @param[in] sdes_len Size of the input/output buffer
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
+	char *sdes_item, int sdes_len);
+
 /*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
@@ -147,7 +159,7 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
-/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+/*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for

@@ -63,8 +63,6 @@ Makefile.in
 /conf/janus.plugin.recordplay.jcfg.sample
 /conf/janus.plugin.streaming.jcfg.sample
 /conf/janus.plugin.voicemail.jcfg.sample
-/conf/janus.transport.http.jcfg.sample
-/conf/janus.transport.websockets.jcfg.sample
 
 .deps
 .dirstamp

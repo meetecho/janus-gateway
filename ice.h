@@ -125,6 +125,12 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
+ * @param[in] timer The new period value, in milliseconds */
+void janus_set_twcc_period(uint period);
+/*! \brief Method to get the current TWCC period (see above)
+ * @returns The current TWCC period */
+uint janus_get_twcc_period(void);
 /*! \brief Method to enable or disable the RFC4588 support negotiation
  * @param[in] enabled The new timer value, in seconds */
 void janus_set_rfc4588_enabled(gboolean enabled);
@@ -144,6 +150,11 @@ gboolean janus_ice_is_ice_debugging_enabled(void);
 void janus_ice_debugging_enable(void);
 /*! \brief Method to disable libnice debugging (the default) */
 void janus_ice_debugging_disable(void);
+/*! \brief Method to enable opaque ID in Janus API responses/events */
+void janus_enable_opaqueid_in_api(void);
+/*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
+ * @returns TRUE if they need to be present, FALSE otherwise */
+gboolean janus_is_opaqueid_in_api_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -269,8 +280,8 @@ struct janus_ice_handle {
 	GMainLoop *mainloop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
-	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
-	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -375,7 +386,9 @@ struct janus_ice_stream {
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
 	guint32 video_last_ts;
-	/*! \brief  Wether we do transport wide cc for video */
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
+	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;

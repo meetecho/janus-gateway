@@ -7,11 +7,11 @@
  * of such object by playing with its properties, and a serialization
  * to an SDP string that can be passed around. Since they don't have any
  * core dependencies, these utilities can be used by plugins as well.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_SDP_UTILS_H
 #define _JANUS_SDP_UTILS_H
 
@@ -266,12 +266,16 @@ JANUS_SDP_OA_AUDIO_PT,
 JANUS_SDP_OA_VIDEO_PT,
 /*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only) */
 JANUS_SDP_OA_AUDIO_DTMF,
+/*! \brief When generating an offer or answer automatically, add this custom fmtp string for audio */
+JANUS_SDP_OA_AUDIO_FMTP,
 /*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 /*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
 JANUS_SDP_OA_VIDEO_H264_FMTP,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
 JANUS_SDP_OA_DATA_LEGACY,
+/*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
+JANUS_SDP_OA_ACCEPT_EXTMAP,
 /*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;

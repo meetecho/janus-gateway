@@ -255,6 +255,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -269,6 +270,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "opaqueid_in_api", janus_is_opaqueid_in_api_enabled() ? json_true() : json_false());
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -1239,6 +1241,8 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 					janus_request_ice_handle_answer(handle, audio, video, data, jsep_sdp);
 				} else {
+					/* Check if the mid RTP extension is being negotiated */
+					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1364,6 +1368,8 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Prepare JSON response */
 			json_t *reply = janus_create_message("success", session->session_id, transaction_text);
 			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
+			if(janus_is_opaqueid_in_api_enabled() && handle->opaque_id != NULL)
+				json_object_set_new(reply, "opaque_id", json_string(handle->opaque_id));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
 			json_object_set_new(plugin_data, "data", result->content);
@@ -2786,6 +2792,8 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	/* Prepare JSON event */
 	json_t *event = janus_create_message("event", session->session_id, transaction);
 	json_object_set_new(event, "sender", json_integer(ice_handle->handle_id));
+	if(janus_is_opaqueid_in_api_enabled() && ice_handle->opaque_id != NULL)
+		json_object_set_new(event, "opaque_id", json_string(ice_handle->opaque_id));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
 	json_object_set_new(plugin_data, "data", message);
@@ -2932,6 +2940,24 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						ice_handle->data_mid = g_strdup("data");
 				}
 			}
+		}
+		/* Make sure we don't send the mid attribute when offering ourselves */
+		GList *temp = parsed_sdp->m_lines;
+		while(temp) {
+			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+			GList *tempA = m->attributes;
+			while(tempA) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+				if(a->name && a->value && (strstr(a->value, JANUS_RTP_EXTMAP_MID) ||
+						strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID))) {
+					m->attributes = g_list_remove(m->attributes, a);
+					tempA = m->attributes;
+					janus_sdp_attribute_destroy(a);
+					continue;
+				}
+				tempA = tempA->next;
+			}
+			temp = temp->next;
 		}
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
@@ -3532,6 +3558,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add(config, config_media, janus_config_item_create("no_media_timer", nmt));
 	}
+	if(args_info.twcc_period_given) {
+		char tp[20];
+		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
+		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
+	}
 	if(args_info.rfc_4588_given) {
 		janus_config_add(config, config_media, janus_config_item_create("rfc_4588", "yes"));
 	}
@@ -3693,6 +3724,11 @@ gint main(int argc, char *argv[])
 	if (item && item->value)
 		auth_secret = item->value;
 	janus_auth_init(auth_enabled, auth_secret);
+
+	/* Check if opaque IDs should be sent back in the Janus API too */
+	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
+	if(item && item->value && janus_is_true(item->value))
+		janus_enable_opaqueid_in_api();
 
 	/* Initialize the recorder code */
 	item = janus_config_get(config, config_general, janus_config_type_item, "recordings_tmp_ext");
@@ -3871,6 +3907,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
 		} else {
 			janus_set_no_media_timer(nmt);
+		}
+	}
+	/* TWCC period */
+	item = janus_config_get(config, config_media, janus_config_type_item, "twcc_period");
+	if(item && item->value) {
+		int tp = atoi(item->value);
+		if(tp <= 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring twcc_period value as it's not a positive integer\n");
+		} else {
+			janus_set_twcc_period(tp);
 		}
 	}
 	/* RFC4588 support */
