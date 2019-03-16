@@ -2260,7 +2260,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 			}
-			if(session->stack->s_nh_r != NULL) {
+			if(session != NULL && session->stack->s_nh_r != NULL) {
 				nua_handle_destroy(session->stack->s_nh_r);
 				session->stack->s_nh_r = NULL;
 			}
