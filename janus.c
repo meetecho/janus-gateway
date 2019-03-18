@@ -2375,7 +2375,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_array_append_new(rid, json_string(stream->rid[0]));
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[1]));
-		if(stream->rid[1])
+		if(stream->rid[2])
 			json_array_append_new(rid, json_string(stream->rid[2]));
 		json_object_set_new(sr, "rid", rid);
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
