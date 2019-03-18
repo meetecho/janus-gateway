@@ -2369,7 +2369,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	if(stream->video_ssrc_peer_rtx[2])
 		json_object_set_new(ss, "video-peer-sim-2-rtx", json_integer(stream->video_ssrc_peer_rtx[2]));
 	json_object_set_new(s, "ssrc", ss);
-	if(stream->rid[0]) {
+	if(stream->rid[0] && stream->rid_ext_id > 0) {
 		json_t *sr = json_object();
 		json_t *rid = json_array();
 		json_array_append_new(rid, json_string(stream->rid[0]));
@@ -2379,7 +2379,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 			json_array_append_new(rid, json_string(stream->rid[2]));
 		json_object_set_new(sr, "rid", rid);
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
-		json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
+		if(stream->ridrtx_ext_id > 0)
+			json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
 		if(stream->legacy_rid)
 			json_object_set_new(sr, "rid-syntax", json_string("legacy"));
 		json_object_set_new(s, "rid-simulcast", sr);
@@ -2406,7 +2407,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	}
 	json_t *bwe = json_object();
 	json_object_set_new(bwe, "twcc", stream->do_transport_wide_cc ? json_true() : json_false());
-	if(stream->transport_wide_cc_ext_id >= 0)
+	if(stream->transport_wide_cc_ext_id > 0)
 		json_object_set_new(bwe, "twcc-ext-id", json_integer(stream->transport_wide_cc_ext_id));
 	json_object_set_new(s, "bwe", bwe);
 	json_t *components = json_array();
