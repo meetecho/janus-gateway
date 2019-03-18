@@ -6053,8 +6053,8 @@ static void *janus_videoroom_handler(void *data) {
 						int i=0;
 						for(i=0; i<3; i++) {
 							participant->ssrc[i] = 0;
-							g_free(participant->rid[0]);
-							participant->rid[0] = NULL;
+							g_free(participant->rid[i]);
+							participant->rid[i] = NULL;
 						}
 					}
 				}

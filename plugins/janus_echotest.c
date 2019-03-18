@@ -765,8 +765,8 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	int i=0;
 	for(i=0; i<3; i++) {
 		session->ssrc[i] = 0;
-		g_free(session->rid[0]);
-		session->rid[0] = NULL;
+		g_free(session->rid[i]);
+		session->rid[i] = NULL;
 	}
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);

@@ -1588,8 +1588,8 @@ recdone:
 					int i=0;
 					for(i=0; i<3; i++) {
 						session->ssrc[i] = 0;
-						g_free(session->rid[0]);
-						session->rid[0] = NULL;
+						g_free(session->rid[i]);
+						session->rid[i] = NULL;
 					}
 				}
 			}
