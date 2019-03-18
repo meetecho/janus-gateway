@@ -1,4 +1,4 @@
-#Janus 0.6.2 gengetopt file
+#Janus 0.6.3 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off

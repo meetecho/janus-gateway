@@ -2,8 +2,13 @@
 
 set -eu
 
-TARGET=${1-"rtcp_fuzzer"}
-OUT=${OUT-"$(pwd)/out"}
+TARGET=${1:-"rtcp_fuzzer"}
+CRASH_FILE=${2:-""}
+HALF_NCORES=$(expr $(nproc) / 2)
+HALF_NCORES=$(($HALF_NCORES > 0 ? $HALF_NCORES : 1))
+JOBS=${JOBS:-${HALF_NCORES}}
+WORKERS=${WORKERS:-${HALF_NCORES}}
+OUT=${OUT:-"$(pwd)/out"}
 SRC=$(dirname $(pwd))
 echo "Executing fuzzer $TARGET"
 
@@ -16,8 +21,13 @@ if [ -f "${TARGET}_seed_corpus.zip" ]; then
 	unzip -oq "$TARGET"_seed_corpus.zip -d "$TARGET"_seed_corpus
 fi
 # Use -max_len=65535 for network protocols
-ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=0 -jobs=4 "$TARGET"_corpus "$TARGET"_seed_corpus
-# tail -f fuzz*.log
+if [ -z "$CRASH_FILE" ]; then
+	ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=0 -jobs=${JOBS} -workers=${WORKERS} "$TARGET"_corpus "$TARGET"_seed_corpus
+	# tail -f fuzz*.log
+else
+	# rerun to reproduce with a supplied crash file
+	./$TARGET $CRASH_FILE
+fi
 
 # run standalone fuzzer or libFuzzer without fuzzing (regression testing)
 # ASAN_OPTIONS=detect_leaks=1 ./$TARGET "$TARGET"_seed_corpus/*
@@ -29,9 +39,6 @@ ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final
 
 # dump crashing pattern
 # hexdump -C "$TARGET"-crash-458003b01372ea8ae6456f86da40d3b1d32d905d
-
-# rerun to reproduce
-# ./$TARGET "$TARGET"-crash-458003b01372ea8ae6456f86da40d3b1d32d905d
 
 # rerun with GDB to reproduce and debug
 # ASAN_OPTIONS=abort_on_error=1 gdb --args ./$TARGET "$TARGET"-crash-458003b01372ea8ae6456f86da40d3b1d32d905d
