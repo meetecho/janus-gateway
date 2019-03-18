@@ -1039,6 +1039,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
 					|| !strcasecmp(a->name, "rid")
+					|| !strcasecmp(a->name, "simulcast")
 					|| !strcasecmp(a->name, "rtcp")
 					|| !strcasecmp(a->name, "rtcp-mux")
 					|| !strcasecmp(a->name, "rtcp-rsize")
