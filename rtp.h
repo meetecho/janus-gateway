@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <glib.h>
+#include <jansson.h>
 
 #define RTP_HEADER_SIZE	12
 
@@ -81,8 +82,10 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
 /*! \brief a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
 #define JANUS_RTP_EXTMAP_MID				"urn:ietf:params:rtp-hdrext:sdes:mid"
-/*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
-#define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+/*! \brief a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+#define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+/*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
+#define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
 
 /*! \brief Helper method to demultiplex RTP from other protocols
  * @param[in] buf Buffer to inspect
@@ -156,7 +159,7 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
  * @param[out] sdes_item Buffer where the RTP stream ID will be written
  * @param[in] sdes_len Size of the input/output buffer
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
@@ -167,6 +170,15 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
 	uint16_t *transSeqNum);
+
+/*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
+ * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for and replace
+ * @param[in] new_id The new value for the extension ID
+ * @returns 0 if found, a negative integer otherwise */
+int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id);
 
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {
@@ -231,6 +243,8 @@ int janus_videocodec_pt(janus_videocodec vcodec);
 
 /*! \brief Helper struct for processing and tracking simulcast streams */
 typedef struct janus_rtp_simulcasting_context {
+	/*! \brief RTP Stream extension ID, if any */
+	gint rid_ext_id;
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
@@ -253,17 +267,28 @@ typedef struct janus_rtp_simulcasting_context {
  * @param[in] context The context to (re)set */
 void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *context);
 
+/*! \brief Helper method to prepare the simulcasting info (rids and/or SSRCs) from
+ * the simulcast object the core passes to plugins for new PeerConnections
+ * @param[in] simulcast JSON object containing SSRCs and rids
+ * @param[in] rid_ext_id The rid RTP extension ID to set, if any
+ * @param[in] ssrcs The list of simulcast SSRCs to update, if any
+ * @param[in] rids The list of rids to update, if any (items will be allocated) */
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids);
+
 /*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
  * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli
  * properties, and updates them according to the decisions made after processinf the packet
  * @param[in] context The simulcasting context to use
  * @param[in] buf The RTP packet to process
  * @param[in] len The length of the RTP packet (header, extension and payload)
- * @param[in] ssrcs The simulcast SSRCs to refer to
+ * @param[in] ssrcs The simulcast SSRCs to refer to (may be updated if rids are involved)
+ * @param[in] rids The simulcast rids to refer to, if any
+ * @param[in] rid_ext_id The rid RTP extension id to check, if any
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-	char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc);
+	char *buf, int len, uint32_t *ssrcs, char **rids,
+	janus_videocodec vcodec, janus_rtp_switching_context *sc);
 
 #endif

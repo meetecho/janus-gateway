@@ -656,11 +656,13 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 
 			int64_t arrival = (now * ctx->tb) / 1000000;
 			int64_t transit = arrival - ntohl(rtp->timestamp);
-			int64_t d = transit - ctx->transit;
-			if (d < 0) d = -d;
-			ctx->transit = transit;
-			ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
+			if (ctx->transit != 0) {
+				int64_t d = transit - ctx->transit;
+				if (d < 0) d = -d;
+				ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
+			}
 
+			ctx->transit = transit;
 			ctx->rtp_last_inorder_ts = ntohl(rtp->timestamp);
 			ctx->rtp_last_inorder_time = now;
 		} else {
@@ -676,7 +678,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 					/* TODO We have to accomplish this in a smarter way */
 					int32_t rtp_diff = ntohl(rtp->timestamp) - ctx->rtp_last_inorder_ts;
 					int32_t ms_diff = (abs(rtp_diff) * 1000) / ctx->tb;
-					if (ms_diff >= 100)
+					if (ms_diff > 120)
 						ctx->retransmitted++;
 					else
 						ctx->received++;

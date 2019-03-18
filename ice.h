@@ -364,9 +364,9 @@ struct janus_handle_webrtc {
 	janus_dtls_srtp *dtls;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
-	/*! \brief RTP Stream extension ID */
-	gint rid_ext_id;
-	/*! \brief Wether we do transport wide cc */
+	/*! \brief RTP Stream extension ID, and the related rtx one */
+	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;
@@ -432,6 +432,8 @@ struct janus_handle_webrtc_medium {
 	guint32 ssrc_peer_rtx[3], ssrc_peer_rtx_new[3], ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
+	gboolean legacy_rid;
 	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
 	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect */

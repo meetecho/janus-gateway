@@ -2145,7 +2145,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			int video = 0, vindex = 0, rtx = 0;
 			janus_handle_webrtc_medium *medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc));
 			if(medium == NULL) {
-				/* SSRC not found, try the mid RTP extension if in use */
+				/* SSRC not found, try the mid/rid RTP extensions if in use */
 				if(pc->mid_ext_id > 0) {
 					char sdes_item[16];
 					if(janus_rtp_header_extension_parse_mid(buf, len, pc->mid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
@@ -2154,26 +2154,54 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* Found! Associate this SSRC to this stream */
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] SSRC %"SCNu32" is associated to mid %s\n",
 								handle->handle_id, packet_ssrc, medium->mid);
-							g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc), medium);
-							janus_refcount_increase(&medium->ref);
+							gboolean found = FALSE;
 							/* Check if simulcasting is involved */
-							if(medium->rid[0] == NULL || pc->mid_ext_id < 1) {
+							if(medium->rid[0] == NULL || pc->rid_ext_id < 1) {
 								medium->ssrc_peer[0] = packet_ssrc;
+								found = TRUE;
 							} else {
-								if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, pc->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+								if(janus_rtp_header_extension_parse_rid(buf, len, pc->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+									/* Try the RTP stream ID */
 									if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
-										medium->ssrc_peer[2] = packet_ssrc;
-									} else if(medium->rid[1] != NULL && !strcmp(medium->rid[1], sdes_item)) {
-										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
-										medium->ssrc_peer[1] = packet_ssrc;
-									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
-										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer[0] = packet_ssrc;
+										found = TRUE;
+									} else if(medium->rid[1] != NULL && !strcmp(medium->rid[1], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer[1] = packet_ssrc;
+										found = TRUE;
+									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer[2] = packet_ssrc;
+										found = TRUE;
 									} else {
-										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid..?\n", handle->handle_id);
+										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid %s..?\n", handle->handle_id, sdes_item);
+									}
+								} else if(pc->ridrtx_ext_id > 0 &&
+										janus_rtp_header_extension_parse_rid(buf, len, pc->ridrtx_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
+									/* Try the repaired RTP stream ID */
+									if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer_rtx[0] = packet_ssrc;
+										found = TRUE;
+									} else if(medium->rid[1] != NULL && !strcmp(medium->rid[1], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer_rtx[1] = packet_ssrc;
+										found = TRUE;
+									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s (rtx)\n", handle->handle_id, sdes_item);
+										medium->ssrc_peer_rtx[2] = packet_ssrc;
+										found = TRUE;
+									} else {
+										JANUS_LOG(LOG_WARN, "[%"SCNu64"]  -- Simulcasting: unknown rid %s..?\n", handle->handle_id, sdes_item);
 									}
 								}
+							}
+							if(found) {
+								g_hash_table_insert(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc), medium);
+								janus_refcount_increase(&medium->ref);
+							} else {
+								medium = NULL;
 							}
 						}
 					}
@@ -2190,6 +2218,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				return;
 			/* If this is video, check if this is simulcast and/or a retransmission using RFC4588 */
 			if(video) {
+				vindex = 0;
 				if(medium->ssrc_peer[1] == packet_ssrc) {
 					/* FIXME Simulcast (1) */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Simulcast #1 (SSRC %"SCNu32")...\n", handle->handle_id, packet_ssrc);
@@ -2253,7 +2282,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
-					if (plen > 0) {
+					if(plen > 0) {
 						memcpy(&header->seq_number, payload, 2);
 						/* Finally, remove the original sequence number from the payload: rather than moving
 						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
@@ -2264,6 +2293,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						buf += 2;
 						payload +=2;
 						header = (janus_rtp_header *)buf;
+						if(pc->rid_ext_id > 1 && pc->ridrtx_ext_id > 1) {
+							/* Replace the 'repaired' extension ID as well with the 'regular' one */
+							janus_rtp_header_extension_replace_id(buf, buflen, pc->ridrtx_ext_id, pc->rid_ext_id);
+						}
 					}
 				}
 				/* Check if we need to handle transport wide cc */
@@ -2398,8 +2431,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && medium->video_is_keyframe) {
 					if(medium->video_is_keyframe(payload, plen)) {
-						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received, resetting NACK queue\n", handle->handle_id);
-						if(medium->last_seqs[vindex] && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
+						if(rtcp_ctx && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe received with a highest sequence number, resetting NACK queue\n", handle->handle_id);
 							janus_seq_list_free(&medium->last_seqs[vindex]);
 						}

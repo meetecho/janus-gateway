@@ -1776,13 +1776,12 @@ typedef struct janus_videoroom_publisher_stream {
 	gboolean opusfec;						/* Whether this stream is sending inband Opus FEC */
 	gboolean simulcast, svc;				/* Whether this stream uses simulcast or VP9 SVC */
 	uint32_t vssrc[3];						/* Only needed in case VP8 (or H.264) simulcasting is involved */
-	int rtpmapid_extmap_id;					/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
-	char *rid[3];							/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
+	char *rid[3];							/* Only needed if simulcasting is rid-based */
+	int rid_extmap_id;						/* rid extmap ID */
 	/* RTP extensions, if negotiated */
 	guint8 audio_level_extmap_id;			/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;			/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;			/* Playout delay extmap ID */
-	guint8 transport_wide_cc_extmap_id; 	/* Transport wide cc extmap ID */
 	janus_sdp_mdirection audio_level_mdir, video_orient_mdir, playout_delay_mdir;
 	/* Audio level processing, if enabled */
 	int audio_dBov_level;					/* Value in dBov of the audio level (last value from extension) */
@@ -1842,7 +1841,6 @@ typedef struct janus_videoroom_subscriber_stream {
 	guint8 audio_level_extmap_id;		/* Audio level extmap ID */
 	guint8 video_orient_extmap_id;		/* Video orientation extmap ID */
 	guint8 playout_delay_extmap_id;		/* Playout delay extmap ID */
-	guint8 transport_wide_cc_extmap_id; /* Transport wide cc extmap ID */
 	/* RTP and simulcasting contexts */
 	janus_rtp_switching_context context;
 	janus_rtp_simulcasting_context sim_context;
@@ -1937,6 +1935,11 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	janus_mutex_destroy(&ps->rtp_forwarders_mutex);
 	g_slist_free(ps->subscribers);
 	janus_mutex_destroy(&ps->subscribers_mutex);
+	int i=0;
+	for(i=0; i<3; i++) {
+		g_free(ps->rid[i]);
+		ps->rid[i] = NULL;
+	}
 	g_free(ps);
 }
 
@@ -2223,6 +2226,7 @@ static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(j
 		forward->simulcast = TRUE;
 		janus_rtp_switching_context_reset(&forward->context);
 		janus_rtp_simulcasting_context_reset(&forward->sim_context);
+		forward->sim_context.rid_ext_id = stream->rid_extmap_id;
 		forward->sim_context.substream_target = 2;
 		forward->sim_context.templayer_target = 2;
 	}
@@ -2365,6 +2369,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	janus_refcount_init(&stream->ref, janus_videoroom_subscriber_stream_free);
 	janus_refcount_increase(&stream->ref);	/* This is for the mid-indexed hashtable */
 	janus_rtp_simulcasting_context_reset(&stream->sim_context);
+	stream->sim_context.rid_ext_id = ps->rid_extmap_id;
 	stream->sim_context.substream_target = 2;
 	stream->sim_context.templayer_target = 2;
 	janus_vp8_simulcast_context_reset(&stream->vp8_context);
@@ -2408,6 +2413,7 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add_
 				stream->opusfec = ps->opusfec;
 				janus_rtp_simulcasting_context_reset(&stream->sim_context);
 				if(ps->simulcast) {
+					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
 					stream->sim_context.substream_target = 2;
 					stream->sim_context.templayer_target = 2;
 				}
@@ -5007,6 +5013,22 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 				sc = 1;
 			else if(ssrc == ps->vssrc[2])
 				sc = 2;
+			else if(ps->rid_extmap_id > 0) {
+				/* We may not know the SSRC yet, try the rid RTP extension */
+				char sdes_item[16];
+				if(janus_rtp_header_extension_parse_rid(buf, len, ps->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
+					if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
+						ps->vssrc[0] = ssrc;
+						sc = 0;
+					} else if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
+						ps->vssrc[1] = ssrc;
+						sc = 1;
+					} else if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
+						ps->vssrc[2] = ssrc;
+						sc = 2;
+					}
+				}
+			}
 		}
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&ps->rtp_forwarders_mutex);
@@ -5037,11 +5059,11 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 			} else if(video && rtp_forward->simulcast) {
 				/* This is video and we're simulcasting, check if we need to forward this frame */
 				if(!janus_rtp_simulcasting_context_process_rtp(&rtp_forward->sim_context,
-						buf, len, ps->vssrc, ps->vcodec, &rtp_forward->context))
+						buf, len, ps->vssrc, ps->rid, ps->vcodec, &rtp_forward->context))
 					continue;
 				janus_rtp_header_update(rtp, &rtp_forward->context, TRUE);
-				/* By default we use the main SSRC (it may be overwritten later) */
-				rtp->ssrc = htonl(ps->vssrc[0]);
+				/* By default we use a fixed SSRC (it may be overwritten later) */
+				rtp->ssrc = htonl(participant->user_id & 0xffffffff);
 			}
 			/* Check if payload type and/or SSRC need to be overwritten for this forwarder */
 			if(rtp_forward->payload_type > 0)
@@ -5091,14 +5113,14 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 		} else {
 			/* We're simulcasting, save the best video quality */
 			gboolean save = janus_rtp_simulcasting_context_process_rtp(&ps->rec_simctx,
-				buf, len, ps->vssrc, ps->vcodec, &ps->rec_ctx);
+				buf, len, ps->vssrc, ps->rid, ps->vcodec, &ps->rec_ctx);
 			if(save) {
 				uint32_t seq_number = ntohs(rtp->seq_number);
 				uint32_t timestamp = ntohl(rtp->timestamp);
 				uint32_t ssrc = ntohl(rtp->ssrc);
 				janus_rtp_header_update(rtp, &ps->rec_ctx, TRUE);
-				/* We use the main SSRC for the whole recording */
-				rtp->ssrc = htonl(ps->vssrc[0]);
+				/* We use a fixed SSRC for the whole recording */
+				rtp->ssrc = htonl(participant->user_id & 0xffffffff);
 				janus_recorder_save_frame(ps->rc, buf, len);
 				/* Restore the header, as it will be needed by subscribers */
 				rtp->ssrc = htonl(ssrc);
@@ -5373,6 +5395,7 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *st
 		janus_rtp_switching_context_reset(&stream->rec_ctx);
 		janus_rtp_simulcasting_context_reset(&stream->rec_simctx);
 		if(stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+			stream->rec_simctx.rid_ext_id = stream->rid_extmap_id;
 			stream->rec_simctx.substream_target = 2;
 			stream->rec_simctx.templayer_target = 2;
 		}
@@ -5448,7 +5471,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->firefox = FALSE;
 		participant->remb_startup = 4;
 		participant->remb_latest = 0;
-		/* TODO Get rid of streams */
+		/* Get rid of streams */
 		janus_mutex_lock(&participant->streams_mutex);
 		GList *subscribers = NULL;
 		GList *temp = participant->streams;
@@ -5472,6 +5495,13 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 			}
 			g_slist_free(ps->subscribers);
 			ps->subscribers = NULL;
+			int i=0;
+			for(i=0; i<3; i++) {
+				ps->vssrc[i] = 0;
+				g_free(ps->rid[i]);
+				ps->rid[i] = NULL;
+			}
+			ps->rid_extmap_id = 0;
 			janus_mutex_unlock(&ps->subscribers_mutex);
 			temp = temp->next;
 		}
@@ -7599,8 +7629,6 @@ static void *janus_videoroom_handler(void *data) {
 									ps->audio_level_extmap_id = atoi(a->value);
 								} else if(videoroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
 									ps->video_orient_extmap_id = atoi(a->value);
-								} else if(videoroom->transport_wide_cc_ext && strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC)) {
-									ps->transport_wide_cc_extmap_id = atoi(a->value);
 								} else if(videoroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
 									ps->playout_delay_extmap_id = atoi(a->value);
 								} else if(videoroom->do_opusfec && m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") && strstr(a->value, "useinbandfec=1")) {
@@ -7645,11 +7673,10 @@ static void *janus_videoroom_handler(void *data) {
 								int mindex = json_integer_value(json_object_get(s, "mindex"));
 								if(mindex != ps->mindex)
 									continue;
-								JANUS_LOG(LOG_WARN, "Publisher is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
+								JANUS_LOG(LOG_WARN, "Publisher stream is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
 								ps->simulcast = TRUE;
-								ps->vssrc[0] = json_integer_value(json_object_get(s, "ssrc-0"));
-								ps->vssrc[1] = json_integer_value(json_object_get(s, "ssrc-1"));
-								ps->vssrc[2] = json_integer_value(json_object_get(s, "ssrc-2"));
+								janus_rtp_simulcasting_prepare(msg_simulcast, &ps->rid_extmap_id,
+									ps->vssrc, ps->rid);
 							}
 						}
 					}
@@ -7661,11 +7688,12 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_CODEC, janus_audiocodec_name(ps->acodec),
 								JANUS_SDP_OA_FMTP, ps->opusfec ? "useinbandfec=1" : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
-								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->transport_wide_cc_ext ? JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC : NULL,
 							JANUS_SDP_OA_DONE);
 						janus_sdp_mline *m_answer = janus_sdp_mline_find_by_index(answer, m->index);
 						if(m_answer != NULL) {
@@ -7679,7 +7707,8 @@ static void *janus_videoroom_handler(void *data) {
 								JANUS_SDP_OA_DIRECTION, ps->vcodec != JANUS_VIDEOCODEC_NONE ? JANUS_SDP_RECVONLY : JANUS_SDP_INACTIVE,
 								JANUS_SDP_OA_CODEC, janus_videocodec_name(ps->vcodec),
 								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+								JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->audiolevel_ext ? JANUS_RTP_EXTMAP_AUDIO_LEVEL : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->videoorient_ext ? JANUS_RTP_EXTMAP_VIDEO_ORIENTATION : NULL,
 								JANUS_SDP_OA_ACCEPT_EXTMAP, videoroom->playoutdelay_ext ? JANUS_RTP_EXTMAP_PLAYOUT_DELAY : NULL,
@@ -7706,6 +7735,7 @@ static void *janus_videoroom_handler(void *data) {
 					} else if(m->type == JANUS_SDP_APPLICATION) {
 						janus_sdp_generate_answer_mline(offer, answer, m,
 							JANUS_SDP_OA_MLINE, JANUS_SDP_APPLICATION,
+							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 							JANUS_SDP_OA_DONE);
 					}
 					/* Make sure we have a mid */
@@ -7960,7 +7990,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&stream->sim_context,
-				(char *)packet->data, packet->length, packet->ssrc, ps->vcodec, &stream->context);
+				(char *)packet->data, packet->length, packet->ssrc, NULL, ps->vcodec, &stream->context);
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
