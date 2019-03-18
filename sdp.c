@@ -927,31 +927,9 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	if(ssrc == 0 || ssrc > G_MAXUINT32)
 		return -3;
 	if(video) {
-		if(stream->rid[0] != NULL) {
-			/* Simulcasting is rid-based, don't parse SSRCs for now */
-			return 0;
-		}
-		if(stream->video_ssrc_peer_new[0] == ssrc || stream->video_ssrc_peer_new[1] == ssrc
-				|| stream->video_ssrc_peer_new[2] == ssrc) {
-			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Already parsed this SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
-			return 0;
-		}
 		if(stream->video_ssrc_peer_new[0] == 0) {
 			stream->video_ssrc_peer_new[0] = ssrc;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[0]);
-		} else {
-			/* We already have a video SSRC: check if rid is involved, and we'll keep track of this for simulcasting */
-			if(stream->rid[0]) {
-				if(stream->video_ssrc_peer_new[1] == 0) {
-					stream->video_ssrc_peer_new[1] = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[1]);
-				} else if(stream->video_ssrc_peer_new[2] == 0) {
-					stream->video_ssrc_peer_new[2] = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[2]);
-				} else {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
-				}
-			}
 		}
 	} else {
 		if(stream->audio_ssrc_peer_new == 0) {
