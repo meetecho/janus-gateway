@@ -425,6 +425,8 @@ typedef struct janus_recordplay_session {
 	gint video_fir_seq;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	char *rid[3];			/* Only needed if simulcasting is rid-based */
+	uint32_t rec_vssrc;		/* SSRC we'll put in the recording for video, in case simulcasting is involved) */
 	janus_rtp_simulcasting_context sim_context;
 	janus_vp8_simulcast_context vp8_context;
 	volatile gint hangingup;
@@ -1141,7 +1143,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		return;
 	if(!session->recorder || !session->recording)
 		return;
-	if(video && session->ssrc[0] != 0) {
+	if(video && (session->ssrc[0] != 0 || session->rid[0] != NULL)) {
 		/* Handle simulcast: backup the header information first */
 		janus_rtp_header *header = (janus_rtp_header *)buf;
 		uint32_t seq_number = ntohs(header->seq_number);
@@ -1149,7 +1151,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		uint32_t ssrc = ntohl(header->ssrc);
 		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			buf, len, session->ssrc, session->recording->vcodec, &session->context);
+			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context);
 		/* Do we need to drop this? */
 		if(!save)
 			return;
@@ -1169,7 +1171,9 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->vp8_context, session->sim_context.changed_substream);
 		}
 		/* Save the frame if we're recording (and make sure the SSRC never changes even if the substream does) */
-		header->ssrc = htonl(session->ssrc[0]);
+		if(session->rec_vssrc == 0)
+			session->rec_vssrc = g_random_int();
+		header->ssrc = htonl(session->rec_vssrc);
 		janus_recorder_save_frame(session->vrc, buf, len);
 		/* Restore header or core statistics will be messed up */
 		header->ssrc = htonl(ssrc);
@@ -1322,6 +1326,12 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 	if(session->recording) {
 		janus_refcount_decrease(&session->recording->ref);
 		session->recording = NULL;
+	}
+	int i=0;
+	for(i=0; i<3; i++) {
+		session->ssrc[i] = 0;
+		g_free(session->rid[i]);
+		session->rid[i] = NULL;
 	}
 	g_atomic_int_set(&session->hangingup, 0);
 }
@@ -1548,7 +1558,8 @@ recdone:
 				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_DATA, FALSE,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RTP_STREAM_ID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			g_free(answer->s_name);
@@ -1567,16 +1578,19 @@ recdone:
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
 				JANUS_LOG(LOG_VERB, "Recording client negotiated simulcasting\n");
-				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+				int rid_ext_id = -1;
+				janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
+				session->sim_context.rid_ext_id = rid_ext_id;
 				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 				if(rec->vcodec != JANUS_VIDEOCODEC_VP8 && rec->vcodec != JANUS_VIDEOCODEC_H264) {
 					/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-					session->ssrc[0] = 0;
-					session->ssrc[1] = 0;
-					session->ssrc[2] = 0;
+					int i=0;
+					for(i=0; i<3; i++) {
+						session->ssrc[i] = 0;
+						g_free(session->rid[0]);
+						session->rid[0] = NULL;
+					}
 				}
 			}
 			/* Done! */

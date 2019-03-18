@@ -1243,6 +1243,9 @@ int janus_process_incoming_request(janus_request *request) {
 				} else {
 					/* Check if the mid RTP extension is being negotiated */
 					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					/* Check if the RTP Stream ID extension is being negotiated */
+					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
+					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1328,14 +1331,29 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *body_jsep = NULL;
 		if(jsep_sdp_stripped) {
 			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
-			/* Check if VP8 simulcasting is enabled */
+			/* Check if simulcasting is enabled */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
-				if(handle->stream && handle->stream->video_ssrc_peer[1]) {
+				if(handle->stream && (handle->stream->rid[0] || handle->stream->video_ssrc_peer[1])) {
 					json_t *simulcast = json_object();
-					json_object_set_new(simulcast, "ssrc-0", json_integer(handle->stream->video_ssrc_peer[0]));
-					json_object_set_new(simulcast, "ssrc-1", json_integer(handle->stream->video_ssrc_peer[1]));
-					if(handle->stream->video_ssrc_peer[2])
-						json_object_set_new(simulcast, "ssrc-2", json_integer(handle->stream->video_ssrc_peer[2]));
+					/* If we have rids, pass those, otherwise pass the SSRCs */
+					if(handle->stream->rid[0]) {
+						json_t *rids = json_array();
+						json_array_append_new(rids, json_string(handle->stream->rid[0]));
+						if(handle->stream->rid[1])
+							json_array_append_new(rids, json_string(handle->stream->rid[1]));
+						if(handle->stream->rid[2])
+							json_array_append_new(rids, json_string(handle->stream->rid[2]));
+						json_object_set_new(simulcast, "rids", rids);
+						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
+					} else {
+						json_t *ssrcs = json_array();
+						json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[0]));
+						if(handle->stream->video_ssrc_peer[1])
+							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[1]));
+						if(handle->stream->video_ssrc_peer[2])
+							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[2]));
+						json_object_set_new(simulcast, "ssrcs", ssrcs);
+					}
 					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
@@ -2350,16 +2368,22 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "video-peer-sim-1-rtx", json_integer(stream->video_ssrc_peer_rtx[1]));
 	if(stream->video_ssrc_peer_rtx[2])
 		json_object_set_new(ss, "video-peer-sim-2-rtx", json_integer(stream->video_ssrc_peer_rtx[2]));
+	json_object_set_new(s, "ssrc", ss);
 	if(stream->rid[0]) {
+		json_t *sr = json_object();
 		json_t *rid = json_array();
 		json_array_append_new(rid, json_string(stream->rid[0]));
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[1]));
 		if(stream->rid[1])
 			json_array_append_new(rid, json_string(stream->rid[2]));
-		json_object_set_new(ss, "rid", rid);
+		json_object_set_new(sr, "rid", rid);
+		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
+		json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
+		if(stream->legacy_rid)
+			json_object_set_new(sr, "rid-syntax", json_string("legacy"));
+		json_object_set_new(s, "rid-simulcast", sr);
 	}
-	json_object_set_new(s, "ssrc", ss);
 	json_t *sd = json_object();
 	json_object_set_new(sd, "audio-send", stream->audio_send ? json_true() : json_false());
 	json_object_set_new(sd, "audio-recv", stream->audio_recv ? json_true() : json_false());
@@ -2941,7 +2965,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 		}
-		/* Make sure we don't send the mid attribute when offering ourselves */
+		/* Make sure we don't send the mid/rid/repaired-rid attributes when offering ourselves */
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -2949,7 +2973,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value && (strstr(a->value, JANUS_RTP_EXTMAP_MID) ||
-						strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID))) {
+						strstr(a->value, JANUS_RTP_EXTMAP_RID) ||
+						strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))) {
 					m->attributes = g_list_remove(m->attributes, a);
 					tempA = m->attributes;
 					janus_sdp_attribute_destroy(a);
@@ -2959,6 +2984,41 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 			temp = temp->next;
 		}
+	} else {
+		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
+		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
+		GList *temp = parsed_sdp->m_lines;
+		while(temp) {
+			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+			GList *tempA = m->attributes;
+			while(tempA) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+				if(a->name && a->value) {
+					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+						do_mid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
+						do_rid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
+						do_repaired_rid = TRUE;
+				}
+				tempA = tempA->next;
+			}
+			temp = temp->next;
+		}
+		if(!do_mid)
+			ice_handle->stream->mid_ext_id = 0;
+		if(!do_rid) {
+			ice_handle->stream->rid_ext_id = 0;
+			ice_handle->stream->ridrtx_ext_id = 0;
+			g_free(ice_handle->stream->rid[0]);
+			ice_handle->stream->rid[0] = NULL;
+			g_free(ice_handle->stream->rid[1]);
+			ice_handle->stream->rid[1] = NULL;
+			g_free(ice_handle->stream->rid[2]);
+			ice_handle->stream->rid[2] = NULL;
+		}
+		if(!do_repaired_rid)
+			ice_handle->stream->ridrtx_ext_id = 0;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */

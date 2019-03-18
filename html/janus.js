@@ -2433,9 +2433,9 @@ function Janus(gatewayCallbacks) {
 				if(!parameters)
 					parameters = {};
 				parameters.encodings = [
-					{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
-					{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
-					{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+					{ rid: "l", active: true, maxBitrate: 100000 },
+					{ rid: "m", active: true, maxBitrate: 300000 },
+					{ rid: "h", active: true, maxBitrate: 1000000 }
 				];
 				sender.setParameters(parameters);
 			}
