@@ -2965,7 +2965,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				}
 			}
 		}
-		/* Make sure we don't send the mid attribute when offering ourselves */
+		/* Make sure we don't send the mid/rid/repaired-rid attributes when offering ourselves */
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -2984,6 +2984,41 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 			temp = temp->next;
 		}
+	} else {
+		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
+		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
+		GList *temp = parsed_sdp->m_lines;
+		while(temp) {
+			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+			GList *tempA = m->attributes;
+			while(tempA) {
+				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+				if(a->name && a->value) {
+					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
+						do_mid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
+						do_rid = TRUE;
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
+						do_repaired_rid = TRUE;
+				}
+				tempA = tempA->next;
+			}
+			temp = temp->next;
+		}
+		if(!do_mid)
+			ice_handle->stream->mid_ext_id = 0;
+		if(!do_rid) {
+			ice_handle->stream->rid_ext_id = 0;
+			ice_handle->stream->ridrtx_ext_id = 0;
+			g_free(ice_handle->stream->rid[0]);
+			ice_handle->stream->rid[0] = NULL;
+			g_free(ice_handle->stream->rid[1]);
+			ice_handle->stream->rid[1] = NULL;
+			g_free(ice_handle->stream->rid[2]);
+			ice_handle->stream->rid[2] = NULL;
+		}
+		if(!do_repaired_rid)
+			ice_handle->stream->ridrtx_ext_id = 0;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
