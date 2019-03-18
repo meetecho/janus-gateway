@@ -303,6 +303,7 @@ typedef struct janus_nosip_media {
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
 	guint32 video_ssrc, video_ssrc_peer;
+	guint32 simulcast_ssrc;
 	int video_pt;
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
@@ -830,6 +831,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->media.simulcast_ssrc = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
@@ -969,6 +971,15 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 		if((video && !session->media.video_send) || (!video && !session->media.audio_send)) {
 			/* Dropping packet, peer doesn't want to receive it */
 			return;
+		}
+		if(video && session->media.simulcast_ssrc) {
+			/* The user is simulcasting: drop everything except the base layer */
+			janus_rtp_header *header = (janus_rtp_header *)buf;
+			uint32_t ssrc = ntohl(header->ssrc);
+			if(ssrc != session->media.simulcast_ssrc) {
+				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+				return;
+			}
 		}
 		if((video && session->media.video_ssrc == 0) || (!video && session->media.audio_ssrc == 0)) {
 			rtp_header *header = (rtp_header *)buf;
@@ -1124,6 +1135,7 @@ static void janus_nosip_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	session->media.simulcast_ssrc = 0;
 	/* Notify the thread that it's time to go */
 	if(session->media.pipefd[1] > 0) {
 		int code = 1;
@@ -1353,6 +1365,14 @@ static void *janus_nosip_handler(void *data) {
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
 					json_object_set_new(info, "sdp", json_string(sdp));
 					gateway->notify_event(&janus_nosip_plugin, session->handle, info);
+				}
+				/* If the user negotiated simulcasting, just stick with the base substream */
+				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+				if(msg_simulcast) {
+					JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
+					json_t *s = json_object_get(msg_simulcast, "ssrcs");
+					if(s && json_array_size(s) > 0)
+						session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
 				}
 				/* Send the barebone SDP back */
 				result = json_object();
@@ -2032,6 +2052,7 @@ static void janus_nosip_media_cleanup(janus_nosip_session *session) {
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
+	session->media.simulcast_ssrc = 0;
 	if(session->media.pipefd[0] > 0) {
 		close(session->media.pipefd[0]);
 		session->media.pipefd[0] = -1;

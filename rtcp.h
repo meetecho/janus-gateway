@@ -227,6 +227,8 @@ typedef struct rtcp_context
 {
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
 	uint8_t rtp_recvd:1;
+	uint32_t rtp_last_inorder_ts;
+	int64_t rtp_last_inorder_time;
 
 	uint16_t max_seq_nr;
 	uint16_t seq_cycle;
@@ -268,9 +270,6 @@ typedef struct rtcp_context
 	uint32_t rr_last_nack_count;
 	gint sent_packets_since_last_rr;
 	gint nack_count;
-
-	/* Outbound RR process */
-	int64_t out_rr_last_ts;
 
 	/* Link quality estimations */
 	double in_link_quality;
@@ -406,9 +405,11 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
- * @param[in] count_lost Whether we should try and compute a count of the lost packets
+ * @param[in] rfc4588_pkt True if this is a RTX packet
+ * @param[in] rfc4588_enabled True if this packet comes from a RTX enabled stream
+ * @param[in] retransmissions_disabled True if retransmissions are not supported at all for this stream
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean count_lost);
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report

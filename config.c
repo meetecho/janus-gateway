@@ -387,13 +387,16 @@ static janus_config_container *janus_config_get_internal(janus_config *config,
 	if(create) {
 		if(type == janus_config_type_category) {
 			c = janus_config_category_create(name);
-		} else if(type == janus_config_type_category) {
+		} else if(type == janus_config_type_array) {
 			c = janus_config_array_create(name);
 		} else {
 			JANUS_LOG(LOG_WARN, "Not a category and not an array, not creating anything...\n");
 		}
-		if(c != NULL)
-			janus_config_add(config, parent, c);
+		if(c != NULL && janus_config_add(config, parent, c) < 0) {
+			janus_config_container_destroy(c);
+			JANUS_LOG(LOG_ERR, "Error adding item %s to %s\n", name, parent ? parent->name : "root");
+			return NULL;
+		}
 	}
 	return c;
 }

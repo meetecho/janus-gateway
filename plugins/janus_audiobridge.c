@@ -4050,7 +4050,6 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d, FEC %s\n", participant->opus_pt, participant->fec ? "enabled" : "disabled");
 			/* Check if the audio level extension was offered */
 			int extmap_id = -1;
-			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;
 			GList *temp = offer->m_lines;
 			while(temp) {
 				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -4061,7 +4060,6 @@ static void *janus_audiobridge_handler(void *data) {
 						if(a->value) {
 							if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 								extmap_id = atoi(a->value);
-								extmap_mdir = a->direction;
 							}
 						}
 						ma = ma->next;
@@ -4073,6 +4071,7 @@ static void *janus_audiobridge_handler(void *data) {
 				/* Reject video and data channels, if offered */
 				JANUS_SDP_OA_VIDEO, FALSE,
 				JANUS_SDP_OA_DATA, FALSE,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				JANUS_SDP_OA_DONE);
 			/* Replace the session name */
 			g_free(answer->s_name);
@@ -4090,23 +4089,6 @@ static void *janus_audiobridge_handler(void *data) {
 			if(extmap_id > -1 && participant->room && participant->room->audiolevel_ext) {
 				/* Add an extmap attribute too */
 				participant->extmap_id = extmap_id;
-				/* Let's check if the extmap attribute had a direction */
-				const char *direction = NULL;
-				switch(extmap_mdir) {
-					case JANUS_SDP_SENDONLY:
-						direction = "/recvonly";
-						break;
-					case JANUS_SDP_RECVONLY:
-					case JANUS_SDP_INACTIVE:
-						direction = "/inactive";
-						break;
-					default:
-						direction = "";
-						break;
-				}
-				janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-					"%d%s %s\r\n", extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 			}
 			/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 			answer->o_sessid = session->sdp_sessid;

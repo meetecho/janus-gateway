@@ -384,8 +384,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(a->name && !strcasecmp(a->name, "rid")) {
-				/* This attribute is used by Firefox for simulcasting */
+			if(a->name && !strcasecmp(a->name, "rid") && a->value) {
+				/* This attribute is used for simulcasting */
 				char rid[16];
 				if(sscanf(a->value, "%15s send", rid) != 1) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
@@ -401,6 +401,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
 					}
 				}
+			} else if(a->name && !strcasecmp(a->name, "simulcast") && a->value) {
+				/* Firefox and Chrome signal simulcast support differently */
+				stream->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
 			}
 			tempA = tempA->next;
 		}
@@ -738,7 +741,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					c->transport = ctype;
 				}
 #endif
-				strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
+				g_strlcpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
 				c->priority = rpriority;
 				nice_address_set_from_string(&c->addr, rip);
 				nice_address_set_port(&c->addr, rport);
@@ -827,6 +830,10 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 		return -2;
 	if(!video)
 		return -3;
+	if(stream->rid[0] != NULL) {
+		/* Simulcasting is rid-based, don't parse SSRCs for now */
+		return 0;
+	}
 	gboolean fid = strstr(group_attr, "FID") != NULL;
 	gboolean sim = strstr(group_attr, "SIM") != NULL;
 	guint64 ssrc = 0;
@@ -850,7 +857,7 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 								stream->video_ssrc_peer_new[0] = ssrc;
 								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[0]);
 							} else {
-								/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
+								/* We already have a video SSRC: check if rid is involved, and we'll keep track of this for simulcasting */
 								if(stream->rid[0]) {
 									if(stream->video_ssrc_peer_new[1] == 0) {
 										stream->video_ssrc_peer_new[1] = ssrc;
@@ -920,27 +927,9 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	if(ssrc == 0 || ssrc > G_MAXUINT32)
 		return -3;
 	if(video) {
-		if(stream->video_ssrc_peer_new[0] == ssrc || stream->video_ssrc_peer_new[1] == ssrc
-				|| stream->video_ssrc_peer_new[2] == ssrc) {
-			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Already parsed this SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
-			return 0;
-		}
 		if(stream->video_ssrc_peer_new[0] == 0) {
 			stream->video_ssrc_peer_new[0] = ssrc;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[0]);
-		} else {
-			/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
-			if(stream->rid[0]) {
-				if(stream->video_ssrc_peer_new[1] == 0) {
-					stream->video_ssrc_peer_new[1] = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[1]);
-				} else if(stream->video_ssrc_peer_new[2] == 0) {
-					stream->video_ssrc_peer_new[2] = ssrc;
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_new[2]);
-				} else {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
-				}
-			}
 		}
 	} else {
 		if(stream->audio_ssrc_peer_new == 0) {
@@ -1028,6 +1017,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
 					|| !strcasecmp(a->name, "rid")
+					|| !strcasecmp(a->name, "simulcast")
 					|| !strcasecmp(a->name, "rtcp")
 					|| !strcasecmp(a->name, "rtcp-mux")
 					|| !strcasecmp(a->name, "rtcp-rsize")
@@ -1036,8 +1026,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "ssrc-group")
 					|| !strcasecmp(a->name, "sctpmap")
 					|| !strcasecmp(a->name, "sctp-port")
-					|| !strcasecmp(a->name, "max-message-size")
-					|| (a->value && strstr(a->value, "urn:ietf:params:rtp-hdrext:sdes:"))) {
+					|| !strcasecmp(a->name, "max-message-size")) {
 				m->attributes = g_list_remove(m->attributes, a);
 				tempA = m->attributes;
 				janus_sdp_attribute_destroy(a);
@@ -1341,7 +1330,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		}
 		if(m->type == JANUS_SDP_AUDIO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", stream->audio_ssrc);
+			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusa0", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
@@ -1351,7 +1340,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", stream->video_ssrc);
+			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
@@ -1361,7 +1350,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_append(m->attributes, a);
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 				/* Add rtx SSRC group to negotiate the RFC4588 stuff */
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", stream->video_ssrc_rtx);
+				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", stream->video_ssrc_rtx);
 				m->attributes = g_list_append(m->attributes, a);
 				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", stream->video_ssrc_rtx);
 				m->attributes = g_list_append(m->attributes, a);
@@ -1388,7 +1377,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 					g_strlcat(rids, stream->rid[i], sizeof(rids));
 				}
 			}
-			a = janus_sdp_attribute_create("simulcast", " recv rid=%s", rids);
+			if(stream->legacy_rid) {
+				a = janus_sdp_attribute_create("simulcast", " recv rid=%s", rids);
+			} else {
+				a = janus_sdp_attribute_create("simulcast", " recv %s", rids);
+			}
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		if(!janus_ice_is_full_trickle_enabled()) {

@@ -3083,6 +3083,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/CoSMoSoftware/OBS-studio-webrtc">OBS-studio-webrtc</a></td>
  *		<td>This is a fork of obs-studio with support for webrtc in general, and Janus Video Room plugin in particular</td>
  * </tr>
+ * <tr>
+ * 		<td>OCaml</td>
+ * 		<td><a href="https://github.com/monstasat">Alexander Yanin</a></td>
+ * 		<td><a href="https://github.com/monstasat/janus-ocaml">Janus-ocaml</a></td>
+ *		<td>Library for Janus WebRTC server handling written in OCaml (HTTP only)</td>
+ * </tr>
  * </table>
  * <br/>
  *
