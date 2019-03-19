@@ -2939,23 +2939,44 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 	} else {
 		/* Check if the answer does contain the mid/rid/repaired-rid attributes */
+		uint mindex = 0;
 		gboolean do_mid = FALSE, do_rid = FALSE, do_repaired_rid = FALSE;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+			gboolean have_mid = FALSE, have_rid = FALSE, have_repaired_rid = FALSE;
 			GList *tempA = m->attributes;
 			while(tempA) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 				if(a->name && a->value) {
 					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
-						do_mid = TRUE;
+						have_mid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_RID))
-						do_rid = TRUE;
+						have_rid = TRUE;
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_REPAIRED_RID))
-						do_repaired_rid = TRUE;
+						have_repaired_rid = TRUE;
 				}
 				tempA = tempA->next;
 			}
+			if(!have_rid) {
+				janus_handle_webrtc_medium *medium = g_hash_table_lookup(handle->pc->media, GUINT_TO_POINTER(mindex));
+				if(medium != NULL) {
+					g_free(medium->rid[0]);
+					medium->rid[0] = NULL;
+					g_free(medium->rid[1]);
+					medium->rid[1] = NULL;
+					g_free(medium->rid[2]);
+					medium->rid[2] = NULL;
+					if(medium->ssrc_peer_temp > 0) {
+						medium->ssrc_peer[0] = medium->ssrc_peer_temp;
+						medium->ssrc_peer_temp = 0;
+					}
+				}
+			}
+			do_mid = do_mid || have_mid;
+			do_rid = do_rid || have_rid;
+			do_repaired_rid = do_repaired_rid || have_repaired_rid;
+			mindex++;
 			temp = temp->next;
 		}
 		if(!do_mid)
@@ -3013,7 +3034,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX) &&
 				medium->rtx_payload_types == NULL) {
 			/* Make sure we have a list of rtx payload types to generate, if needed */
-			janus_sdp_mline *m = janus_sdp_mline_find(parsed_sdp, JANUS_SDP_VIDEO);
+			janus_sdp_mline *m = janus_sdp_mline_find_by_index(parsed_sdp, medium->mindex);
 			if(m && m->ptypes) {
 				medium->rtx_payload_types = g_hash_table_new(NULL, NULL);
 				GList *ptypes = g_list_copy(m->ptypes), *tempP = ptypes;

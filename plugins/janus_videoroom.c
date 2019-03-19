@@ -5017,10 +5017,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int mindex, gboo
 				/* We may not know the SSRC yet, try the rid RTP extension */
 				char sdes_item[16];
 				if(janus_rtp_header_extension_parse_rid(buf, len, ps->rid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
-					if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
+					if(ps->rid[2] != NULL && !strcmp(ps->rid[2], sdes_item)) {
 						ps->vssrc[0] = ssrc;
 						sc = 0;
-					} else if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {
+					} else if(ps->rid[1] != NULL && !strcmp(ps->rid[1], sdes_item)) {
 						ps->vssrc[1] = ssrc;
 						sc = 1;
 					} else if(ps->rid[0] != NULL && !strcmp(ps->rid[0], sdes_item)) {

@@ -930,6 +930,14 @@ int janus_sdp_parse_ssrc(void *m, const char *ssrc_attr, int video) {
 	guint64 ssrc = g_ascii_strtoull(ssrc_attr, NULL, 0);
 	if(ssrc == 0 || ssrc > G_MAXUINT32)
 		return -3;
+	if(medium->rid[0] != NULL) {
+		/* Simulcasting is rid-based, only keep track of a single SSRC for fallback */
+		if(medium->ssrc_peer_temp == 0) {
+			medium->ssrc_peer_temp = ssrc;
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Peer video fallback SSRC: %"SCNu32"\n", handle->handle_id, medium->ssrc_peer_temp);
+		}
+		return 0;
+	}
 	if(medium->ssrc_peer_new[0] == 0) {
 		medium->ssrc_peer_new[0] = ssrc;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer %s SSRC: %"SCNu32"\n",

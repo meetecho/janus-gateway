@@ -684,7 +684,7 @@ int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int l
 						ctx->received++;
 				} else {
 					/* The stream does not have a retransmission mechanism (e.g. audio wo/ NACKs) */
-					/* Do nothing */
+					ctx->received++;
 				}
 			}
 		}

@@ -869,13 +869,13 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		char sdes_item[16];
 		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
 			return FALSE;
-		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
+		if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs) = ssrc;
 		} else if(rids[1] != NULL && !strcmp(rids[1], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+1) = ssrc;
-		} else if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
+		} else if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+2) = ssrc;
 		} else {

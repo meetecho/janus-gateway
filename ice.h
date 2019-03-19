@@ -427,7 +427,7 @@ struct janus_handle_webrtc_medium {
 	/*! \brief Retransmission SSRC of the server for this medium */
 	guint32 ssrc_rtx;
 	/*! \brief SSRC(s) of the peer for this medium (may be simulcasting) */
-	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3];
+	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3], ssrc_peer_temp;
 	/*! \brief Retransmissions SSRC(s) of the peer for this medium (may be simulcasting) */
 	guint32 ssrc_peer_rtx[3], ssrc_peer_rtx_new[3], ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
