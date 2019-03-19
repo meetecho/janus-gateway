@@ -20,6 +20,7 @@ addons:
       - libglib2.0-dev
       - libcurl4-openssl-dev
       - gengetopt
+      - libconfig-dev
   coverity_scan:
     project:
       name: "dazzl-tv/janus-gateway"
