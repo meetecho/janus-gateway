@@ -17,7 +17,7 @@ RUN apt-get install -y --no-install-recommends libmicrohttpd-dev libjansson-dev 
                     libnice-dev libssl-dev libsrtp-dev libsofia-sip-ua-dev \
                     libglib2.0-dev libopus-dev libogg-dev libini-config-dev \
                     libcollection-dev pkg-config  gengetopt libavutil-dev \
-                    libavformat-dev libavcodec-dev libcurl4-gnutls-dev
+                    libconfig-dev libavformat-dev libavcodec-dev libcurl4-gnutls-dev
 
 ## srtp lib better than 1.4
 RUN apt-get remove -y libsrtp0-dev libsrtp0
