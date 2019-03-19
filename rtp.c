@@ -956,7 +956,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}
-			if(tid > context->templayer) {
+			if(context->templayer != -1 && tid > context->templayer) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
 					tid, context->templayer);
 				/* We increase the base sequence number, or there will be gaps when delivering later */
