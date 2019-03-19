@@ -139,9 +139,10 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
 #ifdef HAVE_SCTP
 /*! \brief Callback (called from the ICE handle) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
+ * @param[in] label The label of the data channel to use
  * @param[in] buf The data buffer to encapsulate
  * @param[in] len The data length */
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *buf, int len);
 
 /*! \brief Callback (called from the SCTP stack) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
@@ -152,9 +153,10 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
 
 /*! \brief Callback to be notified about incoming SCTP data (DataChannel) to forward to the handle
  * @param[in] dtls The janus_dtls_srtp instance to use
+ * @param[in] label The label of the data channel the message is from
  * @param[in] buf The data buffer
  * @param[in] len The data length */
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
+void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, char *buf, int len);
 #endif
 
 /*! \brief DTLS retransmission timer

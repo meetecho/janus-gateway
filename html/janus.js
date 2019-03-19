@@ -196,6 +196,8 @@ Janus.useOldDependencies = function (deps) {
 
 Janus.noop = function() {};
 
+Janus.dataChanDefaultLabel = "JanusDataChannel";
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
@@ -1066,7 +1068,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
-							dataChannel : null,
+							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
@@ -1151,7 +1153,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
-							dataChannel : null,
+							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
@@ -1359,6 +1361,60 @@ function Janus(gatewayCallbacks) {
 		});
 	}
 
+	// Private method to create a data channel
+	function createDataChannel(handleId, dclabel, incoming, pendingText) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			return;
+		}
+		var config = pluginHandle.webrtcStuff;
+		var onDataChannelMessage = function(event) {
+			Janus.log('Received message on data channel:', event);
+			var label = event.target.label;
+			pluginHandle.ondata(event.data, label);
+		}
+		var onDataChannelStateChange = function(event) {
+			Janus.log('Received state change on data channel:', event);
+			var label = event.target.label;
+			var dcState = config.dataChannel[label] !== null ? config.dataChannel[label].readyState : "null";
+			Janus.log('State change on <' + label + '> data channel: ' + dcState);
+			if(dcState === 'open') {
+				// Any pending messages to send?
+				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
+					Janus.log("Sending pending messages on <' + label + '>:", config.dataChannel[label].pending.length);
+					for(var i in config.dataChannel[label].pending) {
+						var text = config.dataChannel[label].pending[i];
+						Janus.log("Sending string on data channel <" + label + ">: " + text);
+						config.dataChannel[label].send(text);
+					}
+					config.dataChannel[label].pending = [];
+				}
+				// Notify the open data channel
+				pluginHandle.ondataopen(label);
+			}
+		}
+		var onDataChannelError = function(error) {
+			Janus.error('Got error on data channel:', error);
+			// TODO
+		}
+		if(!incoming) {
+			// FIXME Add options (ordered, maxRetransmits, etc.)
+			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, {ordered:false});
+		} else {
+			// The channel was created by Janus
+			config.dataChannel[dclabel] = incoming;
+		}
+		config.dataChannel[dclabel].onmessage = onDataChannelMessage;
+		config.dataChannel[dclabel].onopen = onDataChannelStateChange;
+		config.dataChannel[dclabel].onclose = onDataChannelStateChange;
+		config.dataChannel[dclabel].onerror = onDataChannelError;
+		config.dataChannel[dclabel].pending = [];
+		if(pendingText)
+			config.dataChannel[dclabel].pending.push(pendingText);
+	}
+
 	// Private method to send a data channel message
 	function sendData(handleId, callbacks) {
 		callbacks = callbacks || {};
@@ -1378,8 +1434,20 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid text");
 			return;
 		}
-		Janus.log("Sending string on data channel: " + text);
-		config.dataChannel.send(text);
+		var label = callbacks.label ? callbacks.label : Janus.dataChanDefaultLabel;
+		if(!config.dataChannel[label]) {
+			// Create new data channel and wait for it to open
+			createDataChannel(handleId, label, false, text);
+			callbacks.success();
+			return;
+		}
+		if(config.dataChannel[label].readyState !== "open") {
+			config.dataChannel[label].pending.push(text);
+			callbacks.success();
+			return;
+		}
+		Janus.log("Sending string on data channel <" + label + ">: " + text);
+		config.dataChannel[label].send(text);
 		callbacks.success();
 	}
 
@@ -1692,29 +1760,13 @@ function Janus(gatewayCallbacks) {
 			});
 		}
 		// Any data channel to create?
-		if(isDataEnabled(media) && !config.dataChannel) {
+		if(isDataEnabled(media) && !config.dataChannel[Janus.dataChanDefaultLabel]) {
 			Janus.log("Creating data channel");
-			var onDataChannelMessage = function(event) {
-				Janus.log('Received message on data channel: ' + event.data);
-				pluginHandle.ondata(event.data);	// FIXME
-			}
-			var onDataChannelStateChange = function() {
-				var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
-				Janus.log('State change on data channel: ' + dcState);
-				if(dcState === 'open') {
-					pluginHandle.ondataopen();	// FIXME
-				}
-			}
-			var onDataChannelError = function(error) {
-				Janus.error('Got error on data channel:', error);
-				// TODO
-			}
-			// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
-			config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {ordered:false});	// FIXME Add options (ordered, maxRetransmits, etc.)
-			config.dataChannel.onmessage = onDataChannelMessage;
-			config.dataChannel.onopen = onDataChannelStateChange;
-			config.dataChannel.onclose = onDataChannelStateChange;
-			config.dataChannel.onerror = onDataChannelError;
+			createDataChannel(handleId, Janus.dataChanDefaultLabel, false);
+			config.pc.ondatachannel = function(event) {
+				Janus.log("Data channel created by Janus:", event);
+				createDataChannel(handleId, event.channel.label, event.channel);
+			};
 		}
 		// If there's a new local stream, let's notify the application
 		if(config.myStream)
@@ -2940,7 +2992,7 @@ function Janus(gatewayCallbacks) {
 			config.mySdp = null;
 			config.remoteSdp = null;
 			config.iceDone = false;
-			config.dataChannel = null;
+			config.dataChannel = {};
 			config.dtmfSender = null;
 		}
 		pluginHandle.oncleanup();
