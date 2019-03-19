@@ -347,7 +347,7 @@ struct janus_ice_stream {
 	/*! \brief Audio SSRC of the peer for this stream */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
 	/*! \brief Video SSRC(s) of the peer for this stream (may be simulcasting) */
-	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
+	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3], video_ssrc_peer_temp;
 	/*! \brief Video retransmissions SSRC(s) of the peer for this stream */
 	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */

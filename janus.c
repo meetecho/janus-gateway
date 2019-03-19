@@ -3017,6 +3017,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			ice_handle->stream->rid[1] = NULL;
 			g_free(ice_handle->stream->rid[2]);
 			ice_handle->stream->rid[2] = NULL;
+			if(ice_handle->stream->video_ssrc_peer_temp > 0) {
+				ice_handle->stream->video_ssrc_peer[0] = ice_handle->stream->video_ssrc_peer_temp;
+				ice_handle->stream->video_ssrc_peer_temp = 0;
+			}
 		}
 		if(!do_repaired_rid)
 			ice_handle->stream->ridrtx_ext_id = 0;
