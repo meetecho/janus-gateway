@@ -295,7 +295,6 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
@@ -320,7 +319,6 @@ static janus_plugin janus_recordplay_plugin =
 		.setup_media = janus_recordplay_setup_media,
 		.incoming_rtp = janus_recordplay_incoming_rtp,
 		.incoming_rtcp = janus_recordplay_incoming_rtcp,
-		.incoming_data = janus_recordplay_incoming_data,
 		.slow_link = janus_recordplay_slow_link,
 		.hangup_media = janus_recordplay_hangup_media,
 		.destroy_session = janus_recordplay_destroy_session,
@@ -1190,12 +1188,6 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-}
-
-void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len) {
-	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return;
-	/* FIXME We don't care */
 }
 
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {

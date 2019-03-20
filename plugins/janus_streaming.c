@@ -6718,7 +6718,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 			return;
 		char *text = (char *)packet->data;
 		if(gateway != NULL && text != NULL)
-			gateway->relay_data(session->handle, text, strlen(text));
+			gateway->relay_data(session->handle, NULL, text, strlen(text));
 	}
 
 	return;

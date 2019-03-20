@@ -143,7 +143,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
@@ -626,7 +626,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 	}
 }
 
-void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
@@ -643,7 +643,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
-		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, %zu bytes) to bounce back: %s\n", label, strlen(text), text);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
@@ -651,7 +651,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		char *reply = g_malloc(strlen(prefix)+len+1);
 		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
-		gateway->relay_data(handle, reply, strlen(reply));
+		gateway->relay_data(handle, label, reply, strlen(reply));
 		g_free(reply);
 	}
 }
