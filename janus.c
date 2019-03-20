@@ -431,7 +431,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int mindex, gboolean video, char *buf, int len);
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
@@ -3131,7 +3131,7 @@ void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int mindex, g
 	janus_ice_relay_rtcp(handle, mindex, video, buf, len);
 }
 
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len) {
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len) {
 	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped) || buf == NULL || len < 1)
 		return;
 	janus_handle *handle = (janus_handle *)plugin_session->gateway_handle;
@@ -3139,7 +3139,7 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, in
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT))
 		return;
 #ifdef HAVE_SCTP
-	janus_ice_relay_data(handle, buf, len);
+	janus_ice_relay_data(handle, label, buf, len);
 #else
 	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
 #endif

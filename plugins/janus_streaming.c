@@ -3667,6 +3667,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 							ht->num_viewers--;
 							ht->viewers = g_list_remove_all(ht->viewers, session);
 							janus_mutex_unlock(&ht->mutex);
+							JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (destroy)\n", ht->id);
 							break;
 						}
 						janus_mutex_unlock(&ht->mutex);
@@ -4347,6 +4348,7 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 						ht->num_viewers--;
 						ht->viewers = g_list_remove_all(ht->viewers, session);
 						janus_mutex_unlock(&ht->mutex);
+						JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d\n", ht->id);
 						break;
 					}
 					janus_mutex_unlock(&ht->mutex);
@@ -5036,8 +5038,8 @@ done:
 			janus_mutex_lock(&oldmp->mutex);
 			oldmp->viewers = g_list_remove_all(oldmp->viewers, session);
 			/* Remove the viewer from the helper threads too, if any */
-			if(mp->helper_threads > 0) {
-				GList *l = mp->threads;
+			if(oldmp->helper_threads > 0) {
+				GList *l = oldmp->threads;
 				while(l) {
 					janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
 					janus_mutex_lock(&ht->mutex);
@@ -5045,6 +5047,7 @@ done:
 						ht->num_viewers--;
 						ht->viewers = g_list_remove_all(ht->viewers, session);
 						janus_mutex_unlock(&ht->mutex);
+						JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (switching)\n", ht->id);
 						break;
 					}
 					janus_mutex_unlock(&ht->mutex);
@@ -5069,7 +5072,7 @@ done:
 					}
 					l = l->next;
 				}
-				JANUS_LOG(LOG_INFO, "Adding viewer to helper thread %d\n", helper->id);
+				JANUS_LOG(LOG_VERB, "Adding viewer to helper thread #%d\n", helper->id);
 				janus_mutex_lock(&helper->mutex);
 				helper->viewers = g_list_append(helper->viewers, session);
 				helper->num_viewers++;
@@ -7478,7 +7481,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		/* We're broadcasting a data channel message */
 		char *text = (char *)packet->data;
 		if(gateway != NULL && text != NULL)
-			gateway->relay_data(session->handle, text, strlen(text));
+			gateway->relay_data(session->handle, NULL, text, strlen(text));
 	}
 
 	return;

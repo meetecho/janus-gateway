@@ -196,6 +196,8 @@ Janus.useOldDependencies = function (deps) {
 
 Janus.noop = function() {};
 
+Janus.dataChanDefaultLabel = "JanusDataChannel";
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
@@ -1090,7 +1092,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
-							dataChannel : null,
+							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
@@ -1164,7 +1166,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							mediaConstraints : null,
 							pc : null,
-							dataChannel : null,
+							dataChannel : {},
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
@@ -1361,6 +1363,60 @@ function Janus(gatewayCallbacks) {
 		});
 	}
 
+	// Private method to create a data channel
+	function createDataChannel(handleId, dclabel, incoming, pendingText) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			return;
+		}
+		var config = pluginHandle.webrtcStuff;
+		var onDataChannelMessage = function(event) {
+			Janus.log('Received message on data channel:', event);
+			var label = event.target.label;
+			pluginHandle.ondata(event.data, label);
+		}
+		var onDataChannelStateChange = function(event) {
+			Janus.log('Received state change on data channel:', event);
+			var label = event.target.label;
+			var dcState = config.dataChannel[label] !== null ? config.dataChannel[label].readyState : "null";
+			Janus.log('State change on <' + label + '> data channel: ' + dcState);
+			if(dcState === 'open') {
+				// Any pending messages to send?
+				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
+					Janus.log("Sending pending messages on <' + label + '>:", config.dataChannel[label].pending.length);
+					for(var i in config.dataChannel[label].pending) {
+						var text = config.dataChannel[label].pending[i];
+						Janus.log("Sending string on data channel <" + label + ">: " + text);
+						config.dataChannel[label].send(text);
+					}
+					config.dataChannel[label].pending = [];
+				}
+				// Notify the open data channel
+				pluginHandle.ondataopen(label);
+			}
+		}
+		var onDataChannelError = function(error) {
+			Janus.error('Got error on data channel:', error);
+			// TODO
+		}
+		if(!incoming) {
+			// FIXME Add options (ordered, maxRetransmits, etc.)
+			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, {ordered:false});
+		} else {
+			// The channel was created by Janus
+			config.dataChannel[dclabel] = incoming;
+		}
+		config.dataChannel[dclabel].onmessage = onDataChannelMessage;
+		config.dataChannel[dclabel].onopen = onDataChannelStateChange;
+		config.dataChannel[dclabel].onclose = onDataChannelStateChange;
+		config.dataChannel[dclabel].onerror = onDataChannelError;
+		config.dataChannel[dclabel].pending = [];
+		if(pendingText)
+			config.dataChannel[dclabel].pending.push(pendingText);
+	}
+
 	// Private method to send a data channel message
 	function sendData(handleId, callbacks) {
 		callbacks = callbacks || {};
@@ -1380,8 +1436,20 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid text");
 			return;
 		}
-		Janus.log("Sending string on data channel: " + text);
-		config.dataChannel.send(text);
+		var label = callbacks.label ? callbacks.label : Janus.dataChanDefaultLabel;
+		if(!config.dataChannel[label]) {
+			// Create new data channel and wait for it to open
+			createDataChannel(handleId, label, false, text);
+			callbacks.success();
+			return;
+		}
+		if(config.dataChannel[label].readyState !== "open") {
+			config.dataChannel[label].pending.push(text);
+			callbacks.success();
+			return;
+		}
+		Janus.log("Sending string on data channel <" + label + ">: " + text);
+		config.dataChannel[label].send(text);
 		callbacks.success();
 	}
 
@@ -1528,77 +1596,51 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
 				config.myStream.addTrack(stream.getAudioTracks()[0]);
-				if(media.replaceAudio && Janus.unifiedPlan) {
-					Janus.log("Replacing audio track:", stream.getAudioTracks()[0]);
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "audio") {
-							s.replaceTrack(stream.getAudioTracks()[0]);
-						}
-					}
-				} else {
-					if(Janus.unifiedPlan) {
-						// Unified Plan is supported, we can use transceivers
-						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
-						var audioTransceiver = null;
-						var transceivers = config.pc.getTransceivers();
-						if(transceivers && transceivers.length > 0) {
-							for(var i in transceivers) {
-								var t = transceivers[i];
-								if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
-										(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
-									audioTransceiver = t;
-									break;
-								}
+				if(Janus.unifiedPlan) {
+					// Unified Plan is supported, we can use transceivers
+					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
+					var audioTransceiver = null;
+					var transceivers = config.pc.getTransceivers();
+					if(transceivers && transceivers.length > 0) {
+						for(var i in transceivers) {
+							var t = transceivers[i];
+							if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
+									(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
+								audioTransceiver = t;
+								break;
 							}
 						}
-						if(audioTransceiver && audioTransceiver.sender) {
-							audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
-						} else {
-							config.pc.addTrack(stream.getAudioTracks()[0], stream);
-						}
-					} else {
-						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
-						config.pc.addTrack(stream.getAudioTracks()[0], stream);
 					}
+				}
+				if(audioTransceiver && audioTransceiver.sender) {
+					audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
+				} else {
+					config.pc.addTrack(stream.getAudioTracks()[0], stream);
 				}
 			}
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
-				if(media.replaceVideo && Janus.unifiedPlan) {
-					Janus.log("Replacing video track:", stream.getVideoTracks()[0]);
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "video") {
-							s.replaceTrack(stream.getVideoTracks()[0]);
-						}
-					}
-				} else {
-					if(Janus.unifiedPlan) {
-						// Unified Plan is supported, we can use transceivers
-						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
-						var videoTransceiver = null;
-						var transceivers = config.pc.getTransceivers();
-						if(transceivers && transceivers.length > 0) {
-							for(var i in transceivers) {
-								var t = transceivers[i];
-								if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
-										(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
-									videoTransceiver = t;
-									break;
-								}
+				if(Janus.unifiedPlan) {
+					// Unified Plan is supported, we can use transceivers
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					var videoTransceiver = null;
+					var transceivers = config.pc.getTransceivers();
+					if(transceivers && transceivers.length > 0) {
+						for(var i in transceivers) {
+							var t = transceivers[i];
+							if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
+									(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
+								videoTransceiver = t;
+								break;
 							}
 						}
-						if(videoTransceiver && videoTransceiver.sender) {
-							videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
-						} else {
-							config.pc.addTrack(stream.getVideoTracks()[0], stream);
-						}
-					} else {
-						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
-						config.pc.addTrack(stream.getVideoTracks()[0], stream);
 					}
+				}
+				if(videoTransceiver && videoTransceiver.sender) {
+					videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
+				} else {
+					config.pc.addTrack(stream.getVideoTracks()[0], stream);
 				}
 			}
 		}
@@ -1710,29 +1752,13 @@ function Janus(gatewayCallbacks) {
 			});
 		}
 		// Any data channel to create?
-		if(isDataEnabled(media) && !config.dataChannel) {
+		if(isDataEnabled(media) && !config.dataChannel[Janus.dataChanDefaultLabel]) {
 			Janus.log("Creating data channel");
-			var onDataChannelMessage = function(event) {
-				Janus.log('Received message on data channel: ' + event.data);
-				pluginHandle.ondata(event.data);	// FIXME
-			}
-			var onDataChannelStateChange = function() {
-				var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
-				Janus.log('State change on data channel: ' + dcState);
-				if(dcState === 'open') {
-					pluginHandle.ondataopen();	// FIXME
-				}
-			}
-			var onDataChannelError = function(error) {
-				Janus.error('Got error on data channel:', error);
-				// TODO
-			}
-			// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
-			config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {ordered:false});	// FIXME Add options (ordered, maxRetransmits, etc.)
-			config.dataChannel.onmessage = onDataChannelMessage;
-			config.dataChannel.onopen = onDataChannelStateChange;
-			config.dataChannel.onclose = onDataChannelStateChange;
-			config.dataChannel.onerror = onDataChannelError;
+			createDataChannel(handleId, Janus.dataChanDefaultLabel, false);
+			config.pc.ondatachannel = function(event) {
+				Janus.log("Data channel created by Janus:", event);
+				createDataChannel(handleId, event.channel.label, event.channel);
+			};
 		}
 		// If there's a new local stream, let's notify the application
 		if(config.myStream) {
@@ -3079,7 +3105,7 @@ function Janus(gatewayCallbacks) {
 			config.mySdp = null;
 			config.remoteSdp = null;
 			config.iceDone = false;
-			config.dataChannel = null;
+			config.dataChannel = {};
 			config.dtmfSender = null;
 		}
 		pluginHandle.oncleanup();

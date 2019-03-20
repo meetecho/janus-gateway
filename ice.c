@@ -305,6 +305,7 @@ uint16_t rtp_range_max = 0;
 typedef struct janus_ice_queued_packet {
 	gint mindex;
 	char *data;
+	char *label;
 	gint length;
 	gint type;
 	gboolean control;
@@ -454,6 +455,7 @@ static inline void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 		return;
 	}
 	g_free(pkt->data);
+	g_free(pkt->label);
 	g_free(pkt);
 }
 
@@ -2651,6 +2653,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
+							pkt->label = NULL;
 							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -2732,14 +2735,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	}
 }
 
-void janus_ice_incoming_data(janus_handle *handle, char *buffer, int length) {
+void janus_ice_incoming_data(janus_handle *handle, char *label, char *buffer, int length) {
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
-		plugin->incoming_data(handle->app_handle, buffer, length);
+		plugin->incoming_data(handle->app_handle, label, buffer, length);
 }
 
 
@@ -3899,7 +3902,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 				return G_SOURCE_CONTINUE;
 			}
 			medium->noerrorlog = FALSE;
-			janus_dtls_wrap_sctp_data(pc->dtls, pkt->data, pkt->length);
+			janus_dtls_wrap_sctp_data(pc->dtls, pkt->label, pkt->data, pkt->length);
 #endif
 		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
 			/* SCTP data to push */
@@ -3959,6 +3962,7 @@ void janus_ice_relay_rtp(janus_handle *handle, int mindex, gboolean video, char 
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -4001,6 +4005,7 @@ static void janus_ice_relay_rtcp_internal(janus_handle *handle, int mindex, gboo
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != buf) {
@@ -4014,7 +4019,7 @@ void janus_ice_relay_rtcp(janus_handle *handle, int mindex, gboolean video, char
 }
 
 #ifdef HAVE_SCTP
-void janus_ice_relay_data(janus_handle *handle, char *buf, int len) {
+void janus_ice_relay_data(janus_handle *handle, char *label, char *buf, int len) {
 	if(!handle || !handle->pc || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Find the right medium instance */
@@ -4032,6 +4037,7 @@ void janus_ice_relay_data(janus_handle *handle, char *buf, int len) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->label = label ? g_strdup(label) : NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -4056,6 +4062,7 @@ void janus_ice_relay_sctp(janus_handle *handle, char *buffer, int length) {
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
+	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif

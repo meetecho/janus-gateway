@@ -80,6 +80,8 @@ struct janus_handle;
 typedef struct janus_sctp_channel {
 	/*! \brief SCTP channel ID */
 	uint32_t id;
+	/*! \brief SCTP channel label */
+	char label[64];
 	/*! \brief Value of the PR-SCTP policy (http://tools.ietf.org/html/rfc6458) */
 	uint32_t pr_value;
 	/*! \brief PR-SCTP policy to use (http://tools.ietf.org/html/rfc6458) */
@@ -200,9 +202,10 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 
 /*! \brief Method to send data via SCTP to the peer
  * \param[in] sctp The SCTP association this data is from
+ * @param[in] label The label of the data channel to use
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
+void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *buf, int len);
 
 #endif
 
