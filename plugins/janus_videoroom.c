@@ -8073,9 +8073,17 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 	janus_videoroom_subscriber *subscriber = stream->subscriber;
 	janus_videoroom_session *session = subscriber->session;
 
+	/* We use the publisher's user ID as the label for the data channel */
+	janus_videoroom_publisher_stream *ps = stream->ps;
+	if(ps == NULL || ps->publisher == NULL)
+		return;
+	janus_videoroom_publisher *publisher = ps->publisher;
+	char label[64];
+	g_snprintf(label, sizeof(label), "%"SCNu64, publisher->user_id);
+
 	if(gateway != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to viewer: %s\n", strlen(text), text);
-		gateway->relay_data(session->handle, NULL, text, strlen(text));
+		gateway->relay_data(session->handle, label, text, strlen(text));
 	}
 	return;
 }
