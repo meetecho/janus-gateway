@@ -3174,7 +3174,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 							ht->num_viewers--;
 							ht->viewers = g_list_remove_all(ht->viewers, session);
 							janus_mutex_unlock(&ht->mutex);
-							JANUS_LOG(LOG_INFO, "Removing viewer from helper thread %d (destroy)\n", ht->id);
+							JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (destroy)\n", ht->id);
 							break;
 						}
 						janus_mutex_unlock(&ht->mutex);
@@ -3693,7 +3693,7 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 						ht->num_viewers--;
 						ht->viewers = g_list_remove_all(ht->viewers, session);
 						janus_mutex_unlock(&ht->mutex);
-						JANUS_LOG(LOG_INFO, "Removing viewer from helper thread %d\n", ht->id);
+						JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d\n", ht->id);
 						break;
 					}
 					janus_mutex_unlock(&ht->mutex);
@@ -4244,7 +4244,7 @@ done:
 						ht->num_viewers--;
 						ht->viewers = g_list_remove_all(ht->viewers, session);
 						janus_mutex_unlock(&ht->mutex);
-						JANUS_LOG(LOG_INFO, "Removing viewer from helper thread %d (switching)\n", ht->id);
+						JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (switching)\n", ht->id);
 						break;
 					}
 					janus_mutex_unlock(&ht->mutex);
@@ -4269,7 +4269,7 @@ done:
 					}
 					l = l->next;
 				}
-				JANUS_LOG(LOG_INFO, "Adding viewer to helper thread %d\n", helper->id);
+				JANUS_LOG(LOG_VERB, "Adding viewer to helper thread #%d\n", helper->id);
 				janus_mutex_lock(&helper->mutex);
 				helper->viewers = g_list_append(helper->viewers, session);
 				helper->num_viewers++;
