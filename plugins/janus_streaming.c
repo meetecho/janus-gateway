@@ -4235,7 +4235,7 @@ done:
 			janus_mutex_lock(&oldmp->mutex);
 			oldmp->viewers = g_list_remove_all(oldmp->viewers, session);
 			/* Remove the viewer from the helper threads too, if any */
-			if(mp->helper_threads > 0) {
+			if(oldmp->helper_threads > 0) {
 				GList *l = oldmp->threads;
 				while(l) {
 					janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
