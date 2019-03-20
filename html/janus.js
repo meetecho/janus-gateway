@@ -1526,79 +1526,61 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
 				config.myStream.addTrack(stream.getAudioTracks()[0]);
-				if(media.replaceAudio && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
-					Janus.log("Replacing audio track:", stream.getAudioTracks()[0]);
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "audio") {
-							s.replaceTrack(stream.getAudioTracks()[0]);
-						}
-					}
-				} else {
-					if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-						// Firefox >= 59 uses Transceivers
-						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
-						var audioTransceiver = null;
-						var transceivers = config.pc.getTransceivers();
-						if(transceivers && transceivers.length > 0) {
-							for(var i in transceivers) {
-								var t = transceivers[i];
-								if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
-										(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
-									audioTransceiver = t;
-									break;
-								}
+				if(Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+						Janus.webRTCAdapter.browserDetails.browser === "safari" ||
+						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+					// Use Transceivers
+					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
+					var audioTransceiver = null;
+					var transceivers = config.pc.getTransceivers();
+					if(transceivers && transceivers.length > 0) {
+						for(var i in transceivers) {
+							var t = transceivers[i];
+							if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
+									(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
+								audioTransceiver = t;
+								break;
 							}
 						}
-						if(audioTransceiver && audioTransceiver.sender) {
-							audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
-						} else {
-							config.pc.addTrack(stream.getAudioTracks()[0], stream);
-						}
+					}
+					if(audioTransceiver && audioTransceiver.sender) {
+						audioTransceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
 					} else {
-						Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
 						config.pc.addTrack(stream.getAudioTracks()[0], stream);
 					}
+				} else {
+					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
+					config.pc.addTrack(stream.getAudioTracks()[0], stream);
 				}
 			}
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
-				if(media.replaceVideo && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
-					Janus.log("Replacing video track:", stream.getVideoTracks()[0]);
-					for(var index in config.pc.getSenders()) {
-						var s = config.pc.getSenders()[index];
-						if(s && s.track && s.track.kind === "video") {
-							s.replaceTrack(stream.getVideoTracks()[0]);
-						}
-					}
-				} else {
-					if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-						// Firefox >= 59 uses Transceivers
-						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
-						var videoTransceiver = null;
-						var transceivers = config.pc.getTransceivers();
-						if(transceivers && transceivers.length > 0) {
-							for(var i in transceivers) {
-								var t = transceivers[i];
-								if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
-										(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
-									videoTransceiver = t;
-									break;
-								}
+				if(Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+						Janus.webRTCAdapter.browserDetails.browser === "safari" ||
+						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+					// Use Transceivers
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					var videoTransceiver = null;
+					var transceivers = config.pc.getTransceivers();
+					if(transceivers && transceivers.length > 0) {
+						for(var i in transceivers) {
+							var t = transceivers[i];
+							if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
+									(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
+								videoTransceiver = t;
+								break;
 							}
 						}
-						if(videoTransceiver && videoTransceiver.sender) {
-							videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
-						} else {
-							config.pc.addTrack(stream.getVideoTracks()[0], stream);
-						}
+					}
+					if(videoTransceiver && videoTransceiver.sender) {
+						videoTransceiver.sender.replaceTrack(stream.getVideoTracks()[0]);
 					} else {
-						Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 						config.pc.addTrack(stream.getVideoTracks()[0], stream);
 					}
+				} else {
+					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
+					config.pc.addTrack(stream.getVideoTracks()[0], stream);
 				}
 			}
 		}
