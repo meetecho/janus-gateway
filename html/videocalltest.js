@@ -59,9 +59,10 @@ var audioenabled = false;
 var videoenabled = false;
 
 var myusername = null;
-var yourusername = null;	
+var yourusername = null;
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var simulcastStarted = false;
 
 $(document).ready(function() {
@@ -109,7 +110,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -304,7 +305,7 @@ $(document).ready(function() {
 										$('#bitrate').attr('disabled', true);
 										$('#curbitrate').hide();
 										$('#curres').hide();
-										if(bitrateTimer !== null && bitrateTimer !== null) 
+										if(bitrateTimer !== null && bitrateTimer !== null)
 											clearInterval(bitrateTimer);
 										bitrateTimer = null;
 									}
@@ -468,7 +469,7 @@ $(document).ready(function() {
 									$('#bitrate').attr('disabled', true);
 									$('#curbitrate').hide();
 									$('#curres').hide();
-									if(bitrateTimer !== null && bitrateTimer !== null) 
+									if(bitrateTimer !== null && bitrateTimer !== null)
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;
 									$('#waitingvideo').remove();

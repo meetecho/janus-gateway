@@ -63,6 +63,7 @@ var feeds = [];
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -401,6 +402,7 @@ function publishOwnFeed(useAudio) {
 			// pass a ?simulcast=true when opening this demo page: it will turn
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
+			simulcast2: doSimulcast2,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);

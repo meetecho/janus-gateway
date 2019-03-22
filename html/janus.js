@@ -1736,9 +1736,27 @@ function Janus(gatewayCallbacks) {
 		}
 		if(addTracks && stream !== null && stream !== undefined) {
 			Janus.log('Adding local stream');
+			var simulcast2 = callbacks.simulcast2 === true ? true : false;
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
-				config.pc.addTrack(track, stream);
+				if(!simulcast2) {
+					config.pc.addTrack(track, stream);
+				} else {
+					if(track.kind === "audio") {
+						config.pc.addTrack(track, stream);
+					} else {
+						Janus.log('Enabling rid-based simulcasting:', track);
+						config.pc.addTransceiver(track, {
+							direction: "sendrecv",
+							streams: [stream],
+							sendEncodings: [
+								{ rid: "h", active: true, maxBitrate: 900000 },
+								{ rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
+								{ rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+							]
+						});
+					}
+				}
 			});
 		}
 		// Any data channel to create?
@@ -2038,7 +2056,8 @@ function Janus(gatewayCallbacks) {
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
 				var simulcast = callbacks.simulcast === true ? true : false;
-				if(simulcast && !jsep && (media.video === undefined || media.video === false))
+				var simulcast2 = callbacks.simulcast2 === true ? true : false;
+				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
