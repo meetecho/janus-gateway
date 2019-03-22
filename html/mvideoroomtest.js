@@ -257,7 +257,7 @@ $(document).ready(function() {
 													sfutest.hangup();
 													return;
 												}
-												unsubscribeFrom(leaving);
+												unsubscribeFrom(unpublished);
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												if(msg["error_code"] === 426) {
 													// This is a "no such room" error: give a more meaningful description
