@@ -5153,6 +5153,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char vfmtp[2048];
 	char vcontrol[2048];
 	char uri[1024];
+	char content_base[1024];
 	char vtransport[1024];
 	char vhost[256];
 	int vsport = 0, vsport_rtcp = 0;
@@ -5166,6 +5167,14 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char ahost[256];
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
+
+	/* Parse Content-Base if given */
+	char * header = strstr(curldata->buffer, "Content-Base: ");
+	if (header) {
+		sscanf(header, "Content-Base: %1023s\n", content_base);
+		g_free(source->rtsp_url);
+		source->rtsp_url = g_strdup(content_base);
+	}
 
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult;
