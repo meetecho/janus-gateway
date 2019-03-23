@@ -617,7 +617,9 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			session->peer_bitrate = bitrate;
-			if(session->bitrate > 0)
+			if(session->bitrate == 0)	/* No limit ~= 10000000 */
+				janus_rtcp_cap_remb(buf, len, 10000000);
+			else
 				janus_rtcp_cap_remb(buf, len, session->bitrate);
 			gateway->relay_rtcp(handle, 1, buf, len);
 			return;

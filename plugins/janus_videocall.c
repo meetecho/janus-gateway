@@ -801,7 +801,9 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		guint32 bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
-			if(session->bitrate > 0)
+			if(session->bitrate == 0)	/* No limit ~= 10000000 */
+				janus_rtcp_cap_remb(buf, len, 10000000);
+			else
 				janus_rtcp_cap_remb(buf, len, session->bitrate);
 			gateway->relay_rtcp(peer->handle, 1, buf, len);
 			return;
