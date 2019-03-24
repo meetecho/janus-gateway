@@ -664,9 +664,7 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;
 	uint8_t nal = *(buffer+1) & 0x1F;
-	uint8_t start_bit = *(buffer+1) & 0x80;
-	if(fragment == 5 || fragment == 7 ||
-			((fragment == 28 || fragment == 29) && (nal == 5 || nal == 7) && start_bit == 128)) {
+	if(fragment == 7 || ((fragment == 28 || fragment == 29) && nal == 7)) {
 		JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");
 		return TRUE;
 	} else if(fragment == 24) {
