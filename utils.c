@@ -456,7 +456,6 @@ void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
 	}
 }
 
-#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	gboolean is_valid = (json_typeof(val) == jtype || (jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
 	if(!is_valid)
@@ -487,7 +486,6 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	}
 	return is_valid;
 }
-#endif
 
 /* The following code is more related to codec specific helpers */
 #if defined(__ppc__) || defined(__ppc64__)
