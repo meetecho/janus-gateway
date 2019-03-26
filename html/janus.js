@@ -2480,7 +2480,7 @@ function Janus(gatewayCallbacks) {
 		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
-			var sender = config.pc.getSenders().find(s => s.track.kind == "video");
+			var sender = config.pc.getSenders().find(function(s) {return s.track.kind == "video"});
 			if(sender) {
 				var parameters = sender.getParameters();
 				if(!parameters)
