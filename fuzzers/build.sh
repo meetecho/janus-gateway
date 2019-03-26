@@ -19,7 +19,7 @@ FUZZ_CC=${CC-$DEFAULT_CC}
 
 # Set linker from the environment (CXX is used as linker in oss-fuzz)
 # Fallback to clang
-FUZZ_CCLD=${CXX-$DEFAULT_CCLD}
+FUZZ_CCLD=${CXX-${CC-$DEFAULT_CCLD}}
 
 # Set CFLAGS from the environment
 # Fallback to using address and undefined behaviour sanitizers
