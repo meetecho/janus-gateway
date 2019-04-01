@@ -6110,6 +6110,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && data_added) {
 							/* We already have a datachannel m-line */
+							janus_mutex_unlock(&publisher->streams_mutex);
 							continue;
 						}
 						janus_videoroom_subscriber_stream *stream = janus_videoroom_subscriber_stream_add(subscriber,
@@ -6135,6 +6136,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
 							if(ps->type == JANUS_VIDEOROOM_MEDIA_DATA && data_added) {
 								/* We already have a datachannel m-line */
+								janus_mutex_unlock(&publisher->streams_mutex);
 								temp = temp->next;
 								continue;
 							}
