@@ -11,6 +11,11 @@ int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 
+/* This is to avoid linking with openSSL */
+int RAND_bytes(uint8_t *key, int len) {
+	return 0;
+}
+
 /* Clone libsrtp srtp_validate_rtp_header */
 #define octets_in_rtp_header 12
 #define uint32s_in_rtp_header 3

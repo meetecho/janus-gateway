@@ -44,7 +44,7 @@ elif [ -f "$CRASH_FILE" ]; then
 elif [ -d "$CRASH_FILE" ]; then
 	# Run without fuzzing, with an user supplied crashes folder
 	files=$(find "$CRASH_FILE" -maxdepth 1 -type f)
-	if [ -z $files ]; then
+	if [[ -z $files ]]; then
 		echo "Empty crashes folder specified!"
 		exit 1
 	fi
