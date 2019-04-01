@@ -2295,14 +2295,18 @@ function Janus(gatewayCallbacks) {
 						video: (videoExist && !media.keepVideo) ? videoSupport : false
 					};
 					Janus.debug("getUserMedia constraints", gumConstraints);
-					navigator.mediaDevices.getUserMedia(gumConstraints)
-						.then(function(stream) {
-							pluginHandle.consentDialog(false);
-							streamsDone(handleId, jsep, media, callbacks, stream);
-						}).catch(function(error) {
-							pluginHandle.consentDialog(false);
-							callbacks.error({code: error.code, name: error.name, message: error.message});
-						});
+					if (!gumConstraints.audio && !gumConstraints.video) {
+						streamsDone(handleId, jsep, media, callbacks, stream);
+					} else {
+						navigator.mediaDevices.getUserMedia(gumConstraints)
+							.then(function(stream) {
+								pluginHandle.consentDialog(false);
+								streamsDone(handleId, jsep, media, callbacks, stream);
+							}).catch(function(error) {
+								pluginHandle.consentDialog(false);
+								callbacks.error({code: error.code, name: error.name, message: error.message});
+							});
+					}
 				})
 				.catch(function(error) {
 					pluginHandle.consentDialog(false);
