@@ -1374,7 +1374,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 										break;
 								}
 								a = janus_sdp_attribute_create("extmap",
-									"%d%s %s\r\n", id, direction, extension);
+									"%d%s %s", id, direction, extension);
 								janus_sdp_attribute_add_to_mline(am, a);
 							}
 							temp = temp->next;
