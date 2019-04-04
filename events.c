@@ -4,16 +4,34 @@
  * \brief    Event handler notifications
  * \details  Event handler plugins can receive events from the Janus core
  * and other plugins, in order to handle them somehow. This methods
- * provide helpers to notify events to such handlers. 
- * 
+ * provide helpers to notify events to such handlers.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #include <stdarg.h>
 
 #include "events.h"
 #include "utils.h"
+
+static struct janus_event_types {
+	int type;
+	const char *label;
+	const char *name;
+} event_types_string[] = {
+	{ JANUS_EVENT_TYPE_NONE, "no_events", "No events"},
+	{ JANUS_EVENT_TYPE_SESSION, "sessions", "Sessions"},
+	{ JANUS_EVENT_TYPE_HANDLE, "handles", "Handles"},
+	{ JANUS_EVENT_TYPE_EXTERNAL, "external", "External"},
+	{ JANUS_EVENT_TYPE_JSEP, "jsep", "Jsep"},
+	{ JANUS_EVENT_TYPE_WEBRTC, "webrtc", "WebRTC"},
+	{ JANUS_EVENT_TYPE_MEDIA, "media", "Media"},
+	{ JANUS_EVENT_TYPE_PLUGIN, "plugins", "Plugins"},
+	{ JANUS_EVENT_TYPE_TRANSPORT, "transports", "Transports"},
+	{ JANUS_EVENT_TYPE_CORE, "core", "Core"},
+	{ -1, NULL, NULL},
+};
 
 static gboolean eventsenabled = FALSE;
 static char *server = NULL;
@@ -26,24 +44,47 @@ static GThread *events_thread;
 void *janus_events_thread(void *data);
 
 int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers) {
-	/* We setup a thread for passing events to the handlers */
-	GError *error = NULL;
-	events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
-	if(server_name != NULL)
-		server = g_strdup(server_name);
-	events = g_async_queue_new();
-	eventhandlers = handlers;
 	eventsenabled = enabled;
+	if(eventsenabled) {
+		events = g_async_queue_new();
+		if(server_name != NULL)
+			server = g_strdup(server_name);
+		eventhandlers = handlers;
+		/* We setup a thread for passing events to the handlers */
+		GError *error = NULL;
+		events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
+		if(error != NULL) {
+			eventsenabled = FALSE;
+			g_free(server);
+			g_async_queue_unref(events);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
+	}
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT));
+	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_CORE),
+		janus_events_type_to_label(JANUS_EVENT_TYPE_CORE));
 	return 0;
 }
 
 void janus_events_deinit(void) {
 	eventsenabled = FALSE;
-	if (events != NULL) {
+	if(events != NULL) {
 		g_async_queue_push(events, &exit_event);
 	}
 	if(events_thread != NULL) {
@@ -73,7 +114,12 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
 		} else if(type == JANUS_EVENT_TYPE_CORE) {
-			/* Core events also allocate a json_t object for its data, unref it */
+			/* Core events also allocate a json_t object for their data, unref it */
+			json_t *body = va_arg(args, json_t *);
+			json_decref(body);
+		} else if(type == JANUS_EVENT_TYPE_EXTERNAL) {
+			/* Admin API originated external events also allocate a json_t object for their data, unref it */
+			va_arg(args, char *);
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
 		} else if(type == JANUS_EVENT_TYPE_SESSION) {
@@ -106,7 +152,8 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 		json_object_set_new(event, "emitter", json_string(server));
 	json_object_set_new(event, "type", json_integer(type));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
-	if(type != JANUS_EVENT_TYPE_CORE) {			/* Core events don't have a session ID */
+	if(type != JANUS_EVENT_TYPE_CORE && type != JANUS_EVENT_TYPE_EXTERNAL) {
+		/* Core and Admin API originated events don't have a session ID */
 		if(session_id == 0 && (type == JANUS_EVENT_TYPE_PLUGIN || type == JANUS_EVENT_TYPE_TRANSPORT)) {
 			/* ... but plugin/transport events may not have one either */
 		} else {
@@ -125,7 +172,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_object_set_new(body, "name", json_string(name));
 			json_t *transport = va_arg(args, json_t *);
 			if(transport != NULL)
-				json_object_set(body, "transport", transport);
+				json_object_set_new(body, "transport", transport);
 			break;
 		}
 		case JANUS_EVENT_TYPE_HANDLE: {
@@ -188,7 +235,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "plugin", json_string(name));
 			json_t *data = va_arg(args, json_t *);
-			json_object_set(body, "data", data);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		case JANUS_EVENT_TYPE_TRANSPORT: {
@@ -200,12 +247,19 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			g_snprintf(id, sizeof(id), "%p", instance);
 			json_object_set_new(body, "id", json_string(id));
 			json_t *data = va_arg(args, json_t *);
-			json_object_set(body, "data", data);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		case JANUS_EVENT_TYPE_CORE: {
 			/* For core-related events, there's a json_t object with info on what happened */
 			body = va_arg(args, json_t *);
+			break;
+		}
+		case JANUS_EVENT_TYPE_EXTERNAL: {
+			char *schema = va_arg(args, char *);
+			json_object_set_new(body, "schema", json_string(schema));
+			json_t *data = va_arg(args, json_t *);
+			json_object_set_new(body, "data", data);
 			break;
 		}
 		default:
@@ -218,6 +272,10 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
+	if(!eventsenabled) {
+		json_decref(event);
+		return;
+	}
 	/* Enqueue the event */
 	g_async_queue_push(events, event);
 }
@@ -254,6 +312,77 @@ void *janus_events_thread(void *data) {
 		json_decref(event);
 	}
 
-	JANUS_LOG(LOG_VERB, "Leaving EchoTest handler thread\n");
+	/* Cleanup pending events */
+	while((event = g_async_queue_try_pop(events)) != NULL) {
+		if(event != &exit_event)
+			json_decref(event);
+	}
+
+	JANUS_LOG(LOG_VERB, "Leaving Events handler thread\n");
 	return NULL;
+}
+
+/* Helper method to change the events mask */
+void janus_events_edit_events_mask(const char *list, janus_flags *target) {
+	if(!list)
+		return;
+	janus_flags mask;
+	janus_flags_reset(&mask);
+	if(!strcasecmp(list, "none")) {
+		/* Don't subscribe to anything at all */
+		janus_flags_reset(&mask);
+	} else if(!strcasecmp(list, "all")) {
+		/* Subscribe to everything */
+		janus_flags_set(&mask, JANUS_EVENT_TYPE_ALL);
+	} else {
+		/* Check what we need to subscribe to */
+		janus_flags_reset(&mask);
+		gchar **subscribe = g_strsplit(list, ",", -1);
+		if(subscribe != NULL) {
+			gchar *index = subscribe[0];
+			if(index != NULL) {
+				int i=0;
+				while(index != NULL) {
+					while(isspace(*index))
+						index++;
+					if(strlen(index)) {
+						struct janus_event_types *ev = event_types_string;
+						while(ev->label) {
+							if(!strcasecmp(index, ev->label)) {
+								janus_flags_set(&mask, ev->type);
+								break;
+							}
+							ev++;
+						}
+					}
+					i++;
+					index = subscribe[i];
+				}
+			}
+			g_strfreev(subscribe);
+		}
+	}
+	if(target)
+		memcpy(target, &mask, sizeof(janus_flags));
+}
+
+/* Helpers to convert an event type to a string label or a more verbose name */
+const char *janus_events_type_to_label(int type) {
+	struct janus_event_types *ev = event_types_string;
+	while(ev->label) {
+		if(type == ev->type)
+			return ev->label;
+		ev++;
+	}
+	return (char *)NULL;
+}
+
+const char *janus_events_type_to_name(int type) {
+	struct janus_event_types *ev = event_types_string;
+	while(ev->label) {
+		if(type == ev->type)
+			return ev->name;
+		ev++;
+	}
+	return (char *)NULL;
 }

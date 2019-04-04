@@ -100,10 +100,12 @@ function updateServerInfo() {
 			console.log(json);
 			var pluginsJson = json.plugins;
 			var transportsJson = json.transports;
+			var eventsJson = json.events;
 			delete json.janus;
 			delete json.transaction;
 			delete json.plugins;
 			delete json.transports;
+			delete json.events;
 			for(var k in json) {
 				var v = json[k];
 				$('#server-details').append(
@@ -123,10 +125,19 @@ function updateServerInfo() {
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
 			}
-			console.log(plugins);
 			for(var t in transportsJson) {
 				var v = transportsJson[t];
 				$('#server-transports').append(
+					'<tr>' +
+					'	<td>' + v.name + '</td>' +
+					'	<td>' + v.author + '</td>' +
+					'	<td>' + v.description + '</td>' +
+					'	<td>' + v.version_string + '</td>' +
+					'</tr>');
+			}
+			for(var e in eventsJson) {
+				var v = eventsJson[e];
+				$('#server-handlers').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
 					'	<td>' + v.author + '</td>' +
@@ -155,6 +166,17 @@ function updateServerInfo() {
 					prettyHandleInfo();
 				} else {
 					rawHandleInfo();
+				}
+			});
+			$("#capture").change(function() {
+				if(this.checked) {
+					// We're trying to start a new capture, show a dialog
+					$('#capturetext').html('Stop capture');
+					captureTrafficPrompt();
+				} else {
+					// We're trying to stop a capture
+					$('#capturetext').html('Start capture');
+					captureTrafficRequest(false, handleInfo["dump-to-text2pcap"] === true);
 				}
 			});
 			// Only check tokens if the mechanism is enabled
@@ -684,6 +706,8 @@ function updateHandleInfo(refresh) {
 	$('#update-sessions').unbind('click');
 	$('#update-handles').unbind('click');
 	$('#update-handle').unbind('click').addClass('fa-spin');
+	$('#capture').removeAttr('checked');
+	$('#capturetext').html('Start capture');
 	var request = { "janus": "handle_info", "transaction": randomString(12), "admin_secret": secret };
 	$.ajax({
 		type: 'POST',
@@ -721,6 +745,10 @@ function updateHandleInfo(refresh) {
 				prettyHandleInfo();
 			} else {
 				rawHandleInfo();
+			}
+			if(handleInfo["dump-to-pcap"] || handleInfo["dump-to-text2pcap"]) {
+				$('#capture').attr('checked', true);
+				$('#capturetext').html('Stop capture');
 			}
 			setTimeout(function() {
 				$('#update-sessions').click(updateSessions);
@@ -1082,6 +1110,100 @@ function sendTokenRequest(request) {
 				return;
 			}
 			updateTokens();
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus + ": " + errorThrown);	// FIXME
+			if(!prompting && !alerted) {
+				alerted = true;
+				bootbox.alert("Couldn't contact the backend: is Janus down, or is the Admin/Monitor interface disabled?", function() {
+					promptAccessDetails();
+					alerted = false;
+				});
+			}
+		},
+		dataType: "json"
+	});
+}
+
+// text2pcap and pcap requests
+function captureTrafficPrompt() {
+	bootbox.dialog({
+		title: "Start capturing traffic",
+		message:
+			'<div class="form-content">' +
+			'	<form class="form" role="form">' +
+			'		<div class="form-group">' +
+			'			<label for="type">Capture Type</label>' +
+			'			<select class="form-control" id="type" name="type" value="pcal">' +
+			'				<option value="pcap">pcap</option>' +
+			'				<option value="text2pcap">text2pcap</option>' +
+			'			</select>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Folder to save in</label>' +
+			'			<input type="text" class="form-control" id="folder" name="folder" placeholder="Insert a path to the target folder" value=""></input>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Filename</label>' +
+			'			<input type="text" class="form-control" id="filename" name="filename" placeholder="Insert the target filename" value=""></input>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Truncate</label>' +
+			'			<input type="text" class="form-control" id="truncate" name="truncate" placeholder="Bytes to truncate at (0 or omit to save the whole packet)" value=""></input>' +
+			'		</div>' +
+			'	</form>' +
+			'</div>',
+		buttons: [
+			{
+				label: "Start",
+				className: "btn btn-primary pull-left",
+				callback: function() {
+					var text = $('#type').val() === "text2pcap";
+					var folder = $('#folder').val() !== '' ? $('#folder').val() : undefined;
+					var filename = $('#filename').val() !== '' ? $('#filename').val() : undefined;
+					var truncate = parseInt($('#truncate').val());
+					if(!truncate || isNaN(truncate))
+						truncate = 0;
+					captureTrafficRequest(true, text, folder, filename, truncate);
+				}
+			},
+			{
+				label: "Close",
+				className: "btn btn-default pull-left",
+				callback: function() {
+					$('#capture').removeAttr('checked');
+					$('#capturetext').html('Start capture');
+				}
+			}
+		]
+	});
+}
+
+function captureTrafficRequest(start, text, folder, filename, truncate) {
+	var req = start ? ( text ? "start_text2pcap" : "start_pcap" ) :
+		( text ? "stop_text2pcap" : "stop_pcap" )
+	var request = { "janus": req, "transaction": randomString(12), "admin_secret": secret };
+	if(start) {
+		request["folder"] = folder;
+		request["filename"] = filename;
+		request["truncate"] = truncate;
+	}
+	$.ajax({
+		type: 'POST',
+		url: server + "/" + session + "/" + handle,
+		cache: false,
+		contentType: "application/json",
+		data: JSON.stringify(request),
+		success: function(json) {
+			if(json["janus"] !== "success") {
+				console.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+				bootbox.alert(json["error"].reason);
+				if(start && json["error"].reason.indexOf('already') === -1) {
+					$('#capture').removeAttr('checked');
+					$('#capturetext').html('Start capture');
+				}
+				return;
+			}
 		},
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME

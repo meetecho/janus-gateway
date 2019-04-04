@@ -1,7 +1,7 @@
 {
   "name": "janus-gateway",
   "version": "0.1.0",
-  "description": "A javascript library for interacting with the C based Janus WebRTC Gateway",
+  "description": "A javascript library for interacting with the C based Janus WebRTC Server",
   "main": "html/janus.js",
   "files": [
     "html/janus.js",

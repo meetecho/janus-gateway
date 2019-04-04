@@ -180,7 +180,7 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 void janus_auviousroom_setup_media(janus_plugin_session *handle);
 void janus_auviousroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_auviousroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_auviousroom_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_auviousroom_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_auviousroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_auviousroom_hangup_media(janus_plugin_session *handle);
 void janus_auviousroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -870,18 +870,19 @@ int janus_auviousroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 		/* Any admin key to limit who can "create"? */
-		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
+		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_AUVIOUSROOM_NAME);
 		}
 		/* Iterate on all rooms */
-		GList *cl = janus_config_get_categories(config);
+		GList *cl = janus_config_get_categories(config, NULL);
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
@@ -889,26 +890,26 @@ int janus_auviousroom_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding video room '%s'\n", cat->name);
-			janus_config_item *desc = janus_config_get_item(cat, "description");
-			janus_config_item *priv = janus_config_get_item(cat, "is_private");
-			janus_config_item *secret = janus_config_get_item(cat, "secret");
-			janus_config_item *pin = janus_config_get_item(cat, "pin");
-			janus_config_item *req_pvtid = janus_config_get_item(cat, "require_pvtid");
-			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
-			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
-			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
-			janus_config_item *audiocodec = janus_config_get_item(cat, "audiocodec");
-			janus_config_item *videocodec = janus_config_get_item(cat, "videocodec");
-			janus_config_item *svc = janus_config_get_item(cat, "video_svc");
-			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
-			janus_config_item *audiolevel_event = janus_config_get_item(cat, "audiolevel_event");
-			janus_config_item *audio_active_packets = janus_config_get_item(cat, "audio_active_packets");
-			janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
-			janus_config_item *videoorient_ext = janus_config_get_item(cat, "videoorient_ext");
-			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
-			janus_config_item *notify_joining = janus_config_get_item(cat, "notify_joining");
-			janus_config_item *record = janus_config_get_item(cat, "record");
-			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
+			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
+			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
+			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
+			janus_config_item *req_pvtid = janus_config_get(config, cat, janus_config_type_item, "require_pvtid");
+			janus_config_item *bitrate = janus_config_get(config, cat, janus_config_type_item, "bitrate");
+			janus_config_item *maxp = janus_config_get(config, cat, janus_config_type_item, "publishers");
+			janus_config_item *firfreq = janus_config_get(config, cat, janus_config_type_item, "fir_freq");
+			janus_config_item *audiocodec = janus_config_get(config, cat, janus_config_type_item, "audiocodec");
+			janus_config_item *videocodec = janus_config_get(config, cat, janus_config_type_item, "videocodec");
+			janus_config_item *svc = janus_config_get(config, cat, janus_config_type_item, "video_svc");
+			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
+			janus_config_item *audiolevel_event = janus_config_get(config, cat, janus_config_type_item, "audiolevel_event");
+			janus_config_item *audio_active_packets = janus_config_get(config, cat, janus_config_type_item, "audio_active_packets");
+			janus_config_item *audio_level_average = janus_config_get(config, cat, janus_config_type_item, "audio_level_average");
+			janus_config_item *videoorient_ext = janus_config_get(config, cat, janus_config_type_item, "videoorient_ext");
+			janus_config_item *playoutdelay_ext = janus_config_get(config, cat, janus_config_type_item, "playoutdelay_ext");
+			janus_config_item *notify_joining = janus_config_get(config, cat, janus_config_type_item, "notify_joining");
+			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
+			janus_config_item *rec_dir = janus_config_get(config, cat, janus_config_type_item, "rec_dir");
 			/* Create the video room */
 			janus_auviousroom *auviousroom = g_malloc0(sizeof(janus_auviousroom));
 			auviousroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
@@ -1830,20 +1831,20 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 			char cat[BUFSIZ], value[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, auviousroom->room_id);
-			janus_config_add_category(config, cat);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			/* Now for the values */
-			janus_config_add_item(config, cat, "description", auviousroom->room_name);
+			janus_config_add(config, c, janus_config_item_create("description", auviousroom->room_name));
 			if(auviousroom->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(auviousroom->require_pvtid)
-				janus_config_add_item(config, cat, "require_pvtid", "yes");
+				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, auviousroom->bitrate);
-			janus_config_add_item(config, cat, "bitrate", value);
+			janus_config_add(config, c, janus_config_item_create("bitrate", value));
 			g_snprintf(value, BUFSIZ, "%d", auviousroom->max_publishers);
-			janus_config_add_item(config, cat, "publishers", value);
+			janus_config_add(config, c, janus_config_item_create("publishers", value));
 			if(auviousroom->fir_freq) {
 				g_snprintf(value, BUFSIZ, "%"SCNu16, auviousroom->fir_freq);
-				janus_config_add_item(config, cat, "fir_freq", value);
+				janus_config_add(config, c, janus_config_item_create("fir_freq", value));
 			}
 			char audio_codecs[100];
 			memset(audio_codecs, 0, sizeof(audio_codecs));
@@ -1856,7 +1857,7 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 				g_strlcat(audio_codecs, ",", sizeof(audio_codecs));
 				g_strlcat(audio_codecs, janus_auviousroom_audiocodec_name(auviousroom->acodec[2]), sizeof(audio_codecs));
 			}
-			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
+			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
 			char video_codecs[100];
 			memset(video_codecs, 0, sizeof(video_codecs));
 			g_snprintf(video_codecs, sizeof(video_codecs), "%s", janus_auviousroom_videocodec_name(auviousroom->vcodec[0]));
@@ -1868,17 +1869,17 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 				g_strlcat(video_codecs, ",", sizeof(video_codecs));
 				g_strlcat(video_codecs, janus_auviousroom_videocodec_name(auviousroom->vcodec[2]), sizeof(video_codecs));
 			}
-			janus_config_add_item(config, cat, "videocodec", video_codecs);
+			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
 			if(auviousroom->do_svc)
-				janus_config_add_item(config, cat, "video_svc", "yes");
+				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(auviousroom->room_secret)
-				janus_config_add_item(config, cat, "secret", auviousroom->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", auviousroom->room_secret));
 			if(auviousroom->room_pin)
-				janus_config_add_item(config, cat, "pin", auviousroom->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", auviousroom->room_pin));
 			if(auviousroom->record)
-				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 			if(auviousroom->rec_dir)
-				janus_config_add_item(config, cat, "rec_dir", auviousroom->rec_dir);
+				janus_config_add(config, c, janus_config_item_create("rec_dir", auviousroom->rec_dir));
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUVIOUSROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room is not permanent */
@@ -1977,24 +1978,24 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_VERB, "Modifying room %"SCNu64" permanently in config file\n", auviousroom->room_id);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ], value[BUFSIZ];
-			/* The room ID is the category */
-			g_snprintf(cat, BUFSIZ, "%"SCNu64, auviousroom->room_id);
+			/* The room ID is the category (prefixed by "room-") */
+			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, auviousroom->room_id);
 			/* Remove the old category first */
-			janus_config_remove_category(config, cat);
+			janus_config_remove(config, NULL, cat);
 			/* Now write the room details again */
-			janus_config_add_category(config, cat);
-			janus_config_add_item(config, cat, "description", auviousroom->room_name);
+			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
+			janus_config_add(config, c, janus_config_item_create("description", auviousroom->room_name));
 			if(auviousroom->is_private)
-				janus_config_add_item(config, cat, "is_private", "yes");
+				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			if(auviousroom->require_pvtid)
-				janus_config_add_item(config, cat, "require_pvtid", "yes");
+				janus_config_add(config, c, janus_config_item_create("require_pvtid", "yes"));
 			g_snprintf(value, BUFSIZ, "%"SCNu32, auviousroom->bitrate);
-			janus_config_add_item(config, cat, "bitrate", value);
+			janus_config_add(config, c, janus_config_item_create("bitrate", value));
 			g_snprintf(value, BUFSIZ, "%d", auviousroom->max_publishers);
-			janus_config_add_item(config, cat, "publishers", value);
+			janus_config_add(config, c, janus_config_item_create("publishers", value));
 			if(auviousroom->fir_freq) {
 				g_snprintf(value, BUFSIZ, "%"SCNu16, auviousroom->fir_freq);
-				janus_config_add_item(config, cat, "fir_freq", value);
+				janus_config_add(config, c, janus_config_item_create("fir_freq", value));
 			}
 			char audio_codecs[100];
 			memset(audio_codecs, 0, sizeof(audio_codecs));
@@ -2007,7 +2008,7 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 				g_strlcat(audio_codecs, ",", sizeof(audio_codecs));
 				g_strlcat(audio_codecs, janus_auviousroom_audiocodec_name(auviousroom->acodec[2]), sizeof(audio_codecs));
 			}
-			janus_config_add_item(config, cat, "audiocodec", audio_codecs);
+			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
 			char video_codecs[100];
 			memset(video_codecs, 0, sizeof(video_codecs));
 			g_snprintf(video_codecs, sizeof(video_codecs), "%s", janus_auviousroom_videocodec_name(auviousroom->vcodec[0]));
@@ -2019,17 +2020,17 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 				g_strlcat(video_codecs, ",", sizeof(video_codecs));
 				g_strlcat(video_codecs, janus_auviousroom_videocodec_name(auviousroom->vcodec[2]), sizeof(video_codecs));
 			}
-			janus_config_add_item(config, cat, "videocodec", video_codecs);
+			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
 			if(auviousroom->do_svc)
-				janus_config_add_item(config, cat, "video_svc", "yes");
+				janus_config_add(config, c, janus_config_item_create("video_svc", "yes"));
 			if(auviousroom->room_secret)
-				janus_config_add_item(config, cat, "secret", auviousroom->room_secret);
+				janus_config_add(config, c, janus_config_item_create("secret", auviousroom->room_secret));
 			if(auviousroom->room_pin)
-				janus_config_add_item(config, cat, "pin", auviousroom->room_pin);
+				janus_config_add(config, c, janus_config_item_create("pin", auviousroom->room_pin));
 			if(auviousroom->record)
-				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add(config, c, janus_config_item_create("record", "yes"));
 			if(auviousroom->rec_dir)
-				janus_config_add_item(config, cat, "rec_dir", auviousroom->rec_dir);
+				janus_config_add(config, c, janus_config_item_create("rec_dir", auviousroom->rec_dir));
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUVIOUSROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room changes are not permanent */
@@ -2113,7 +2114,7 @@ struct janus_plugin_result *janus_auviousroom_handle_message(janus_plugin_sessio
 			char cat[BUFSIZ];
 			/* The room ID is the category */
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
-			janus_config_remove_category(config, cat);
+			janus_config_remove(config, NULL, cat);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_AUVIOUSROOM_PACKAGE) < 0)
 				save = FALSE;	/* This will notify the user the room destruction is not permanent */
@@ -3088,7 +3089,7 @@ void janus_auviousroom_incoming_rtcp(janus_plugin_session *handle, int video, ch
 	}
 }
 
-void janus_auviousroom_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_auviousroom_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 	if(buf == NULL || len <= 0)
@@ -5175,7 +5176,7 @@ static void janus_auviousroom_relay_data_packet(gpointer data, gpointer user_dat
 	}
 	if(gateway != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to viewer: %s\n", strlen(text), text);
-		gateway->relay_data(session->handle, text, strlen(text));
+		gateway->relay_data(session->handle, NULL, text, strlen(text));
 	}
 	return;
 }

@@ -292,7 +292,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_recordplay_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
@@ -688,10 +688,11 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	/* Parse configuration */
 	if(config != NULL) {
-		janus_config_item *path = janus_config_get_item_drilldown(config, "general", "path");
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_item *path = janus_config_get(config, config_general, janus_config_type_item, "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -1149,7 +1150,7 @@ void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, cha
 		return;
 }
 
-void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_recordplay_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME We don't care */
@@ -2015,7 +2016,7 @@ void janus_recordplay_update_recordings_list(void) {
 			JANUS_LOG(LOG_ERR, "Invalid recording '%s'...\n", recent->d_name);
 			continue;
 		}
-		GList *cl = janus_config_get_categories(nfo);
+		GList *cl = janus_config_get_categories(nfo, NULL);
 		if(cl == NULL || cl->data == NULL) {
 			JANUS_LOG(LOG_WARN, "No recording info in '%s', skipping...\n", recent->d_name);
 			janus_config_destroy(nfo);
@@ -2037,10 +2038,10 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_refcount_decrease(&rec->ref);
 			continue;
 		}
-		janus_config_item *name = janus_config_get_item(cat, "name");
-		janus_config_item *date = janus_config_get_item(cat, "date");
-		janus_config_item *audio = janus_config_get_item(cat, "audio");
-		janus_config_item *video = janus_config_get_item(cat, "video");
+		janus_config_item *name = janus_config_get(nfo, cat, janus_config_type_item, "name");
+		janus_config_item *date = janus_config_get(nfo, cat, janus_config_type_item, "date");
+		janus_config_item *audio = janus_config_get(nfo, cat, janus_config_type_item, "audio");
+		janus_config_item *video = janus_config_get(nfo, cat, janus_config_type_item, "video");
 		if(!name || !name->value || strlen(name->value) == 0 || !date || !date->value || strlen(date->value) == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid info for recording %"SCNu64", skipping...\n", id);
 			janus_config_destroy(nfo);

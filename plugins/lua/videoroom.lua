@@ -77,6 +77,17 @@ function destroySession(id)
 			room = rooms[s.roomId]
 		end
 		if room ~= nil then
+			-- If this is a publisher, notify other participants that the user is leaving
+			if(s["pType"] == "publisher") then
+				local event = { videoroom = "event", leaving = s.userId, room = room.roomId }
+				local eventjson = json.encode(event)
+				for index,partId in pairs(room.participants) do
+					local p = sessions[partId]
+					if p ~= nil and p.id ~= id then
+						pushEvent(p.id, nil, eventjson, nil)
+					end
+				end
+			end
 			room.participants[s.userId] = nil
 		end
 		s.userId = nil
@@ -496,7 +507,6 @@ function handleMessage(id, tr, msg, jsep)
 						end
 						if comsg["data"] == true then
 							configureMedium(id, "data", "in", true)
-							sendPli(id)
 						elseif comsg["data"] == false then
 							configureMedium(id, "data", "in", false)
 						end
@@ -563,6 +573,28 @@ function handleMessage(id, tr, msg, jsep)
 					end
 					-- TODO
 					local event = { videoroom = "event", room = s["roomId"], switched = "ok" }
+					local eventjson = json.encode(event)
+					pushEvent(id, tr, eventjson, nil)
+				elseif request == "keyframe" then
+					-- Programmatically ask the publisher for a keyframe
+					if s["pType"] ~= "subscriber" then
+						logger.print("Invalid request: " .. request)
+						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
+						local eventjson = json.encode(event)
+						pushEvent(id, tr, eventjson, nil)
+						return
+					end
+					-- Send a PLI to the publisher
+					if s["feedSessionId"] ~= nil then
+						local f = sessions[s["feedSessionId"]]
+						if f ~= nil then
+							logger.print("Session " .. id .. " is going to be fed by " .. f.id)
+							addRecipient(f.id, id)
+							sendPli(f.id)
+						end
+					end
+					-- Done
+					local event = { videoroom = "event", room = s["roomId"], sent = "ok" }
 					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				else

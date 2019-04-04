@@ -33,7 +33,7 @@ static gboolean janus_log_console = TRUE;
 static char *janus_log_filepath = NULL;
 static FILE *janus_log_file = NULL;
 
-static gint initialized = 0;
+static volatile gint initialized = 0;
 static gint stopping = 0;
 static gint poolsz = 0;
 static gint maxpoolsz = 32;
@@ -186,10 +186,9 @@ void janus_vprintf(const char *format, ...) {
 }
 
 int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
-	if (g_atomic_int_get(&initialized)) {
+	if (!g_atomic_int_compare_and_exchange(&initialized, 0, 1)) {
 		return 0;
 	}
-	g_atomic_int_set(&initialized, 1);
 	g_mutex_init(&lock);
 	g_cond_init(&cond);
 	if(console) {

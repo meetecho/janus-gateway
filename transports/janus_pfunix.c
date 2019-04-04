@@ -4,7 +4,7 @@
  * \brief  Janus Unix Sockets transport plugin
  * \details  This is an implementation of a Unix Sockets transport for the
  * Janus API. This means that, with the help of this module, local
- * applications can use Unix Sockets to make requests to the gateway.
+ * applications can use Unix Sockets to make requests to Janus.
  * This plugin can make use of either the \c SOCK_SEQPACKET or the
  * \c SOCK_DGRAM socket type according to what you configure, so make
  * sure you're using the right one when writing a client application.
@@ -32,6 +32,10 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/un.h>
+ 
+#ifdef  HAVE_LIBSYSTEMD
+#include "systemd/sd-daemon.h"
+#endif /* HAVE_LIBSYSTEMD */
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -119,6 +123,9 @@ void *janus_pfunix_thread(void *data);
 /* Unix Sockets servers (and whether they should be SOCK_SEQPACKET or SOCK_DGRAM) */
 static int pfd = -1, admin_pfd = -1;
 static gboolean dgram = FALSE, admin_dgram = FALSE;
+#ifdef HAVE_LIBSYSTEMD
+static gboolean sd_socket = FALSE, admin_sd_socket = FALSE;
+#endif /* HAVE_LIBSYSTEMD */
 /* Socket pair to notify about the need for outgoing data */
 static int write_fd[2];
 
@@ -202,19 +209,27 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		return -1;
 	}
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_PFUNIX_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_PFUNIX_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_PFUNIX_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_PFUNIX_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		/* Handle configuration */
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
 
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -233,7 +248,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		}
 
 		/* Check if we need to send events to handlers */
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -247,13 +262,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		}
 
 		/* Setup the Janus API Unix Sockets server(s) */
-		item = janus_config_get_item_drilldown(config, "general", "enabled");
+		item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
 		} else {
-			item = janus_config_get_item_drilldown(config, "general", "path");
+			item = janus_config_get(config, config_general, janus_config_type_item, "path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
-			item = janus_config_get_item_drilldown(config, "general", "type");
+			item = janus_config_get(config, config_general, janus_config_type_item, "type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			dgram = FALSE;
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
@@ -268,17 +283,23 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Janus API)\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
+#ifdef HAVE_LIBSYSTEMD
+				if (sd_listen_fds(0) > 0) {
+					pfd = SD_LISTEN_FDS_START + 0;
+					sd_socket = TRUE;
+				} else
+#endif /* HAVE_LIBSYSTEMD */
 				pfd = janus_pfunix_create_socket(pfname, dgram);
 			}
 		}
 		/* Do the same for the Admin API, if enabled */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_enabled");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
 		} else {
-			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : NULL);
-			item = janus_config_get_item_drilldown(config, "admin", "admin_type");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
 				admin_dgram = FALSE;
@@ -292,6 +313,12 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Admin API)\n");
 			} else {
 				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
+#ifdef HAVE_LIBSYSTEMD
+				if (sd_listen_fds(0) > 1) {
+					admin_pfd = SD_LISTEN_FDS_START + 1;
+					admin_sd_socket = TRUE;
+				} else
+#endif /* HAVE_LIBSYSTEMD */
 				admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
 			}
 		}
@@ -769,7 +796,11 @@ void *janus_pfunix_thread(void *data) {
 	void *addr = g_malloc(addrlen+1);
 	if(pfd > -1) {
 		/* Unlink the path name first */
+#ifdef HAVE_LIBSYSTEMD
+		if((getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == sd_socket)) {
+#else
 		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+#endif
 			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
 			unlink(((struct sockaddr_un *)addr)->sun_path);
 		}
@@ -779,7 +810,11 @@ void *janus_pfunix_thread(void *data) {
 	pfd = -1;
 	if(admin_pfd > -1) {
 		/* Unlink the path name first */
+#ifdef HAVE_LIBSYSTEMD
+		if((getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) && (FALSE == admin_sd_socket)) {
+#else
 		if(getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+#endif
 			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
 			unlink(((struct sockaddr_un *)addr)->sun_path);
 		}

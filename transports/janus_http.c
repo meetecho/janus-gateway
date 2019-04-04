@@ -4,14 +4,14 @@
  * \brief  Janus RESTs transport plugin
  * \details  This is an implementation of a RESTs transport for the
  * Janus API, using the libmicrohttpd library (http://www.gnu.org/software/libmicrohttpd/).
- * This module allows browsers to make use of HTTP to talk to the gateway.
- * Since the gateway may be deployed on a different domain than the web
- * server hosting the web applications using it, the gateway automatically
+ * This module allows browsers to make use of HTTP to talk to the Janus core.
+ * Since a Janus instance may be deployed on a different domain than the web
+ * server hosting the web applications using it, the plugin automatically
  * handles OPTIONS request to comply with the CORS specification.
  * POST requests can be used to ask for the management of a session with
- * the gateway, to attach to a plugin, to send messages to the plugin
+ * the server, to attach to a plugin, to send messages to the plugin
  * itself and so on. GET requests instead are used for getting events
- * associated to a gateway session (and as such to all its plugin handles
+ * associated to a Janus session (and as such to all its plugin handles
  * and the events plugins push in the session itself), using a long poll
  * approach. A JavaScript library (janus.js) implements all of this on
  * the client side automatically.
@@ -120,7 +120,7 @@ typedef struct janus_http_msg {
 	gchar *contenttype;					/* Content-Type of the payload */
 	gchar *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
-	gint64 session_id;					/* Gateway-Client session identifier this message belongs to */
+	gint64 session_id;					/* Janus-Client session identifier this message belongs to */
 	janus_mutex wait_mutex;				/* Mutex to wait on the response condition */
 	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
@@ -281,7 +281,7 @@ static void janus_http_random_string(int length, char *buffer) {
 /* Helper to create a MHD daemon */
 static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		const char *interface, const char *ip, int port, gint64 threads,
-		const char *server_pem, const char *server_key, const char *password) {
+		const char *server_pem, const char *server_key, const char *password, const char *ciphers) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
 	/* Any interface or IP address we need to limit ourselves to?
@@ -495,6 +495,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -518,6 +519,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -542,6 +544,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -562,6 +565,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+					MHD_OPTION_HTTPS_PRIORITIES, ciphers,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 #if MHD_VERSION >= 0x00093903
@@ -613,7 +617,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	JANUS_LOG(LOG_VERB, "The installed libmicrohttpd version supports MHD_USE_AUTO\n");
 #endif
 
-	/* This is the callback we'll need to invoke to contact the gateway */
+	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
 
 	/* Register a function to detect problems for which MHD would typically abort */
@@ -621,14 +625,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_REST_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_REST_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
+		janus_config_category *config_cors = janus_config_get_create(config, NULL, janus_config_type_category, "cors");
+		janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 
 		/* Handle configuration */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -647,7 +661,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Check if we need to send events to handlers */
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
@@ -655,7 +669,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Check the base paths */
-		item = janus_config_get_item_drilldown(config, "general", "base_path");
+		item = janus_config_get(config, config_general, janus_config_type_item, "base_path");
 		if(item && item->value) {
 			if(item->value[0] != '/') {
 				JANUS_LOG(LOG_FATAL, "Invalid base path %s (it should start with a /, e.g., /janus\n", item->value);
@@ -670,7 +684,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			ws_path = g_strdup("/janus");
 		}
 		/* Do the same for the admin/monitor interface */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_base_path");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_base_path");
 		if(item && item->value) {
 			if(item->value[0] != '/') {
 				JANUS_LOG(LOG_FATAL, "Invalid admin/monitor base path %s (it should start with a /, e.g., /admin\n", item->value);
@@ -686,7 +700,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Any ACL for either the Janus or Admin API? */
-		item = janus_config_get_item_drilldown(config, "general", "acl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -704,7 +718,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			g_strfreev(list);
 			list = NULL;
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_acl");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -724,7 +738,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 
 		/* Any custom value for the Access-Control-Allow-Origin header? */
-		item = janus_config_get_item_drilldown(config, "cors", "allow_origin");
+		item = janus_config_get(config, config_cors, janus_config_type_item, "allow_origin");
 		if(item && item->value) {
 			allow_origin = g_strdup(item->value);
 			JANUS_LOG(LOG_INFO, "Restricting Access-Control-Allow-Origin to '%s'\n", allow_origin);
@@ -732,7 +746,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 		/* Start with the Janus API web server now */
 		gint64 threads = 0;
-		item = janus_config_get_item_drilldown(config, "general", "threads");
+		item = janus_config_get(config, config_general, janus_config_type_item, "threads");
 		if(item && item->value) {
 			if(!strcasecmp(item->value, "unlimited")) {
 				/* No limit on threads, use a thread per connection */
@@ -748,23 +762,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				}
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "general", "http");
+		item = janus_config_get(config, config_general, janus_config_type_item, "http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 		} else {
 			int wsport = 8088;
-			item = janus_config_get_item_drilldown(config, "general", "port");
+			item = janus_config_get(config, config_general, janus_config_type_item, "port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			const char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "interface");
+			item = janus_config_get(config, config_general, janus_config_type_item, "interface");
 			if(item && item->value)
 				interface = item->value;
 			const char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "ip");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ip");
 			if(item && item->value)
 				ip = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -773,20 +788,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 		/* Do we also have to provide an HTTPS one? */
 		char *server_pem = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 		if(item && item->value)
 			server_pem = (char *)item->value;
 		char *server_key = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 		if(item && item->value)
 			server_key = (char *)item->value;
 		char *password = NULL;
-		item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+		item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 		if(item && item->value)
 			password = (char *)item->value;
+		const char *ciphers = "NORMAL";
+		item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
+		if(item && item->value)
+			ciphers = item->value;
 		if(server_key)
 			JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
-		item = janus_config_get_item_drilldown(config, "general", "https");
+		item = janus_config_get(config, config_general, janus_config_type_item, "https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 		} else {
@@ -794,18 +813,19 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				int swsport = 8089;
-				item = janus_config_get_item_drilldown(config, "general", "secure_port");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
 				const char *interface = NULL;
-				item = janus_config_get_item_drilldown(config, "general", "secure_interface");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_interface");
 				if(item && item->value)
 					interface = item->value;
 				const char *ip = NULL;
-				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
+				item = janus_config_get(config, config_general, janus_config_type_item, "secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -815,7 +835,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		}
 		/* Admin/monitor time: start web server, if enabled */
 		threads = 0;
-		item = janus_config_get_item_drilldown(config, "admin", "admin_threads");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_threads");
 		if(item && item->value) {
 			if(!strcasecmp(item->value, "unlimited")) {
 				/* No limit on threads, use a thread per connection */
@@ -831,23 +851,24 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				}
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_http");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_http");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 		} else {
 			int wsport = 7088;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_port");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			const char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_interface");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_interface");
 			if(item && item->value)
 				interface = item->value;
 			const char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ip");
 			if(item && item->value)
 				ip = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads, NULL, NULL, NULL);
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads,
+				NULL, NULL, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -855,7 +876,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 		}
 		/* Do we also have to provide an HTTPS one? */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_https");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_https");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
 		} else {
@@ -863,18 +884,19 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				int swsport = 7889;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_port");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
 				const char *interface = NULL;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_interface");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_interface");
 				if(item && item->value)
 					interface = item->value;
 				const char *ip = NULL;
-				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
+				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_ip");
 				if(item && item->value)
 					ip = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads, server_pem, server_key, password);
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads,
+					server_pem, server_key, password, ciphers);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {
@@ -928,8 +950,14 @@ void janus_http_destroy(void) {
 	g_free(allow_origin);
 	allow_origin = NULL;
 
+	janus_mutex_lock(&messages_mutex);
 	g_hash_table_destroy(messages);
+	messages = NULL;
+	janus_mutex_unlock(&messages_mutex);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
+	janus_mutex_unlock(&sessions_mutex);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1073,6 +1101,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 	session->events = g_async_queue_new();
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
@@ -1262,7 +1291,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			janus_http_add_cors_headers(msg, response);
@@ -1420,30 +1449,59 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", ts);
 	gateway->incoming_request(&janus_http_transport, ts, ts, FALSE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
+	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
+		if(msg->got_response || !res)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#else
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	struct timespec wakeup;
 	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
 	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
+	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
 		if(msg->got_response || res == ETIMEDOUT)
 			break;
 	}
-	pthread_mutex_unlock(&msg->wait_mutex);
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1610,7 +1668,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 
 	/* Is this a generic request for info? */
 	if(session_path != NULL && !strcmp(session_path, "info")) {
-		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		/* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
 		if(strcasecmp(method, "GET")) {
 			ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Use GET for the info endpoint");
 			goto done;
@@ -1644,30 +1702,59 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	}
 
 parsingdone:
-	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
-		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
-		json_object_set_new(root, "handle_id", json_integer(handle_id));
+	/* Check if we have session and handle identifiers, and how they were provided */
+	session_id = json_integer_value(json_object_get(root, "session_id"));
+	if(session_id && session_path && g_ascii_strtoull(session_path, NULL, 10) != session_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting session ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!session_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+		if(session_id > 0)
+			json_object_set_new(root, "session_id", json_integer(session_id));
+	}
+	handle_id = json_integer_value(json_object_get(root, "handle_id"));
+	if(handle_id && handle_path && g_ascii_strtoull(handle_path, NULL, 10) != handle_id) {
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_INVALID_REQUEST_PATH, "Conflicting handle ID (payload and path)");
+		json_decref(root);
+		goto done;
+	}
+	if(!handle_id) {
+		/* No session ID in the JSON object, maybe in the path? */
+		handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
+		if(handle_id > 0)
+			json_object_set_new(root, "handle_id", json_integer(handle_id));
+	}
 
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, ts, ts, TRUE, root, &error);
 	/* Wait for a response (but not forever) */
+#ifndef USE_PTHREAD_MUTEX
+	gint64 wakeup = janus_get_monotonic_time() + 10*G_TIME_SPAN_SECOND;
+	janus_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
+		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
+		if(msg->got_response || !res)
+			break;
+	}
+	janus_mutex_unlock(&msg->wait_mutex);
+#else
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	struct timespec wakeup;
 	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
 	wakeup.tv_nsec = now.tv_usec*1000UL;
-	pthread_mutex_lock(&msg->wait_mutex);
+	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
 		if(msg->got_response || res == ETIMEDOUT)
 			break;
 	}
-	pthread_mutex_unlock(&msg->wait_mutex);
+	janus_mutex_unlock(&msg->wait_mutex);
+#endif
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {

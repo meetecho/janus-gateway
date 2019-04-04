@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Admin/Monitor</title>
+<title>Janus WebRTC Server: Admin/Monitor</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
@@ -23,7 +23,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
 </head>
 <body>
-	
+
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
 <nav class="navbar navbar-default navbar-static-top">
@@ -33,7 +33,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Janus WebRTC Gateway: Admin/Monitor</h1>
+				<h1>Janus WebRTC Server: Admin/Monitor</h1>
 			</div>
 
 			<div>
@@ -102,6 +102,17 @@
 								</tr>
 							</table>
 						</div>
+						<h4>Event handlers</h4>
+						<div>
+							<table class="table table-striped" id="server-handlers">
+								<tr>
+									<th>Name</th>
+									<th>Author</th>
+									<th>Description</th>
+									<th>Version</th>
+								</tr>
+							</table>
+						</div>
 					</div>
 					<div role="tabpanel" class="tab-pane fade" id="settings">
 						<h4>Settings <i id="update-settings" class="fa fa-refresh" title="Refresh settings" style="cursor: pointer;"></i></h4>
@@ -124,11 +135,15 @@
 						<div id="info" class="col-md-8">
 							<h4>Handle Info <i id="update-handle" class="fa fa-refresh" title="Refresh handle info" style="cursor: pointer;"></i></h4>
 							<div id="options" class="hide">
-								<label class="checkbox-inline">
-									<input id="autorefresh"type="checkbox" value="">Autorefresh
+								<label class="checkbox-inline" title="Autorefresh this info every 5s">
+									<input id="autorefresh" type="checkbox" value="" title="Autorefresh this info every 5s">Autorefresh
 								</label>
-								<label class="checkbox-inline">
-									<input id="prettify"type="checkbox" value="">Prettify
+								<label class="checkbox-inline" title="Show information as HTML">
+									<input id="prettify" type="checkbox" value="" title="Show information as HTML">Prettify
+								</label>
+								<label class="checkbox-inline" title="Start of stop capturing traffic to .pcap">
+									<input id="capture" type="checkbox" value="" title="Start of stop capturing traffic to .pcap">
+									<span id="capturetext">Start capture</span>
 								</label>
 							</div>
 							<div id="handle-info">

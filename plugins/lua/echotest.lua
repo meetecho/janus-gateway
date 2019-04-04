@@ -128,7 +128,7 @@ function handleMessage(id, tr, msg, jsep)
 			local jsonjsep = json.encode(jsepanswer)
 			logger.print("  -- " .. jsonjsep)
 			pushEvent(id, tr, jsonevent, jsonjsep)
-			-- Just for fun (and to showcase the feature), let's send an event to handlers
+			-- Just for fun (and to showcase the feature), let's send an event to handlers;
 			-- notice how we pass the id now, meaning this event is tied to a specific session
 			local event = { event = "processed", request = comsg }
 			local eventjson = json.encode(event)
@@ -160,6 +160,13 @@ function hangupMedia(id)
 		s.audioCodec = nil
 		s.videoCodec = nil
 	end
+end
+
+function incomingData(id, buf, len)
+	-- Relaying RTP/RTCP in Lua makes no sense, but just for fun
+	-- we handle data channel messages ourselves to manipulate them
+	local edit = "[" .. name .. "] --> " .. buf
+	relayData(id, edit, string.len(edit));
 end
 
 function resumeScheduler()

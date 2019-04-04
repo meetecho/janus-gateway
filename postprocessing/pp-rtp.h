@@ -5,7 +5,7 @@
  * \details  A few structures to ease the post-processing of RTP frames:
  * the RTP header, its extensions (that we just skip), and a linked list
  * we use to re-order them for post-processing audio/video later on.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -13,6 +13,16 @@
 #ifndef _JANUS_PP_RTP
 #define _JANUS_PP_RTP
 
+#ifdef __MACH__
+#include <machine/endian.h>
+#define __BYTE_ORDER BYTE_ORDER
+#define __BIG_ENDIAN BIG_ENDIAN
+#define __LITTLE_ENDIAN LITTLE_ENDIAN
+#else
+#include <endian.h>
+#endif
+
+#include <glib.h>
 
 typedef struct janus_pp_rtp_header
 {
@@ -50,9 +60,10 @@ typedef struct janus_pp_frame_packet {
 	long offset;	/* Offset of the data in the file */
 	int skip;		/* Bytes to skip, besides the RTP header */
 	uint8_t drop;	/* Whether this packet can be dropped (e.g., padding)*/
+	int audiolevel;	/* Value of audio level in RTP extension, if parsed */
+	int rotation;	/* Value of rotation in RTP extension, if parsed */
 	struct janus_pp_frame_packet *next;
 	struct janus_pp_frame_packet *prev;
 } janus_pp_frame_packet;
-
 
 #endif
