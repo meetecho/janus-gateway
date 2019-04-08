@@ -24,10 +24,18 @@ FUZZ_CCLD=${CXX-${CC-$DEFAULT_CCLD}}
 # Set CFLAGS from the environment
 # Fallback to using address and undefined behaviour sanitizers
 FUZZ_CFLAGS=${CFLAGS-$DEFAULT_CFLAGS}
+# Allow users to optionally append extra CFLAGS
+if [[ ! -z $ECFLAGS ]]; then
+	FUZZ_CFLAGS="${FUZZ_CFLAGS} ${ECFLAGS}"
+fi
 
 # Set LDFLAGS from the environment (CXXFLAGS var is used for linker flags in oss-fuzz)
 # Fallback to using address and undefined behaviour sanitizers
 FUZZ_LDFLAGS=${CXXFLAGS-${LDFLAGS-$DEFAULT_LDFLAGS}}
+# Allow users to optionally append extra LDFLAGS
+if [[ ! -z $ELDFLAGS ]]; then
+	FUZZ_LDFLAGS="${FUZZ_LDFLAGS} ${ELDFLAGS}"
+fi
 
 # Set fuzzing engine from the environment (optional)
 FUZZ_ENGINE=${LIB_FUZZING_ENGINE-""}
