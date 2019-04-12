@@ -5887,7 +5887,7 @@ static void *janus_videoroom_handler(void *data) {
 						GList *ma = m->attributes;
 						while(ma) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-							if(a->value) {
+							if(a->value && !strstr(a->value, JANUS_RTP_EXTMAP_ENCRYPTED)) {
 								if(videoroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 									participant->audio_level_extmap_id = atoi(a->value);
 								} else if(videoroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {

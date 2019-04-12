@@ -86,6 +86,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 /*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 #define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
+/*! \brief a=extmap:11 urn:ietf:params:rtp-hdrext:encrypt urn:3gpp:video-orientation */
+#define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
 
 /*! \brief Helper method to demultiplex RTP from other protocols
  * @param[in] buf Buffer to inspect
