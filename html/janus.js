@@ -2529,8 +2529,13 @@ function Janus(gatewayCallbacks) {
 				sender.setParameters(parameters);
 			}
 		}
-		config.pc.createOffer(mediaConstraints)
-			.then(function(offer) {
+		var offer;
+		if(Janus.webRTCAdapter.browserDetails.browser !== "safari"){
+			offer = config.pc.createOffer(mediaConstraints)
+		}else{
+			offer = config.pc.createOffer()
+		}
+		offer.then(function(offer) {
 				Janus.debug(offer);
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
