@@ -2385,8 +2385,10 @@ function Janus(gatewayCallbacks) {
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = {};
-		if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-			// Firefox >= 59 uses Transceivers
+		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
+				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
+				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
@@ -2586,7 +2588,7 @@ function Janus(gatewayCallbacks) {
 		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
 				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
 				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
-			// Firefox >= 59 and Chrome >= 72 use Transceivers
+			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
 			mediaConstraints = {};
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
