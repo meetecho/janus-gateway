@@ -573,11 +573,28 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
 }
 
 int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
-	if(sdp == NULL || codec == NULL)
+	GList * pt_list = NULL;
+	int pt = 0;
+
+	pt_list = janus_sdp_get_codec_pts(sdp, codec);
+	
+	if (pt_list == NULL)
 		return -1;
+
+	pt = GPOINTER_TO_INT(g_list_first(pt_list)->data);
+	g_list_free(pt_list);
+
+	return pt;
+}
+
+GList * janus_sdp_get_codec_pts(janus_sdp *sdp, const char *codec) {
+	if(sdp == NULL || codec == NULL)
+		return NULL;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
 	gboolean video = FALSE;
 	const char *format = NULL, *format2 = NULL;
+	GList * pt_list = NULL;
+
 	if(!strcasecmp(codec, "opus")) {
 		format = "opus/48000/2";
 		format2 = "OPUS/48000/2";
@@ -616,7 +633,7 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 		format2 = "H264/90000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
-		return -1;
+		return NULL;
 	}
 	/* Check all m->lines */
 	GList *ml = sdp->m_lines;
@@ -633,13 +650,14 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
 				int pt = atoi(a->value);
 				if(strstr(a->value, format) || strstr(a->value, format2))
-					return pt;
+					pt_list = g_list_append(pt_list, GINT_TO_POINTER(pt));
 			}
 			ma = ma->next;
 		}
 		ml = ml->next;
 	}
-	return -1;
+
+	return pt_list;
 }
 
 const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
@@ -691,6 +709,63 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 		ml = ml->next;
 	}
 	return NULL;
+}
+
+const char *janus_sdp_get_pt_fmtp(janus_sdp *sdp, int pt) {
+	if(sdp == NULL || pt < 0)
+		return NULL;
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		/* Look in all rtpmap attributes */
+		GList *ma = m->attributes;
+		while(ma) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
+				int a_pt = atoi(a->value);
+				if(a_pt == pt)
+					return a->value;
+			}
+			ma = ma->next;
+		}
+		ml = ml->next;
+	}
+	return NULL;
+}
+
+int janus_sdp_get_h264_pt_with_max_profile(janus_sdp *sdp) {
+	GList * pt_list = janus_sdp_get_codec_pts(sdp, "h264");
+	if (pt_list == NULL)
+		return -1;
+
+	char max_profile[6] = "      ";
+	int pt = -1;
+
+	GList * item = g_list_first(pt_list);
+	while (item) {
+		int potential_pt = GPOINTER_TO_INT(item->data);
+		const char * potential_fmtp = janus_sdp_get_pt_fmtp(sdp, potential_pt);
+		if (potential_fmtp == NULL)
+			continue;
+		char * loc = strstr(potential_fmtp, "profile-level-id=");
+		// 17 = strlen("profile-level-id="), 6 = profile length
+		if (loc == NULL || strlen(loc) < 17 + 6)
+			continue;
+		loc += 17;
+		for (int i = 0; i < 6; i++) {
+			if (loc[i] > max_profile[i] || potential_pt == pt) {
+				pt = potential_pt;
+				max_profile[i] = loc[i];
+				continue;
+			} else if (loc[i] == max_profile[i])
+				continue;
+			break;
+		}
+		JANUS_LOG(LOG_INFO, "Max profile: %s, pt: %d\n", max_profile, pt);
+		item = item->next;
+	}
+	g_list_free(pt_list);
+	return pt;
 }
 
 const char *janus_sdp_get_codec_rtpmap(const char *codec) {
@@ -1102,7 +1177,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	va_start(args, offer);
 	/* Let's see what we should do with the media */
 	gboolean do_audio = TRUE, do_video = TRUE, do_data = TRUE,
-		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
+		audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE,
+		h264_max_profile_level = FALSE;
 	const char *audio_codec = NULL, *video_codec = NULL, *audio_fmtp = NULL;
 	GList *extmaps = NULL;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
@@ -1134,6 +1210,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			const char *extension = va_arg(args, char *);
 			if(extension != NULL)
 				extmaps = g_list_append(extmaps, (char *)extension);
+		} else if(property == JANUS_SDP_OA_VIDEO_H264_MAX_PROFILE_LEVEL) {
+			h264_max_profile_level = va_arg(args, gboolean);
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1301,6 +1379,16 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				temp = temp->next;
 				continue;
 			}
+
+			if(!strcasecmp(codec, "h264") && h264_max_profile_level) {
+				h264_max_profile_level = FALSE;
+				int potential_pt = janus_sdp_get_h264_pt_with_max_profile(offer);
+				if (potential_pt > 0){
+				  h264_max_profile_level = TRUE;
+				  pt = potential_pt;
+				}
+			}
+
 			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(pt));
 			/* Add the related attributes */
 			if(m->type == JANUS_SDP_AUDIO) {
@@ -1327,10 +1415,15 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				/* Add rtpmap attribute */
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
 				am->attributes = g_list_append(am->attributes, a);
-				if(!strcasecmp(codec, "h264") && h264_fmtp) {
-					/* If it's H.264 and we were asked to, add the default fmtp profile as well */
-					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
-					am->attributes = g_list_append(am->attributes, a);
+				if(!strcasecmp(codec, "h264")) {
+					if (h264_fmtp) {
+						/* If it's H.264 and we were asked to, add the default fmtp profile as well */
+						a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					} else if (h264_max_profile_level) {
+						a = janus_sdp_attribute_create("fmtp", "%s", janus_sdp_get_pt_fmtp(offer, pt));
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 				if(video_rtcpfb) {
 					/* Add rtcp-fb attributes */

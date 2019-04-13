@@ -276,6 +276,8 @@ JANUS_SDP_OA_VIDEO_H264_FMTP,
 JANUS_SDP_OA_DATA_LEGACY,
 /*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
 JANUS_SDP_OA_ACCEPT_EXTMAP,
+/*! \brief When generating an answer automatically, try to find the pt value for which the profile and level are highest and output that fmtp int the answer */
+JANUS_SDP_OA_VIDEO_H264_MAX_PROFILE_LEVEL
 /*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
@@ -328,11 +330,28 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...);
  * @returns The payload type, if found, or -1 otherwise */
 int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec);
 
+/*! \brief Helper to get the payload type associated to a specific codec
+ * @param sdp The Janus SDP instance to process
+ * @param codec The codec to find, as a string
+ * @returns GList * - list of pt if found, or NULL otherwise */
+GList * janus_sdp_get_codec_pts(janus_sdp *sdp, const char *codec);
+
 /*! \brief Helper to get the codec name associated to a specific payload type
  * @param sdp The Janus SDP instance to process
  * @param pt The payload type to find
  * @returns The codec name, if found, or NULL otherwise */
 const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt);
+
+/*! \brief Helper to get the fmtp associated to a specific payload
+ * @param sdp The Janus SDP instance to process
+ * @param pt The payload type to find
+ * @returns The fmtp value, if found (e.g., "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d0032"), or NULL otherwise */
+const char *janus_sdp_get_pt_fmtp(janus_sdp *sdp, int pt);
+
+/*! \brief Helper to get the payload type associated to a specific codec
+ * @param sdp The Janus SDP instance to process
+ * @returns The pt for which the profile is highest, or -1 otherwise */
+int janus_sdp_get_h264_pt_with_max_profile(janus_sdp *sdp);
 
 /*! \brief Helper to get the rtpmap associated to a specific codec
  * @param codec The codec name, as a string (e.g., "opus")
