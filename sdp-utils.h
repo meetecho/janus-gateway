@@ -277,7 +277,7 @@ JANUS_SDP_OA_DATA_LEGACY,
 /*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
 JANUS_SDP_OA_ACCEPT_EXTMAP,
 /*! \brief When generating an answer automatically, try to find the pt value for which the profile and level are highest and output that fmtp int the answer */
-JANUS_SDP_OA_VIDEO_H264_MAX_PROFILE_LEVEL
+JANUS_SDP_OA_VIDEO_H264_MAX_PROFILE_LEVEL,
 /*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
