@@ -2260,6 +2260,12 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 			}
+			if(session == NULL || session->stack == NULL) {
+				JANUS_LOG(LOG_ERR, "Missing session or Sofia stack\n");
+				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Missing session or Sofia stack");
+				goto error;
+			}
 			if(session->stack->s_nh_r != NULL) {
 				nua_handle_destroy(session->stack->s_nh_r);
 				session->stack->s_nh_r = NULL;
