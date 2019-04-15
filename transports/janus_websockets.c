@@ -893,7 +893,7 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	}
 	janus_mutex_lock(&transport->mutex);
 	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
-	if(!client) {
+	if(!client || !client->wsi || g_atomic_int_get(&client->destroyed)) {
 		json_decref(message);
 		janus_mutex_unlock(&transport->mutex);
 		return -1;
