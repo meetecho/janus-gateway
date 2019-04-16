@@ -607,6 +607,18 @@ function registerUsername() {
 	}
 }
 
+
+//HMAC-SHA256
+const secretkey = 'secretjanus';
+function getJanusSipToken(srcPhoneNumber, dstPhoneNumber, timeout = 24 * 60 * 60) {
+    const expiry = Math.floor(Date.now() / 1000) + timeout;
+    const strdata = [expiry.toString(), srcPhoneNumber, dstPhoneNumber].join(',');
+    const strdata2 = [expiry.toString()].join(',');
+    var hash = CryptoJS.HmacSHA256(strdata, secretkey);
+    var hashInBase64 = CryptoJS.enc.Base64.stringify(hash);
+    return [strdata2, hashInBase64].join(':');
+};
+
 function doCall() {
 	// Call someone
 	$('#peer').attr('disabled', true);
@@ -650,7 +662,14 @@ function doCall() {
 				//				"AnotherHeader": "another string"
 				//			}
 				//		};
-				var body = { request: "call", uri: $('#peer').val() };
+                const token = getJanusSipToken('P-Asserted-Voicenter-Callerid,0730000000', $('#peer').val());
+                var body = { request: "call", uri: $('#peer').val(),
+                             siptoken: token,
+                             headers: {
+                             "P-Asserted-Voicenter-Callerid": "0730000000",
+                             }
+                           };
+
 				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid
 				// values are "sdes_optional" and "sdes_mandatory", e.g.:

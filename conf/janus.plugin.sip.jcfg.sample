@@ -28,4 +28,7 @@ general: {
 
 	# Whether events should be sent to event handlers (default=true)
 	#events = false
+
+        token_auth_secret = "secretjanus"       # Use HMAC-SHA256 signed tokens (with token_auth) for the Call method
+                                                # if commented, call will be enabled without authentication
 }
