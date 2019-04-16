@@ -214,7 +214,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 void janus_duktape_setup_media(janus_plugin_session *handle);
 void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_duktape_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_duktape_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_duktape_hangup_media(janus_plugin_session *handle);
 void janus_duktape_destroy_session(janus_plugin_session *handle, int *error);
@@ -1051,7 +1051,7 @@ static duk_ret_t janus_duktape_method_relaydata(duk_context *ctx) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Send the RTP packet */
-	janus_core->relay_data(session->handle, (char *)payload, len);
+	janus_core->relay_data(session->handle, NULL, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
 	return 1;
@@ -2113,7 +2113,7 @@ void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *
 	}
 }
 
-void janus_duktape_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_duktape_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
 	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;
@@ -2301,7 +2301,7 @@ static void janus_duktape_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to session %"SCNu32": %s\n",
 			strlen(text), session->id, text);
-		janus_core->relay_data(session->handle, text, strlen(text));
+		janus_core->relay_data(session->handle, NULL, text, strlen(text));
 	}
 	return;
 }

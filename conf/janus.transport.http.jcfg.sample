@@ -36,7 +36,7 @@ general: {
 # a secret that must be provided in all requests as a crude form of
 # authorization mechanism, and partial or full source IPs if you want to
 # limit access basing on IP addresses. For security reasons, this
-# endpoint is disabled by default, enable it by setting admin_http=yes.
+# endpoint is disabled by default, enable it by setting admin_http=true.
 admin: {
 	admin_base_path = "/admin"			# Base path to bind to in the admin/monitor web server (plain HTTP only)
 	admin_threads = "unlimited"			# unlimited=thread per connection, number=thread pool
@@ -66,8 +66,8 @@ cors: {
 # You can also disable insecure protocols and ciphers by configuring the
 # 'ciphers' property accordingly (no limitation by default).
 certificates: {
-	cert_pem = "@certdir@/mycert.pem"
-	cert_key = "@certdir@/mycert.key"
+	#cert_pem = "/path/to/cert.pem"
+	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
 	#ciphers = "PFS:-VERS-TLS1.0:-VERS-TLS1.1:-3DES-CBC:-ARCFOUR-128"
 }

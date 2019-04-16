@@ -150,6 +150,11 @@ gboolean janus_ice_is_ice_debugging_enabled(void);
 void janus_ice_debugging_enable(void);
 /*! \brief Method to disable libnice debugging (the default) */
 void janus_ice_debugging_disable(void);
+/*! \brief Method to enable opaque ID in Janus API responses/events */
+void janus_enable_opaqueid_in_api(void);
+/*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
+ * @returns TRUE if they need to be present, FALSE otherwise */
+gboolean janus_is_opaqueid_in_api_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -342,11 +347,13 @@ struct janus_ice_stream {
 	/*! \brief Audio SSRC of the peer for this stream */
 	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
 	/*! \brief Video SSRC(s) of the peer for this stream (may be simulcasting) */
-	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3];
+	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3], video_ssrc_peer_temp;
 	/*! \brief Video retransmissions SSRC(s) of the peer for this stream */
 	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
+	gboolean legacy_rid;
 	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
 	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect for audio */
@@ -381,7 +388,11 @@ struct janus_ice_stream {
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
 	guint32 video_last_ts;
-	/*! \brief  Wether we do transport wide cc for video */
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
+	/*! \brief RTP Stream extension ID, and the related rtx one */
+	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;
@@ -568,14 +579,16 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
 /*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] label The label of the data channel to use
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
+void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int len);
 /*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
  * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] label The label of the data channel the message is from
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
-void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *buffer, int length);
 /*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)

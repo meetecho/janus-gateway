@@ -28,4 +28,4 @@ JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o janus-rtp.o"
 DEPS_CFLAGS="$(pkg-config --static --cflags glib-2.0)"
 
 # Libraries to link in with fuzzers
-DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0) -pthread -Wl,-Bdynamic"
+DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0 jansson) -pthread -Wl,-Bdynamic"

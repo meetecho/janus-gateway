@@ -28,9 +28,6 @@ eventsheader_HEADERS = events/eventhandler.h
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.jcfg.sample
 
-certdir = $(datadir)/janus/certs
-dist_cert_DATA = certs/mycert.key certs/mycert.pem
-
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
 
@@ -65,7 +62,6 @@ jsmodules_DATA = html/janus.js
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
 	    s|[@]confdir[@]|$(confdir)|;\
-	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]eventdir[@]|$(eventdir)|;\
@@ -206,6 +202,15 @@ $(dir_present):
 $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
 
+##
+# Fuzzers checking
+##
+
+check-fuzzers: FORCE
+	CC=$(CC) SKIP_JANUS_BUILD=1 LIB_FUZZING_ENGINE=fuzzers/standalone.o ./fuzzers/build.sh
+	./fuzzers/run.sh rtcp_fuzzer out/rtcp_fuzzer_seed_corpus
+	./fuzzers/run.sh rtp_fuzzer out/rtp_fuzzer_seed_corpus
+
 .PHONY: FORCE
 FORCE:
 
@@ -232,8 +237,7 @@ transports_libjanus_http_la_CFLAGS = $(transports_cflags) $(MHD_CFLAGS)
 transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) $(MHD_LDFLAGS) $(MHD_LIBS)
 transports_libjanus_http_la_LIBADD = $(transports_libadd) $(MHD_LDFLAGS)
 conf_DATA += conf/janus.transport.http.jcfg.sample
-EXTRA_DIST += conf/janus.transport.http.jcfg.sample.in
-CLEANFILES += conf/janus.transport.http.jcfg.sample
+EXTRA_DIST += conf/janus.transport.http.jcfg.sample
 endif
 
 if ENABLE_WEBSOCKETS
@@ -243,8 +247,7 @@ transports_libjanus_websockets_la_CFLAGS = $(transports_cflags)
 transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
 transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.websockets.jcfg.sample
-EXTRA_DIST += conf/janus.transport.websockets.jcfg.sample.in
-CLEANFILES += conf/janus.transport.websockets.jcfg.sample
+EXTRA_DIST += conf/janus.transport.websockets.jcfg.sample
 endif
 
 if ENABLE_RABBITMQ

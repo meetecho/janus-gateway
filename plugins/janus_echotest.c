@@ -143,7 +143,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
@@ -211,9 +211,8 @@ typedef struct janus_echotest_session {
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
+	char *rid[3];			/* Only needed if simulcasting is rid-based */
 	janus_rtp_simulcasting_context sim_context;
-	int rtpmapid_extmap_id;	/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
-	char *rid[3];			/* Only needed for debugging in case Firefox's RID-based simulcasting is involved */
 	janus_vp8_simulcast_context vp8_context;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
@@ -457,7 +456,7 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "video_codec", json_string(janus_videocodec_name(session->vcodec)));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 	json_object_set_new(info, "peer-bitrate", json_integer(session->peer_bitrate));
-	if(session->ssrc[0] != 0) {
+	if(session->ssrc[0] != 0 || session->rid[0] != NULL) {
 		json_object_set_new(info, "simulcast", json_true());
 		json_object_set_new(info, "substream", json_integer(session->sim_context.substream));
 		json_object_set_new(info, "substream-target", json_integer(session->sim_context.substream_target));
@@ -536,19 +535,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 		}
 		if(g_atomic_int_get(&session->destroyed))
 			return;
-		if(video && session->video_active && session->rtpmapid_extmap_id != -1) {
-			/* FIXME Just a way to debug Firefox simulcasting */
-			janus_rtp_header *header = (janus_rtp_header *)buf;
-			uint16_t seq_number = ntohs(header->seq_number);
-			uint32_t timestamp = ntohl(header->timestamp);
-			uint32_t ssrc = ntohl(header->ssrc);
-			char sdes_item[16];
-			if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, session->rtpmapid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
-				JANUS_LOG(LOG_DBG, "%"SCNu32"/%"SCNu16"/%"SCNu32"/%d: RTP stream ID extension: %s\n",
-					ssrc, seq_number, timestamp, header->padding, sdes_item);
-			}
-		}
-		if(video && session->video_active && session->ssrc[0] != 0) {
+		if(video && session->video_active && (session->ssrc[0] != 0 || session->rid[0] != NULL)) {
 			/* Handle simulcast: backup the header information first */
 			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t seq_number = ntohs(header->seq_number);
@@ -556,7 +543,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			uint32_t ssrc = ntohl(header->ssrc);
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-				buf, len, session->ssrc, session->vcodec, &session->context);
+				buf, len, session->ssrc, session->rid, session->vcodec, &session->context);
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
@@ -630,25 +617,18 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			session->peer_bitrate = bitrate;
-			if(session->bitrate > 0) {
-				char rtcpbuf[32];
-				int numssrc = 1;
-				if(session->ssrc[1])
-					numssrc++;
-				if(session->ssrc[2])
-					numssrc++;
-				int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
-				gateway->relay_rtcp(handle, 1, rtcpbuf, remblen);
-			} else {
-				gateway->relay_rtcp(handle, 1, buf, len);
-			}
+			if(session->bitrate == 0)	/* No limit ~= 10000000 */
+				janus_rtcp_cap_remb(buf, len, 10000000);
+			else
+				janus_rtcp_cap_remb(buf, len, session->bitrate);
+			gateway->relay_rtcp(handle, 1, buf, len);
 			return;
 		}
 		gateway->relay_rtcp(handle, video, buf, len);
 	}
 }
 
-void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
@@ -665,7 +645,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
-		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (label=%s, %zu bytes) to bounce back: %s\n", label, strlen(text), text);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
@@ -673,7 +653,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		char *reply = g_malloc(strlen(prefix)+len+1);
 		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
-		gateway->relay_data(handle, reply, strlen(reply));
+		gateway->relay_data(handle, label, reply, strlen(reply));
 		g_free(reply);
 	}
 }
@@ -784,6 +764,12 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
+	int i=0;
+	for(i=0; i<3; i++) {
+		session->ssrc[i] = 0;
+		g_free(session->rid[i]);
+		session->rid[i] = NULL;
+	}
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
@@ -840,9 +826,9 @@ static void *janus_echotest_handler(void *data) {
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(msg_simulcast) {
 			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
-			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+			int rid_ext_id = -1;
+			janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
+			session->sim_context.rid_ext_id = rid_ext_id;
 			session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 			session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 		}
@@ -930,17 +916,10 @@ static void *janus_echotest_handler(void *data) {
 			session->bitrate = json_integer_value(bitrate);
 			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32"\n", session->bitrate);
 			if(session->bitrate > 0) {
-				/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
-				char rtcpbuf[32];
-				int numssrc = 1;
-				if(session->ssrc[1])
-					numssrc++;
-				if(session->ssrc[2])
-					numssrc++;
-				int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
+				char buf[24];
+				janus_rtcp_remb((char *)&buf, 24, session->bitrate);
 				JANUS_LOG(LOG_VERB, "Sending REMB\n");
-				gateway->relay_rtcp(session->handle, 1, rtcpbuf, remblen);
-				/* FIXME How should we handle a subsequent "no limit" bitrate? */
+				gateway->relay_rtcp(session->handle, 1, buf, 24);
 			}
 		}
 		if(substream) {
@@ -1021,9 +1000,7 @@ static void *janus_echotest_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
 				goto error;
 			}
-			/* Check if we need to negotiate the rtp-stream-id extension */
-			session->rtpmapid_extmap_id = -1;
-			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;
+			/* Check if we need to negotiate Opus FEC */
 			gboolean opus_fec = FALSE;
 			GList *temp = offer->m_lines;
 			while(temp) {
@@ -1035,11 +1012,7 @@ static void *janus_echotest_handler(void *data) {
 					while(ma) {
 						janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 						if(a->value) {
-							if(strstr(a->value, JANUS_RTP_EXTMAP_RTP_STREAM_ID)) {
-								session->rtpmapid_extmap_id = atoi(a->value);
-								extmap_mdir = a->direction;
-								break;
-							} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") &&
+							if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") &&
 									strstr(a->value, "useinbandfec=1")) {
 								opus_fec = TRUE;
 							}
@@ -1053,6 +1026,10 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
 				JANUS_SDP_OA_AUDIO_FMTP, opus_fec ? "useinbandfec=1" : NULL,
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
@@ -1070,31 +1047,14 @@ static void *janus_echotest_handler(void *data) {
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;
 			session->has_video = session->vcodec != JANUS_VIDEOCODEC_NONE;
-			/* Add the extmap attribute, if needed */
-			if(session->rtpmapid_extmap_id > -1) {
-				/* First of all, let's check if the extmap attribute had a direction */
-				const char *direction = NULL;
-				switch(extmap_mdir) {
-					case JANUS_SDP_SENDONLY:
-						direction = "/recvonly";
-						break;
-					case JANUS_SDP_RECVONLY:
-					case JANUS_SDP_INACTIVE:
-						direction = "/inactive";
-						break;
-					default:
-						direction = "";
-						break;
-				}
-				janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-					"%d%s %s\r\n", session->rtpmapid_extmap_id, direction, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
-				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
-			}
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
 				/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
-				session->ssrc[0] = 0;
-				session->ssrc[1] = 0;
-				session->ssrc[2] = 0;
+				int i=0;
+				for(i=0; i<3; i++) {
+					session->ssrc[i] = 0;
+					g_free(session->rid[0]);
+					session->rid[0] = NULL;
+				}
 			}
 			/* Done */
 			char *sdp = janus_sdp_write(answer);
@@ -1202,11 +1162,8 @@ static void *janus_echotest_handler(void *data) {
 			json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 			json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 			json_object_set_new(info, "bitrate", json_integer(session->bitrate));
-			if(session->ssrc[0] && session->ssrc[1]) {
+			if(session->ssrc[0] || session->rid[0]) {
 				json_t *simulcast = json_object();
-				json_object_set_new(simulcast, "ssrc-0", json_integer(session->ssrc[0]));
-				json_object_set_new(simulcast, "ssrc-1", json_integer(session->ssrc[1]));
-				json_object_set_new(simulcast, "ssrc-2", json_integer(session->ssrc[2]));
 				json_object_set_new(simulcast, "substream", json_integer(session->sim_context.substream));
 				json_object_set_new(simulcast, "temporal-layer", json_integer(session->sim_context.templayer));
 				json_object_set_new(info, "simulcast", simulcast);

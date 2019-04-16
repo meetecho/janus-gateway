@@ -2260,6 +2260,12 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 			}
+			if(session == NULL || session->stack == NULL) {
+				JANUS_LOG(LOG_ERR, "Missing session or Sofia stack\n");
+				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Missing session or Sofia stack");
+				goto error;
+			}
 			if(session->stack->s_nh_r != NULL) {
 				nua_handle_destroy(session->stack->s_nh_r);
 				session->stack->s_nh_r = NULL;
@@ -2529,7 +2535,9 @@ static void *janus_sip_handler(void *data) {
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
 				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				json_t *s = json_object_get(msg_simulcast, "ssrcs");
+				if(s && json_array_size(s) > 0)
+					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
@@ -2685,7 +2693,9 @@ static void *janus_sip_handler(void *data) {
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
 				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				json_t *s = json_object_get(msg_simulcast, "ssrcs");
+				if(s && json_array_size(s) > 0)
+					session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
 			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {

@@ -30,7 +30,7 @@
  *
  * Every Lua script that wants to implement a Janus plugin must provide
  * the following functions as callbacks:
- * 
+ *
  * - \c init(): called when janus_lua.c is initialized;
  * - \c destroy(): called when janus_lua.c is deinitialized (Janus shutting down);
  * - \c createSession(): called when a new user attaches to the Janus Lua plugin;
@@ -215,7 +215,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_lua_hangup_media(janus_plugin_session *handle);
 void janus_lua_destroy_session(janus_plugin_session *handle, int *error);
@@ -234,7 +234,7 @@ static janus_plugin janus_lua_plugin =
 		.get_name = janus_lua_get_name,
 		.get_author = janus_lua_get_author,
 		.get_package = janus_lua_get_package,
-		
+
 		.create_session = janus_lua_create_session,
 		.handle_message = janus_lua_handle_message,
 		.setup_media = janus_lua_setup_media,
@@ -918,7 +918,7 @@ static int janus_lua_method_relaydata(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTP packet */
-	janus_core->relay_data(session->handle, (char *)payload, len);
+	janus_core->relay_data(session->handle, NULL, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1479,7 +1479,7 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	guint32 id = 0;
 	while(id == 0) {
@@ -1518,7 +1518,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
@@ -1566,7 +1566,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_lua_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
@@ -1703,7 +1703,7 @@ void janus_lua_setup_media(janus_plugin_session *handle) {
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
-	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;	
+	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1809,7 +1809,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	}
 }
 
-void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
@@ -1952,7 +1952,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 	if(!session || !session->handle || !g_atomic_int_get(&session->started)) {
 		return;
 	}
-	
+
 	/* Check if this recipient is willing/allowed to receive this medium */
 	if((packet->is_video && !session->accept_video) || (!packet->is_video && !session->accept_audio)) {
 		/* Nope, don't relay */
@@ -1979,7 +1979,7 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to session %"SCNu32": %s\n",
 			strlen(text), session->id, text);
-		janus_core->relay_data(session->handle, text, strlen(text));
+		janus_core->relay_data(session->handle, NULL, text, strlen(text));
 	}
 	return;
 }
