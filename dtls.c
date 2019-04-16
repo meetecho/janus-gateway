@@ -351,7 +351,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 
 	/* Go on and create the DTLS context */
 #if JANUS_USE_OPENSSL_PRE_1_1_API
-	ssl_ctx = SSL_CTX_new(DTLSv1_method());
+	ssl_ctx = SSL_CTX_new(DTLSv1_2_method());
 #else
 	ssl_ctx = SSL_CTX_new(DTLS_method());
 #endif

@@ -3867,7 +3867,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						goto plugin_response;
 					}
 					const char *codec = NULL;
-					if(strstr(stream->codecs.rtpmap, "opus") || strstr(stream->codecs.rtpmap, "OPUS"))
+					if(!stream->codecs.rtpmap)
+						JANUS_LOG(LOG_ERR, "[%s] Audio RTP map is uninitialized\n", mp->name);
+					else if(strstr(stream->codecs.rtpmap, "opus") || strstr(stream->codecs.rtpmap, "OPUS"))
 						codec = "opus";
 					else if(strstr(stream->codecs.rtpmap, "pcma") || strstr(stream->codecs.rtpmap, "PCMA"))
 						codec = "pcma";
@@ -3908,7 +3910,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						goto plugin_response;
 					}
 					const char *codec = NULL;
-					if(strstr(stream->codecs.rtpmap, "vp8") || strstr(stream->codecs.rtpmap, "VP8"))
+					if(!stream->codecs.rtpmap)
+						JANUS_LOG(LOG_ERR, "[%s] Video RTP map is uninitialized\n", mp->name);
+					else if(strstr(stream->codecs.rtpmap, "vp8") || strstr(stream->codecs.rtpmap, "VP8"))
 						codec = "vp8";
 					else if(strstr(stream->codecs.rtpmap, "vp9") || strstr(stream->codecs.rtpmap, "VP9"))
 						codec = "vp9";

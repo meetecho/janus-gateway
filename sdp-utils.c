@@ -1597,7 +1597,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 										break;
 								}
 								a = janus_sdp_attribute_create("extmap",
-									"%d%s %s\r\n", id, direction, extension);
+									"%d%s %s", id, direction, extension);
 								janus_sdp_attribute_add_to_mline(am, a);
 							}
 							temp = temp->next;

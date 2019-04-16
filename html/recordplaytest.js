@@ -65,6 +65,7 @@ var selectedRecording = null;
 var selectedRecordingInfo = null;
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
 
 $(document).ready(function() {
