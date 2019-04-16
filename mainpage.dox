@@ -3362,7 +3362,12 @@ ldd janus | grep asan
  *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=cSV0X1JgcKY">WebRTC Rockstars Tour (Singapore)</a>;
  *    - Presentation at <a href="https://youtu.be/dsVDzh9sS1A?t=51m00s">WebRTC Meetup Tokyo #17</a> (in Japanese);
- *    - Interview on the origins of Janus, at <a href="http://www.allthingsrtc.org/2017/10/30/lorenzo-miniero-creator-janus/">AllThingRTC.org</a>. \n\n
+ *    - Interview on the origins of Janus, at <a href="http://www.allthingsrtc.org/2017/10/30/lorenzo-miniero-creator-janus/">AllThingRTC.org</a>;
+ *    - Presentation on how to integrate Janus and HOMER/HEPIC at <a href="https://www.youtube.com/watch?v=YUZqhu2-tbM">OpenSIPS 2018</a>;
+ *    - Presentation on Security, Authentication and Privacy in WebRTC, at <a href="https://www.youtube.com/watch?v=ewNJMci62rs">Kamailio World 2018</a>;
+ *    - Presentation on Janus and Scalability, at <a href="https://www.youtube.com/watch?v=zxRwELmyWU0">CommCon 2018</a>;
+ *    - Interview on Janus, at <a href="https://www.youtube.com/watch?v=dzQhyw1jiaA">ClueCon Weekly</a>;
+ *    - Presentation at <a href="https://vimeo.com/303014581">Voip2day 2018</a> (here for the <a href="https://vimeo.com/302814764">Spanish version</a>). \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
