@@ -1134,9 +1134,9 @@ static  void janus_sip_get_all_key_values_from_custom_headers(json_t *root,  cha
                     iter = json_object_iter_next(headers, iter);
                     continue;
                 }
-                char h[JANUS_SIP_SMALL_BUFFER_SIZE];
-                g_snprintf(h, JANUS_SIP_SMALL_BUFFER_SIZE, "%s,%s,", key,json_string_value(value));
-                g_strlcat(custom_value_out, h, JANUS_SIP_LARGE_BUFFER_SIZE);
+                char header[JANUS_SIP_SMALL_BUFFER_SIZE];
+                g_snprintf(header, JANUS_SIP_SMALL_BUFFER_SIZE, "%s,%s,", key,json_string_value(value));
+                g_strlcat(custom_value_out, header, JANUS_SIP_LARGE_BUFFER_SIZE);
                 iter = json_object_iter_next(headers, iter);
             }
         }
