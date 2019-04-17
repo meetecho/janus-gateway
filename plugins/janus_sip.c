@@ -2010,7 +2010,7 @@ static gboolean janus_auth_check_signature(const char *token, const char *header
     unsigned int len = 0;
     HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)message, strlen(message), signature, &len);
     gchar *base64 = g_base64_encode(signature, len);
-    if( base64 == NULL ) {
+    if(base64 == NULL) {
         JANUS_LOG(LOG_INFO, "janus_sip: auth: fail, base64== NULL for  signature verification \n");
         goto fail;
     }
