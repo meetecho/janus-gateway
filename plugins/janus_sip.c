@@ -2017,7 +2017,7 @@ static gboolean janus_auth_check_signature(const char *token, const char *header
     gboolean result = janus_strcmp_const_time(parts[1], base64);
     g_strfreev(parts);
     g_free(base64);
-    JANUS_LOG(LOG_INFO, "janus_sip: auth: signiture result: %d \n", (int)result);
+    JANUS_LOG(LOG_INFO, "janus_sip: auth: signature result: %d \n", (int)result);
     return result;
     
 fail:
