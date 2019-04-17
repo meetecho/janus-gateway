@@ -448,7 +448,7 @@
 /* Plugin Constatns */
 #define JANUS_SIP_SMALL_BUFFER_SIZE 256
 #define JANUS_SIP_LARGE_BUFFER_SIZE 2048
-
+#define JANUS_SIP_XL_BUFFER_SIZE 4096
 /* Plugin methods */
 janus_plugin *create(void);
 int janus_sip_init(janus_callbacks *callback, const char *config_path);
@@ -1134,7 +1134,7 @@ static  void janus_sip_get_all_key_values_from_custom_headers(json_t *root,  cha
                     iter = json_object_iter_next(headers, iter);
                     continue;
                 }
-                char header[JANUS_SIP_SMALL_BUFFER_SIZE];
+                char header[JANUS_SIP_SMALL_BUFFER_SIZE]={0};
                 g_snprintf(header, JANUS_SIP_SMALL_BUFFER_SIZE, "%s,%s,", key,json_string_value(value));
                 g_strlcat(custom_value_out, header, JANUS_SIP_LARGE_BUFFER_SIZE);
                 iter = json_object_iter_next(headers, iter);
@@ -1981,26 +1981,19 @@ static gboolean janus_auth_check_signature(const char *token, const char *header
         return TRUE;
     }
     
-    if (token ==NULL || headers==NULL || uri==NULL ) {
+    if (token == NULL || headers == NULL || uri == NULL ) {
         JANUS_LOG(LOG_INFO, "janus_sip: auth : fail, one of params is NULL\n");
         return FALSE;
     }
     
     gchar **parts = g_strsplit(token, ":", 2);
-    gchar **data = NULL;
     /* Token should have exactly one data and one hash part */
-    if(!parts[0] || !parts[1] || parts[2]) {
+    if(!parts[0] || !parts[1] ) {
         JANUS_LOG(LOG_INFO, "janus_sip: auth: fail, Token should have exactly one data and one hash part \n");
         goto fail;
     }
-    data = g_strsplit(parts[0], ",", 1);
-    /* Need at least an expiry timestamp and src and dst */
-    if(!data[0] ) {
-        JANUS_LOG(LOG_INFO, "janus_sip: auth: fail, Need at least an expiry timestamp\n");
-        goto fail;
-    }
     /* Verify timestamp */
-    gint64 expiry_time = atoi(data[0]);
+    gint64 expiry_time = atoi(parts[0]);
     gint64 real_time = janus_get_real_time() / 1000000;
     if(real_time > expiry_time) {
         JANUS_LOG(LOG_INFO, "janus_sip: auth: fail,  Verify timestamp\n");
@@ -2008,25 +2001,26 @@ static gboolean janus_auth_check_signature(const char *token, const char *header
     }
     
     /* prepare message for compare with signature : <timestamp>,<src>,<dst> */
-    char message[4096];
-    message[0] = '\0';
-    g_snprintf(message, 4096, "%s,%s%s", data[0],headers,uri);
+    char message[JANUS_SIP_XL_BUFFER_SIZE] = { 0 };
+    g_snprintf(message, JANUS_SIP_XL_BUFFER_SIZE, "%s,%s%s", parts[0],headers,uri);
     JANUS_LOG(LOG_INFO, "janus_sip: auth: left side of token:%s \n", message);
     /* Verify HMAC-SHA256 */
-    unsigned char signature[EVP_MAX_MD_SIZE];
+    unsigned char signature[EVP_MAX_MD_SIZE] = { 0 };
     
-    unsigned int len;
+    unsigned int len = 0;
     HMAC(EVP_sha256(), auth_secret, strlen(auth_secret), (const unsigned char*)message, strlen(message), signature, &len);
     gchar *base64 = g_base64_encode(signature, len);
+    if( base64 == NULL ) {
+        JANUS_LOG(LOG_INFO, "janus_sip: auth: fail, base64== NULL for  signature verification \n");
+        goto fail;
+    }
     gboolean result = janus_strcmp_const_time(parts[1], base64);
-    g_strfreev(data);
     g_strfreev(parts);
     g_free(base64);
     JANUS_LOG(LOG_INFO, "janus_sip: auth: signiture result: %d \n", (int)result);
     return result;
     
 fail:
-    g_strfreev(data);
     g_strfreev(parts);
     return FALSE;
 }
@@ -2469,13 +2463,12 @@ static void *janus_sip_handler(void *data) {
 			}
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if the INVITE needs to be enriched with custom headers */
-			char custom_headers[2048];
+			char custom_headers[JANUS_SIP_LARGE_BUFFER_SIZE] = { 0 };
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
                         /* Sip token  validation */
                         json_t *sip_token = json_object_get(root, "siptoken");
                         const char *sip_token_text = json_string_value(sip_token);
-                        char headers_text[JANUS_SIP_LARGE_BUFFER_SIZE];
-                        memset(headers_text, 0, JANUS_SIP_LARGE_BUFFER_SIZE);
+                        char headers_text[JANUS_SIP_LARGE_BUFFER_SIZE] = { 0 };
                         janus_sip_get_all_key_values_from_custom_headers(root,(char *)&headers_text);
                         const char *dst_uri_text = json_string_value(uri);
                         if(FALSE ==  janus_auth_check_signature(sip_token_text,(const char *)headers_text, dst_uri_text)) {
