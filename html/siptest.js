@@ -662,13 +662,13 @@ function doCall() {
 				//				"AnotherHeader": "another string"
 				//			}
 				//		};
-                const token = getJanusSipToken('P-Asserted-Voicenter-Callerid,0730000000', $('#peer').val());
-                var body = { request: "call", uri: $('#peer').val(),
-                             siptoken: token,
-                             headers: {
-                             "P-Asserted-Voicenter-Callerid": "0730000000",
-                             }
-                           };
+                                const token = getJanusSipToken('P-Asserted-Identity,1234567890', $('#peer').val());
+                                var body = { request: "call", uri: $('#peer').val(),
+                                             siptoken: token,
+                                             headers: {
+                                                      "P-Asserted-Identity": "1234567890",
+                                                      }
+                                            };
 
 				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid

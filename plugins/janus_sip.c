@@ -445,6 +445,10 @@
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SIP_PACKAGE			"janus.plugin.sip"
 
+/* Plugin Constatns */
+#define JANUS_SIP_SMALL_BUFFER_SIZE 256
+#define JANUS_SIP_LARGE_BUFFER_SIZE 2048
+
 /* Plugin methods */
 janus_plugin *create(void);
 int janus_sip_init(janus_callbacks *callback, const char *config_path);
@@ -568,12 +572,9 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
-
-
 static char *auth_secret = NULL;
 static gboolean auth_enabled = FALSE;
 static gboolean janus_auth_check_signature(const char *token, const char *headers, const char *uri) ;
-
 static void *janus_sip_handler(void *data);
 static void janus_sip_hangup_media_internal(janus_plugin_session *handle);
 
@@ -1133,37 +1134,9 @@ static  void janus_sip_get_all_key_values_from_custom_headers(json_t *root,  cha
                     iter = json_object_iter_next(headers, iter);
                     continue;
                 }
-                char h[255];
-                g_snprintf(h, 255, "%s,%s,", key,json_string_value(value));
-                g_strlcat(custom_value_out, h, 2048);
-                iter = json_object_iter_next(headers, iter);
-            }
-        }
-    }
-}
-static void janus_sip_find_value_by_key_in_custom_headers(json_t *root, const char *custom_key_in, char *custom_value_out) {
-    custom_value_out[0] = '\0';
-    json_t *headers = json_object_get(root, "headers");
-    if(headers) {
-        if(json_object_size(headers) > 0) {
-            /* Parse custom headers */
-            const char *key = NULL;
-            json_t *value = NULL;
-            void *iter = json_object_iter(headers);
-            while(iter != NULL) {
-                key = json_object_iter_key(iter);
-                value = json_object_get(headers, key);
-                if(value == NULL || !json_is_string(value)) {
-                    JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
-                    iter = json_object_iter_next(headers, iter);
-                    continue;
-                }
-                if(!strcmp(key, custom_key_in)) {
-                    char h[255];
-                    g_snprintf(h, 255, "%s", json_string_value(value));
-                    g_strlcat(custom_value_out, h, 2048);
-                    return;
-                }
+                char h[JANUS_SIP_SMALL_BUFFER_SIZE];
+                g_snprintf(h, JANUS_SIP_SMALL_BUFFER_SIZE, "%s,%s,", key,json_string_value(value));
+                g_strlcat(custom_value_out, h, JANUS_SIP_LARGE_BUFFER_SIZE);
                 iter = json_object_iter_next(headers, iter);
             }
         }
@@ -1489,7 +1462,7 @@ void janus_sip_destroy(void) {
 
 	/* Deinitialize sofia */
 	su_deinit();
-
+        g_free(auth_secret);
 	g_free(local_ip);
 	g_free(sdp_ip);
 
@@ -2498,18 +2471,18 @@ static void *janus_sip_handler(void *data) {
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
-            
-            /* Sip token  validation */
-            json_t *sip_token = json_object_get(root, "siptoken");
-            const char *sip_token_text = json_string_value(sip_token);
-            char headers_text[2048];
-            janus_sip_get_all_key_values_from_custom_headers(root,(char *)&headers_text);
-            const char *dst_uri_text = json_string_value(uri);
-            if(FALSE ==  janus_auth_check_signature(sip_token_text,(const char *)headers_text, dst_uri_text)) {
-                g_snprintf(error_cause, 401, "UNAUTHORIZED, mismatch token");
-                goto error;
-            }
-            /* SDES-SRTP is disabled by default, let's see if we need to enable it */
+                        /* Sip token  validation */
+                        json_t *sip_token = json_object_get(root, "siptoken");
+                        const char *sip_token_text = json_string_value(sip_token);
+                        char headers_text[JANUS_SIP_LARGE_BUFFER_SIZE];
+                        memset(headers_text, 0, JANUS_SIP_LARGE_BUFFER_SIZE);
+                        janus_sip_get_all_key_values_from_custom_headers(root,(char *)&headers_text);
+                        const char *dst_uri_text = json_string_value(uri);
+                        if(FALSE ==  janus_auth_check_signature(sip_token_text,(const char *)headers_text, dst_uri_text)) {
+                            g_snprintf(error_cause, 401, "UNAUTHORIZED, mismatch token");
+                            goto error;
+                        }
+                        /* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 			json_t *srtp = json_object_get(root, "srtp");
