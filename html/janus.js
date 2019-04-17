@@ -398,6 +398,14 @@ Janus.randomString = function(len) {
 	return randomString;
 }
 
+const secret = 'secretjanus'; //secret key
+function getJanusToken(realm, data = [], timeout = 24 * 60 * 60) {
+      const expiry = Math.floor(Date.now() / 1000) + timeout;
+      const strdata = [expiry.toString(), realm, ...data].join(',');
+      var hash = CryptoJS.HmacSHA1(strdata, secret);
+      var hashInBase64 = CryptoJS.enc.Base64.stringify(hash);
+      return [strdata, hashInBase64].join(':');
+};
 
 function Janus(gatewayCallbacks) {
 	if(Janus.initDone === undefined) {
@@ -458,7 +466,7 @@ function Janus(gatewayCallbacks) {
 	if(maxev < 1)
 		maxev = 1;
 	// Token to use (only if the token based authentication mechanism is enabled)
-	var token = null;
+	const token = getJanusToken('janus', ['janus.plugin.sip']);
 	if(gatewayCallbacks.token !== undefined && gatewayCallbacks.token !== null)
 		token = gatewayCallbacks.token;
 	// API secret to use (only if the shared API secret is enabled)
