@@ -424,7 +424,9 @@ room-<unique room ID>: {
  * be a bit confusing in this context).
  *
  * A successful \c join will result in a \c joined event, which will contain
- * a list of the currently active (as in publishing via WebRTC) publishers:
+ * a list of the currently active (as in publishing via WebRTC) publishers,
+ * and optionally a list of passive attendees (but only if the room was
+ * configured with \c notify_joining set to \c TRUE ):
  *
 \verbatim
 {
@@ -443,6 +445,13 @@ room-<unique room ID>: {
 			"talking" : <true|false, whether the publisher is talking or not (only if audio levels are used)>,
 		},
 		// Other active publishers
+	],
+	"attendees" : [		// Only present when notify_joining is set to TRUE for rooms
+		{
+			"id" : <unique ID of attendee #1>,
+			"display" : "<display name of attendee #1, if any>"
+		},
+		// Other attendees
 	]
 }
 \endverbatim
@@ -4869,7 +4878,9 @@ static void *janus_videoroom_handler(void *data) {
 				session->participant = publisher;
 				janus_mutex_unlock(&session->mutex);
 				/* Return a list of all available publishers (those with an SDP available, that is) */
-				json_t *list = json_array();
+				json_t *list = json_array(), *attendees = NULL;
+				if(publisher->room->notify_joining)
+					attendees = json_array();
 				GHashTableIter iter;
 				gpointer value;
 				janus_refcount_increase(&publisher->ref);
@@ -4878,6 +4889,14 @@ static void *janus_videoroom_handler(void *data) {
 				while (!g_atomic_int_get(&publisher->room->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
 					if(p == publisher || !p->sdp || !p->session->started) {
+						/* Check if we're also notifying normal joins and not just publishers */
+						if(p != publisher && publisher->room->notify_joining) {
+							json_t *al = json_object();
+							json_object_set_new(al, "id", json_integer(p->user_id));
+							if(p->display)
+								json_object_set_new(al, "display", json_string(p->display));
+							json_array_append_new(attendees, al);
+						}
 						continue;
 					}
 					json_t *pl = json_object();
@@ -4901,6 +4920,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "id", json_integer(user_id));
 				json_object_set_new(event, "private_id", json_integer(publisher->pvt_id));
 				json_object_set_new(event, "publishers", list);
+				if(attendees != NULL)
+					json_object_set_new(event, "attendees", attendees);
 				/* See if we need to notify about a new participant joined the room (by default, we don't). */
 				janus_videoroom_participant_joining(publisher);
 
