@@ -97,10 +97,10 @@ for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
   echo "Building fuzzer: $name"
 
-  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/JANUSGW $sourceFile -o $WORK/$name.o
+  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/$JANUSGW $sourceFile -o $WORK/$name.o
   $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $FUZZ_DEPS
 
-  if [ -d "$SRC/JANUSGW/fuzzers/corpora/${name}" ]; then
+  if [ -d "$SRC/$JANUSGW/fuzzers/corpora/${name}" ]; then
 	echo "Exporting corpus: $name "
 	zip -jqr --exclude=*LICENSE* $OUT/${name}_seed_corpus.zip $SRC/$JANUSGW/fuzzers/corpora/${name}
   fi
