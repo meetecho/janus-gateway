@@ -5,8 +5,6 @@
 #include <glib.h>
 #include "../debug.h"
 #include "../sdp-utils.h"
-#include "../utils.h"
-#include "../rtp.h"
 
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
