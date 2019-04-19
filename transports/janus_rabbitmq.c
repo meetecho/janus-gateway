@@ -727,7 +727,7 @@ void *janus_rmq_in_thread(void *data) {
 		JANUS_LOG(LOG_VERB, "%s\n", payload);
 		/* Parse the JSON payload */
 		json_error_t error;
-		json_t *root = json_loads(payload, 0, &error);
+		json_t *root = json_loadb(payload, frame.payload.body_fragment.len, 0, &error);
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
