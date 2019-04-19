@@ -38,6 +38,11 @@ FUZZ_LDFLAGS="${FUZZ_LDFLAGS} ${ELDFLAGS}"
 # Set fuzzing engine from the environment (optional)
 FUZZ_ENGINE=${LIB_FUZZING_ENGINE-""}
 
+# Use shared libraries in local execution
+FUZZ_DEPS="$DEPS_LIB"
+if [[ $FUZZ_ENV == "local" ]]; then
+	FUZZ_DEPS="$DEPS_LIB_SHARED"
+fi
 # Mess with the flags only in local execution
 if [[ $FUZZ_ENV == "local" &&  $FUZZ_CC == clang* ]]; then
 	# For coverage testing with clang uncomment
@@ -92,7 +97,7 @@ for sourceFile in $fuzzers; do
   echo "Building fuzzer: $name"
 
   $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/janus-gateway $sourceFile -o $WORK/$name.o
-  $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $DEPS_LIB
+  $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $FUZZ_DEPS
   
   if [ -d "$SRC/janus-gateway/fuzzers/corpora/${name}" ]; then
 	echo "Exporting corpus: $name "
