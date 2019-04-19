@@ -22,7 +22,7 @@ COVERAGE_LDFLAGS="-O1 -fno-omit-frame-pointer -g -ggdb3 -fprofile-instr-generate
 JANUS_CONF_FLAGS="--disable-docs --disable-post-processing --disable-turn-rest-api --disable-all-transports --disable-all-plugins --disable-all-handlers --disable-data-channels"
 
 # Janus objects needed for fuzzing
-JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o janus-rtp.o"
+JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o janus-rtp.o janus-sdp-utils.o"
 
 # CFLAGS for fuzzer dependencies
 DEPS_CFLAGS="$(pkg-config --static --cflags glib-2.0)"
