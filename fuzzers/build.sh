@@ -12,7 +12,7 @@ FUZZ_ENV=${FUZZ_ENV-$DEFAULT_ENV}
 SRC=${SRC-$DEFAULT_SRC}
 OUT=${OUT-$DEFAULT_OUT}
 WORK=${WORK-$DEFAULT_WORK}
-JANUSGW=${JANUSGW-"janus-gateway"}
+JANUSGW=${JANUSGW-$DEFAULT_JANUSGW}
 
 # Set compiler from the environment
 # Fallback to clang

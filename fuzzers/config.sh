@@ -9,6 +9,7 @@ DEFAULT_ENV="local"
 DEFAULT_SRC="$(dirname $(dirname $SCRIPTPATH))"
 DEFAULT_OUT="$SCRIPTPATH/out"
 DEFAULT_WORK="$SCRIPTPATH"
+DEFAULT_JANUSGW="janus-gateway"
 
 # CFLAGS and LDFLAGS for local fuzzing
 DEFAULT_CC="clang"
