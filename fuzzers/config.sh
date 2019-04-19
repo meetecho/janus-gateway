@@ -25,7 +25,8 @@ JANUS_CONF_FLAGS="--disable-docs --disable-post-processing --disable-turn-rest-a
 JANUS_OBJECTS="janus-log.o janus-utils.o janus-rtcp.o janus-rtp.o"
 
 # CFLAGS for fuzzer dependencies
-DEPS_CFLAGS="$(pkg-config --static --cflags glib-2.0)"
+DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
 
 # Libraries to link in with fuzzers
 DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0 jansson) -pthread -Wl,-Bdynamic"
+DEPS_LIB_SHARED="$(pkg-config --libs glib-2.0 jansson) -pthread"
