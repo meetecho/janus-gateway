@@ -12,6 +12,7 @@ FUZZ_ENV=${FUZZ_ENV-$DEFAULT_ENV}
 SRC=${SRC-$DEFAULT_SRC}
 OUT=${OUT-$DEFAULT_OUT}
 WORK=${WORK-$DEFAULT_WORK}
+JANUSGW=${JANUSGW-$DEFAULT_JANUSGW}
 
 # Set compiler from the environment
 # Fallback to clang
@@ -68,7 +69,7 @@ rm -f $WORK/*.a $WORK/*.o
 
 # Build and archive necessary Janus objects
 JANUS_LIB="$WORK/janus-lib.a"
-cd $SRC/janus-gateway
+cd $SRC/$JANUSGW
 # Use this variable to skip Janus objects building
 SKIP_JANUS_BUILD=${SKIP_JANUS_BUILD-"0"}
 if [ "$SKIP_JANUS_BUILD" -eq "0" ]; then
@@ -82,7 +83,7 @@ ar rcs $JANUS_LIB $JANUS_OBJECTS
 cd -
 
 # Build standalone fuzzing engines
-engines=$(find $SRC/janus-gateway/fuzzers/engines/ -name "*.c")
+engines=$(find $SRC/$JANUSGW/fuzzers/engines/ -name "*.c")
 for sourceFile in $engines; do
   name=$(basename $sourceFile .c)
   echo "Building engine: $name"
@@ -91,16 +92,16 @@ done
 
 # Build Fuzzers
 mkdir -p $OUT
-fuzzers=$(find $SRC/janus-gateway/fuzzers/ -name "*.c" | grep -v "engines/")
+fuzzers=$(find $SRC/$JANUSGW/fuzzers/ -name "*.c" | grep -v "engines/")
 for sourceFile in $fuzzers; do
   name=$(basename $sourceFile .c)
   echo "Building fuzzer: $name"
 
-  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/janus-gateway $sourceFile -o $WORK/$name.o
+  $FUZZ_CC -c $FUZZ_CFLAGS $DEPS_CFLAGS -I. -I$SRC/$JANUSGW $sourceFile -o $WORK/$name.o
   $FUZZ_CCLD $FUZZ_LDFLAGS $WORK/${name}.o -o $OUT/${name} $FUZZ_ENGINE $JANUS_LIB $FUZZ_DEPS
-  
-  if [ -d "$SRC/janus-gateway/fuzzers/corpora/${name}" ]; then
+
+  if [ -d "$SRC/$JANUSGW/fuzzers/corpora/${name}" ]; then
 	echo "Exporting corpus: $name "
-	zip -jqr --exclude=*LICENSE* $OUT/${name}_seed_corpus.zip $SRC/janus-gateway/fuzzers/corpora/${name}
+	zip -jqr --exclude=*LICENSE* $OUT/${name}_seed_corpus.zip $SRC/$JANUSGW/fuzzers/corpora/${name}
   fi
 done
