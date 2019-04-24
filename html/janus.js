@@ -1954,6 +1954,7 @@ function Janus(gatewayCallbacks) {
 			// If we're updating and keeping all tracks, let's skip the getUserMedia part
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
 					(isVideoSendEnabled(media) && media.keepVideo)) {
+				pluginHandle.consentDialog(false);
 				streamsDone(handleId, jsep, media, callbacks, config.myStream);
 				return;
 			}
@@ -2041,6 +2042,7 @@ function Janus(gatewayCallbacks) {
 			}
 			// Skip the getUserMedia part
 			config.streamExternal = true;
+			pluginHandle.consentDialog(false);
 			streamsDone(handleId, jsep, media, callbacks, stream);
 			return;
 		}
@@ -2296,6 +2298,7 @@ function Janus(gatewayCallbacks) {
 					};
 					Janus.debug("getUserMedia constraints", gumConstraints);
 					if (!gumConstraints.audio && !gumConstraints.video) {
+						pluginHandle.consentDialog(false);
 						streamsDone(handleId, jsep, media, callbacks, stream);
 					} else {
 						navigator.mediaDevices.getUserMedia(gumConstraints)
