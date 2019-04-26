@@ -1137,6 +1137,8 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 			}
+			/* Check if we're renegotiating (if we have an answer, we did an offer/answer round already) */
+			renegotiation = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 			/* Check the JSEP type */
 			janus_mutex_lock(&handle->mutex);
 			int offer = 0;
@@ -1196,9 +1198,8 @@ int janus_process_incoming_request(janus_request *request) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- DataChannels have been negotiated, but support for them has not been compiled...\n", handle->handle_id);
 			}
 #endif
-			/* Check if it's a new session, or an update... */
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)
-					|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+			/* We behave differently if it's a new session or an update... */
+			if(!renegotiation) {
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
@@ -1264,7 +1265,6 @@ int janus_process_incoming_request(janus_request *request) {
 					janus_mutex_unlock(&handle->mutex);
 					goto jsondone;
 				}
-				renegotiation = TRUE;
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART)) {
 					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
 					/* Update remote credentials for ICE */
