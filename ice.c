@@ -3845,16 +3845,17 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 							medium->first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 							medium->first_rtp_ts[0] = timestamp;
 						}
-						if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
-							/* Let's check if this was G.711: in case we may need to change the timestamp base */
-							rtcp_context *rtcp_ctx = medium->rtcp_ctx[0];
-							int pt = header->type;
-							if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
-								rtcp_ctx->tb = 8000;
-						}
-						/* Update sent packets counter */
 						rtcp_context *rtcp_ctx = medium->rtcp_ctx[0];
-						g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
+						if(rtcp_ctx) {
+							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
+								/* Let's check if this was G.711: in case we may need to change the timestamp base */
+								int pt = header->type;
+								if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
+									rtcp_ctx->tb = 8000;
+							}
+							/* Update sent packets counter */
+							g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
+						}
 					}
 					if(max_nack_queue > 0 && !pkt->retransmission) {
 						/* Save the packet for retransmissions that may be needed later */
