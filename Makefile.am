@@ -210,6 +210,7 @@ check-fuzzers: FORCE
 	CC=$(CC) SKIP_JANUS_BUILD=1 LIB_FUZZING_ENGINE=fuzzers/standalone.o ./fuzzers/build.sh
 	./fuzzers/run.sh rtcp_fuzzer out/rtcp_fuzzer_seed_corpus
 	./fuzzers/run.sh rtp_fuzzer out/rtp_fuzzer_seed_corpus
+	./fuzzers/run.sh sdp_fuzzer out/sdp_fuzzer_seed_corpus
 
 .PHONY: FORCE
 FORCE:

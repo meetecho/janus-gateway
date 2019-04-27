@@ -1954,6 +1954,7 @@ function Janus(gatewayCallbacks) {
 			// If we're updating and keeping all tracks, let's skip the getUserMedia part
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
 					(isVideoSendEnabled(media) && media.keepVideo)) {
+				pluginHandle.consentDialog(false);
 				streamsDone(handleId, jsep, media, callbacks, config.myStream);
 				return;
 			}
@@ -2041,6 +2042,7 @@ function Janus(gatewayCallbacks) {
 			}
 			// Skip the getUserMedia part
 			config.streamExternal = true;
+			pluginHandle.consentDialog(false);
 			streamsDone(handleId, jsep, media, callbacks, stream);
 			return;
 		}
@@ -2296,6 +2298,7 @@ function Janus(gatewayCallbacks) {
 					};
 					Janus.debug("getUserMedia constraints", gumConstraints);
 					if (!gumConstraints.audio && !gumConstraints.video) {
+						pluginHandle.consentDialog(false);
 						streamsDone(handleId, jsep, media, callbacks, stream);
 					} else {
 						navigator.mediaDevices.getUserMedia(gumConstraints)
@@ -2385,8 +2388,10 @@ function Janus(gatewayCallbacks) {
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = {};
-		if(Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) {
-			// Firefox >= 59 uses Transceivers
+		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
+				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
+				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
@@ -2586,7 +2591,7 @@ function Janus(gatewayCallbacks) {
 		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
 				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
 				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
-			// Firefox >= 59 and Chrome >= 72 use Transceivers
+			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
 			mediaConstraints = {};
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();

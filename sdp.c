@@ -1042,6 +1042,18 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 			}
 			tempA = tempA->next;
 		}
+		/* We don't support encrypted RTP extensions yet, so get rid of them */
+		tempA = m->attributes;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
+			if(a->value && strstr(a->value, JANUS_RTP_EXTMAP_ENCRYPTED)) {
+				m->attributes = g_list_remove(m->attributes, a);
+				tempA = m->attributes;
+				janus_sdp_attribute_destroy(a);
+				continue;
+			}
+			tempA = tempA->next;
+		}
 		/* Also remove attributes/formats we know we don't support (or don't want to support) now */
 		tempA = m->attributes;
 		GList *purged_ptypes = NULL;

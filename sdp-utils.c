@@ -259,7 +259,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 
-	gchar **parts = g_strsplit(sdp, "\r\n", -1);
+	gchar **parts = g_strsplit(sdp, strstr(sdp, "\r\n") ? "\r\n" : "\n", -1);
 	if(parts) {
 		int index = 0;
 		char *line = NULL;
@@ -294,6 +294,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'o': {
+						if(imported->o_name || imported->o_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple o= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char name[256], addrtype[6], addr[256];
 						if(sscanf(line, "o=%255s %"SCNu64" %"SCNu64" IN %5s %255s",
 								name, &imported->o_sessid, &imported->o_version, addrtype, addr) != 5) {
@@ -317,6 +323,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 's': {
+						if(imported->s_name) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple s= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						imported->s_name = g_strdup(line+2);
 						break;
 					}
@@ -330,6 +342,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'c': {
+						if(imported->c_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple global c= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char addrtype[6], addr[256];
 						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
 							if(error)
@@ -352,7 +370,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
-						g_atomic_int_set(&a->destroyed, 0);
 						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
@@ -361,6 +378,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
+								janus_sdp_attribute_destroy(a);
 								if(error)
 									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
@@ -389,6 +407,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						char type[32];
 						char proto[64];
 						if(sscanf(line, "m=%31s %"SCNu16" %63s %*s", type, &m->port, proto) != 3) {
+							janus_sdp_mline_destroy(m);
 							if(error)
 								g_snprintf(error, errlen, "Invalid m= line: %s", line);
 							success = FALSE;
@@ -403,6 +422,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							/* Now let's check the payload types/formats */
 							gchar **mline_parts = g_strsplit(line+2, " ", -1);
 							if(!mline_parts) {
+								janus_sdp_mline_destroy(m);
 								if(error)
 									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
 								success = FALSE;
@@ -424,6 +444,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							}
 							g_strfreev(mline_parts);
 							if(m->fmts == NULL || m->ptypes == NULL) {
+								janus_sdp_mline_destroy(m);
 								if(error)
 									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
 								success = FALSE;
@@ -444,6 +465,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 				/* m-line stuff */
 				switch(c) {
 					case 'c': {
+						if(mline->c_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple m-line c= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char addrtype[6], addr[256];
 						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
 							if(error)
@@ -465,6 +492,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'b': {
+						if(mline->b_name) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple m-line b= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL || (*(semicolon+1) == '\0')) {
@@ -481,7 +514,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
-						g_atomic_int_set(&a->destroyed, 0);
 						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
@@ -497,6 +529,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
+								janus_sdp_attribute_destroy(a);
 								if(error)
 									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
@@ -532,7 +565,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		g_strfreev(parts);
 	}
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
-	if(imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL) {
+	if(success && (imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL)) {
 		success = FALSE;
 		if(error)
 			g_snprintf(error, errlen, "Missing mandatory lines (o=, s= or m=)");

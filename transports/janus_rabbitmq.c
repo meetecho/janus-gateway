@@ -137,8 +137,8 @@ typedef struct janus_rabbitmq_client {
 /* RabbitMQ response */
 typedef struct janus_rabbitmq_response {
 	gboolean admin;			/* Whether this is a Janus or Admin API response */
-	gchar *correlation_id;	/* Correlation ID, if any */
-	json_t *payload;		/* Payload to send to the client */
+	char *correlation_id;	/* Correlation ID, if any */
+	char *payload;			/* Payload to send to the client */
 } janus_rabbitmq_response;
 static janus_rabbitmq_response exit_message;
 
@@ -622,7 +622,8 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
-	response->payload = message;
+	response->payload = json_dumps(message, json_format);
+	json_decref(message);
 	response->correlation_id = (char *)request_id;
 	g_async_queue_push(rmq_client->messages, response);
 	return 0;
@@ -726,7 +727,7 @@ void *janus_rmq_in_thread(void *data) {
 		JANUS_LOG(LOG_VERB, "%s\n", payload);
 		/* Parse the JSON payload */
 		json_error_t error;
-		json_t *root = json_loads(payload, 0, &error);
+		json_t *root = json_loadb(payload, frame.payload.body_fragment.len, 0, &error);
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
@@ -752,9 +753,7 @@ void *janus_rmq_out_thread(void *data) {
 		if(!rmq_client->destroy && !g_atomic_int_get(&stopping) && response->payload) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
-			char *payload_text = json_dumps(response->payload, json_format);
-			json_decref(response->payload);
-			response->payload = NULL;
+			char *payload_text = response->payload;
 			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
 			JANUS_LOG(LOG_VERB, "%s\n", payload_text);
 			amqp_basic_properties_t props;
@@ -774,14 +773,16 @@ void *janus_rmq_out_thread(void *data) {
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
-			g_free(response->correlation_id);
-			response->correlation_id = NULL;
-			free(payload_text);
-			payload_text = NULL;
-			g_free(response);
-			response = NULL;
 			janus_mutex_unlock(&rmq_client->mutex);
 		}
+		/* Free the message */
+		g_free(response->correlation_id);
+		response->correlation_id = NULL;
+		if(response->payload != NULL)
+			free(response->payload);
+		response->payload = NULL;
+		g_free(response);
+		response = NULL;
 	}
 	g_async_queue_unref(rmq_client->messages);
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ out thread\n");
