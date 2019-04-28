@@ -530,7 +530,7 @@ janus.attach(
 					customizeSdp: function(jsep) {
 						// if you want to modify the original sdp, do as the following
 						// oldSdp = jsep.sdp;
-						// jsep.sdp = yourNewSdp
+						// jsep.sdp = yourNewSdp;
 					}
 				});
 		},
