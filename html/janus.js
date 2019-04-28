@@ -2369,7 +2369,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
-		callbacks.interceptLocalSdp = (typeof callbacks.interceptLocalSdp == "function") ? callbacks.interceptLocalSdp : Janus.noop;
+		callbacks.customizeSdp = (typeof callbacks.customizeSdp == "function") ? callbacks.customizeSdp : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2538,10 +2538,10 @@ function Janus(gatewayCallbacks) {
 				// JSON.stringify doesn't work on some WebRTC objects anymore
 				// See https://code.google.com/p/chromium/issues/detail?id=467366
 				var jsep = {
-				"type": offer.type,
-				"sdp": offer.sdp
+					"type": offer.type,
+					"sdp": offer.sdp
 				};
-				callbacks.interceptLocalSdp(jsep);
+				callbacks.customizeSdp(jsep);
 				offer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
@@ -2573,7 +2573,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
-		callbacks.interceptLocalSdp = (typeof callbacks.interceptLocalSdp == "function") ? callbacks.interceptLocalSdp : Janus.noop;
+		callbacks.customizeSdp = (typeof callbacks.customizeSdp == "function") ? callbacks.customizeSdp : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2749,7 +2749,7 @@ function Janus(gatewayCallbacks) {
 					"type": answer.type,
 					"sdp": answer.sdp
 				};
-				callbacks.interceptLocalSdp(jsep);
+				callbacks.customizeSdp(jsep);
 				offer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
