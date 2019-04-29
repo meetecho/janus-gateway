@@ -25,12 +25,12 @@
 
 
 /* Plugin information */
-#define JANUS_RABBITMQEVH_VERSION			1
+#define JANUS_RABBITMQEVH_VERSION		1
 #define JANUS_RABBITMQEVH_VERSION_STRING	"0.0.1"
 #define JANUS_RABBITMQEVH_DESCRIPTION		"This is a trivial RabbitMQ event handler plugin for Janus."
-#define JANUS_RABBITMQEVH_NAME				"JANUS RabbitMQEventHandler plugin"
-#define JANUS_RABBITMQEVH_AUTHOR			"Meetecho s.r.l."
-#define JANUS_RABBITMQEVH_PACKAGE			"janus.eventhandler.rabbitmqevh"
+#define JANUS_RABBITMQEVH_NAME			"JANUS RabbitMQEventHandler plugin"
+#define JANUS_RABBITMQEVH_AUTHOR		"Meetecho s.r.l."
+#define JANUS_RABBITMQEVH_PACKAGE		"janus.eventhandler.rabbitmqevh"
 
 /* Plugin methods */
 janus_eventhandler *create(void);
@@ -113,7 +113,7 @@ static struct janus_json_parameter tweak_parameters[] = {
 #define JANUS_RABBITMQEVH_ERROR_INVALID_REQUEST		411
 #define JANUS_RABBITMQEVH_ERROR_MISSING_ELEMENT		412
 #define JANUS_RABBITMQEVH_ERROR_INVALID_ELEMENT		413
-#define JANUS_RABBITMQEVH_ERROR_UNKNOWN_ERROR			499
+#define JANUS_RABBITMQEVH_ERROR_UNKNOWN_ERROR		499
 
 
 /* Plugin implementation */
