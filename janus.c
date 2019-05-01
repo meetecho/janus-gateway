@@ -1137,6 +1137,8 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 			}
+			/* Check if we're renegotiating (if we have an answer, we did an offer/answer round already) */
+			renegotiation = janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);
 			/* Check the JSEP type */
 			janus_mutex_lock(&handle->mutex);
 			gboolean offer = FALSE;
@@ -1148,6 +1150,8 @@ int janus_process_incoming_request(janus_request *request) {
 			} else if(!strcasecmp(jsep_type, "answer")) {
 				janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_ANSWER);
 				offer = FALSE;
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_OFFER))
+					janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);
 			} else {
 				/* TODO Handle other message types as well */
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_UNKNOWN_TYPE, "JSEP error: unknown message type '%s'", jsep_type);
@@ -1178,9 +1182,8 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] There are %d audio, %d video and %d data m-lines\n",
 				handle->handle_id, audio, video, data);
-			/* Check if it's a new session, or an update... */
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_READY)
-					|| janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT)) {
+			/* We behave differently if it's a new session or an update... */
+			if(!renegotiation) {
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
@@ -1246,7 +1249,6 @@ int janus_process_incoming_request(janus_request *request) {
 					janus_mutex_unlock(&handle->mutex);
 					goto jsondone;
 				}
-				renegotiation = TRUE;
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ICE_RESTART)) {
 					JANUS_LOG(LOG_INFO, "[%"SCNu64"] Restarting ICE...\n", handle->handle_id);
 					/* Update remote credentials for ICE */
@@ -2215,6 +2217,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_t *flags = json_object();
 		json_object_set_new(flags, "got-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_OFFER) ? json_true() : json_false());
 		json_object_set_new(flags, "got-answer", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_ANSWER) ? json_true() : json_false());
+		json_object_set_new(flags, "negotiated", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED) ? json_true() : json_false());
 		json_object_set_new(flags, "processing-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_PROCESSING_OFFER) ? json_true() : json_false());
 		json_object_set_new(flags, "starting", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_START) ? json_true() : json_false());
 		json_object_set_new(flags, "ice-restart", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ICE_RESTART) ? json_true() : json_false());
@@ -2856,6 +2859,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	} else if(!strcasecmp(sdp_type, "answer")) {
 		/* This is an answer from a plugin */
 		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_ANSWER);
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_OFFER))
+			janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);
 	} else {
 		/* TODO Handle other messages */
 		JANUS_LOG(LOG_ERR, "Unknown type '%s'\n", sdp_type);

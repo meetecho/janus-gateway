@@ -449,7 +449,7 @@ static inline void janus_rtp_packet_free(janus_rtp_packet *pkt) {
 	g_free(pkt);
 }
 
-static inline void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
+static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_hangup_peerconnection || pkt == &janus_ice_detach_handle) {
 		return;
@@ -1297,6 +1297,9 @@ void janus_handle_webrtc_hangup(janus_handle *handle, const char *reason) {
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_CLEANING);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_OFFER);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_ANSWER);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);
 	/* User will be notified only after the actual hangup */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Hanging up PeerConnection because of a %s\n",
 		handle->handle_id, reason);
@@ -3002,6 +3005,7 @@ int janus_handle_setup_local(janus_handle *handle, gboolean offer, gboolean tric
 		handle->handle_id, offer ? "OFFER" : "ANSWER");
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AGENT);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_START);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_STOP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT);
