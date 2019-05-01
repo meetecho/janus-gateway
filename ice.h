@@ -177,6 +177,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_READY				(1 << 2)
 #define JANUS_ICE_HANDLE_WEBRTC_STOP				(1 << 3)
 #define JANUS_ICE_HANDLE_WEBRTC_ALERT				(1 << 4)
+#define JANUS_ICE_HANDLE_WEBRTC_NEGOTIATED			(1 << 5)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE				(1 << 7)
 #define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)

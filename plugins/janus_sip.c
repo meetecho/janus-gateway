@@ -164,7 +164,8 @@
 	"srtp_profile" : "<SRTP profile to negotiate, in case SRTP is offered; optional>",
 	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
 	"ha1_secret" : "<prehashed password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
-	"authuser" : "<username to use to authenticate as to call, only needed in case authentication is needed and no REGISTER was sent; optional>"
+	"authuser" : "<username to use to authenticate as to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -301,6 +302,14 @@
 	}
 }
 \endverbatim
+ *
+ * Besides, you only use \c accept to answer the first INVITE. To accept a
+ * re-INVITE instead, which would be notified via an \c updatingcall event,
+ * you do NOT use \c accept, but the previously introduced \c update instead.
+ * This request needs no arguments, as the whole context is derived from the current
+ * state of the session. It does need the new JSEP answer to provide, though,
+ * as part of the renegotiation. As before, an \c updated event will be
+ * sent back, as this is an asynchronous request.
  *
  * Closing a session depends on the call state. If you have an incoming
  * call that you don't want to accept, use the \c decline request; in all
@@ -523,6 +532,7 @@ static struct janus_json_parameter call_parameters[] = {
 	{"headers", JSON_OBJECT, 0},
 	{"srtp", JSON_STRING, 0},
 	{"srtp_profile", JSON_STRING, 0},
+	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0},
 	/* The following are only needed in case "guest" registrations
 	 * still need an authenticated INVITE for some reason */
 	{"secret", JSON_STRING, 0},
@@ -531,7 +541,8 @@ static struct janus_json_parameter call_parameters[] = {
 };
 static struct janus_json_parameter accept_parameters[] = {
 	{"srtp", JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"autoaccept_reinvites", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -667,6 +678,7 @@ typedef struct janus_sip_media {
 	char *remote_ip;
 	gboolean earlymedia;
 	gboolean update;
+	gboolean autoaccept_reinvites;
 	gboolean ready;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	janus_srtp_profile srtp_profile;
@@ -1497,6 +1509,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_ip = NULL;
 	session->media.earlymedia = FALSE;
 	session->media.update = FALSE;
+	session->media.autoaccept_reinvites = TRUE;
 	session->media.ready = FALSE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
@@ -2419,6 +2432,8 @@ static void *janus_sip_handler(void *data) {
 					}
 				}
 			}
+			json_t *aar = json_object_get(root, "autoaccept_reinvites");
+			session->media.autoaccept_reinvites = aar ? json_is_true(aar) : TRUE;
 			/* Parse address */
 			const char *uri_text = json_string_value(uri);
 			janus_sip_uri_t target_uri;
@@ -2778,6 +2793,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP update");
 				goto error;
 			}
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			gboolean offer = !strcasecmp(msg_sdp_type, "offer");
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
 			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
@@ -2787,8 +2804,9 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
 				goto error;
 			}
-			session->sdp->o_version++;
-			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, FALSE);
+			if(offer)
+				session->sdp->o_version++;
+			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, !offer);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error manipulating SDP\n");
 				janus_sdp_destroy(parsed_sdp);
@@ -2799,15 +2817,26 @@ static void *janus_sip_handler(void *data) {
 			/* Take note of the new SDP */
 			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
-			session->media.update = TRUE;
+			session->media.update = offer;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
-			nua_invite(session->stack->s_nh_i,
-				SOATAG_USER_SDP_STR(sdp),
-				TAG_END());
+			if(offer) {
+				/* We're sending a re-INVITE ourselves */
+				nua_invite(session->stack->s_nh_i,
+					SOATAG_USER_SDP_STR(sdp),
+					TAG_END());
+			} else {
+				/* We're answering to a re-INVITE we received */
+				nua_respond(session->stack->s_nh_i,
+					200, sip_status_phrase(200),
+					SOATAG_USER_SDP_STR(sdp),
+					SOATAG_RTP_SELECT(SOA_RTP_SELECT_COMMON),
+					NUTAG_AUTOANSWER(0),
+					TAG_END());
+			}
 			g_free(sdp);
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("updating"));
+			json_object_set_new(result, "event", json_string(offer ? "updating" : "updated"));
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
 			if(session->status != janus_sip_call_status_invited) {
@@ -2826,6 +2855,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			session->media.earlymedia = FALSE;
 			session->media.update = FALSE;
+			session->media.autoaccept_reinvites = TRUE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
@@ -2950,6 +2980,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			session->media.earlymedia = FALSE;
 			session->media.update = FALSE;
+			session->media.autoaccept_reinvites = TRUE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
@@ -3340,6 +3371,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->media.earlymedia = FALSE;
 				session->media.update = FALSE;
+				session->media.autoaccept_reinvites = TRUE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_idle;
@@ -3494,20 +3526,23 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				}
 			}
-			if(reinvite) {
+			if(reinvite && session->media.autoaccept_reinvites) {
 				/* No need to involve the browser: we reply ourselves */
 				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 				janus_sdp_destroy(sdp);
 				break;
 			}
-			/* Notify the browser about the call */
+			/* If this is a re-INVITE, take note of that */
+			if(reinvite)
+				session->media.update = TRUE;
+			/* Notify the browser about the new incoming call or re-INVITE */
 			json_t *jsep = NULL;
 			if(sdp)
 				jsep = json_pack("{ssss}", "type", "offer", "sdp", sip->sip_payload->pl_data);
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("incomingcall"));
+			json_object_set_new(calling, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 			json_object_set_new(calling, "username", json_string(session->callee));
 			if(sip->sip_from && sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
@@ -3527,7 +3562,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("incomingcall"));
+				json_object_set_new(info, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
@@ -3535,9 +3570,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
-			/* Send a Ringing back */
-			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
-			session->stack->s_nh_i = nh;
+			if(!reinvite) {
+				/* Send a Ringing back */
+				nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
+				session->stack->s_nh_i = nh;
+			}
 			break;
 		}
 		case nua_i_info: {
@@ -3763,6 +3800,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Hangup immediately */
 				session->media.earlymedia = FALSE;
 				session->media.update = FALSE;
+				session->media.autoaccept_reinvites = TRUE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
@@ -3778,6 +3816,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Hangup immediately */
 				session->media.earlymedia = FALSE;
 				session->media.update = FALSE;
+				session->media.autoaccept_reinvites = TRUE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
