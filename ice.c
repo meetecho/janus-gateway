@@ -443,7 +443,7 @@ static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 	g_free(pkt);
 }
 
-static inline void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
+static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	if(pkt == NULL || pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_hangup_peerconnection || pkt == &janus_ice_detach_handle) {
 		return;
