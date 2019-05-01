@@ -4125,7 +4125,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							/* Let's check if this was G.711: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 							int pt = header->type;
-							if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
+							if((pt == 0 || pt == 8) && rtcp_ctx && (rtcp_ctx->tb == 48000))
 								rtcp_ctx->tb = 8000;
 						} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 							component->out_stats.video[0].packets++;
@@ -4151,7 +4151,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						}
 						/* Update sent packets counter */
 						rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[0] : stream->audio_rtcp_ctx;
-						g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
+						if(rtcp_ctx)
+							g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
 					}
 					if(max_nack_queue > 0 && !pkt->retransmission) {
 						/* Save the packet for retransmissions that may be needed later */
