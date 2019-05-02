@@ -3501,6 +3501,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "bytes-sent-lastsec", json_integer(medium->out_stats.info[vindex].bytes_lastsec));
 						json_object_set_new(info, "nacks-received", json_integer(medium->in_stats.info[vindex].nacks));
 						json_object_set_new(info, "nacks-sent", json_integer(medium->out_stats.info[vindex].nacks));
+						json_object_set_new(info, "retransmissions-received", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
 						janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, handle->opaque_id, info);
 					}
 				}

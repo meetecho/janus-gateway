@@ -2544,8 +2544,11 @@ json_t *janus_admin_webrtc_medium_summary(janus_handle_webrtc_medium *medium) {
 		json_object_set_new(container, "bytes", json_integer(medium->in_stats.info[vindex].bytes));
 		if(medium->type != JANUS_MEDIA_DATA) {
 			json_object_set_new(container, "bytes_lastsec", json_integer(medium->in_stats.info[vindex].bytes_lastsec));
-			if(medium->do_nacks)
+			if(medium->do_nacks) {
 				json_object_set_new(container, "nacks", json_integer(medium->in_stats.info[vindex].nacks));
+				if(medium->rtcp_ctx[vindex])
+					json_object_set_new(in_stats, "retransmissions", json_integer(medium->rtcp_ctx[vindex]->retransmitted));
+			}
 			if(vindex == 1)
 				json_object_set_new(in_stats, "video-simulcast-1", container);
 			else if(vindex == 2)
