@@ -2530,8 +2530,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio.bytes));
 			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(component->in_stats.audio.bytes_lastsec));
 			json_object_set_new(in_stats, "do_audio_nacks", component->do_audio_nacks ? json_true() : json_false());
-			if(component->do_audio_nacks)
+			if(component->do_audio_nacks) {
 				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio.nacks));
+				if(component->stream && component->stream->audio_rtcp_ctx)
+					json_object_set_new(in_stats, "audio_retransmissions", json_integer(component->stream->audio_rtcp_ctx->retransmitted));
+			}
 		}
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			int vindex=0;
@@ -2544,8 +2547,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 				json_object_set_new(container, "video_bytes_lastsec", json_integer(component->in_stats.video[vindex].bytes_lastsec));
 				if(vindex == 0)
 					json_object_set_new(container, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
-				if(component->do_video_nacks)
+				if(component->do_video_nacks) {
 					json_object_set_new(container, "video_nacks", json_integer(component->in_stats.video[vindex].nacks));
+					if(component->stream && component->stream->video_rtcp_ctx[vindex])
+						json_object_set_new(in_stats, "video_retransmissions", json_integer(component->stream->video_rtcp_ctx[vindex]->retransmitted));
+				}
 				if(vindex == 1)
 					json_object_set_new(in_stats, "video-simulcast-1", container);
 				else if(vindex == 2)

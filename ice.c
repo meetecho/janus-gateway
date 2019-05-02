@@ -3735,6 +3735,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 					json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.audio.bytes_lastsec));
 					json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.audio.nacks));
 					json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.audio.nacks));
+					json_object_set_new(info, "retransmissions-received", json_integer(stream->audio_rtcp_ctx->retransmitted));
 				}
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, handle->opaque_id, info);
 			}
@@ -3771,6 +3772,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 						json_object_set_new(info, "bytes-sent-lastsec", json_integer(stream->component->out_stats.video[vindex].bytes_lastsec));
 						json_object_set_new(info, "nacks-received", json_integer(stream->component->in_stats.video[vindex].nacks));
 						json_object_set_new(info, "nacks-sent", json_integer(stream->component->out_stats.video[vindex].nacks));
+						json_object_set_new(info, "retransmissions-received", json_integer(stream->video_rtcp_ctx[vindex]->retransmitted));
 					}
 					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, handle->opaque_id, info);
 				}
