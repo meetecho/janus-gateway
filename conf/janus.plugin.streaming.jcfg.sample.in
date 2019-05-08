@@ -189,7 +189,7 @@ file-ondemand-sample: {
 # authentication will only work if you installed libcurl >= 7.45.0)
 # NOTE WELL: the plugin does NOT transcode, so the RTSP stream MUST be
 # in a format the browser can digest (e.g., VP8 or H.264 baseline for video)
-# Again, you can override rtpmap and/or fmtp, if needed
+# Again, you can override payload type, rtpmap and/or fmtp, if needed
 #
 #rtsp-test: {
 	#type = "rtsp"
