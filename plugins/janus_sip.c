@@ -727,6 +727,7 @@ typedef struct janus_sip_session {
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	GThread *relayer_thread;
+	volatile gint established;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1549,6 +1550,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	su_home_init(session->stack->s_home);
@@ -1627,6 +1629,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	json_object_set_new(info, "established", json_integer(g_atomic_int_get(&session->established)));
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -1673,6 +1676,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	g_atomic_int_set(&session->established, 1);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
@@ -1935,6 +1939,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall)) {
+		g_atomic_int_set(&session->established, 0);
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
@@ -1946,6 +1951,7 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->jsep = NULL;
 	g_async_queue_push(messages, msg);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -3448,7 +3454,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					/* re-INVITE, we'll check what changed later */
 					reinvite = TRUE;
 					JANUS_LOG(LOG_VERB, "Got a re-INVITE...\n");
-				} else if(session->status >= janus_sip_call_status_inviting) {
+				} else if(session->status >= janus_sip_call_status_inviting || g_atomic_int_get(&session->established)) {
 					/* Busy with another call */
 					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 					nua_respond(nh, 486, sip_status_phrase(486), TAG_END());

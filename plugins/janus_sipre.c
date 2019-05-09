@@ -509,6 +509,7 @@ struct janus_sipre_session {
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	GThread *relayer_thread;
+	volatile gint established;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1298,6 +1299,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
 	g_atomic_int_set(&session->destroyed, 0);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
@@ -1374,6 +1376,7 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	json_object_set_new(info, "established", json_integer(g_atomic_int_get(&session->established)));
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -1420,6 +1423,7 @@ void janus_sipre_setup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	g_atomic_int_set(&session->established, 1);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
@@ -1624,10 +1628,10 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
+	g_atomic_int_set(&session->established, 0);
 	if(!(session->status == janus_sipre_call_status_inviting ||
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall)) {
-		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
 	/* Enqueue the BYE */
@@ -3665,7 +3669,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
 	/* Make sure we're not in a call already */
-	if(session->stack.sess != NULL) {
+	if(session->stack.sess != NULL || g_atomic_int_get(&session->established)) {
 		/* Already in a call */
 		JANUS_LOG(LOG_VERB, "Already in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, session));
