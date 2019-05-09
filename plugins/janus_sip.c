@@ -3459,42 +3459,47 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
-			gboolean reinvite = FALSE;
-			if(session->stack->s_nh_i != NULL) {
+			gboolean reinvite = FALSE, busy = FALSE;
+			if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+				/* Still busy establishing another call (or maybe still cleaning up the previous call) */
+				busy = TRUE;
+			} else if(session->stack->s_nh_i != NULL) {
 				if(session->stack->s_nh_i == nh) {
 					/* re-INVITE, we'll check what changed later */
 					reinvite = TRUE;
 					JANUS_LOG(LOG_VERB, "Got a re-INVITE...\n");
-				} else if(session->status >= janus_sip_call_status_inviting
-						|| g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+				} else if(session->status >= janus_sip_call_status_inviting) {
 					/* Busy with another call */
-					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
-					nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
-					/* Notify the web app about the missed invite */
-					json_t *missed = json_object();
-					json_object_set_new(missed, "sip", json_string("event"));
-					json_t *result = json_object();
-					json_object_set_new(result, "event", json_string("missed_call"));
-					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-					json_object_set_new(result, "caller", json_string(caller_text));
-					su_free(session->stack->s_home, caller_text);
-					if(sip->sip_from && sip->sip_from->a_display) {
-						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
-					}
-					json_object_set_new(missed, "result", result);
-					json_object_set_new(missed, "call_id", json_string(session->callid));
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
-					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-					json_decref(missed);
-					/* Also notify event handlers */
-					if(notify_events && gateway->events_is_enabled()) {
-						json_t *info = json_object();
-						json_object_set_new(info, "event", json_string("missed_call"));
-						json_object_set_new(info, "caller", json_string(caller_text));
-						gateway->notify_event(&janus_sip_plugin, session->handle, info);
-					}
-					break;
+					busy = TRUE;
 				}
+			}
+			if(busy) {
+				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
+				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				/* Notify the web app about the missed invite */
+				json_t *missed = json_object();
+				json_object_set_new(missed, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("missed_call"));
+				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+				json_object_set_new(result, "caller", json_string(caller_text));
+				su_free(session->stack->s_home, caller_text);
+				if(sip->sip_from && sip->sip_from->a_display) {
+					json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
+				}
+				json_object_set_new(missed, "result", result);
+				json_object_set_new(missed, "call_id", json_string(session->callid));
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(missed);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("missed_call"));
+					json_object_set_new(info, "caller", json_string(caller_text));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
+				break;
 			}
 			if(!reinvite) {
 				JANUS_LOG(LOG_FATAL, "establishing=1\n");
