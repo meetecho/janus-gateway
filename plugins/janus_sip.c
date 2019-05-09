@@ -1550,7 +1550,6 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
-	JANUS_LOG(LOG_FATAL, "establishing=0\n");
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -1680,7 +1679,6 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 		return;
 	}
 	g_atomic_int_set(&session->established, 1);
-	JANUS_LOG(LOG_FATAL, "establishing=0\n");
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
@@ -1944,7 +1942,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall)) {
-		JANUS_LOG(LOG_FATAL, "establishing=0\n");
 		g_atomic_int_set(&session->establishing, 0);
 		g_atomic_int_set(&session->established, 0);
 		g_atomic_int_set(&session->hangingup, 0);
@@ -1958,7 +1955,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->jsep = NULL;
 	g_async_queue_push(messages, msg);
-	JANUS_LOG(LOG_FATAL, "establishing=0\n");
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -2594,7 +2590,6 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
-			JANUS_LOG(LOG_FATAL, "establishing=1\n");
 			g_atomic_int_set(&session->establishing, 1);
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
@@ -3502,7 +3497,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			if(!reinvite) {
-				JANUS_LOG(LOG_FATAL, "establishing=1\n");
 				g_atomic_int_set(&session->establishing, 1);
 			}
 			/* Check if there's an SDP to process */
