@@ -1947,14 +1947,29 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
-	/* FIXME Simulate a "hangup" coming from the browser */
-	janus_refcount_increase(&session->ref);
-	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
-	msg->handle = handle;
-	msg->message = json_pack("{ss}", "request", "hangup");
-	msg->transaction = NULL;
-	msg->jsep = NULL;
-	g_async_queue_push(messages, msg);
+	/* Involve SIP if needed */
+	if(session->stack->s_nh_i != NULL && session->callee != NULL) {
+		/* Send a BYE */
+		session->media.earlymedia = FALSE;
+		session->media.update = FALSE;
+		session->media.autoaccept_reinvites = TRUE;
+		session->media.ready = FALSE;
+		session->media.on_hold = FALSE;
+		session->status = janus_sip_call_status_closing;
+		nua_bye(session->stack->s_nh_i, TAG_END());
+		g_free(session->callee);
+		session->callee = NULL;
+		/* Notify the operation */
+		json_t *event = json_object();
+		json_object_set_new(event, "sip", json_string("event"));
+		json_t *result = json_object();
+		json_object_set_new(result, "event", json_string("hangingup"));
+		json_object_set_new(event, "result", result);
+		json_object_set_new(event, "call_id", json_string(session->callid));
+		int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event, NULL);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+		json_decref(event);
+	}
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
