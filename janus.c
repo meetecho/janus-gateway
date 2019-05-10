@@ -1694,6 +1694,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			ret = janus_process_success(request, janus_info(transaction_text));
 			goto jsondone;
 		}
+		if(!strcasecmp(message_text, "ping")) {
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("pong", 0, transaction_text);
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		}
 		if(admin_api_secret != NULL) {
 			/* There's an admin/monitor secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "admin_secret");
