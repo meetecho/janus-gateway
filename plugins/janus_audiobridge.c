@@ -149,7 +149,9 @@ room-<unique room ID>: {
  * limit this functionality, you can configure an admin \c admin_key in
  * the plugin settings. When configured, only "create" requests that
  * include the correct \c admin_key value in an "admin_key" property
- * will succeed, and will be rejected otherwise.
+ * will succeed, and will be rejected otherwise. Notice that you can
+ * optionally extend this functionality to RTP forwarding as well, in
+ * order to only allow trusted clients to use that feature.
  *
  * Once a room has been created, you can still edit some (but not all)
  * of its properties using the \c edit request. This allows you to modify
@@ -377,6 +379,11 @@ room-<unique room ID>: {
 	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
 }
 \endverbatim
+ *
+ * Notice that, as explained above, in case you configured an \c admin_key
+ * property and extended it to RTP forwarding as well, you'll need to provide
+ * it in the request as well or it will be rejected as unauthorized. By
+ * default no limitation is posed on \c rtp_forward .
  *
  * A successful request will result in a \c success response:
  *
@@ -842,6 +849,7 @@ typedef struct janus_audiobridge_room {
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
+static gboolean lock_rtpfwd = FALSE;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
@@ -1331,6 +1339,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *lrf = janus_config_get(config, config_general, janus_config_type_item, "lock_rtp_forward");
+		if(admin_key && lrf != NULL && lrf->value != NULL)
+			lock_rtpfwd = janus_is_true(lrf->value);
 		janus_config_item *ext = janus_config_get(config, config_general, janus_config_type_item, "record_tmp_ext");
 		if(ext != NULL && ext->value != NULL)
 			rec_tempext = g_strdup(ext->value);
@@ -2488,6 +2499,18 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto plugin_response;
+		if(lock_rtpfwd && admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto plugin_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto plugin_response;
+		}
 		/* Parse arguments */
 		guint64 room_id = json_integer_value(json_object_get(root, "room"));
 		guint32 ssrc_value = 0;
@@ -2586,6 +2609,18 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto plugin_response;
+		if(lock_rtpfwd && admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto plugin_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto plugin_response;
+		}
 		/* Parse parameters */
 		guint64 room_id = json_integer_value(json_object_get(root, "room"));
 		guint32 stream_id = json_integer_value(json_object_get(root, "stream_id"));
