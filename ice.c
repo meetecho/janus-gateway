@@ -3376,7 +3376,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
 	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, rtp_range_min, rtp_range_max);
 #endif
-	nice_agent_gather_candidates(handle->agent, handle->stream_id);
+	if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_refcount_decrease(&handle->ref);
+		return -1;
+	}
 	nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop),
 		janus_ice_cb_nice_recv, component);
 #ifdef HAVE_TURNRESTAPI
