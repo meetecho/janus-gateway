@@ -150,6 +150,10 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 static struct janus_json_parameter resaddr_parameters[] = {
 	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter teststun_parameters[] = {
+	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -2115,6 +2119,54 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "ip", json_string(janus_network_address_string_from_buffer(&addr_buf)));
+			json_object_set_new(reply, "elapsed", json_integer(end-start));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "test_stun")) {
+			/* Helper method to evaluate whether this instance can use STUN with a specific server */
+			JANUS_VALIDATE_JSON_OBJECT(root, teststun_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *address = json_string_value(json_object_get(root, "address"));
+			uint16_t port = json_integer_value(json_object_get(root, "port"));
+			/* Resolve the address */
+			gint64 start = janus_get_monotonic_time();
+			struct addrinfo *res = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
+					janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", address);
+				if(res)
+					freeaddrinfo(res);
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve address");
+				goto jsondone;
+			}
+			freeaddrinfo(res);
+			/* Test the STUN server */
+			janus_network_address public_addr;
+			if(janus_ice_test_stun_server(&addr, port, &public_addr) < 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"STUN request failed");
+				goto jsondone;
+			}
+			if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve public address");
+				goto jsondone;
+			}
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			gint64 end = janus_get_monotonic_time();
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "public_ip", json_string(public_ip));
 			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
