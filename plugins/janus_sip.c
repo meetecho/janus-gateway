@@ -3459,7 +3459,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(result, "event", json_string("missed_call"));
 					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 					json_object_set_new(result, "caller", json_string(caller_text));
-					su_free(session->stack->s_home, caller_text);
 					if(sip->sip_from && sip->sip_from->a_display) {
 						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 					}
@@ -3475,6 +3474,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_object_set_new(info, "caller", json_string(caller_text));
 						gateway->notify_event(&janus_sip_plugin, session->handle, info);
 					}
+					su_free(session->stack->s_home, caller_text);
 					break;
 				}
 			}
