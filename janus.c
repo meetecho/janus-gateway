@@ -147,6 +147,9 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"filename", JSON_STRING, 0},
 	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter resaddr_parameters[] = {
+	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -2079,6 +2082,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "resolve_address")) {
+			/* Helper method to evaluate whether this instance can resolve an address, and how soon */
+			JANUS_VALIDATE_JSON_OBJECT(root, resaddr_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *address = json_string_value(json_object_get(root, "address"));
+			/* Resolve the address */
+			gint64 start = janus_get_monotonic_time();
+			struct addrinfo *res = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
+					janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", address);
+				if(res)
+					freeaddrinfo(res);
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve address");
+				goto jsondone;
+			}
+			gint64 end = janus_get_monotonic_time();
+			freeaddrinfo(res);
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "ip", json_string(janus_network_address_string_from_buffer(&addr_buf)));
+			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
