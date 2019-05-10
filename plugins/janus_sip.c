@@ -3455,10 +3455,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			gboolean reinvite = FALSE, busy = FALSE;
-			if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
-				/* Still busy establishing another call (or maybe still cleaning up the previous call) */
-				busy = TRUE;
-			} else if(session->stack->s_nh_i != NULL) {
+			if(session->stack->s_nh_i == NULL) {
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+					/* Still busy establishing another call (or maybe still cleaning up the previous call) */
+					busy = TRUE;
+				}
+			} else {
 				if(session->stack->s_nh_i == nh) {
 					/* re-INVITE, we'll check what changed later */
 					reinvite = TRUE;
