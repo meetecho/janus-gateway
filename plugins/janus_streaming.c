@@ -6384,11 +6384,15 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(audio_rtcp_fd != -1 && fds[i].fd == audio_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
+					if(!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes)) {
+						/* For latching we need an RTP or RTCP packet */
+						continue;
+					}
+					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
-					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
@@ -6404,11 +6408,15 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(video_rtcp_fd != -1 && fds[i].fd == video_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
+					if(!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes)) {
+						/* For latching we need an RTP or RTCP packet */
+						continue;
+					}
+					memcpy(&source->video_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
-					memcpy(&source->video_rtcp_addr, &remote, addrlen);
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
