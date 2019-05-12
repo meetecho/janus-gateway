@@ -6072,7 +6072,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -6161,7 +6161,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -6384,7 +6384,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(audio_rtcp_fd != -1 && fds[i].fd == audio_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes)) {
+					if(bytes < 0 || (!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes))) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
@@ -6408,7 +6408,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(video_rtcp_fd != -1 && fds[i].fd == video_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes)) {
+					if(bytes < 0 || (!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes))) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
