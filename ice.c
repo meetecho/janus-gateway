@@ -913,6 +913,10 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	close(fd);
+	if(bytes < 0) {
+		JANUS_LOG(LOG_FATAL, "Failed to receive STUN\n");
+		return -1;
+	}
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
 		return -1;
