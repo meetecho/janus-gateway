@@ -4597,7 +4597,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Got something audio (RTP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -4639,7 +4639,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Got something audio (RTCP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					if(!janus_is_rtcp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
@@ -4662,7 +4662,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Got something video (RTP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.video_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -4704,7 +4704,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Got something video (RTCP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					if(!janus_is_rtcp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
