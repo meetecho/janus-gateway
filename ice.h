@@ -400,6 +400,8 @@ struct janus_ice_stream {
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */
 	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Frame marking extension ID */
+	gint framemarking_ext_id;
 	/*! \brief Whether we do transport wide cc for video */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
