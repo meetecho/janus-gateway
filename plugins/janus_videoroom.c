@@ -6438,7 +6438,7 @@ static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwa
 	struct sockaddr_storage remote_addr;
 	socklen_t addrlen = sizeof(remote_addr);
 	int len = recvfrom(forward->rtcp_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&remote_addr, &addrlen);
-	if(janus_is_rtcp(buffer, len)) {
+	if(len > 0 && janus_is_rtcp(buffer, len)) {
 		JANUS_LOG(LOG_HUGE, "Got %s RTCP packet: %d bytes\n", forward->is_video ? "video" : "audio", len);
 		/* We only handle incoming video PLIs or FIR at the moment */
 		if(!janus_rtcp_has_fir(buffer, len) && !janus_rtcp_has_pli(buffer, len))
