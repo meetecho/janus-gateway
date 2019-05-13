@@ -816,9 +816,11 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"audiortpmap", JSON_STRING, 0},
 	{"audiofmtp", JSON_STRING, 0},
+	{"audiopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"videortpmap", JSON_STRING, 0},
 	{"videofmtp", JSON_STRING, 0},
+	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtspiface", JSON_STRING, 0},
 	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
@@ -1102,8 +1104,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc,
 		char *url, char *username, char *password,
-		gboolean doaudio, char *artpmap, char *afmtp,
-		gboolean dovideo, char *vrtpmap, char *vfmtp,
+		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
+		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
 		gboolean error_on_failure);
 
@@ -1722,8 +1724,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *password = janus_config_get(config, cat, janus_config_type_item, "rtsp_pwd");
 				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
 				janus_config_item *artpmap = janus_config_get(config, cat, janus_config_type_item, "audiortpmap");
+				janus_config_item *acodec = janus_config_get(config, cat, janus_config_type_item, "audiopt");
 				janus_config_item *afmtp = janus_config_get(config, cat, janus_config_type_item, "audiofmtp");
 				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
+				janus_config_item *vcodec = janus_config_get(config, cat, janus_config_type_item, "videopt");
 				janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
 				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
@@ -1776,9 +1780,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
 						doaudio,
+						(acodec && acodec->value) ? atoi(acodec->value) : -1,
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
 						dovideo,
+						(vcodec && vcodec->value) ? atoi(vcodec->value) : -1,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
 						iface && iface->value ? &iface_value : NULL,
@@ -2618,9 +2624,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *desc = json_object_get(root, "description");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *audio = json_object_get(root, "audio");
+			json_t *audiopt = json_object_get(root, "audiopt");
 			json_t *audiortpmap = json_object_get(root, "audiortpmap");
 			json_t *audiofmtp = json_object_get(root, "audiofmtp");
 			json_t *video = json_object_get(root, "video");
+			json_t *videopt = json_object_get(root, "videopt");
 			json_t *videortpmap = json_object_get(root, "videortpmap");
 			json_t *videofmtp = json_object_get(root, "videofmtp");
 			json_t *url = json_object_get(root, "url");
@@ -2656,8 +2664,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
 					password ? (char *)json_string_value(password) : NULL,
-					doaudio, (char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
-					dovideo, (char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
+					doaudio, (audiopt ? json_integer_value(audiopt) : -1),
+						(char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
+					dovideo, (videopt ? json_integer_value(videopt) : -1),
+						(char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
 					&multicast_iface,
 					error_on_failure);
 			if(mp == NULL) {
@@ -5306,13 +5316,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 	}
 
-	/* Update the source (but check if rtpmap/fmtp need to be overridden) */
-	mp->codecs.audio_pt = doaudio ? apt : -1;
+	/* Update the source (but check if ptype/rtpmap/fmtp need to be overridden) */
+	if(mp->codecs.audio_pt == -1)
+		mp->codecs.audio_pt = doaudio ? apt : -1;
 	if(mp->codecs.audio_rtpmap == NULL)
 		mp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	if(mp->codecs.audio_fmtp == NULL)
 		mp->codecs.audio_fmtp = doaudio ? g_strdup(afmtp) : NULL;
-	mp->codecs.video_pt = dovideo ? vpt : -1;
+	if(mp->codecs.video_pt == -1)
+		mp->codecs.video_pt = dovideo ? vpt : -1;
 	if(mp->codecs.video_rtpmap == NULL)
 		mp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
 	if(mp->codecs.video_fmtp == NULL)
@@ -5429,8 +5441,8 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc,
 		char *url, char *username, char *password,
-		gboolean doaudio, char *artpmap, char *afmtp,
-		gboolean dovideo, char *vrtpmap, char *vfmtp,
+		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
+		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
 		gboolean error_on_failure) {
 	if(url == NULL) {
@@ -5509,9 +5521,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_atomic_int_set(&live_rtsp->destroyed, 0);
 	janus_refcount_init(&live_rtsp->ref, janus_streaming_mountpoint_free);
 	janus_mutex_init(&live_rtsp->mutex);
-	/* We may have to override the rtpmap and/or fmtp for audio and/or video */
+	/* We may have to override the payload type and/or rtpmap and/or fmtp for audio and/or video */
+	live_rtsp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtsp->codecs.audio_rtpmap = doaudio ? (artpmap ? g_strdup(artpmap) : NULL) : NULL;
 	live_rtsp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
+	live_rtsp->codecs.video_pt = dovideo ? vcodec : -1;
 	live_rtsp->codecs.video_rtpmap = dovideo ? (vrtpmap ? g_strdup(vrtpmap) : NULL) : NULL;
 	live_rtsp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
 	/* If we need to return an error on failure, try connecting right now */
