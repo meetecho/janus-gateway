@@ -899,6 +899,8 @@ done:
 }
 
 void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
+	if(!dtls)
+		return;
 	/* Send alert */
 	janus_refcount_increase(&dtls->ref);
 	if(dtls != NULL && dtls->ssl != NULL) {

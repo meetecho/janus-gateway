@@ -2164,7 +2164,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
 	if(janus_is_rtp(buf, len)) {
 		/* This is RTP */
-		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
+		if(janus_is_webrtc_encryption_enabled() && (!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in)) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			janus_rtp_header *header = (janus_rtp_header *)buf;
@@ -2288,7 +2288,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			}
 
 			int buflen = len;
-			srtp_err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
+			srtp_err_status_t res = janus_is_webrtc_encryption_enabled() ?
+				srtp_unprotect(component->dtls->srtp_in, buf, &buflen) : srtp_err_status_ok;
 			if(res != srtp_err_status_ok) {
 				if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 					/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
@@ -2643,11 +2644,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	} else if(janus_is_rtcp(buf, len)) {
 		/* This is RTCP */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTCP packet\n", handle->handle_id);
-		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
+		if(janus_is_webrtc_encryption_enabled() && (!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in)) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			int buflen = len;
-			srtp_err_status_t res = srtp_unprotect_rtcp(component->dtls->srtp_in, buf, &buflen);
+			srtp_err_status_t res = janus_is_webrtc_encryption_enabled() ?
+				srtp_unprotect_rtcp(component->dtls->srtp_in, buf, &buflen) : srtp_err_status_ok;
 			if(res != srtp_err_status_ok) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTCP unprotect error: %s (len=%d-->%d)\n", handle->handle_id, janus_srtp_error_str(res), len, buflen);
 			} else {
@@ -3817,6 +3819,11 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	janus_ice_stream *stream = handle->stream;
 	janus_ice_component *component = stream ? stream->component : NULL;
 	if(pkt == &janus_ice_dtls_handshake) {
+		if(!janus_is_webrtc_encryption_enabled()) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] WebRTC encryption disabled, skipping DTLS handshake\n", handle->handle_id);
+			janus_ice_dtls_handshake_done(handle, component);
+			return G_SOURCE_CONTINUE;
+		}
 		/* Start the DTLS handshake */
 		janus_dtls_srtp_handshake(component->dtls);
 		/* Create retransmission timer */
@@ -3922,7 +3929,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		/* RTCP */
 		int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
 		stream->noerrorlog = FALSE;
-		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
+		if(janus_is_webrtc_encryption_enabled() && (!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out)) {
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s stream (#%u) component has no valid SRTP session (yet?)\n",
 					handle->handle_id, video ? "video" : "audio", stream->stream_id);
@@ -3974,7 +3981,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 			/* Encrypt SRTCP */
 			int protected = pkt->length;
-			int res = srtp_protect_rtcp(component->dtls->srtp_out, pkt->data, &protected);
+			int res = janus_is_webrtc_encryption_enabled() ?
+				srtp_protect_rtcp(component->dtls->srtp_out, pkt->data, &protected) : srtp_err_status_ok;
 			if(res != srtp_err_status_ok) {
 				/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
 				handle->srtp_errors_count++;
@@ -3999,7 +4007,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
-			if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
+			if(janus_is_webrtc_encryption_enabled() && (!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out)) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s stream component has no valid SRTP session (yet?)\n",
 						handle->handle_id, video ? "video" : "audio");
@@ -4097,7 +4105,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				}
 				/* Encrypt SRTP */
 				int protected = pkt->length;
-				int res = srtp_protect(component->dtls->srtp_out, pkt->data, &protected);
+				int res = janus_is_webrtc_encryption_enabled() ?
+					srtp_protect(component->dtls->srtp_out, pkt->data, &protected) : srtp_err_status_ok;
 				if(res != srtp_err_status_ok) {
 					/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
 					handle->srtp_errors_count++;
@@ -4405,7 +4414,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 		handle->handle_id, component->component_id, component->stream_id);
 	/* Check if all components are ready */
 	janus_mutex_lock(&handle->mutex);
-	if(handle->stream) {
+	if(handle->stream && janus_is_webrtc_encryption_enabled()) {
 		if(handle->stream->component && (!handle->stream->component->dtls ||
 				!handle->stream->component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */

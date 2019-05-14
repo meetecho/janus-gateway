@@ -229,6 +229,13 @@ static gboolean accept_new_sessions = TRUE;
 #define DEFAULT_CANDIDATES_TIMEOUT		45
 static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
+/* WebRTC encryption is obviously enabled by default. In the rare cases
+ * you want to disable it for debugging purposes, though, you can do
+ * that either via command line (-w) or in the main configuration file */
+static gboolean webrtc_encryption = TRUE;
+gboolean janus_is_webrtc_encryption_enabled(void) {
+	return webrtc_encryption;
+}
 
 /* Information */
 static json_t *janus_info(const char *transaction) {
@@ -278,6 +285,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "opaqueid_in_api", janus_is_opaqueid_in_api_enabled() ? json_true() : json_false());
+	if(!webrtc_encryption)
+		json_object_set_new(info, "webrtc_encryption", json_false());
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -3677,6 +3686,9 @@ gint main(int argc, char *argv[])
 	if(args_info.token_auth_secret_given) {
 		janus_config_add(config, config_general, janus_config_item_create("token_auth_secret", args_info.token_auth_secret_arg));
 	}
+	if(args_info.no_webrtc_encryption_given) {
+		janus_config_add(config, config_general, janus_config_item_create("no_webrtc_encryption", "yes"));
+	}
 	if(args_info.cert_pem_given) {
 		janus_config_add(config, config_certs, janus_config_item_create("cert_pem", args_info.cert_pem_arg));
 	}
@@ -3764,6 +3776,13 @@ gint main(int argc, char *argv[])
 		lock_debug = janus_is_true(item->value);
 	if(lock_debug) {
 		JANUS_PRINT("Lock/mutex debugging is enabled\n");
+	}
+
+	/* First of all, let's check if we're disabling WebRTC encryption for debugging purposes */
+	item = janus_config_get(config, config_general, janus_config_type_item, "no_webrtc_encryption");
+	if(item && item->value && janus_is_true(item->value)) {
+		JANUS_LOG(LOG_WARN, "Disabling WebRTC encryption: *THIS IS ONLY ACCEPTABLE WHEN DEBUGGING!*\n");
+		webrtc_encryption = FALSE;
 	}
 
 	/* Any IP/interface to enforce/ignore? */
