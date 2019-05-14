@@ -25,6 +25,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <poll.h>
+#ifdef HAVE_TURNRESTAPI
+#include <curl/curl.h>
+#endif
 
 #include "janus.h"
 #include "version.h"
@@ -278,6 +281,21 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "opaqueid_in_api", janus_is_opaqueid_in_api_enabled() ? json_true() : json_false());
+	/* Dependencies */
+	json_t *deps = json_object();
+	char glib2_version[20];
+	g_snprintf(glib2_version, sizeof(glib2_version), "%d.%d.%d", glib_major_version, glib_minor_version, glib_micro_version);
+	json_object_set_new(deps, "glib2", json_string(glib2_version));
+	json_object_set_new(deps, "jansson", json_string(JANSSON_VERSION));
+	json_object_set_new(deps, "libnice", json_string(libnice_version_string));
+	json_object_set_new(deps, "libsrtp", json_string(srtp_get_version_string()));
+#ifdef HAVE_TURNRESTAPI
+	curl_version_info_data *curl_version = curl_version_info(CURLVERSION_NOW);
+	if(curl_version && curl_version->version)
+		json_object_set_new(deps, "libcurl", json_string(curl_version->version));
+#endif
+	json_object_set_new(deps, "crypto", json_string(janus_get_ssl_version()));
+	json_object_set_new(info, "dependencies", deps);
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
