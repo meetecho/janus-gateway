@@ -81,10 +81,14 @@
 #}
 
 general: {
-	#admin_key = "supersecret"		# If set, mountpoints can be created via API
-									# only if this key is provided in the request
-	#events = false					# Whether events should be sent to event
-									# handlers (default=true)
+	#admin_key = "supersecret"                  # If set, mountpoints can be created via API
+                                                # only if this key is provided in the request
+	#events = false                             # Whether events should be sent to event
+                                                # handlers (default=true)
+	#rtsp_client_port_range = "10000-10100"     # If set, mountpoints of RTSP type
+												# will only use these UDP ports to establish
+												# client connections. Random available 
+												# free ports will be used otherwise.
 }
 
 gstreamer-sample: {
