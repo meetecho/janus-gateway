@@ -145,18 +145,18 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 				uint8_t extid = 0, idlen;
 				int i = 0;
 				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
+					extid = (uint8_t)buf[hlen+i] >> 4;
 					if(extid == reserved) {
 						break;
 					} else if(extid == padding) {
 						i++;
 						continue;
 					}
-					idlen = (buf[hlen+i] & 0xF)+1;
+					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
 					if(extid == id) {
 						/* Found! */
 						if(byte)
-							*byte = buf[hlen+i+1];
+							*byte = (uint8_t)buf[hlen+i+1];
 						if(word && idlen >= 3 && (i+3) < extlen) {
 							memcpy(word, buf+hlen+i, sizeof(uint32_t));
 							*word = ntohl(*word);
@@ -265,6 +265,26 @@ int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	}
 	memcpy(sdes_item, ext+1, val_len);
 	*(sdes_item+val_len) = '\0';
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_framemarking(char *buf, int len, int id, janus_videocodec codec, uint8_t *tid) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	/*  0                   1                   2                   3
+	    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	   |  ID=? |  L=2  |S|E|I|D|B| TID |   LID         |    TL0PICIDX  |
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	*/
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
+		return -3;
+	if(tid)
+		*tid = (*(ext+1) & 0x07);
 	return 0;
 }
 
@@ -868,7 +888,7 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	context->templayer = -1;
 }
 
-void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids) {
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *framemarking_ext_id, uint32_t *ssrcs, char **rids) {
 	if(simulcast == NULL)
 		return;
 	json_t *r = json_object_get(simulcast, "rids");
@@ -897,6 +917,9 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 				ssrcs[i] = json_integer_value(ssrc);
 		}
 	}
+	json_t *fm_ext = json_object_get(simulcast, "framemarking-ext");
+	if(framemarking_ext_id != NULL)
+		*framemarking_ext_id = json_integer_value(fm_ext);
 }
 
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
@@ -984,7 +1007,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		return FALSE;
 	}
 	context->last_relayed = janus_get_monotonic_time();
-	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	/* Temporal layers are only available for VP8 and (partially) H.264, so don't do anything else for other codecs */
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		uint16_t picid = 0;
@@ -994,6 +1017,27 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		uint8_t keyidx = 0;
 		if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
 			//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+				/* FIXME We should be smarter in deciding when to switch */
+				context->templayer = context->templayer_target;
+				/* Notify the caller that the temporal layer changed */
+				context->changed_temporal = TRUE;
+			}
+			if(context->templayer != -1 && tid > context->templayer) {
+				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+					tid, context->templayer);
+				/* We increase the base sequence number, or there will be gaps when delivering later */
+				if(sc)
+					sc->v_base_seq++;
+				return FALSE;
+			}
+		}
+	} else if(vcodec == JANUS_VIDEOCODEC_H264) {
+		/* Use the frame-marking extension to account for temporal scalability */
+		uint8_t tid = 0;
+		if(janus_rtp_header_extension_parse_framemarking(buf, len,
+				context->framemarking_ext_id, JANUS_VIDEOCODEC_H264, &tid) == 0) {
+			JANUS_LOG(LOG_HUGE, "Frame marking extension found: tid=%d\n", tid);
 			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
 				/* FIXME We should be smarter in deciding when to switch */
 				context->templayer = context->templayer_target;

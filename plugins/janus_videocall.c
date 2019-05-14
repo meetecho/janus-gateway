@@ -1202,9 +1202,10 @@ static void *janus_videocall_handler(void *data) {
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 				if(msg_simulcast) {
 					JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
-					int rid_ext_id = -1;
-					janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, session->ssrc, session->rid);
+					int rid_ext_id = -1, framemarking_ext_id = -1;
+					janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
 					session->sim_context.rid_ext_id = rid_ext_id;
+					session->sim_context.framemarking_ext_id = framemarking_ext_id;
 				}
 				/* Send SDP to our peer */
 				json_t *call = json_object();

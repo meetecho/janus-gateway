@@ -86,8 +86,34 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_RID				"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 /*! \brief a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 #define JANUS_RTP_EXTMAP_REPAIRED_RID		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
+/*! \brief a=extmap:8 http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07 */
+#define JANUS_RTP_EXTMAP_FRAME_MARKING		"http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07"
 /*! \brief \note Note: We don't support encrypted extensions yet */
 #define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
+
+
+typedef enum janus_audiocodec {
+	JANUS_AUDIOCODEC_NONE,
+	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_PCMU,
+	JANUS_AUDIOCODEC_PCMA,
+	JANUS_AUDIOCODEC_G722,
+	JANUS_AUDIOCODEC_ISAC_32K,
+	JANUS_AUDIOCODEC_ISAC_16K
+} janus_audiocodec;
+const char *janus_audiocodec_name(janus_audiocodec acodec);
+janus_audiocodec janus_audiocodec_from_name(const char *name);
+int janus_audiocodec_pt(janus_audiocodec acodec);
+
+typedef enum janus_videocodec {
+	JANUS_VIDEOCODEC_NONE,
+	JANUS_VIDEOCODEC_VP8,
+	JANUS_VIDEOCODEC_VP9,
+	JANUS_VIDEOCODEC_H264
+} janus_videocodec;
+const char *janus_videocodec_name(janus_videocodec vcodec);
+janus_videocodec janus_videocodec_from_name(const char *name);
+int janus_videocodec_pt(janus_videocodec vcodec);
 
 
 /*! \brief Helper method to demultiplex RTP from other protocols
@@ -165,6 +191,16 @@ int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
 	char *sdes_item, int sdes_len);
 
+/*! \brief Helper to parse a frame-marking RTP extension (http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07)
+ * \note This is currently only used to get temporal layers for H.264 simulcasting
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[in] codec The video codec (as a janus_videocodec instance) the extension refers to
+ * @param[out] tid Temporal layer ID of the frame
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_framemarking(char *buf, int len, int id, janus_videocodec codec, uint8_t *tid);
+
 /*! \brief Helper to parse a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
@@ -227,34 +263,13 @@ int janus_rtp_skew_compensate_audio(janus_rtp_header *header, janus_rtp_switchin
  * @returns 0 if no compensation is needed, -N if a N packets drop must be performed, N if a N sequence numbers jump has been performed */
 int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switching_context *context, gint64 now);
 
-typedef enum janus_audiocodec {
-	JANUS_AUDIOCODEC_NONE,
-	JANUS_AUDIOCODEC_OPUS,
-	JANUS_AUDIOCODEC_PCMU,
-	JANUS_AUDIOCODEC_PCMA,
-	JANUS_AUDIOCODEC_G722,
-	JANUS_AUDIOCODEC_ISAC_32K,
-	JANUS_AUDIOCODEC_ISAC_16K
-} janus_audiocodec;
-const char *janus_audiocodec_name(janus_audiocodec acodec);
-janus_audiocodec janus_audiocodec_from_name(const char *name);
-int janus_audiocodec_pt(janus_audiocodec acodec);
-
-typedef enum janus_videocodec {
-	JANUS_VIDEOCODEC_NONE,
-	JANUS_VIDEOCODEC_VP8,
-	JANUS_VIDEOCODEC_VP9,
-	JANUS_VIDEOCODEC_H264
-} janus_videocodec;
-const char *janus_videocodec_name(janus_videocodec vcodec);
-janus_videocodec janus_videocodec_from_name(const char *name);
-int janus_videocodec_pt(janus_videocodec vcodec);
-
 
 /*! \brief Helper struct for processing and tracking simulcast streams */
 typedef struct janus_rtp_simulcasting_context {
 	/*! \brief RTP Stream extension ID, if any */
 	gint rid_ext_id;
+	/*! \brief Frame marking extension ID, if any */
+	gint framemarking_ext_id;
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
@@ -281,9 +296,10 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
  * the simulcast object the core passes to plugins for new PeerConnections
  * @param[in] simulcast JSON object containing SSRCs and rids
  * @param[in] rid_ext_id The rid RTP extension ID to set, if any
+ * @param[in] framemarking_ext_id The frame marking RTP extension ID to set, if any
  * @param[in] ssrcs The list of simulcast SSRCs to update, if any
  * @param[in] rids The list of rids to update, if any (items will be allocated) */
-void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t *ssrcs, char **rids);
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *framemarking_ext_id, uint32_t *ssrcs, char **rids);
 
 /*! \brief Process an RTP packet, and decide whether this should be relayed or not, updating the context accordingly
  * \note Calling this method resets the \c changed_substream , \c changed_temporal and \c need_pli

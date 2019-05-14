@@ -214,7 +214,7 @@ $(document).ready(function() {
 									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
 										if(!simulcastStarted) {
 											simulcastStarted = true;
-											addSimulcastButtons(msg["videocodec"] === "vp8");
+											addSimulcastButtons(msg["videocodec"] === "vp8" || msg["videocodec"] === "h264");
 										}
 										// We just received notice that there's been a switch, update the buttons
 										updateSimulcastButtons(substream, temporal);

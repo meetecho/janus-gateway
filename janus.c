@@ -1256,6 +1256,8 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Check if the RTP Stream ID extension is being negotiated */
 					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
 					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
+					/* Check if the frame marking ID extension is being negotiated */
+					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1363,6 +1365,8 @@ int janus_process_incoming_request(janus_request *request) {
 							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[2]));
 						json_object_set_new(simulcast, "ssrcs", ssrcs);
 					}
+					if(handle->stream->framemarking_ext_id > 0)
+						json_object_set_new(simulcast, "framemarking-ext", json_integer(handle->stream->framemarking_ext_id));
 					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
