@@ -5098,7 +5098,7 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		} else {
 			if(getsockname(fds->fd, (struct sockaddr *)&address, &len) < 0) {
 				close(fds->fd);
-				if (should_select_random_port) {
+				if(should_select_random_port) {
 					JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
 					return -1;
 				}
