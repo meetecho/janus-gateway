@@ -5104,14 +5104,17 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 				}
 				is_port_found = FALSE;
 			} else {
-				uint16_t sin_port = ntohs(address.sin_port);
 				if(should_select_random_port) {
-					port = sin_port;
+					uint16_t sin_port = ntohs(address.sin_port);
+					if(sin_port & 1) {
+						close(fds->fd);
+						is_port_found = FALSE;
+					} else {
+						port = sin_port;
+					}
 				}
-				if(sin_port & 1) {
-					close(fds->fd);
-					is_port_found = FALSE;
-				} else {
+				
+				if(is_port_found) {
 					fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
 					if(fds->rtcp_fd < 0) {
 						close(fds->fd);
