@@ -111,6 +111,11 @@ general: {
 									# libnice, libsrtp, which crypto library is in
 									# use and so on). Should you want that info not
 									# to be disclose, set 'hide_dependencies' to true.
+
+		# The following is ONLY useful when debugging RTP/RTCP packets,
+		# e.g., to look at unencrypted live traffic with a browser. By
+		# default it is obviously disabled, as WebRTC mandates encryption.
+	#no_webrtc_encryption = true
 }
 
 # Certificate and key to use for DTLS (and passphrase if needed). If missing,
