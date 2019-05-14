@@ -4336,6 +4336,28 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
 	janus_ice_relay_rtcp_internal(handle, video, buf, len, TRUE);
+	/* If this is a PLI and we're simulcasting, send a PLI on other layers as well */
+	if(janus_rtcp_has_pli(buf, len)) {
+		janus_ice_stream *stream = handle->stream;
+		if(stream == NULL)
+			return;
+		if(stream->video_ssrc_peer[1]) {
+			char plibuf[12];
+			memset(plibuf, 0, 12);
+			janus_rtcp_pli((char *)&plibuf, 12);
+			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+				stream->video_ssrc, stream->video_ssrc_peer[1]);
+			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+		}
+		if(stream->video_ssrc_peer[2]) {
+			char plibuf[12];
+			memset(plibuf, 0, 12);
+			janus_rtcp_pli((char *)&plibuf, 12);
+			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+				stream->video_ssrc, stream->video_ssrc_peer[2]);
+			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+		}
+	}
 }
 
 #ifdef HAVE_SCTP
