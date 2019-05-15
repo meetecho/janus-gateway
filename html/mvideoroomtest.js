@@ -711,9 +711,15 @@ function subscribeTo(sources) {
 				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
 				// Which publisher are we getting on this mid?
 				var sub = subStreams[mid];
-				var slot = slots[mid];
 				var feed = feedStreams[sub.feed_id];
 				Janus.debug(" >> This track is coming from feed " + sub.feed_id + ":", feed);
+				var slot = slots[mid];
+				if(feed && !slot) {
+					slot = feed.slot;
+					slots[mid] = feed.slot;
+					mids[feed.slot] = mid;
+				}
+				Janus.debug(" >> mid " + mid + " is in slot " + slot);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					var stream = remoteTracks[mid];
