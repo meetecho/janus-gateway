@@ -614,7 +614,7 @@ function newRemoteFeed(id, display, streams) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
+								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8" || remoteFeed.videoCodec === "h264");
 							}
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);

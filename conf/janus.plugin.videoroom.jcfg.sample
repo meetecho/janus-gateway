@@ -40,6 +40,8 @@
 general: {
 	#admin_key = "supersecret"		# If set, rooms can be created via API only
 									# if this key is provided in the request
+	#lock_rtp_forward = true		# Whether the admin_key above should be
+									# enforced for RTP forwarding requests too
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
 }

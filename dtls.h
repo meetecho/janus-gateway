@@ -24,6 +24,10 @@
 #include "refcount.h"
 #include "dtls-bio.h"
 
+/*! \brief Helper method to return info on the crypto library and its version
+ * @returns A pointer to a static string with the version */
+const char *janus_get_ssl_version(void);
+
 /*! \brief DTLS stuff initialization
  * @param[in] server_pem Path to the certificate to use
  * @param[in] server_key Path to the key to use

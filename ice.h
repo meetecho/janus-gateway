@@ -30,6 +30,7 @@
 #include "rtcp.h"
 #include "text2pcap.h"
 #include "utils.h"
+#include "ip-utils.h"
 #include "refcount.h"
 #include "plugins/plugin.h"
 
@@ -44,6 +45,12 @@
 void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
+/*! \brief Method to check whether a STUN server is reachable
+ * @param[in] addr Address of the STUN server as a janus_network_address instance
+ * @param[in] port Port of the STUN server
+ * @param[out] public_addr Public address returned by the STUN server as a janus_network_address instance
+ * @returns 0 in case of success, a negative integer on errors */
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
  * @param[in] stun_server STUN server address to use
  * @param[in] stun_port STUN port to use
@@ -367,6 +374,8 @@ struct janus_handle_webrtc {
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */
 	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Frame marking extension ID */
+	gint framemarking_ext_id;
 	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */

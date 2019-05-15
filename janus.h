@@ -253,5 +253,13 @@ void janus_set_public_ip(const char *ip);
 /*! \brief Helper method to check whether the server is being shut down */
 gint janus_is_stopping(void);
 
+/*! \brief Helper method to check whether WebRTC encryption is (as it should) enabled
+ * \note This is required by the ICE and DTLS portions of the code to decide whether
+ * to do the DTLS handshake, and whether SRTP encryption is required. Disabling the
+ * WebRTC encryption is supposed to be a debugging tool you can use with the Chrome
+ * setting with the same name, \c --disable-webrtc-encryption , and you should
+ * NEVER use it otherwise (it would simply not work with regular WebRTC endpoints).
+ * @returns TRUE if WebRTC encryption is enabled (the default), and FALSE otherwise */
+gboolean janus_is_webrtc_encryption_enabled(void);
 
 #endif

@@ -255,8 +255,10 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 			tempA = tempA->next;
 		}
 		if(mlines == 1) {
-			if(!ruser || !rpass || !rfingerprint || !rhashing) {
+			if(!ruser || !rpass || (janus_is_webrtc_encryption_enabled() && (!rfingerprint || !rhashing))) {
 				/* Missing mandatory information, failure... */
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] SDP missing mandatory information\n", handle->handle_id);
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] %p, %p, %p, %p\n", handle->handle_id, ruser, rpass, rfingerprint, rhashing);
 				if(ruser)
 					g_free(ruser);
 				ruser = NULL;
@@ -279,10 +281,12 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ICE_RESTART);
 			}
 			/* Store fingerprint and hashing */
-			g_free(pc->remote_hashing);
-			pc->remote_hashing = g_strdup(rhashing);
-			g_free(pc->remote_fingerprint);
-			pc->remote_fingerprint = g_strdup(rfingerprint);
+			if(janus_is_webrtc_encryption_enabled()) {
+				g_free(pc->remote_hashing);
+				pc->remote_hashing = g_strdup(rhashing);
+				g_free(pc->remote_fingerprint);
+				pc->remote_fingerprint = g_strdup(rfingerprint);
+			}
 			/* Store the ICE username and password for this stream */
 			g_free(pc->ruser);
 			pc->ruser = g_strdup(ruser);
@@ -1093,6 +1097,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		return NULL;
 	janus_handle_webrtc_medium *medium = NULL;
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"UDP/TLS/RTP/SAVPF";
+	if(!janus_is_webrtc_encryption_enabled())
+		rtp_profile = (char *)"RTP/AVPF";
 	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
 	/* Origin o= */
 	gint64 sessid = janus_get_real_time();
@@ -1139,9 +1145,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	/* Advertise trickle support */
 	a = janus_sdp_attribute_create("ice-options", "trickle");
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
-	/* We put the fingerprint in the global attributes */
-	a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
-	anon->attributes = g_list_insert_before(anon->attributes, first, a);
+	if(janus_is_webrtc_encryption_enabled()) {
+		/* We put the fingerprint in the global attributes */
+		a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
+		anon->attributes = g_list_insert_before(anon->attributes, first, a);
+	}
 	/* msid-semantic: add new global attribute */
 	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
@@ -1277,8 +1285,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		g_free(ufrag);
 		g_free(password);
-		a = janus_sdp_attribute_create("setup", "%s", janus_get_dtls_srtp_role(offer ? JANUS_DTLS_ROLE_ACTPASS : pc->dtls_role));
-		m->attributes = g_list_insert_before(m->attributes, first, a);
+		if(janus_is_webrtc_encryption_enabled()) {
+			a = janus_sdp_attribute_create("setup", "%s", janus_get_dtls_srtp_role(offer ? JANUS_DTLS_ROLE_ACTPASS : pc->dtls_role));
+			m->attributes = g_list_insert_before(m->attributes, first, a);
+		}
 		/* Add last attributes, rtcp and ssrc (msid) */
 		if(m->type == JANUS_SDP_VIDEO && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
 			/* Add FID group to negotiate the RFC4588 stuff */
