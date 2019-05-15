@@ -834,6 +834,9 @@ function unsubscribeFrom(id) {
 	if(!feed)
 		return;
 	Janus.debug("Feed " + id + " (" + feed.display + ") has left the room, detaching");
+	if(bitrateTimer[feed.slot] !== null && bitrateTimer[feed.slot] !== null)
+		clearInterval(bitrateTimer[feed.slot]);
+	bitrateTimer[feed.slot] = null;
 	$('#remote' + feed.slot).empty().hide();
 	$('#videoremote' + feed.slot).empty();
 	delete simulcastStarted[feed.slot];
