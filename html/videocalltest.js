@@ -469,6 +469,8 @@ $(document).ready(function() {
 										if(!bitrateTimer) {
 											$('#curbitrate').removeClass('hide').show();
 											bitrateTimer = setInterval(function() {
+												if(!$("#peervideo" + mid).get(0))
+													return;
 												// Display updated bitrate, if supported
 												var bitrate = videocall.getBitrate();
 												//~ Janus.debug("Current bitrate is " + videocall.getBitrate());

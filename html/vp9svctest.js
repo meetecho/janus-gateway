@@ -637,6 +637,8 @@ function newRemoteFeed(id, display) {
 					if(!bitrateTimer) {
 						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+							if(!$("#remotevideo"+remoteFeed.rfindex).get(0))
+								return;
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate();
 							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);

@@ -254,6 +254,8 @@ $(document).ready(function() {
 										if(!bitrateTimer[mid]) {
 											$('#curbitrate'+mid).removeClass('hide').show();
 											bitrateTimer[mid] = setInterval(function() {
+												if(!$("#remotevideo" + mid).get(0))
+													return;
 												// Display updated bitrate, if supported
 												var bitrate = streaming.getBitrate(mid);
 												//~ Janus.debug("Current bitrate is " + streaming.getBitrate());

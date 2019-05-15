@@ -788,6 +788,8 @@ function subscribeTo(sources) {
 					if(!bitrateTimer[slot]) {
 						$('#curbitrate' + slot).removeClass('hide').show();
 						bitrateTimer[slot] = setInterval(function() {
+							if(!$("#videoremote" + slot + ' video').get(0))
+								return;
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate(mid);
 							$('#curbitrate' + slot).text(bitrate);
