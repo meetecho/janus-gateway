@@ -1715,7 +1715,9 @@ function Janus(gatewayCallbacks) {
 					var mid = event.transceiver ? event.transceiver.mid : event.track.id;
 					try {
 						pluginHandle.onremotetrack(event.track, mid, true);
-					} catch(e) {};
+					} catch(e) {
+						Janus.error(e);
+					};
 					if(event.track.onended)
 						return;
 					Janus.log("Adding onended callback to track:", event.track);
@@ -1731,7 +1733,9 @@ function Janus(gatewayCallbacks) {
 							}
 							try {
 								pluginHandle.onremotetrack(ev.target, mid, false);
-							} catch(e) {};
+							} catch(e) {
+								Janus.error(e);
+							};
 						}
 					};
 					event.track.onmute = event.track.onended;
@@ -1739,7 +1743,9 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Remote track flowing again:", ev);
 						try {
 							pluginHandle.onremotetrack(ev.target, mid, true);
-						} catch(e) {};
+						} catch(e) {
+							Janus.error(e);
+						};
 					};
 				}
 			};
@@ -1788,11 +1794,15 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Local track removed:", ev);
 					try {
 						pluginHandle.onlocaltrack(ev.track, false);
-					} catch(e) {};
+					} catch(e) {
+						Janus.error(e);
+					};
 				}
 				try {
 					pluginHandle.onlocaltrack(track, true);
-				} catch(e) {};
+				} catch(e) {
+					Janus.error(e);
+				};
 			}
 		}
 		// Create offer/answer now
@@ -1992,7 +2002,9 @@ function Janus(gatewayCallbacks) {
 					config.myStream.removeTrack(s);
 					try {
 						pluginHandle.onlocaltrack(s, false);
-					} catch(e) {};
+					} catch(e) {
+						Janus.error(e);
+					};
 					try {
 						s.stop();
 					} catch(e) {};
@@ -2022,7 +2034,9 @@ function Janus(gatewayCallbacks) {
 					config.myStream.removeTrack(s);
 					try {
 						pluginHandle.onlocaltrack(s, false);
-					} catch(e) {};
+					} catch(e) {
+						Janus.error(e);
+					};
 					try {
 						s.stop();
 					} catch(e) {};
