@@ -6419,7 +6419,7 @@ static void *janus_videoroom_handler(void *data) {
 					GList *temp = participant->streams;
 					while(temp) {
 						janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
-						gboolean mid_found = (mid && send && strcasecmp(ps->mid, mid));
+						gboolean mid_found = (mid && send && !strcasecmp(ps->mid, mid));
 						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (audio || mid_found)) {
 							gboolean audio_active = mid_found ? json_is_true(send) : json_is_true(audio);
 							if(!ps->active && audio_active) {
