@@ -29,6 +29,8 @@
 general: {
 	#admin_key = "supersecret"		# If set, rooms can be created via API only
 									# if this key is provided in the request
+	#lock_rtp_forward = true		# Whether the admin_key above should be
+									# enforced for RTP forwarding requests too
 	#record_tmp_ext = "tmp"			# Optional temporary extension to add to filenames
 									# while recording: e.g., setting "tmp" would mean
 									# .wav --> .wav.tmp until the file is closed

@@ -323,6 +323,10 @@ error:
 	return -1;
 }
 
+/* Versioning info ( */
+const char *janus_get_ssl_version(void) {
+	return OPENSSL_VERSION_TEXT;
+}
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint timeout) {

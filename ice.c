@@ -835,6 +835,121 @@ void janus_ice_deinit(void) {
 #endif
 }
 
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr) {
+	if(!addr || !public_addr)
+		return -1;
+	/* Test the STUN server */
+	StunAgent stun;
+	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
+	StunMessage msg;
+	uint8_t buf[1500];
+	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
+	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
+	/* Use the janus_network_address info to drive the socket creation */
+	int fd = socket(addr->family, SOCK_DGRAM, 0);
+	if(fd < 0) {
+		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
+		return -1;
+	}
+	struct sockaddr *address = NULL, *remote = NULL;
+	struct sockaddr_in address4, remote4;
+	struct sockaddr_in6 address6, remote6;
+	socklen_t addrlen = 0;
+	if(addr->family == AF_INET) {
+		memset(&address4, 0, sizeof(address4));
+		address4.sin_family = AF_INET;
+		address4.sin_port = 0;
+		address4.sin_addr.s_addr = INADDR_ANY;
+		memset(&remote4, 0, sizeof(remote4));
+		remote4.sin_family = AF_INET;
+		remote4.sin_port = htons(port);
+		memcpy(&remote4.sin_addr, &addr->ipv4, sizeof(addr->ipv4));
+		address = (struct sockaddr *)(&address4);
+		remote = (struct sockaddr *)(&remote4);
+		addrlen = sizeof(remote4);
+	} else if(addr->family == AF_INET6) {
+		memset(&address6, 0, sizeof(address6));
+		address6.sin6_family = AF_INET6;
+		address6.sin6_port = 0;
+		address6.sin6_addr = in6addr_any;
+		memset(&remote6, 0, sizeof(remote6));
+		remote6.sin6_family = AF_INET6;
+		remote6.sin6_port = htons(port);
+		memcpy(&remote6.sin6_addr, &addr->ipv6, sizeof(addr->ipv6));
+		remote6.sin6_addr = addr->ipv6;
+		address = (struct sockaddr *)(&address6);
+		remote = (struct sockaddr *)(&remote6);
+		addrlen = sizeof(remote6);
+	}
+	if(bind(fd, address, addrlen) < 0) {
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		close(fd);
+		return -1;
+	}
+	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
+	if(bytes < 0) {
+		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
+		close(fd);
+		return -1;
+	}
+	JANUS_LOG(LOG_VERB, "  >> Sent %d bytes, waiting for reply...\n", bytes);
+	struct timeval timeout;
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(fd, &readfds);
+	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
+	timeout.tv_usec = 0;
+	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
+	if(err < 0) {
+		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
+		close(fd);
+		return -1;
+	}
+	if(!FD_ISSET(fd, &readfds)) {
+		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
+		close(fd);
+		return -1;
+	}
+	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
+	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
+	close(fd);
+	if(bytes < 0) {
+		JANUS_LOG(LOG_FATAL, "Failed to receive STUN\n");
+		return -1;
+	}
+	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
+		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
+		return -1;
+	}
+	StunClass class = stun_message_get_class(&msg);
+	StunMethod method = stun_message_get_method(&msg);
+	if(class != STUN_RESPONSE || method != STUN_BINDING) {
+		JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
+		return -1;
+	}
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
+	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
+	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
+			return -1;
+		}
+		return 0;
+	}
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
+	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
+	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
+			return -1;
+		}
+		return 0;
+	}
+	/* No usable attribute? */
+	JANUS_LOG(LOG_ERR, "No XOR-MAPPED-ADDRESS or MAPPED-ADDRESS...\n");
+	return -1;
+}
+
 int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */
@@ -861,122 +976,19 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	}
 	janus_stun_port = stun_port;
 	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
+
 	/* Test the STUN server */
-	StunAgent stun;
-	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
-	StunMessage msg;
-	uint8_t buf[1500];
-	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
-	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
-	/* Use the janus_network_address info to drive the socket creation */
-	int fd = socket(addr.family, SOCK_DGRAM, 0);
-	if(fd < 0) {
-		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
+	janus_network_address public_addr;
+	if(janus_ice_test_stun_server(&addr, janus_stun_port, &public_addr) < 0)
+		return -1;
+	if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
+		JANUS_LOG(LOG_ERR, "Could not resolve public address...\n");
 		return -1;
 	}
-	struct sockaddr *address = NULL, *remote = NULL;
-	struct sockaddr_in address4, remote4;
-	struct sockaddr_in6 address6, remote6;
-	socklen_t addrlen = 0;
-	if(addr.family == AF_INET) {
-		memset(&address4, 0, sizeof(address4));
-		address4.sin_family = AF_INET;
-		address4.sin_port = 0;
-		address4.sin_addr.s_addr = INADDR_ANY;
-		memset(&remote4, 0, sizeof(remote4));
-		remote4.sin_family = AF_INET;
-		remote4.sin_port = htons(janus_stun_port);
-		memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
-		address = (struct sockaddr *)(&address4);
-		remote = (struct sockaddr *)(&remote4);
-		addrlen = sizeof(remote4);
-	} else if(addr.family == AF_INET6) {
-		memset(&address6, 0, sizeof(address6));
-		address6.sin6_family = AF_INET6;
-		address6.sin6_port = 0;
-		address6.sin6_addr = in6addr_any;
-		memset(&remote6, 0, sizeof(remote6));
-		remote6.sin6_family = AF_INET6;
-		remote6.sin6_port = htons(janus_stun_port);
-		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
-		remote6.sin6_addr = addr.ipv6;
-		address = (struct sockaddr *)(&address6);
-		remote = (struct sockaddr *)(&remote6);
-		addrlen = sizeof(remote6);
-	}
-	if(bind(fd, address, addrlen) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
-		close(fd);
-		return -1;
-	}
-	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
-	if(bytes < 0) {
-		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
-		close(fd);
-		return -1;
-	}
-	JANUS_LOG(LOG_VERB, "  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
-	struct timeval timeout;
-	fd_set readfds;
-	FD_ZERO(&readfds);
-	FD_SET(fd, &readfds);
-	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
-	timeout.tv_usec = 0;
-	int err = select(fd+1, &readfds, NULL, NULL, &timeout);
-	if(err < 0) {
-		JANUS_LOG(LOG_FATAL, "Error waiting for a response to our STUN BINDING test: %d (%s)\n", errno, strerror(errno));
-		close(fd);
-		return -1;
-	}
-	if(!FD_ISSET(fd, &readfds)) {
-		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
-		close(fd);
-		return -1;
-	}
-	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
-	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
-		close(fd);
-		return -1;
-	}
-	StunClass class = stun_message_get_class(&msg);
-	StunMethod method = stun_message_get_method(&msg);
-	if(class != STUN_RESPONSE || method != STUN_BINDING) {
-		JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
-		close(fd);
-		return -1;
-	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
-	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
-				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
-		} else {
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
-			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-			janus_set_public_ip(public_ip);
-		}
-		close(fd);
-		return 0;
-	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
-	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
-	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
-				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
-		} else {
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
-			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-			janus_set_public_ip(public_ip);
-		}
-		close(fd);
-		return 0;
-	}
-	close(fd);
-	return -1;
+	const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+	JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+	janus_set_public_ip(public_ip);
+	return 0;
 }
 
 int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd) {
@@ -3376,7 +3388,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
 	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, rtp_range_min, rtp_range_max);
 #endif
-	nice_agent_gather_candidates(handle->agent, handle->stream_id);
+	if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_refcount_decrease(&handle->ref);
+		return -1;
+	}
 	nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop),
 		janus_ice_cb_nice_recv, component);
 #ifdef HAVE_TURNRESTAPI
@@ -4319,6 +4336,28 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
 	janus_ice_relay_rtcp_internal(handle, video, buf, len, TRUE);
+	/* If this is a PLI and we're simulcasting, send a PLI on other layers as well */
+	if(janus_rtcp_has_pli(buf, len)) {
+		janus_ice_stream *stream = handle->stream;
+		if(stream == NULL)
+			return;
+		if(stream->video_ssrc_peer[1]) {
+			char plibuf[12];
+			memset(plibuf, 0, 12);
+			janus_rtcp_pli((char *)&plibuf, 12);
+			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+				stream->video_ssrc, stream->video_ssrc_peer[1]);
+			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+		}
+		if(stream->video_ssrc_peer[2]) {
+			char plibuf[12];
+			memset(plibuf, 0, 12);
+			janus_rtcp_pli((char *)&plibuf, 12);
+			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
+				stream->video_ssrc, stream->video_ssrc_peer[2]);
+			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+		}
+	}
 }
 
 #ifdef HAVE_SCTP

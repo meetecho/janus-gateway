@@ -25,6 +25,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <poll.h>
+#ifdef HAVE_TURNRESTAPI
+#include <curl/curl.h>
+#endif
 
 #include "janus.h"
 #include "version.h"
@@ -147,6 +150,13 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"filename", JSON_STRING, 0},
 	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter resaddr_parameters[] = {
+	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter teststun_parameters[] = {
+	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -222,6 +232,8 @@ static gboolean accept_new_sessions = TRUE;
 #define DEFAULT_CANDIDATES_TIMEOUT		45
 static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
+/* By default we list dependencies details, but some may prefer not to */
+static gboolean hide_dependencies = FALSE;
 
 /* Information */
 static json_t *janus_info(const char *transaction) {
@@ -271,6 +283,23 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "opaqueid_in_api", janus_is_opaqueid_in_api_enabled() ? json_true() : json_false());
+	/* Dependencies */
+	if(!hide_dependencies) {
+		json_t *deps = json_object();
+		char glib2_version[20];
+		g_snprintf(glib2_version, sizeof(glib2_version), "%d.%d.%d", glib_major_version, glib_minor_version, glib_micro_version);
+		json_object_set_new(deps, "glib2", json_string(glib2_version));
+		json_object_set_new(deps, "jansson", json_string(JANSSON_VERSION));
+		json_object_set_new(deps, "libnice", json_string(libnice_version_string));
+		json_object_set_new(deps, "libsrtp", json_string(srtp_get_version_string()));
+	#ifdef HAVE_TURNRESTAPI
+		curl_version_info_data *curl_version = curl_version_info(CURLVERSION_NOW);
+		if(curl_version && curl_version->version)
+			json_object_set_new(deps, "libcurl", json_string(curl_version->version));
+	#endif
+		json_object_set_new(deps, "crypto", json_string(janus_get_ssl_version()));
+		json_object_set_new(info, "dependencies", deps);
+	}
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -1249,6 +1278,8 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Check if the RTP Stream ID extension is being negotiated */
 					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
 					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
+					/* Check if the frame marking ID extension is being negotiated */
+					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
 					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
@@ -1356,6 +1387,8 @@ int janus_process_incoming_request(janus_request *request) {
 							json_array_append_new(ssrcs, json_integer(handle->stream->video_ssrc_peer[2]));
 						json_object_set_new(simulcast, "ssrcs", ssrcs);
 					}
+					if(handle->stream->framemarking_ext_id > 0)
+						json_object_set_new(simulcast, "framemarking-ext", json_integer(handle->stream->framemarking_ext_id));
 					json_object_set_new(body_jsep, "simulcast", simulcast);
 				}
 			}
@@ -1692,6 +1725,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		if(!strcasecmp(message_text, "info")) {
 			/* The generic info request */
 			ret = janus_process_success(request, janus_info(transaction_text));
+			goto jsondone;
+		}
+		if(!strcasecmp(message_text, "ping")) {
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("pong", 0, transaction_text);
+			ret = janus_process_success(request, reply);
 			goto jsondone;
 		}
 		if(admin_api_secret != NULL) {
@@ -2073,6 +2112,88 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "resolve_address")) {
+			/* Helper method to evaluate whether this instance can resolve an address, and how soon */
+			JANUS_VALIDATE_JSON_OBJECT(root, resaddr_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *address = json_string_value(json_object_get(root, "address"));
+			/* Resolve the address */
+			gint64 start = janus_get_monotonic_time();
+			struct addrinfo *res = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
+					janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", address);
+				if(res)
+					freeaddrinfo(res);
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve address");
+				goto jsondone;
+			}
+			gint64 end = janus_get_monotonic_time();
+			freeaddrinfo(res);
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "ip", json_string(janus_network_address_string_from_buffer(&addr_buf)));
+			json_object_set_new(reply, "elapsed", json_integer(end-start));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "test_stun")) {
+			/* Helper method to evaluate whether this instance can use STUN with a specific server */
+			JANUS_VALIDATE_JSON_OBJECT(root, teststun_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *address = json_string_value(json_object_get(root, "address"));
+			uint16_t port = json_integer_value(json_object_get(root, "port"));
+			/* Resolve the address */
+			gint64 start = janus_get_monotonic_time();
+			struct addrinfo *res = NULL;
+			janus_network_address addr;
+			janus_network_address_string_buffer addr_buf;
+			if(getaddrinfo(address, NULL, NULL, &res) != 0 ||
+					janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+					janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", address);
+				if(res)
+					freeaddrinfo(res);
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve address");
+				goto jsondone;
+			}
+			freeaddrinfo(res);
+			/* Test the STUN server */
+			janus_network_address public_addr;
+			if(janus_ice_test_stun_server(&addr, port, &public_addr) < 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"STUN request failed");
+				goto jsondone;
+			}
+			if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text,
+					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve public address");
+				goto jsondone;
+			}
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			gint64 end = janus_get_monotonic_time();
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "public_ip", json_string(public_ip));
+			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3813,6 +3934,11 @@ gint main(int argc, char *argv[])
 	} else {
 		janus_recorder_init(FALSE, NULL);
 	}
+
+	/* Check if we should hide dependencies in "info" requests */
+	item = janus_config_get(config, config_general, janus_config_type_item, "hide_dependencies");
+	if(item && item->value && janus_is_true(item->value))
+		hide_dependencies = TRUE;
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;

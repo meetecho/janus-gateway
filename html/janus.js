@@ -2568,7 +2568,7 @@ function Janus(gatewayCallbacks) {
 				}
 				Janus.log("Offer ready");
 				Janus.debug(callbacks);
-				callbacks.success(jsep);
+				callbacks.success(offer);
 			}, callbacks.error);
 	}
 
@@ -2775,7 +2775,7 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
-				callbacks.success(jsep);
+				callbacks.success(answer);
 			}, callbacks.error);
 	}
 
