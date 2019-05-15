@@ -3354,8 +3354,9 @@ ldd janus | grep asan
  *    born, the architecture we chose for it and so on. As such, it should
  *    be a useful starting point for whoever is interested in learning
  *    what Janus can do and how to use it.\n\n
- *    There are several videos available that you can find online, here
- *    are some of them as quick pointers:
+ *    There are several videos available that you can find online (most of the slides
+ *    available on <a href="https://www.slideshare.net/LorenzoMiniero/">SlideShare</a>),
+ *    here are some of them as quick pointers:
  *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">vuc485</a>,
  *    <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">vuc584</a>
  *    and <a href="https://www.youtube.com/watch?v=XnQ7ECOpRIU">vuc640</a> (last one more focused on IETF remote participation);
