@@ -6817,7 +6817,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(changes == 0) {
 					janus_mutex_unlock(&subscriber->streams_mutex);
 					/* Nothing changes, don't do anything */
-					JANUS_LOG(LOG_WARN, "No unsubscription done, skipping renegotiation\n");
+					JANUS_LOG(LOG_WARN, "No subscription done, skipping renegotiation\n");
 					janus_videoroom_message_free(msg);
 					/* Decrease the references we took before */
 					while(publishers) {
