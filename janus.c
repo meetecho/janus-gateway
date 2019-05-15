@@ -232,9 +232,12 @@ static gboolean accept_new_sessions = TRUE;
 #define DEFAULT_CANDIDATES_TIMEOUT		45
 static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
+<<<<<<< HEAD
 /* By default we list dependencies details, but some may prefer not to */
 static gboolean hide_dependencies = FALSE;
 
+=======
+>>>>>>> fddef3266ebad895dda8e6af9737dd22bae6320a
 /* WebRTC encryption is obviously enabled by default. In the rare cases
  * you want to disable it for debugging purposes, though, you can do
  * that either via command line (-w) or in the main configuration file */
