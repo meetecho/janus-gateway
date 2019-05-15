@@ -5112,6 +5112,9 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 					} else {
 						port = sin_port;
 					}
+				} else if(port + 1 > max_port) {
+					close(fds->fd);
+					is_port_found = FALSE;
 				}
 				
 				if(is_port_found) {
@@ -5129,10 +5132,6 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		}
 
 		if(is_port_found) {
-			if(!should_select_random_port && port + 1 > max_port) {
-				JANUS_LOG(LOG_ERR, "[%s] Bind failed for port range %u-%u\n", name, min_port, max_port);
-				return -1;
-			}
 			JANUS_LOG(LOG_INFO, "[%s] Will use client ports %u and %u\n", name, port, port+1);
 			break;
 		}
