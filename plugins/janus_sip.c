@@ -3435,7 +3435,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callid = NULL;
 				g_free(session->transaction);
 				session->transaction = NULL;
-				gateway->close_pc(session->handle);
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
+					gateway->close_pc(session->handle);
 			}
 			break;
 		case nua_i_terminated:
