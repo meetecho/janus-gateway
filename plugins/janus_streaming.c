@@ -6102,9 +6102,9 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			if(stream->codecs.pt == -1)
 				stream->codecs.pt = vpt;
 			g_free(stream->codecs.rtpmap);
-			stream->codecs.rtpmap = source->rtsp_vcodecs.rtpmap ? g_strdup(source->rtsp_vcodecs.rtpmap) : g_strdup(artpmap);
+			stream->codecs.rtpmap = source->rtsp_vcodecs.rtpmap ? g_strdup(source->rtsp_vcodecs.rtpmap) : g_strdup(vrtpmap);
 			g_free(stream->codecs.fmtp);
-			stream->codecs.fmtp = source->rtsp_vcodecs.fmtp ? g_strdup(source->rtsp_vcodecs.fmtp) : g_strdup(afmtp);
+			stream->codecs.fmtp = source->rtsp_vcodecs.fmtp ? g_strdup(source->rtsp_vcodecs.fmtp) : g_strdup(vfmtp);
 			g_free(source->rtsp_vhost);
 			source->rtsp_vhost = vsport > 0 ? g_strdup(vhost) : NULL;
 			stream->fd[0] = video_fds.fd;
@@ -6174,12 +6174,13 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	while(temp) {
 		janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
 		if(stream->remote_port > 0 && stream->fd[0] >= 0) {
+			char *host = (stream->type == JANUS_STREAMING_MEDIA_AUDIO) ? source->rtsp_ahost : source->rtsp_vhost;
 			JANUS_LOG(LOG_VERB, "RTSP %s latching: %s:%d\n",
-				janus_streaming_media_str(stream->type), source->rtsp_ahost, stream->remote_port);
-			janus_streaming_rtsp_latch(stream->fd[0], source->rtsp_ahost, stream->remote_port, &remote);
+				janus_streaming_media_str(stream->type), host, stream->remote_port);
+			janus_streaming_rtsp_latch(stream->fd[0], host, stream->remote_port, &remote);
 			if(stream->remote_rtcp_port > 0 && stream->rtcp_fd >= 0) {
-				JANUS_LOG(LOG_VERB, "  -- RTCP: %s:%d\n", source->rtsp_ahost, stream->remote_rtcp_port);
-				janus_streaming_rtsp_latch(stream->rtcp_fd, source->rtsp_ahost,
+				JANUS_LOG(LOG_VERB, "  -- RTCP: %s:%d\n", host, stream->remote_rtcp_port);
+				janus_streaming_rtsp_latch(stream->rtcp_fd, host,
 					stream->remote_rtcp_port, &stream->rtcp_addr);
 			}
 		}
