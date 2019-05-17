@@ -332,6 +332,8 @@ struct janus_ice_handle {
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
+	volatile gint closepc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */

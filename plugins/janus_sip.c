@@ -727,6 +727,7 @@ typedef struct janus_sip_session {
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	GThread *relayer_thread;
+	volatile gint establishing, established;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1549,6 +1550,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
+	g_atomic_int_set(&session->establishing, 0);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	su_home_init(session->stack->s_home);
@@ -1627,6 +1630,8 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	json_object_set_new(info, "establishing", json_integer(g_atomic_int_get(&session->establishing)));
+	json_object_set_new(info, "established", json_integer(g_atomic_int_get(&session->established)));
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -1673,6 +1678,8 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	g_atomic_int_set(&session->established, 1);
+	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
@@ -1935,17 +1942,36 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall)) {
+		g_atomic_int_set(&session->establishing, 0);
+		g_atomic_int_set(&session->established, 0);
 		g_atomic_int_set(&session->hangingup, 0);
 		return;
 	}
-	/* FIXME Simulate a "hangup" coming from the browser */
-	janus_refcount_increase(&session->ref);
-	janus_sip_message *msg = g_malloc(sizeof(janus_sip_message));
-	msg->handle = handle;
-	msg->message = json_pack("{ss}", "request", "hangup");
-	msg->transaction = NULL;
-	msg->jsep = NULL;
-	g_async_queue_push(messages, msg);
+	/* Involve SIP if needed */
+	if(session->stack->s_nh_i != NULL && session->callee != NULL) {
+		/* Send a BYE */
+		session->media.earlymedia = FALSE;
+		session->media.update = FALSE;
+		session->media.autoaccept_reinvites = TRUE;
+		session->media.ready = FALSE;
+		session->media.on_hold = FALSE;
+		session->status = janus_sip_call_status_closing;
+		nua_bye(session->stack->s_nh_i, TAG_END());
+		g_free(session->callee);
+		session->callee = NULL;
+		/* Notify the operation */
+		json_t *event = json_object();
+		json_object_set_new(event, "sip", json_string("event"));
+		json_t *result = json_object();
+		json_object_set_new(result, "event", json_string("hangingup"));
+		json_object_set_new(event, "result", result);
+		json_object_set_new(event, "call_id", json_string(session->callid));
+		int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event, NULL);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+		json_decref(event);
+	}
+	g_atomic_int_set(&session->establishing, 0);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -2579,6 +2605,7 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
+			g_atomic_int_set(&session->establishing, 1);
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -3408,7 +3435,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callid = NULL;
 				g_free(session->transaction);
 				session->transaction = NULL;
-				gateway->close_pc(session->handle);
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
+					gateway->close_pc(session->handle);
 			}
 			break;
 		case nua_i_terminated:
@@ -3442,41 +3470,52 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
-			gboolean reinvite = FALSE;
-			if(session->stack->s_nh_i != NULL) {
+			gboolean reinvite = FALSE, busy = FALSE;
+			if(session->stack->s_nh_i == NULL) {
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+					/* Still busy establishing another call (or maybe still cleaning up the previous call) */
+					busy = TRUE;
+				}
+			} else {
 				if(session->stack->s_nh_i == nh) {
 					/* re-INVITE, we'll check what changed later */
 					reinvite = TRUE;
 					JANUS_LOG(LOG_VERB, "Got a re-INVITE...\n");
 				} else if(session->status >= janus_sip_call_status_inviting) {
 					/* Busy with another call */
-					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
-					nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
-					/* Notify the web app about the missed invite */
-					json_t *missed = json_object();
-					json_object_set_new(missed, "sip", json_string("event"));
-					json_t *result = json_object();
-					json_object_set_new(result, "event", json_string("missed_call"));
-					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-					json_object_set_new(result, "caller", json_string(caller_text));
-					if(sip->sip_from && sip->sip_from->a_display) {
-						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
-					}
-					json_object_set_new(missed, "result", result);
-					json_object_set_new(missed, "call_id", json_string(session->callid));
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
-					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-					json_decref(missed);
-					/* Also notify event handlers */
-					if(notify_events && gateway->events_is_enabled()) {
-						json_t *info = json_object();
-						json_object_set_new(info, "event", json_string("missed_call"));
-						json_object_set_new(info, "caller", json_string(caller_text));
-						gateway->notify_event(&janus_sip_plugin, session->handle, info);
-					}
-					su_free(session->stack->s_home, caller_text);
-					break;
+					busy = TRUE;
 				}
+			}
+			if(busy) {
+				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
+				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				/* Notify the web app about the missed invite */
+				json_t *missed = json_object();
+				json_object_set_new(missed, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("missed_call"));
+				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+				json_object_set_new(result, "caller", json_string(caller_text));
+				if(sip->sip_from && sip->sip_from->a_display) {
+					json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
+				}
+				json_object_set_new(missed, "result", result);
+				json_object_set_new(missed, "call_id", json_string(session->callid));
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(missed);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("missed_call"));
+					json_object_set_new(info, "caller", json_string(caller_text));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
+				su_free(session->stack->s_home, caller_text);
+				break;
+			}
+			if(!reinvite) {
+				g_atomic_int_set(&session->establishing, 1);
 			}
 			/* Check if there's an SDP to process */
 			janus_sdp *sdp = NULL;
@@ -3487,6 +3526,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp = janus_sdp_parse(sip->sip_payload->pl_data, sdperror, sizeof(sdperror));
 				if(!sdp) {
 					JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
+					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 					break;
 				}
@@ -3515,12 +3555,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 				/* Check if offer has neither audio nor video, fail with 488 */
 				if(!session->media.has_audio && !session->media.has_video) {
+					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 					janus_sdp_destroy(sdp);
 					break;
 				}
 				/* Also fail with 488 if there's no remote IP address that can be used for RTP */
 				if(!session->media.remote_ip) {
+					g_atomic_int_set(&session->establishing, 0);
 					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 					janus_sdp_destroy(sdp);
 					break;

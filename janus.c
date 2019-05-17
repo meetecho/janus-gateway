@@ -3322,7 +3322,7 @@ static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
 	/* We actually enforce the close_pc here */
 	janus_plugin_session *plugin_session = (janus_plugin_session *) user_data;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-	if(!ice_handle) {
+	if(!ice_handle || !g_atomic_int_compare_and_exchange(&ice_handle->closepc, 1, 0)) {
 		janus_refcount_decrease(&plugin_session->ref);
 		return G_SOURCE_REMOVE;
 	}
@@ -3345,6 +3345,9 @@ static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
 void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection: enqueue it as a timed source */
 	if(!janus_plugin_session_is_alive(plugin_session))
+		return;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!ice_handle || !g_atomic_int_compare_and_exchange(&ice_handle->closepc, 0, 1))
 		return;
 	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);
