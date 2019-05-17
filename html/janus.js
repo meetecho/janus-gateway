@@ -265,7 +265,7 @@ Janus.init = function(options) {
 		Janus.listDevices = function(callback, config) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
 			if (config == null) config = { audio: true, video: true };
-			if(navigator.mediaDevices) {
+			if(Janus.isGetUserMediaAvailable()) {
 				navigator.mediaDevices.getUserMedia(config)
 				.then(function(stream) {
 					navigator.mediaDevices.enumerateDevices().then(function(devices) {
@@ -382,8 +382,11 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
-		navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
+	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null;
+};
+// Helper method to check whether devices can be accessed by this browser (e.g., not possible via plain HTTP)
+Janus.isGetUserMediaAvailable = function() {
+	return navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
 		navigator.mediaDevices.getUserMedia !== undefined && navigator.mediaDevices.getUserMedia !== null;
 };
 
@@ -2047,6 +2050,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
+			if(!Janus.isGetUserMediaAvailable()) {
+				callbacks.error("getUserMedia not available");
+				return;
+			}
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
 			var audioSupport = isAudioSendEnabled(media);
