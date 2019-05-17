@@ -1074,7 +1074,8 @@ typedef struct janus_streaming_mountpoint {
 GHashTable *mountpoints;
 janus_mutex mountpoints_mutex;
 static char *admin_key = NULL;
-static char *rtsp_client_port_range = NULL;
+static uint16_t rtsp_client_min_port = 0;
+static uint16_t rtsp_client_max_port = 0;
 
 typedef struct janus_streaming_helper {
 	janus_streaming_mountpoint *mp;
@@ -1239,6 +1240,40 @@ static void janus_streaming_message_free(janus_streaming_message *msg) {
 	g_free(msg);
 }
 
+static void janus_streaming_rtsp_parse_client_port_range(char *range_str) {
+	if(range_str == NULL || strlen(range_str) == 0) {
+		return;
+	}
+
+	uint16_t min_port = 0x400, max_port = 0xFFFF;
+	/* Split in min and max port */
+	char *tmp_str = g_strdup(range_str);
+	char *dash_pos = strrchr(tmp_str, '-');
+	if(dash_pos == NULL) {
+		min_port = atoi(tmp_str);
+	} else {
+		*dash_pos = '\0';
+		dash_pos++;
+		max_port = atoi(dash_pos);
+		min_port = atoi(tmp_str);
+	}
+	g_free(tmp_str);
+
+	if(min_port > max_port) {
+		uint16_t temp_port = min_port;
+		min_port = max_port;
+		max_port = temp_port;
+	}
+	if(min_port == 0)
+		min_port = 0x400;
+	if(max_port == 0)
+		max_port = 0xFFFF;
+
+	rtsp_client_min_port = min_port;
+	rtsp_client_max_port = max_port;
+	JANUS_LOG(LOG_INFO, "RTSP client port range: %u -- %u\n", rtsp_client_min_port, rtsp_client_max_port);
+}
+
 
 /* Helper method to send an RTCP PLI */
 static void janus_streaming_rtcp_pli_send(janus_streaming_rtp_source *source) {
@@ -1365,8 +1400,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_STREAMING_NAME);
 		}
 		janus_config_item *rtsp_port_range_key = janus_config_get(config, config_general, janus_config_type_item, "rtsp_client_port_range");
-		if(rtsp_port_range_key != NULL && rtsp_port_range_key->value != NULL)
-			rtsp_client_port_range = g_strdup(rtsp_port_range_key->value);
+		if(rtsp_port_range_key != NULL && rtsp_port_range_key->value != NULL 
+		   && rtsp_client_min_port == 0 && rtsp_client_max_port == 0)
+			janus_streaming_rtsp_parse_client_port_range(rtsp_port_range_key->value);
+
 		/* Iterate on all mountpoints */
 		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
@@ -1873,7 +1910,6 @@ void janus_streaming_destroy(void) {
 
 	janus_config_destroy(config);
 	g_free(admin_key);
-	g_free(rtsp_client_port_range);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -5017,6 +5053,66 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
+static int janus_streaming_rtsp_bind_client_ports(in_addr_t mcast, const janus_network_address *iface, 
+        const char *name, const char *media, multiple_fds *fds, uint16_t *rtp_port, uint16_t *rtcp_port) {
+	gboolean should_select_random_port = rtsp_client_min_port == 0 && rtsp_client_max_port == 0;
+	uint16_t port = rtsp_client_min_port;
+	struct sockaddr_in address;
+	socklen_t len = sizeof(address);
+	/* loop until can bind two adjacent ports for RTP and RTCP */
+	do {
+		if(should_select_random_port) {
+			port = 0;
+		} else if (port >= rtsp_client_max_port) {
+			break;
+		}
+
+		fds->fd = janus_streaming_create_fd(port, mcast, iface, media, media, name);
+		if(fds->fd < 0) {
+			port++;
+			continue;
+		}
+		if(getsockname(fds->fd, (struct sockaddr *)&address, &len) < 0) {
+			close(fds->fd);
+			if(should_select_random_port) {
+				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
+				return -1;
+			}
+			port++;
+			continue;
+		} 
+		if(should_select_random_port) {
+			uint16_t sin_port = ntohs(address.sin_port);
+			if(sin_port & 1) {
+				close(fds->fd);
+				continue;
+			} 
+			port = sin_port;
+		} 
+		
+		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
+		if(fds->rtcp_fd < 0) {
+			close(fds->fd);
+			port += 2;
+			continue;
+		} 
+		if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
+			close(fds->fd);
+			close(fds->rtcp_fd);
+			port += 2;
+			continue;
+		} 
+
+		JANUS_LOG(LOG_INFO, "[%s] Will use client ports %u and %u\n", name, port, port+1);
+		*rtp_port = port;
+		*rtcp_port = port + 1;
+		return 0;
+	} while(TRUE);
+	
+	JANUS_LOG(LOG_ERR, "[%s] Bind failed for port range %u-%u\n", name, rtsp_client_min_port, rtsp_client_max_port);
+	return -1;
+}
+
 static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
 		char *transport, char *host, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
 	char pattern[256];
@@ -5058,98 +5154,12 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		}
 	}
 
-	gboolean should_select_random_port = rtsp_client_port_range == NULL || strlen(rtsp_client_port_range) == 0;
-	uint16_t min_port = 0x400, max_port = 0xFFFF;
-	if(!should_select_random_port) {
-		/* Split in min and max port */
-		char *tmp_str = g_strdup(rtsp_client_port_range);
-		char *dash_pos = strrchr(tmp_str, '-');
-		if(dash_pos == NULL) {
-			min_port = atoi(tmp_str);
-		} else {
-			*dash_pos = '\0';
-			dash_pos++;
-			max_port = atoi(dash_pos);
-			min_port = atoi(tmp_str);
-		}
-		g_free(tmp_str);
+	uint16_t rtp_port, rtcp_port;
+	if(janus_streaming_rtsp_bind_client_ports(mcast, iface, name, media, fds, &rtp_port, &rtcp_port) < 0)
+		return -1;
 
-		if(min_port > max_port) {
-			uint16_t temp_port = min_port;
-			min_port = max_port;
-			max_port = temp_port;
-		}
-		if(min_port == 0)
-			min_port = 0x400;
-		if(max_port == 0)
-			max_port = 0xFFFF;
-		JANUS_LOG(LOG_INFO, "RTSP client port range: %u -- %u\n", min_port, max_port);
-	}
-	uint16_t port = should_select_random_port ? 0 : min_port;
-	struct sockaddr_in address;
-	socklen_t len = sizeof(address);
-	/* loop until can bind two adjacent ports for RTP and RTCP */
-	gboolean is_port_found;
-	do {
-		is_port_found = TRUE;
-		fds->fd = janus_streaming_create_fd(should_select_random_port ? 0 : port, mcast, iface, media, media, name);
-		if(fds->fd < 0) {
-			is_port_found = FALSE;
-		} else {
-			if(getsockname(fds->fd, (struct sockaddr *)&address, &len) < 0) {
-				close(fds->fd);
-				if(should_select_random_port) {
-					JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
-					return -1;
-				}
-				is_port_found = FALSE;
-			} else {
-				if(should_select_random_port) {
-					uint16_t sin_port = ntohs(address.sin_port);
-					if(sin_port & 1) {
-						close(fds->fd);
-						is_port_found = FALSE;
-					} else {
-						port = sin_port;
-					}
-				} else if(port + 1 > max_port) {
-					close(fds->fd);
-					is_port_found = FALSE;
-				}
-				
-				if(is_port_found) {
-					fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
-					if(fds->rtcp_fd < 0) {
-						close(fds->fd);
-						is_port_found = FALSE;
-					} else if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
-						close(fds->fd);
-						close(fds->rtcp_fd);
-						is_port_found = FALSE;
-					}
-				}
-			}
-		}
-
-		if(is_port_found) {
-			JANUS_LOG(LOG_INFO, "[%s] Will use client ports %u and %u\n", name, port, port+1);
-			break;
-		}
-		
-		if(!should_select_random_port) {
-			port += 2;
-			if(port >= max_port) {
-				JANUS_LOG(LOG_ERR, "[%s] Bind failed for port range %u-%u\n", name, min_port, max_port);
-				return -1;
-			}
-		}
-	} while(!is_port_found);
-
-	if(IN_MULTICAST(ntohl(mcast))) {
-		g_snprintf(transport, 1024, "RTP/AVP/UDP;multicast;client_port=%u-%u", port, port+1);
-	} else {
-		g_snprintf(transport, 1024, "RTP/AVP/UDP;unicast;client_port=%u-%u", port, port+1);
-	}
+	g_snprintf(transport, 1024, "RTP/AVP/UDP;%s;client_port=%u-%u", 
+	           IN_MULTICAST(ntohl(mcast)) ? "multicast" : "unicast", rtp_port, rtcp_port);
 
 	return 0;
 }
