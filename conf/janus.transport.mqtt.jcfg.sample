@@ -35,3 +35,17 @@ admin: {
 	publish_topic = "from-janus-admin"	# Topic for outgoing admin messages
 	#publish_qos = 1					# QoS for outgoing admin messages
 }
+
+status: {
+	enabled = false 			# Whether status messages must be enabled (default: false)
+
+	# Initial message sent to status topic. Nothing is being sent if not set.
+	#connect_message = "{\"online\": true}"
+
+	# Message sent after disconnect or as LWT. Nothing is being sent if not set.
+	#disconnect_message = "{\"online\": false}"
+
+	#topic = "status"			# Status topic (default: "status")
+	#qos = 1			      	# QoS for status messages (default: 1)
+	#retain = false		    # Whether status messages should be retained (default: false)
+}
