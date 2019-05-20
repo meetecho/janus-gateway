@@ -647,7 +647,7 @@ void janus_ice_resend_trickles(janus_ice_handle *handle);
 
 
 /*! \brief Method to configure the static event loops mechanism at startup
- * @note Check the \c event_loops property in the \c janus.cfg configuration
+ * @note Check the \c event_loops property in the \c janus.jcfg configuration
  * for an explanation of this feature, and the possible impact on Janus and users
  * @param[in] loops The number of static event loops to start (0 to disable the feature) */
 void janus_ice_set_static_event_loops(int loops);

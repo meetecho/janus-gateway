@@ -228,7 +228,7 @@ static gboolean accept_new_sessions = TRUE;
  * to avoid leaks or orphaned media details. This means that, if for instance
  * you're trying to set up a call with someone, and that someone only answers
  * a minute later, the candidates you sent initially will be discarded and
- * the call will fail. You can modify the default value in janus.cfg */
+ * the call will fail. You can modify the default value in janus.jcfg */
 #define DEFAULT_CANDIDATES_TIMEOUT		45
 static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
