@@ -1305,6 +1305,7 @@ static void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) 
 void janus_handle_webrtc_hangup(janus_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
+	g_atomic_int_set(&handle->closepc, 0);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALERT);
@@ -3017,6 +3018,7 @@ int janus_handle_setup_local(janus_handle *handle, gboolean offer, gboolean tric
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting ICE locally: got %s)\n",
 		handle->handle_id, offer ? "OFFER" : "ANSWER");
+	g_atomic_int_set(&handle->closepc, 0);
 	janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_HAS_AGENT);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_START);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEGOTIATED);

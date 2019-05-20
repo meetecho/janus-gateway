@@ -3352,6 +3352,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(stream->fd[0] != -1) {
 					json_object_set_new(info, "port", json_integer(stream->port[0]));
 				}
+				if(stream->rtcp_fd != -1) {
+					json_object_set_new(info, "rtcp_port", json_integer(stream->rtcp_port));
+				}
 				if(stream->fd[1] != -1) {
 					json_object_set_new(info, "port_2", json_integer(stream->port[1]));
 				}
@@ -5507,6 +5510,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "mp-%"SCNu64, id);
+	} else if(atoi(name) != 0) {
+		JANUS_LOG(LOG_VERB, "Names can't start with a number, prefixing it...\n");
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	if(!media || g_list_length(media) == 0) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint, no audio, video or data have to be streamed...\n");
@@ -5697,6 +5705,10 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	if(!name) {
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "mp-%"SCNu64, file_source->id);
+	} else if(atoi(name) != 0) {
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	file_source->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -6237,6 +6249,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "%"SCNu64, id);
+	} else if(atoi(name) != 0) {
+		JANUS_LOG(LOG_VERB, "Names can't start with a number, prefixing it...\n");
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	char *sourcename =  g_strdup(name ? name : tempname);
 	char *description = NULL;

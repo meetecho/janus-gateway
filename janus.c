@@ -228,7 +228,7 @@ static gboolean accept_new_sessions = TRUE;
  * to avoid leaks or orphaned media details. This means that, if for instance
  * you're trying to set up a call with someone, and that someone only answers
  * a minute later, the candidates you sent initially will be discarded and
- * the call will fail. You can modify the default value in janus.cfg */
+ * the call will fail. You can modify the default value in janus.jcfg */
 #define DEFAULT_CANDIDATES_TIMEOUT		45
 static uint candidates_timeout = DEFAULT_CANDIDATES_TIMEOUT;
 
@@ -3288,7 +3288,7 @@ static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
 	/* We actually enforce the close_pc here */
 	janus_plugin_session *plugin_session = (janus_plugin_session *) user_data;
 	janus_handle *handle = (janus_handle *)plugin_session->gateway_handle;
-	if(!handle) {
+	if(!handle || !g_atomic_int_compare_and_exchange(&handle->closepc, 1, 0)) {
 		janus_refcount_decrease(&plugin_session->ref);
 		return G_SOURCE_REMOVE;
 	}
@@ -3311,6 +3311,9 @@ static gboolean janus_plugin_close_pc_internal(gpointer user_data) {
 void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection: enqueue it as a timed source */
 	if(!janus_plugin_session_is_alive(plugin_session))
+		return;
+	janus_handle *handle = (janus_handle *)plugin_session->gateway_handle;
+	if(!handle || !g_atomic_int_compare_and_exchange(&handle->closepc, 0, 1))
 		return;
 	janus_refcount_increase(&plugin_session->ref);
 	GSource *timeout_source = g_timeout_source_new_seconds(0);

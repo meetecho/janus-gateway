@@ -332,6 +332,8 @@ struct janus_handle {
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
+	volatile gint closepc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
@@ -639,7 +641,7 @@ void janus_handle_resend_trickles(janus_handle *handle);
 
 
 /*! \brief Method to configure the static event loops mechanism at startup
- * @note Check the \c event_loops property in the \c janus.cfg configuration
+ * @note Check the \c event_loops property in the \c janus.jcfg configuration
  * for an explanation of this feature, and the possible impact on Janus and users
  * @param[in] loops The number of static event loops to start (0 to disable the feature) */
 void janus_ice_set_static_event_loops(int loops);

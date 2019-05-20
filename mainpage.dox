@@ -1109,7 +1109,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
  *
  * \section root The server root
  * The server root is \c /janus by default but, as anticipated, it is
- * configurable, either via command line or in the \c janus.cfg configuration.
+ * configurable, either via command line or in the \c janus.jcfg configuration.
  *
  * You can only contact the server root when you want to create a new
  * session with the server. To do so, you need to \b POST the a \c janus "create"
@@ -1849,7 +1849,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * known to Janus, the request will be accepted, otherwise it will be
  * rejected as an \c unauthorized response. Configuring the token based
  * authentication mechanism is easy enough: you can do that either via
- * the command line (\c -A or \c --token-auth ) or in the \c janus.cfg
+ * the command line (\c -A or \c --token-auth ) or in the \c janus.jcfg
  * configuration (\c token_auth value in the \c general section).
  *
  * These tokens are completely opaque to Janus, meaning they can be
@@ -2015,7 +2015,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * in general, as above (\c -A or \c --token-auth) and specifying an encryption
  * secret using \c --token-auth-secret. The same can be accomplished using
  * \c token_auth and \c token_auth_secret in the \c general section of
- * \c janus.cfg.
+ * \c janus.jcfg.
  *
  * With Signed token support enabled, dynamic token creation via the \ref admin
  * is not supported. Instead, Janus will look for tokens with a format like:
@@ -2092,7 +2092,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  *
  * Configuring the API secret mechanism is easy enough: you can do that
  * either via the command line (\c -a or \c --apisecret ) or in the
- * \c janus.cfg configuration (\c api_secret value in the \c general section).
+ * \c janus.jcfg configuration (\c api_secret value in the \c general section).
  * When enabled, all requests addressed to that Janus instance \b MUST
  * also contain an \c apisecret field in the Janus message headers. For
  * instance, this message presented above would fail:
@@ -2148,7 +2148,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * plugins, for instance, while additional, third party plugins may choose
  * to expose the functionality without requiring any tweaking. As to the
  * existing transport, you can enable the admin API by editing the \c [ \c admin \c ]
- * section in the related transport configuration file (e.g., \c janus.transport.http.cfg
+ * section in the related transport configuration file (e.g., \c janus.transport.http.jcfg
  * for the REST interface, to use the admin API over HTTP). The configuration
  * is pretty much the same as the one for the Janus API. In addition, you
  * can configure restrictions in the form of a password/secret that clients
@@ -2200,7 +2200,7 @@ POST /admin
 {
 	"janus" : "list_sessions",
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2228,7 +2228,7 @@ POST /admin/12345678
 {
 	"janus" : "list_handles",
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2257,7 +2257,7 @@ POST /admin/12345678/98765432
 {
 	"janus" : "handle_info",
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2327,7 +2327,7 @@ POST /admin/12345678/98765432
 	"filename" : "<filename of the dump; optional, random filename if missing>",
 	"truncate" : "<number of bytes to truncate packet at; optional, truncate=0 (don't truncate) if missing>",
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2340,7 +2340,7 @@ POST /admin/12345678/98765432
 {
 	"janus" : "stop_pcap",		// Use stop_text2pcap if you started a text-based capture
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2353,7 +2353,7 @@ POST /admin
 	"janus" : "set_log_level",
 	"level" : <integer between 0 and 7, see debug.h>,
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2363,7 +2363,7 @@ POST /admin
 	"janus" : "set_locking_debug",
 	"debug" : <0 to disable, 1 to enable>,
 	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.cfg, if any>"
+	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
  *
@@ -2643,7 +2643,7 @@ var servers = [ws_server, http_server];
  * argument, and Janus will be daemonized. Just beware, though, that
  * since this results in stdout/stdin/stderr being closed, you MUST
  * specify a log file for Janus to use, either via command line (\c -L
- * or \c --log-file ) or in \c janus.cfg.
+ * or \c --log-file ) or in \c janus.jcfg.
  *
  * \section bg Running in background
  * Another simple way to run Janus in the background is to just append the
@@ -3355,8 +3355,9 @@ ldd janus | grep asan
  *    born, the architecture we chose for it and so on. As such, it should
  *    be a useful starting point for whoever is interested in learning
  *    what Janus can do and how to use it.\n\n
- *    There are several videos available that you can find online, here
- *    are some of them as quick pointers:
+ *    There are several videos available that you can find online (most of the slides
+ *    available on <a href="https://www.slideshare.net/LorenzoMiniero/">SlideShare</a>),
+ *    here are some of them as quick pointers:
  *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">vuc485</a>,
  *    <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">vuc584</a>
  *    and <a href="https://www.youtube.com/watch?v=XnQ7ECOpRIU">vuc640</a> (last one more focused on IETF remote participation);
@@ -3367,6 +3368,7 @@ ldd janus | grep asan
  *    - Presentation on Event Handlers at <a href="https://www.youtube.com/watch?v=UT9CDhoHL_Q">FOSDEM 2017</a>;
  *    - Presentation on different SIP options in Janus at <a href="https://www.youtube.com/watch?v=anmyMC6Ovl8&t=25112s">OpenSIPS 2017</a>;
  *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>;
+ *    - Presentation on SIP, WebRTC and Asterisk at <a href="https://www.youtube.com/watch?v=IaPDufOzVek">Astricon 2017</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=cSV0X1JgcKY">WebRTC Rockstars Tour (Singapore)</a>;
  *    - Presentation at <a href="https://youtu.be/dsVDzh9sS1A?t=51m00s">WebRTC Meetup Tokyo #17</a> (in Japanese);
  *    - Interview on the origins of Janus, at <a href="http://www.allthingsrtc.org/2017/10/30/lorenzo-miniero-creator-janus/">AllThingRTC.org</a>;
@@ -3375,7 +3377,9 @@ ldd janus | grep asan
  *    - Presentation on Security, Authentication and Privacy in WebRTC, at <a href="https://www.youtube.com/watch?v=ewNJMci62rs">Kamailio World 2018</a>;
  *    - Presentation on Janus and Scalability, at <a href="https://www.youtube.com/watch?v=zxRwELmyWU0">CommCon 2018</a>;
  *    - Interview on Janus, at <a href="https://www.youtube.com/watch?v=dzQhyw1jiaA">ClueCon Weekly</a>;
- *    - Presentation at <a href="https://vimeo.com/303014581">Voip2day 2018</a> (here for the <a href="https://vimeo.com/302814764">Spanish version</a>). \n\n
+ *    - Presentation at <a href="https://vimeo.com/303014581">Voip2day 2018</a> (here for the <a href="https://vimeo.com/302814764">Spanish version</a>);
+ *    - Presentation on Janus and SIP at <a href="https://www.youtube.com/watch?v=beHHL0Ew5xY">OpenSIPS 2019</a>;
+ *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>. \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
@@ -3681,7 +3685,7 @@ ldd janus | grep asan
  * \anchor turn
  * -# <b>I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</b>\n
  *    .
- *    As explained in the \c janus.cfg documentation, the TURN settings you
+ *    As explained in the \c janus.jcfg documentation, the TURN settings you
  *    configure there refer to Janus \b itself, \b not the clients that make use
  *    of its services. This means that, whether you configure a static TURN
  *    server and the related credentials, or the REST API client stack to
