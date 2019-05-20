@@ -295,7 +295,7 @@ $(document).ready(function() {
 										stream.addTrack(track.clone());
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
-										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#screencapture').append('<video class="rounded centered" id="screenvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#screenvideo' + trackId).get(0), stream);
 									}
 									if(screentest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -595,7 +595,7 @@ function newRemoteFeed(id, display) {
 					stream.addTrack(track.clone());
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
-					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#screencapture').append('<video class="rounded centered" id="screenvideo' + mid + '" width=100% autoplay playsinline/>');
 					Janus.attachMediaStream($('#screenvideo' + mid).get(0), stream);
 				}
 			},
