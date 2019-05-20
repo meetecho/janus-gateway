@@ -2556,7 +2556,7 @@ static json_t *janus_videoroom_subscriber_streams_summary(janus_videoroom_subscr
 		json_object_set_new(m, "send", stream->send ? json_true() : json_false());
 		if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
 			json_object_set_new(m, "sources", json_integer(g_slist_length(stream->publisher_streams)));
-		} else if(ps && stream->type == JANUS_VIDEOROOM_MEDIA_DATA) {
+		} else if(ps && stream->type != JANUS_VIDEOROOM_MEDIA_DATA) {
 			if(ps->publisher) {
 				json_object_set_new(m, "feed_id", json_integer(ps->publisher->user_id));
 				if(ps->publisher->display)
