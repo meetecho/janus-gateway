@@ -3706,7 +3706,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 		}
 	}
 	/* Now let's see if we need to notify the user about no incoming audio or video */
-	if(no_media_timer > 0 && component->dtls->dtls_connected > 0 && (now - component->dtls->dtls_connected >= G_USEC_PER_SEC)) {
+	if(no_media_timer > 0 && component->dtls && component->dtls->dtls_connected > 0 && (now - component->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 		/* Audio */
 		gint64 last = component->in_stats.audio.updated;
 		if(!component->in_stats.audio.notified_lastsec && last &&
