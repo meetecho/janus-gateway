@@ -1389,7 +1389,17 @@ void janus_handle_webrtc_destroy(janus_handle_webrtc *pc) {
 	g_hash_table_remove_all(pc->media_byssrc);
 	g_hash_table_remove_all(pc->media_bymid);
 	g_hash_table_remove_all(pc->media_bytype);
-	//~ janus_dtls_srtp_destroy(pc->dtls);
+	/* Get rid of the DTLS stack */
+	if(pc->dtlsrt_source != NULL) {
+		g_source_destroy(pc->dtlsrt_source);
+		g_source_unref(pc->dtlsrt_source);
+		pc->dtlsrt_source = NULL;
+	}
+	if(pc->dtls != NULL) {
+		janus_dtls_srtp_destroy(pc->dtls);
+		janus_refcount_decrease(&pc->dtls->ref);
+		pc->dtls = NULL;
+	}
 	janus_handle *handle = pc->handle;
 	if(handle != NULL) {
 		janus_refcount_decrease(&handle->ref);
@@ -1410,16 +1420,6 @@ static void janus_handle_webrtc_free(const janus_refcount *pc_ref) {
 		g_source_destroy(pc->icestate_source);
 		g_source_unref(pc->icestate_source);
 		pc->icestate_source = NULL;
-	}
-	if(pc->dtlsrt_source != NULL) {
-		g_source_destroy(pc->dtlsrt_source);
-		g_source_unref(pc->dtlsrt_source);
-		pc->dtlsrt_source = NULL;
-	}
-	if(pc->dtls != NULL) {
-		janus_dtls_srtp_destroy(pc->dtls);
-		janus_refcount_decrease(&pc->dtls->ref);
-		pc->dtls = NULL;
 	}
 	g_free(pc->remote_hashing);
 	pc->remote_hashing = NULL;
