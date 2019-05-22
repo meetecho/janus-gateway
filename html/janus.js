@@ -924,6 +924,9 @@ function Janus(gatewayCallbacks) {
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
+		var cleanupHandles = false;
+		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
+			cleanupHandles = (callbacks.cleanupHandles === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the server down? (connected=false)");
@@ -937,7 +940,10 @@ function Janus(gatewayCallbacks) {
 				gatewayCallbacks.destroyed();
 			return;
 		}
-		delete Janus.sessions[sessionId];
+		if(cleanupHandles) {
+			for(var handleId in pluginHandles)
+				destroyHandle(handleId, { noRequest: true });
+		}
 		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
@@ -1522,11 +1528,20 @@ function Janus(gatewayCallbacks) {
 		var asyncRequest = true;
 		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
 			asyncRequest = (callbacks.asyncRequest === true);
+		var noRequest = true;
+		if(callbacks.noRequest !== undefined && callbacks.noRequest !== null)
+			noRequest = (callbacks.noRequest === true);
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined || pluginHandle.detached) {
 			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
+			delete pluginHandles[handleId];
+			callbacks.success();
+			return;
+		}
+		if(noRequest) {
+			// We're only removing the handle locally
 			delete pluginHandles[handleId];
 			callbacks.success();
 			return;
