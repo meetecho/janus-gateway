@@ -3472,7 +3472,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			gboolean reinvite = FALSE, busy = FALSE;
 			if(session->stack->s_nh_i == NULL) {
-				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established) || session->relayer_thread != NULL) {
 					/* Still busy establishing another call (or maybe still cleaning up the previous call) */
 					busy = TRUE;
 				}
