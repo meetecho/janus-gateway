@@ -3674,7 +3674,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
 	/* Make sure we're not in a call already */
-	if(session->stack.sess != NULL || g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established)) {
+	if(session->stack.sess != NULL || g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established) || session->relayer_thread != NULL) {
 		/* Already in a call */
 		JANUS_LOG(LOG_VERB, "Already in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, session));
