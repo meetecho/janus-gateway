@@ -192,9 +192,8 @@ $(document).ready(function() {
 											if(spinner !== null && spinner !== undefined)
 												spinner.stop();
 											spinner = null;
-											$('#myvideo').remove();
+											$('video').remove();
 											$('#waitingvideo').remove();
-											$('#peervideo').remove();
 											$('#toggleaudio').attr('disabled', true);
 											$('#togglevideo').attr('disabled', true);
 											$('#bitrate').attr('disabled', true);
@@ -346,7 +345,8 @@ $(document).ready(function() {
 										stream.addTrack(track.clone());
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote audio stream:", stream);
-										$('#videoright').append('<audio class="hide" id="peervideo' + mid + '" autoplay playsinline/>');
+										if($('#peervideo'+mid).length === 0)
+											$('#videoright').append('<audio class="hide" id="peervideo' + mid + '" autoplay playsinline/>');
 										Janus.attachMediaStream($('#peervideo' + mid).get(0), stream);
 										if(remoteVideos === 0) {
 											// No video, at least for now: show a placeholder
@@ -366,7 +366,8 @@ $(document).ready(function() {
 										stream.addTrack(track.clone());
 										remoteTracks[mid] = stream;
 										Janus.log("Created remote video stream:", stream);
-										$('#videoright').append('<video class="rounded centered" id="peervideo' + mid + '" width=320 height=240 autoplay playsinline/>');
+										if($('#peervideo'+mid).length === 0)
+											$('#videoright').append('<video class="rounded centered" id="peervideo' + mid + '" width=320 height=240 autoplay playsinline/>');
 										Janus.attachMediaStream($('#peervideo' + mid).get(0), stream);
 										// Note: we'll need this for additional videos too
 										if(!bitrateTimer) {
