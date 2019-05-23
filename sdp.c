@@ -364,6 +364,13 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 				rfingerprint = NULL;
 				return -2;
 			}
+			/* If we received the ICE credentials for the first time, enforce them */
+			if(ruser && !stream->ruser && rpass && !stream->rpass) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting remote credentials...\n", handle->handle_id);
+				if(!nice_agent_set_remote_credentials(handle->agent, handle->stream_id, ruser, rpass)) {
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote credentials!\n", handle->handle_id);
+				}
+			} else
 			/* If this is a renegotiation, check if this is an ICE restart */
 			if((ruser && stream->ruser && strcmp(ruser, stream->ruser)) ||
 					(rpass && stream->rpass && strcmp(rpass, stream->rpass))) {
