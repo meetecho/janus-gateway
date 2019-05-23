@@ -812,10 +812,14 @@ static void janus_websockets_destroy_client(
 		janus_websockets_client *ws_client,
 		struct lws *wsi,
 		const char *log_prefix) {
-	if(!ws_client || !g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1))
+	if(!ws_client)
 		return;
-	/* Cleanup */
 	janus_mutex_lock(&ws_client->ts->mutex);
+	if(!g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1)) {
+		janus_mutex_unlock(&ws_client->ts->mutex);
+		return;
+	}
+	/* Cleanup */
 	JANUS_LOG(LOG_INFO, "[%s-%p] Destroying WebSocket client\n", log_prefix, wsi);
 	ws_client->wsi = NULL;
 	/* Notify handlers about this transport being gone */
