@@ -1210,6 +1210,8 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 						}
 					}
 				}
+				if(session)
+					janus_refcount_increase(&session->ref);
 				janus_mutex_unlock(&sessions_mutex);
 				if(session) {
 					/* Notify event handlers about the content of the whole outgoing SIP message */
@@ -1217,6 +1219,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 					json_object_set_new(info, "event", json_string("sip-out"));
 					json_object_set_new(info, "sip", json_string(sofia_log));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+					janus_refcount_decrease(&session->ref);
 				} else {
 					JANUS_LOG(LOG_WARN, "Couldn't find a session associated to this message, dropping it...\n%s", sofia_log);
 				}
