@@ -104,6 +104,7 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean ws_janus_api_enabled = FALSE;
 static gboolean ws_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
+static janus_mutex writable_mutex;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -767,6 +768,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	}
 	ws_janus_api_enabled = wss || swss;
 	ws_admin_api_enabled = admin_wss || admin_swss;
+	janus_mutex_init(&writable_mutex);
 
 	g_atomic_int_set(&initialized, 1);
 
@@ -905,7 +907,9 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
+	janus_mutex_lock(&writable_mutex);
 	lws_callback_on_writable(client->wsi);
+	janus_mutex_unlock(&writable_mutex);
 	janus_mutex_unlock(&transport->mutex);
 	json_decref(message);
 	return 0;
