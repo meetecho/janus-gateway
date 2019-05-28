@@ -1161,7 +1161,7 @@ int janus_process_incoming_request(janus_request *request) {
 			type = NULL;
 			gboolean do_trickle = TRUE;
 			json_t *jsep_trickle = json_object_get(jsep, "trickle");
-			do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
+			do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : FALSE;
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);

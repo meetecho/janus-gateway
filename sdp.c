@@ -1342,8 +1342,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		g_free(ufrag);
 		g_free(password);
-		a = janus_sdp_attribute_create("ice-options", "trickle");
-		m->attributes = g_list_insert_before(m->attributes, first, a);
+		if (janus_ice_is_full_trickle_enabled()) {
+			a = janus_sdp_attribute_create("ice-options", "trickle");
+			m->attributes = g_list_insert_before(m->attributes, first, a);
+		}
 		if(janus_is_webrtc_encryption_enabled()) {
 			a = janus_sdp_attribute_create("fingerprint", "sha-256 %s", janus_dtls_get_local_fingerprint());
 			m->attributes = g_list_insert_before(m->attributes, first, a);
