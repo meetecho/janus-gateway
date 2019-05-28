@@ -34,7 +34,7 @@ void my_free_function(janus_refcount *counter);
  * retrieving the pointer to the object to free is up to you, using the
  * janus_refcount_containerof macro. This is an example of how the
  * free function we have defined above may be implemented:
- * 
+ *
 \verbatim
 typedef my_struct {
 	int number;
@@ -53,7 +53,7 @@ void my_free_function(janus_refcount *counter) {
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_REFCOUNT_H
 #define _JANUS_REFCOUNT_H
 
@@ -74,7 +74,7 @@ extern int refcount_debug;
 
 
 /*! \brief Janus reference counter structure */
-typedef struct janus_refcount janus_refcount; 
+typedef struct janus_refcount janus_refcount;
 struct janus_refcount {
 	/*! \brief The reference counter itself */
 	gint count;

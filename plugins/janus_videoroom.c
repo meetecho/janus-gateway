@@ -1858,8 +1858,10 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 
 static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward) {
 	if(forward && g_atomic_int_compare_and_exchange(&forward->destroyed, 0, 1)) {
-		if(forward->rtcp_fd > -1)
+		if(forward->rtcp_fd > -1) {
 			g_source_destroy((GSource *)forward);
+			janus_refcount_decrease(&forward->ref);
+		}
 		janus_refcount_decrease(&forward->ref);
 	}
 }
