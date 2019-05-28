@@ -713,6 +713,9 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 	if(!json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
 		JANUS_LOG(LOG_VERB, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+		
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] No more remote candidates for handle Ensure that connectivity check is on...\n", handle->handle_id);
+		janus_ice_setup_remote_candidates(handle, handle->stream_id, 1);
 	} else {
 		/* Handle remote candidate */
 		json_t *mid = json_object_get(candidate, "sdpMid");
