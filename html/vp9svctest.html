@@ -60,9 +60,12 @@
 						you have a single stream with multiple layers, which makes it more efficient,
 						especially because it consumes much less bandwidth.</p>
 						<p>Notice that this only works if the publishers joining the room will use a recent
-						Chrome version that has been started with the following flag:</p>
+						Chrome version that has been started either with the following flag:</p>
 						<p><div class="alert alert-info"><code>--force-fieldtrials=WebRTC-SupportVP9SVC/EnabledByFlag_2SL3TL/</code></div></p>
-						<p>If you join with a Chrome that doesn't have that option set, or with
+						<p>to configure VP9 SVC to only use two spatial layers, or:</p>
+						<p><div class="alert alert-info"><code>--force-fieldtrials=WebRTC-SupportVP9SVC/EnabledByFlag_3SL3TL/</code></div></p>
+						<p>to test three spatial layers instead.
+						If you join with a Chrome that doesn't have one of those options set, or with
 						another browser, you'll be able to select a layer, but all request to set
 						a custom layer on your video will fail, meaning you'll act as a plain VP9 client.
 						If you ask for a layer from a publisher that doesn't support VP9 SVC either,

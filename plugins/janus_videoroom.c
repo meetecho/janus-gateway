@@ -841,7 +841,7 @@ room-<unique room ID>: {
 	"offer_data" : <true|false; whether or not datachannels should be negotiated; true by default if the publisher has datachannels>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
-	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
+	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
 }
 \endverbatim
@@ -954,7 +954,7 @@ room-<unique room ID>: {
 	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
-	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
+	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
 }
 \endverbatim
@@ -5098,7 +5098,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Check if a VP9 SVC-related request is involved */
 					if(subscriber->room->do_svc) {
 						subscriber->spatial_layer = -1;
-						subscriber->target_spatial_layer = spatial ? json_integer_value(spatial) : 1;
+						subscriber->target_spatial_layer = spatial ? json_integer_value(spatial) : 2;
 						subscriber->temporal_layer = -1;
 						subscriber->target_temporal_layer = temporal ? json_integer_value(temporal) : 2;
 					}
@@ -5575,7 +5575,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(spatial) {
 						int spatial_layer = json_integer_value(spatial);
 						if(spatial_layer > 1) {
-							JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
+							JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, it will be ignored if using EnabledByFlag_2SL3TL\n");
 						}
 						if(spatial_layer == subscriber->spatial_layer) {
 							/* No need to do anything, we're already getting the right spatial layer, so notify the user */
@@ -5788,7 +5788,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* This subscriber belongs to a room where VP9 SVC has been enabled,
 					 * let's assume we're interested in all layers for the time being */
 					subscriber->spatial_layer = -1;
-					subscriber->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
+					subscriber->target_spatial_layer = 2;		/* FIXME Chrome sends 0, 1 and 2 (if using EnabledByFlag_3SL3TL) */
 					subscriber->temporal_layer = -1;
 					subscriber->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
 				}
