@@ -79,6 +79,8 @@ function randomString(len) {
 
 // Server info
 function updateServerInfo() {
+	plugins = [];
+	pluginsIndex = [];
 	$.ajax({
 		type: 'GET',
 		url: server + "/info",
@@ -106,7 +108,25 @@ function updateServerInfo() {
 			delete json.plugins;
 			delete json.transports;
 			delete json.events;
+			$('#server-details').empty();
 			for(var k in json) {
+				if(k === "dependencies") {
+					$('#server-deps').html(
+						'<tr>' +
+						'	<th>Library</th>' +
+						'	<th>Version</th>' +
+						'</tr>'
+					);
+					for(var ln in json[k]) {
+						$('#server-deps').append(
+							'<tr>' +
+							'	<td>' + ln + '</td>' +
+							'	<td>' + json[k][ln] + '</td>' +
+							'</tr>'
+						);
+					}
+					continue;
+				}
 				var v = json[k];
 				$('#server-details').append(
 					'<tr>' +
@@ -114,6 +134,15 @@ function updateServerInfo() {
 					'	<td>' + v + '</td>' +
 					'</tr>');
 			}
+			$('#server-plugins').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
+			$('#plugins-list').empty();
 			for(var p in pluginsJson) {
 				plugins.push(p);
 				var v = pluginsJson[p];
@@ -138,6 +167,14 @@ function updateServerInfo() {
 					resetPluginRequest();
 				});
 			}
+			$('#server-transports').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
 			for(var t in transportsJson) {
 				var v = transportsJson[t];
 				$('#server-transports').append(
@@ -148,6 +185,14 @@ function updateServerInfo() {
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
 			}
+			$('#server-handlers').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
 			for(var e in eventsJson) {
 				var v = eventsJson[e];
 				$('#server-handlers').append(
