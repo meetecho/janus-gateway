@@ -1159,8 +1159,6 @@ plugin_response:
 
 json_t *janus_textroom_handle_admin_message(json_t *message) {
 	/* Some requests (e.g., 'create' and 'destroy') can be handled via Admin API */
-	if(message == NULL)
-		return NULL;
 	int error_code = 0;
 	char error_cause[512];
 	json_t *response = NULL;
