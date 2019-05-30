@@ -1060,9 +1060,14 @@ json_t *janus_recordplay_handle_admin_message(json_t *message) {
 	char error_cause[512];
 	json_t *response = NULL;
 
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
 	json_t *request = json_object_get(message, "request");
 	const char *request_text = json_string_value(request);
-	if(request_text != NULL && !strcasecmp(request_text, "update")) {
+	if(!strcasecmp(request_text, "update")) {
 		/* Update list of available recordings, scanning the folder again */
 		janus_recordplay_update_recordings_list();
 		/* Send info back */

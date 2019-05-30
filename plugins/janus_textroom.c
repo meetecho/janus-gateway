@@ -1163,13 +1163,18 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 	char error_cause[512];
 	json_t *response = NULL;
 
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
 	json_t *request = json_object_get(message, "textroom");
 	const char *request_text = json_string_value(request);
-	if(request_text != NULL && (!strcasecmp(request_text, "list")
+	if(!strcasecmp(request_text, "list")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
-			|| !strcasecmp(request_text, "destroy"))) {
+			|| !strcasecmp(request_text, "destroy")) {
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(NULL, NULL, message, FALSE);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");

@@ -3609,12 +3609,14 @@ json_t *janus_streaming_handle_admin_message(json_t *message) {
 	char error_cause[512];
 	json_t *response = NULL;
 
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
 	json_t *request = json_object_get(message, "request");
 	const char *request_text = json_string_value(request);
-	if(request_text == NULL) {
-		error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-		g_snprintf(error_cause, 512, "Missing mandatory element (request)");
-	} else if((response = janus_streaming_process_synchronous_request(NULL, message))  != NULL) {
+	if((response = janus_streaming_process_synchronous_request(NULL, message)) != NULL) {
 		/* We got a response, send it back */
 		goto admin_response;
 	} else {
