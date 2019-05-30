@@ -211,6 +211,7 @@ const char *janus_duktape_get_author(void);
 const char *janus_duktape_get_package(void);
 void janus_duktape_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_duktape_handle_admin_message(json_t *message);
 void janus_duktape_setup_media(janus_plugin_session *handle);
 void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -236,6 +237,7 @@ static janus_plugin janus_duktape_plugin =
 
 		.create_session = janus_duktape_create_session,
 		.handle_message = janus_duktape_handle_message,
+		.handle_admin_message = janus_duktape_handle_admin_message,
 		.setup_media = janus_duktape_setup_media,
 		.incoming_rtp = janus_duktape_incoming_rtp,
 		.incoming_rtcp = janus_duktape_incoming_rtcp,
@@ -280,6 +282,7 @@ static gboolean has_get_author = FALSE;
 static char *duktape_script_author = NULL;
 static gboolean has_get_package = FALSE;
 static char *duktape_script_package = NULL;
+static gboolean has_handle_admin_message = FALSE;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
@@ -1375,6 +1378,9 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_get_global_string(duktape_ctx, "getPackage");
 	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
 		has_get_package = TRUE;
+	duk_get_global_string(duktape_ctx, "handleAdminMessage");
+	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
+		has_handle_admin_message = TRUE;
 	duk_get_global_string(duktape_ctx, "incomingRtp");
 	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
 		has_incoming_rtp = TRUE;
@@ -1952,6 +1958,41 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 	duk_pop(duktape_ctx);
 	janus_mutex_unlock(&duktape_mutex);
 	return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Duktape error", NULL);
+}
+
+json_t *janus_duktape_handle_admin_message(json_t *message) {
+	if(!has_handle_admin_message || message == NULL)
+		return NULL;
+	char *message_text = message ? json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
+	/* Invoke the script function */
+	janus_mutex_lock(&duktape_mutex);
+	duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
+	duk_context *t = duk_get_context(duktape_ctx, thr_idx);
+	duk_get_global_string(t, "handleAdminMessage");
+	duk_push_string(t, message_text);
+	int res = duk_pcall(t, 1);
+	if(res != DUK_EXEC_SUCCESS) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(t, -1));
+		duk_pop(t);
+		duk_pop(duktape_ctx);
+		janus_mutex_unlock(&duktape_mutex);
+		return NULL;
+	}
+	if(message_text != NULL)
+		free(message_text);
+	/* Get the response */
+	const char *response = duk_get_string(t, 0);
+	json_error_t error;
+	json_t *json = json_loads(response, 0, &error);
+	duk_pop(t);
+	duk_pop(duktape_ctx);
+	janus_mutex_unlock(&duktape_mutex);
+	if(!json) {
+		JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+		return NULL;
+	}
+	return json;
 }
 
 void janus_duktape_setup_media(janus_plugin_session *handle) {
