@@ -141,6 +141,10 @@ static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
+static struct janus_json_parameter messageplugin_parameters[] = {
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request", JSON_OBJECT, 0}
+};
 static struct janus_json_parameter customevent_parameters[] = {
 	{"schema", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -1968,6 +1972,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "accept", accept_new_sessions ? json_true() : json_false());
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "message_plugin")) {
+			/* Contact a plugin and expect a response */
+			JANUS_VALIDATE_JSON_OBJECT(root, messageplugin_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *plugin = json_object_get(root, "plugin");
+			const char *plugin_value = json_string_value(plugin);
+			janus_plugin *p = janus_plugin_find(plugin_value);
+			if(p == NULL) {
+				/* No such handler... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Invalid plugin");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, error_cause);
+				goto jsondone;
+			}
+			if(p->handle_admin_message == NULL) {
+				/* Handler doesn't implement the hook... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Plugin doesn't support Admin API messages");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, error_cause);
+				goto jsondone;
+			}
+			json_t *query = json_object_get(root, "request");
+			json_t *response = p->handle_admin_message(query);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "response", response ? response : json_object());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
