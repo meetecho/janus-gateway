@@ -1180,7 +1180,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 		response = result->content;
 		result->content = NULL;
 		janus_plugin_result_destroy(result);
-		return response;
+		goto admin_response;
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_TEXTROOM_ERROR_INVALID_REQUEST;
