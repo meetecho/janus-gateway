@@ -3108,7 +3108,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		gsc = gsc->next;
 	}
 	gint added = nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, component->candidates);
-	if(added < 1 || (guint)added < g_slist_length(component->candidates)) {
+	if(added < 0 || (guint)added < g_slist_length(component->candidates)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-( (added %u, expected %u)\n",
 			handle->handle_id, (guint)added, g_slist_length(component->candidates));
 	} else {
