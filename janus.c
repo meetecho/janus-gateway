@@ -819,9 +819,10 @@ static void janus_request_ice_handle_answer(janus_ice_handle *handle, int audio,
 			janus_ice_trickle_destroy(trickle);
 		}
 	}
+
+	gboolean candidates_found = (handle->stream && handle->stream->component && g_slist_length(handle->stream->component->candidates) > 0);
 	/* This was an answer, check if it's time to start ICE */
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) &&
-		!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) && !candidates_found) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- ICE Trickling is supported by the browser, waiting for remote candidates...\n", handle->handle_id);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START);
 	} else {
