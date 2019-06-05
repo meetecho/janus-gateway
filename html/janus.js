@@ -1677,6 +1677,11 @@ function Janus(gatewayCallbacks) {
 				// For Chrome versions before 72, we force a plan-b semantic, and unified-plan otherwise
 				pc_config["sdpSemantics"] = (Janus.webRTCAdapter.browserDetails.version < 72) ? "plan-b" : "unified-plan";
 			}
+			if(Janus.webRTCAdapter.browserDetails.browser === "safari") {
+				//Safari might have experimental Unified Plan turned on, if its on set semantics to Unified plan if its off use plan-b:
+				pc_config["sdpSemantics"] = (RTCRtpTransceiver.prototype.hasOwnProperty("currentDirection")) ? "unified-plan" : "plan-b";
+				Janus.log("Safari unified plan setting is: " + RTCRtpTransceiver.prototype.hasOwnProperty("currentDirection") + " have set sdpSemantics to " + pc_config["sdpSemantics"]);
+			}
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
 			};
