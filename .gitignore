@@ -45,6 +45,8 @@ Makefile.in
 /events/*.la
 /events/.libs
 /postprocessing/*.o
+/postprocessing/pp-cmdline.c
+/postprocessing/pp-cmdline.h
 /fuzzers/*.a
 /fuzzers/*.o
 /fuzzers/out
