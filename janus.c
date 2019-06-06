@@ -2255,6 +2255,27 @@ int janus_process_incoming_admin_request(janus_request *request) {
 	/* What is this? */
 	if(handle == NULL) {
 		/* Session-related */
+		if(!strcasecmp(message_text, "destroy_session")) {
+			janus_mutex_lock(&sessions_mutex);
+			g_hash_table_remove(sessions, &session->session_id);
+			janus_mutex_unlock(&sessions_mutex);
+			/* Notify the source that the session has been destroyed */
+			if(session->source && session->source->transport) {
+				session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
+			}
+			/* Schedule the session for deletion */
+			janus_session_destroy(session);
+
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			/* Notify event handlers as well */
+			if(janus_events_is_enabled())
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed", NULL);
+			goto jsondone;
+		}
+		/* If this is not a request to destroy a session, it must be a request to list the handles */
 		if(strcasecmp(message_text, "list_handles")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
@@ -2269,7 +2290,35 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	} else {
 		/* Handle-related */
-		if(!strcasecmp(message_text, "start_pcap") || !strcasecmp(message_text, "start_text2pcap")) {
+		if(!strcasecmp(message_text, "detach_handle")) {
+			if(handle->app == NULL || handle->app_handle == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
+				goto jsondone;
+			}
+			int error = janus_session_handles_remove(session, handle);
+			if(error != 0) {
+				/* TODO Make error struct to pass verbose information */
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
+				/* TODO Delete handle instance */
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "hangup_webrtc")) {
+			if(handle->app == NULL || handle->app_handle == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin attached");
+				goto jsondone;
+			}
+			janus_ice_webrtc_hangup(handle, "Admin API");
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "start_pcap") || !strcasecmp(message_text, "start_text2pcap")) {
 			/* Start dumping RTP and RTCP packets to a pcap or text2pcap file */
 			JANUS_VALIDATE_JSON_OBJECT(root, text2pcap_parameters,
 				error_code, error_cause, FALSE,
