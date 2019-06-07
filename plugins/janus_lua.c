@@ -212,6 +212,7 @@ const char *janus_lua_get_author(void);
 const char *janus_lua_get_package(void);
 void janus_lua_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_lua_handle_admin_message(json_t *message);
 void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -237,6 +238,7 @@ static janus_plugin janus_lua_plugin =
 
 		.create_session = janus_lua_create_session,
 		.handle_message = janus_lua_handle_message,
+		.handle_admin_message = janus_lua_handle_admin_message,
 		.setup_media = janus_lua_setup_media,
 		.incoming_rtp = janus_lua_incoming_rtp,
 		.incoming_rtcp = janus_lua_incoming_rtcp,
@@ -280,6 +282,7 @@ static gboolean has_get_author = FALSE;
 static char *lua_script_author = NULL;
 static gboolean has_get_package = FALSE;
 static char *lua_script_package = NULL;
+static gboolean has_handle_admin_message = FALSE;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
@@ -1203,6 +1206,9 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "getPackage");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_get_package = TRUE;
+	lua_getglobal(lua_state, "handleAdminMessage");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_handle_admin_message = TRUE;
 	lua_getglobal(lua_state, "incomingRtp");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtp = TRUE;
@@ -1666,6 +1672,37 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	janus_mutex_unlock(&lua_mutex);
 	/* If we got here, it's an asynchronous response */
 	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
+}
+
+json_t *janus_lua_handle_admin_message(json_t *message) {
+	if(!has_handle_admin_message || message == NULL)
+		return NULL;
+	char *message_text = message ? json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
+	/* Invoke the script function */
+	janus_mutex_lock(&lua_mutex);
+	lua_State *t = lua_newthread(lua_state);
+	lua_getglobal(t, "handleAdminMessage");
+	lua_pushstring(t, message_text);
+	lua_call(t, 1, 1);
+	lua_pop(lua_state, 1);
+	if(message_text != NULL)
+		free(message_text);
+	int n = lua_gettop(t);
+	if(n != 1) {
+		janus_mutex_unlock(&lua_mutex);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)\n", n);
+		return NULL;
+	}
+	/* Get the response */
+	const char *response = lua_tostring(t, 1);
+	json_error_t error;
+	json_t *json = json_loads(response, 0, &error);
+	janus_mutex_unlock(&lua_mutex);
+	if(!json) {
+		JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+		return NULL;
+	}
+	return json;
 }
 
 void janus_lua_setup_media(janus_plugin_session *handle) {

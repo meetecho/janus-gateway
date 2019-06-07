@@ -703,6 +703,7 @@ const char *janus_streaming_get_author(void);
 const char *janus_streaming_get_package(void);
 void janus_streaming_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_streaming_handle_admin_message(json_t *message);
 void janus_streaming_setup_media(janus_plugin_session *handle);
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -727,6 +728,7 @@ static janus_plugin janus_streaming_plugin =
 
 		.create_session = janus_streaming_create_session,
 		.handle_message = janus_streaming_handle_message,
+		.handle_admin_message = janus_streaming_handle_admin_message,
 		.setup_media = janus_streaming_setup_media,
 		.incoming_rtp = janus_streaming_incoming_rtp,
 		.incoming_rtcp = janus_streaming_incoming_rtcp,
@@ -2009,57 +2011,18 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
-struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+/* Helper method to process synchronous requests */
+static json_t *janus_streaming_process_synchronous_request(janus_streaming_session *session, json_t *message) {
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
 
-	/* Pre-parse the message */
+	/* Parse the message */
 	int error_code = 0;
 	char error_cause[512];
 	json_t *root = message;
 	json_t *response = NULL;
 	struct ifaddrs *ifas = NULL;
 
-	janus_mutex_lock(&sessions_mutex);
-	janus_streaming_session *session = janus_streaming_lookup_session(handle);
-	if(!session) {
-		janus_mutex_unlock(&sessions_mutex);
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
-		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
-		goto plugin_response;
-	}
-	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
-	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
-	if(g_atomic_int_get(&session->destroyed)) {
-		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
-		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
-		goto plugin_response;
-	}
-
-	if(message == NULL) {
-		JANUS_LOG(LOG_ERR, "No message??\n");
-		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
-		g_snprintf(error_cause, 512, "%s", "No message??");
-		goto plugin_response;
-	}
-	if(!json_is_object(root)) {
-		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
-		error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
-		g_snprintf(error_cause, 512, "JSON error: not an object");
-		goto plugin_response;
-	}
-	/* Get the request first */
-	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
-		error_code, error_cause, TRUE,
-		JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
-	if(error_code != 0)
-		goto plugin_response;
-	json_t *request = json_object_get(root, "request");
-	/* Some requests ('create' and 'destroy') can be handled synchronously */
-	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")) {
 		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
@@ -2096,7 +2059,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("list"));
 		json_object_set_new(response, "list", list);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "info")) {
 		JANUS_LOG(LOG_VERB, "Request info on a specific mountpoint\n");
 		/* Return info on a specific mountpoint */
@@ -2104,7 +2067,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *id = json_object_get(root, "id");
 		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
@@ -2114,7 +2077,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
 		/* Return more info if the right secret is provided */
@@ -2244,25 +2207,25 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("info"));
 		json_object_set_new(response, "info", ml);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "create")) {
 		/* Create a new stream */
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		if(admin_key != NULL) {
 			/* An admin key was specified: make sure it was provided, and that it's valid */
 			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 		}
 
 		if(getifaddrs(&ifas) == -1) {
@@ -2279,7 +2242,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent mountpoint\n");
 			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't create permanent mountpoint");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_streaming_mountpoint *mp = NULL;
 		if(!strcasecmp(type_text, "rtp")) {
@@ -2289,7 +2252,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			json_t *id = json_object_get(root, "id");
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
@@ -2309,13 +2272,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio, video or data have to be streamed...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, no audio or video have to be streamed...");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			if(ssuite && json_integer_value(ssuite) != 32 && json_integer_value(ssuite) != 80) {
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, invalid SRTP suite...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, invalid SRTP suite...");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			uint16_t aport = 0;
 			uint16_t artcpport = 0;
@@ -2326,7 +2289,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					error_code, error_cause, TRUE,
 					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
-					goto plugin_response;
+					goto prepare_response;
 				json_t *audiomcast = json_object_get(root, "audiomcast");
 				amcast = (char *)json_string_value(audiomcast);
 				json_t *audioport = json_object_get(root, "audioport");
@@ -2347,7 +2310,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for audio...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for audio" : "Unable to query network device information");
-						goto plugin_response;
+						goto prepare_response;
 					}
 				} else {
 					janus_network_address_nullify(&audio_iface);
@@ -2365,7 +2328,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					error_code, error_cause, TRUE,
 					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
-					goto plugin_response;
+					goto prepare_response;
 				json_t *videomcast = json_object_get(root, "videomcast");
 				vmcast = (char *)json_string_value(videomcast);
 				json_t *videoport = json_object_get(root, "videoport");
@@ -2399,7 +2362,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for video...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for video" : "Unable to query network device information");
-						goto plugin_response;
+						goto prepare_response;
 					}
 				} else {
 					janus_network_address_nullify(&video_iface);
@@ -2416,7 +2379,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					error_code, error_cause, TRUE,
 					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
-					goto plugin_response;
+					goto prepare_response;
 #ifdef HAVE_SCTP
 				json_t *dataport = json_object_get(root, "dataport");
 				dport = json_integer_value(dataport);
@@ -2429,7 +2392,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for data" : "Unable to query network device information");
-						goto plugin_response;
+						goto prepare_response;
 					}
 				} else {
 					janus_network_address_nullify(&data_iface);
@@ -2438,7 +2401,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream: no datachannels support...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream: no datachannels support...");
-				goto plugin_response;
+				goto prepare_response;
 #endif
 			}
 			if(id == NULL) {
@@ -2452,7 +2415,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
-					goto plugin_response;
+					goto prepare_response;
 				}
 			}
 			JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
@@ -2472,7 +2435,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'rtp' stream");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "live")) {
@@ -2481,7 +2444,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			json_t *id = json_object_get(root, "id");
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
@@ -2496,21 +2459,21 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, we only support audio file streaming right now...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, we only support audio file streaming right now...");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			char *filename = (char *)json_string_value(file);
 			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			FILE *audiofile = fopen(filename, "rb");
 			if(!audiofile) {
 				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, no such file '%s'...\n", filename);
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, no such file '%s'\n", filename);
-				goto plugin_response;
+				goto prepare_response;
 			}
 			fclose(audiofile);
 			if(id == NULL) {
@@ -2524,7 +2487,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
-					goto plugin_response;
+					goto prepare_response;
 				}
 			}
 			mp = janus_streaming_create_file_source(
@@ -2537,7 +2500,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Error creating 'live' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'live' stream");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "ondemand")) {
@@ -2546,7 +2509,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			json_t *id = json_object_get(root, "id");
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
@@ -2561,21 +2524,21 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, we only support audio file streaming right now...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, we only support audio file streaming right now...");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			char *filename = (char *)json_string_value(file);
 			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
 				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			FILE *audiofile = fopen(filename, "rb");
 			if(!audiofile) {
 				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, no such file '%s'...\n", filename);
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, no such file '%s'\n", filename);
-				goto plugin_response;
+				goto prepare_response;
 			}
 			fclose(audiofile);
 			if(id == NULL) {
@@ -2589,7 +2552,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
-					goto plugin_response;
+					goto prepare_response;
 				}
 			}
 			mp = janus_streaming_create_file_source(
@@ -2602,7 +2565,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'ondemand' stream");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "rtsp")) {
@@ -2610,13 +2573,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Can't create 'rtsp' mountpoint, libcurl support not compiled...\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Can't create 'rtsp' mountpoint, libcurl support not compiled...\n");
-			goto plugin_response;
+			goto prepare_response;
 #else
 			JANUS_VALIDATE_JSON_OBJECT(root, rtsp_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			/* RTSP source*/
 			janus_network_address multicast_iface;
 			json_t *id = json_object_get(root, "id");
@@ -2643,7 +2606,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, no audio or video have to be streamed...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, no audio or video have to be streamed...");
-				goto plugin_response;
+				goto prepare_response;
 			} else {
 				if(iface) {
 					const char *miface = (const char *)json_string_value(iface);
@@ -2651,7 +2614,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', invalid network interface configuration for stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for stream" : "Unable to query network device information");
-						goto plugin_response;
+						goto prepare_response;
 					}
 				} else {
 					janus_network_address_nullify(&multicast_iface);
@@ -2674,7 +2637,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'RTSP' stream");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 #endif
@@ -2682,7 +2645,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Unknown stream type '%s'...\n", type_text);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Any secret? */
 		if(secret)
@@ -2874,16 +2837,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "id", json_integer(mp->id));
 			json_object_set_new(info, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
-			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+			gateway->notify_event(&janus_streaming_plugin, session ? session->handle : NULL, info);
 		}
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "edit")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit an existing streaming mountpoint\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		/* We only allow for a limited set of properties to be edited */
 		json_t *id = json_object_get(root, "id");
 		json_t *desc = json_object_get(root, "new_description");
@@ -2896,7 +2859,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "No configuration file, can't edit mountpoint permanently\n");
 			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't edit mountpoint permanently");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
@@ -2906,7 +2869,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "No such mountpoint (%"SCNu64")\n", mp->id);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint (%"SCNu64")", mp->id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
 		janus_mutex_lock(&mp->mutex);
@@ -2917,7 +2880,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&mp->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			janus_refcount_decrease(&mp->ref);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Edit the mountpoint properties that were provided */
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
@@ -2935,7 +2898,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&mp->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			janus_refcount_decrease(&mp->ref);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		if(secret && strlen(json_string_value(secret)) > 0) {
 			char *old_secret = mp->secret;
@@ -3111,21 +3074,21 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("edited"));
 			json_object_set_new(info, "id", json_integer(mp->id));
-			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+			gateway->notify_event(&janus_streaming_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&mp->mutex);
 		janus_mutex_unlock(&mountpoints_mutex);
 		janus_refcount_decrease(&mp->ref);
 		/* Done */
 		JANUS_LOG(LOG_VERB, "Streaming mountpoint edited\n");
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *id = json_object_get(root, "id");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
@@ -3133,7 +3096,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy mountpoint permanently\n");
 			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't destroy mountpoint permanently");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
@@ -3143,7 +3106,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
 		/* A secret may be required for this action */
@@ -3152,7 +3115,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(error_code != 0) {
 			janus_refcount_decrease(&mp->ref);
 			janus_mutex_unlock(&mountpoints_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* Remove mountpoint from the hashtable: this will get it destroyed eventually */
@@ -3167,16 +3130,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(result, "status", json_string("stopped"));
 		json_object_set_new(event, "result", result);
 		while(viewer) {
-			janus_streaming_session *session = (janus_streaming_session *)viewer->data;
-			if(session != NULL) {
-				session->stopping = TRUE;
-				session->started = FALSE;
-				session->paused = FALSE;
-				session->mountpoint = NULL;
+			janus_streaming_session *s = (janus_streaming_session *)viewer->data;
+			if(s != NULL) {
+				s->stopping = TRUE;
+				s->started = FALSE;
+				s->paused = FALSE;
+				s->mountpoint = NULL;
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-				gateway->close_pc(session->handle);
-				janus_refcount_decrease(&session->ref);
+				gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
+				gateway->close_pc(s->handle);
+				janus_refcount_decrease(&s->ref);
 				janus_refcount_decrease(&mp->ref);
 			}
 			if(mp->streaming_source == janus_streaming_source_rtp) {
@@ -3186,9 +3149,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					while(l) {
 						janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
 						janus_mutex_lock(&ht->mutex);
-						if(g_list_find(ht->viewers, session) != NULL) {
+						if(g_list_find(ht->viewers, s) != NULL) {
 							ht->num_viewers--;
-							ht->viewers = g_list_remove_all(ht->viewers, session);
+							ht->viewers = g_list_remove_all(ht->viewers, s);
 							janus_mutex_unlock(&ht->mutex);
 							JANUS_LOG(LOG_VERB, "Removing viewer from helper thread #%d (destroy)\n", ht->id);
 							break;
@@ -3198,7 +3161,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					}
 				}
 			}
-			mp->viewers = g_list_remove_all(mp->viewers, session);
+			mp->viewers = g_list_remove_all(mp->viewers, s);
 			viewer = g_list_first(mp->viewers);
 		}
 		json_decref(event);
@@ -3221,28 +3184,28 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "id", json_integer(id_value));
-			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
+			gateway->notify_event(&janus_streaming_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("destroyed"));
 		json_object_set_new(response, "destroyed", json_integer(id_value));
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "recording")) {
 		/* We can start/stop recording a live, RTP-based stream */
 		JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *action = json_object_get(root, "action");
 		const char *action_text = json_string_value(action);
 		if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop")) {
 			JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid action (should be start|stop)");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		json_t *id = json_object_get(root, "id");
 		guint64 id_value = json_integer_value(id);
@@ -3253,7 +3216,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
 		if(mp->streaming_type != janus_streaming_type_live || mp->streaming_source != janus_streaming_source_rtp) {
@@ -3262,7 +3225,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Recording is only available on RTP-based live streams\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 			g_snprintf(error_cause, 512, "Recording is only available on RTP-based live streams");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
@@ -3270,7 +3233,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(error_code != 0) {
 			janus_refcount_decrease(&mp->ref);
 			janus_mutex_unlock(&mountpoints_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_streaming_rtp_source *source = mp->source;
 		if(!strcasecmp(action_text, "start")) {
@@ -3281,7 +3244,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			if(error_code != 0) {
 				janus_refcount_decrease(&mp->ref);
 				janus_mutex_unlock(&mountpoints_mutex);
-				goto plugin_response;
+				goto prepare_response;
 			}
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
@@ -3293,7 +3256,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Recording for audio, video and/or data already started for this stream\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Recording for audio, video and/or data already started for this stream");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			if(!audio && !video && !data) {
 				janus_refcount_decrease(&mp->ref);
@@ -3301,7 +3264,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Missing audio, video and/or data\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Missing audio, video and/or data");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			if(audio) {
 				const char *codec = NULL;
@@ -3323,7 +3286,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					janus_mutex_unlock(&mountpoints_mutex);
 					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
 					g_snprintf(error_cause, 512, "Error starting recorder for audio");
-					goto plugin_response;
+					goto prepare_response;
 				}
 				JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
 			}
@@ -3350,7 +3313,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					janus_mutex_unlock(&mountpoints_mutex);
 					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
 					g_snprintf(error_cause, 512, "Error starting recorder for video");
-					goto plugin_response;
+					goto prepare_response;
 				}
 				JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
 			}
@@ -3373,7 +3336,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					janus_mutex_unlock(&mountpoints_mutex);
 					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
 					g_snprintf(error_cause, 512, "Error starting recorder for data");
-					goto plugin_response;
+					goto prepare_response;
 				}
 				JANUS_LOG(LOG_INFO, "[%s] Data recording started\n", mp->name);
 			}
@@ -3388,7 +3351,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			/* Send a success response back */
 			response = json_object();
 			json_object_set_new(response, "streaming", json_string("ok"));
-			goto plugin_response;
+			goto prepare_response;
 		} else if(!strcasecmp(action_text, "stop")) {
 			/* Stop the recording */
 			JANUS_VALIDATE_JSON_OBJECT(root, recording_stop_parameters,
@@ -3396,7 +3359,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0) {
 				janus_mutex_unlock(&mountpoints_mutex);
-				goto plugin_response;
+				goto prepare_response;
 			}
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
@@ -3406,7 +3369,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Missing audio and/or video\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Missing audio and/or video");
-				goto plugin_response;
+				goto prepare_response;
 			}
 			janus_mutex_lock(&source->rec_mutex);
 			if(audio && json_is_true(audio) && source->arc) {
@@ -3439,7 +3402,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			/* Send a success response back */
 			response = json_object();
 			json_object_set_new(response, "streaming", json_string("ok"));
-			goto plugin_response;
+			goto prepare_response;
 		}
 	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
 		/* A request to enable/disable a mountpoint */
@@ -3447,7 +3410,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			error_code, error_cause, TRUE,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *id = json_object_get(root, "id");
 		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
@@ -3457,7 +3420,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
 		/* A secret may be required for this action */
@@ -3466,7 +3429,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(error_code != 0) {
 			janus_refcount_decrease(&mp->ref);
 			janus_mutex_unlock(&mountpoints_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		if(!strcasecmp(request_text, "enable")) {
 			/* Enable a previously disabled mountpoint */
@@ -3511,6 +3474,89 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		/* Send a success response back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("ok"));
+		goto prepare_response;
+	} else {
+		/* Not a request we recognize, don't do anything */
+		return NULL;
+	}
+
+prepare_response:
+		{
+			if(ifas) {
+				freeifaddrs(ifas);
+			}
+
+			if(error_code == 0 && !response) {
+				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Invalid response");
+			}
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "streaming", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+
+}
+
+struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+
+	/* Pre-parse the message */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *root = message;
+	json_t *response = NULL;
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
+		goto plugin_response;
+	}
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	if(g_atomic_int_get(&session->destroyed)) {
+		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
+		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
+		goto plugin_response;
+	}
+
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
+		g_snprintf(error_cause, 512, "%s", "No message??");
+		goto plugin_response;
+	}
+	if(!json_is_object(root)) {
+		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+		error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
+		g_snprintf(error_cause, 512, "JSON error: not an object");
+		goto plugin_response;
+	}
+	/* Get the request first */
+	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	json_t *request = json_object_get(root, "request");
+	/* Some requests ('create' and 'destroy') can be handled synchronously */
+	const char *request_text = json_string_value(request);
+	/* We have a separate method to process synchronous requests, as those may
+	 * arrive from the Admin API as well, and so we handle them the same way */
+	response = janus_streaming_process_synchronous_request(session, root);
+	if(response != NULL) {
+		/* We got a response, send it back */
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "watch") || !strcasecmp(request_text, "start")
 			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")
@@ -3532,10 +3578,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 
 plugin_response:
 		{
-			if(ifas) {
-				freeifaddrs(ifas);
-			}
-
 			if(error_code == 0 && !response) {
 				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid response");
@@ -3557,6 +3599,42 @@ plugin_response:
 			if(session != NULL)
 				janus_refcount_decrease(&session->ref);
 			return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
+		}
+
+}
+
+json_t *janus_streaming_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., 'create' and 'destroy') can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+	if((response = janus_streaming_process_synchronous_request(NULL, message)) != NULL) {
+		/* We got a response, send it back */
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "streaming", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
 		}
 
 }

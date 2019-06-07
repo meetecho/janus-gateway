@@ -292,6 +292,7 @@ const char *janus_recordplay_get_author(void);
 const char *janus_recordplay_get_package(void);
 void janus_recordplay_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_recordplay_handle_admin_message(json_t *message);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -316,6 +317,7 @@ static janus_plugin janus_recordplay_plugin =
 
 		.create_session = janus_recordplay_create_session,
 		.handle_message = janus_recordplay_handle_message,
+		.handle_admin_message = janus_recordplay_handle_admin_message,
 		.setup_media = janus_recordplay_setup_media,
 		.incoming_rtp = janus_recordplay_incoming_rtp,
 		.incoming_rtcp = janus_recordplay_incoming_rtcp,
@@ -1048,6 +1050,46 @@ plugin_response:
 			if(session != NULL)
 				janus_refcount_decrease(&session->ref);
 			return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
+		}
+
+}
+
+json_t *janus_recordplay_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., 'update') can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+	if(!strcasecmp(request_text, "update")) {
+		/* Update list of available recordings, scanning the folder again */
+		janus_recordplay_update_recordings_list();
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "recordplay", json_string("ok"));
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "recordplay", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
 		}
 
 }

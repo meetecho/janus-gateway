@@ -470,6 +470,7 @@ const char *janus_textroom_get_author(void);
 const char *janus_textroom_get_package(void);
 void janus_textroom_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_textroom_handle_admin_message(json_t *message);
 void janus_textroom_setup_media(janus_plugin_session *handle);
 void janus_textroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_textroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -495,6 +496,7 @@ static janus_plugin janus_textroom_plugin =
 
 		.create_session = janus_textroom_create_session,
 		.handle_message = janus_textroom_handle_message,
+		.handle_admin_message = janus_textroom_handle_admin_message,
 		.setup_media = janus_textroom_setup_media,
 		.incoming_rtp = janus_textroom_incoming_rtp,
 		.incoming_rtcp = janus_textroom_incoming_rtcp,
@@ -1155,6 +1157,55 @@ plugin_response:
 
 }
 
+json_t *janus_textroom_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., 'create' and 'destroy') can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "textroom");
+	const char *request_text = json_string_value(request);
+	if(!strcasecmp(request_text, "list")
+			|| !strcasecmp(request_text, "exists")
+			|| !strcasecmp(request_text, "create")
+			|| !strcasecmp(request_text, "edit")
+			|| !strcasecmp(request_text, "destroy")) {
+		janus_plugin_result *result = janus_textroom_handle_incoming_request(NULL, NULL, message, FALSE);
+		if(result == NULL) {
+			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+			error_code = JANUS_TEXTROOM_ERROR_INVALID_JSON;
+			g_snprintf(error_cause, 512, "JSON error: not an object");
+			goto admin_response;
+		}
+		response = result->content;
+		result->content = NULL;
+		janus_plugin_result_destroy(result);
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_TEXTROOM_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "textroom", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+
+}
+
 void janus_textroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -1210,7 +1261,9 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *label, cha
 
 /* Helper method to handle incoming messages from the data channel */
 janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *text, json_t *json, gboolean internal) {
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	janus_textroom_session *session = NULL;
+	if(handle)
+		session = (janus_textroom_session *)handle->plugin_handle;
 	/* Parse JSON, if needed */
 	json_error_t error;
 	json_t *root = text ? json_loads(text, 0, &error) : json;
@@ -1984,7 +2037,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
 	} else if(!strcasecmp(request_text, "exists")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
@@ -2112,7 +2165,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("edited"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
@@ -2209,7 +2262,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported request %s\n", request_text);

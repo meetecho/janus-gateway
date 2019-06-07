@@ -667,6 +667,7 @@ const char *janus_audiobridge_get_author(void);
 const char *janus_audiobridge_get_package(void);
 void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_audiobridge_handle_admin_message(json_t *message);
 void janus_audiobridge_setup_media(janus_plugin_session *handle);
 void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -690,6 +691,7 @@ static janus_plugin janus_audiobridge_plugin =
 
 		.create_session = janus_audiobridge_create_session,
 		.handle_message = janus_audiobridge_handle_message,
+		.handle_admin_message = janus_audiobridge_handle_admin_message,
 		.setup_media = janus_audiobridge_setup_media,
 		.incoming_rtp = janus_audiobridge_incoming_rtp,
 		.incoming_rtcp = janus_audiobridge_incoming_rtcp,
@@ -1687,56 +1689,17 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
-struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+/* Helper method to process synchronous requests */
+static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_session *session, json_t *message) {
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
 
-	/* Pre-parse the message */
+	/* Parse the message */
 	int error_code = 0;
 	char error_cause[512];
 	json_t *root = message;
 	json_t *response = NULL;
 
-	janus_mutex_lock(&sessions_mutex);
-	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
-	if(!session) {
-		janus_mutex_unlock(&sessions_mutex);
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
-		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
-		goto plugin_response;
-	}
-	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
-	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
-	if(g_atomic_int_get(&session->destroyed)) {
-		JANUS_LOG(LOG_ERR, "Session has already been marked as destroyed...\n");
-		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
-		g_snprintf(error_cause, 512, "%s", "Session has already been marked as destroyed...");
-		goto plugin_response;
-	}
-
-	if(message == NULL) {
-		JANUS_LOG(LOG_ERR, "No message??\n");
-		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_MESSAGE;
-		g_snprintf(error_cause, 512, "%s", "No message??");
-		goto plugin_response;
-	}
-	if(!json_is_object(root)) {
-		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
-		error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_JSON;
-		g_snprintf(error_cause, 512, "JSON error: not an object");
-		goto plugin_response;
-	}
-	/* Get the request first */
-	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
-		error_code, error_cause, TRUE,
-		JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
-	if(error_code != 0)
-		goto plugin_response;
-	json_t *request = json_object_get(root, "request");
-	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
-	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "create")) {
 		/* Create a new audiobridge */
 		JANUS_LOG(LOG_VERB, "Creating a new audiobridge\n");
@@ -1744,18 +1707,18 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		if(admin_key != NULL) {
 			/* An admin key was specified: make sure it was provided, and that it's valid */
 			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 		}
 		json_t *desc = json_object_get(root, "description");
 		json_t *secret = json_object_get(root, "secret");
@@ -1787,7 +1750,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
-				goto plugin_response;
+				goto prepare_response;
 			}
 		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
@@ -1795,7 +1758,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't create permanent room");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
@@ -1812,7 +1775,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				JANUS_LOG(LOG_ERR, "Room %"SCNu64" already exists!\n", room_id);
 				error_code = JANUS_AUDIOBRIDGE_ERROR_ROOM_EXISTS;
 				g_snprintf(error_cause, 512, "Room %"SCNu64" already exists", room_id);
-				goto plugin_response;
+				goto prepare_response;
 			}
 		}
 		/* Create the audio bridge room */
@@ -1875,7 +1838,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "We currently only support 16kHz (wideband) as a sampling rate for audio rooms, %"SCNu32" TBD...", audiobridge->sampling_rate);
-				goto plugin_response;
+				goto prepare_response;
 		}
 		audiobridge->record = FALSE;
 		if(record && json_is_true(record))
@@ -1925,7 +1888,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			janus_refcount_decrease(&audiobridge->ref);
 			g_hash_table_remove(rooms, &audiobridge->room_id);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		if(save) {
 			/* This room is permanent: save to the configuration file too
@@ -1978,17 +1941,17 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
-			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&rooms_mutex);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "edit")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit an existing audiobridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		/* We only allow for a limited set of properties to be edited */
 		json_t *room = json_object_get(root, "room");
 		json_t *desc = json_object_get(root, "new_description");
@@ -2001,7 +1964,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No configuration file, can't edit room permanently\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't edit room permanently");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2011,7 +1974,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->mutex);
 		/* A secret may be required for this action */
@@ -2020,7 +1983,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		if(error_code != 0) {
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Edit the room properties that were provided */
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
@@ -2096,20 +2059,20 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("edited"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Done */
 		JANUS_LOG(LOG_VERB, "Audiobridge room edited\n");
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audiobridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *room = json_object_get(root, "room");
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
@@ -2117,7 +2080,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy room permanently\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "No configuration file, can't destroy room permanently");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2127,7 +2090,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->mutex);
 		/* A secret may be required for this action */
@@ -2136,7 +2099,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		if(error_code != 0) {
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Remove room */
 		janus_refcount_increase(&audiobridge->ref);
@@ -2199,7 +2162,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
@@ -2210,7 +2173,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
 		json_t *list = json_array();
@@ -2245,14 +2208,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "list", list);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2262,14 +2225,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "exists", room_exists ? json_true() : json_false());
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "allowed")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing audiobridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, allowed_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *action = json_object_get(root, "action");
 		json_t *room = json_object_get(root, "room");
 		json_t *allowed = json_object_get(root, "allowed");
@@ -2279,7 +2242,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "Unsupported action '%s' (allowed)\n", action_text);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Unsupported action '%s' (allowed)", action_text);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2289,7 +2252,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->mutex);
 		/* A secret may be required for this action */
@@ -2298,7 +2261,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		if(error_code != 0) {
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		if(!strcasecmp(action_text, "enable")) {
 			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens for room %"SCNu64"\n", room_id);
@@ -2327,7 +2290,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 					g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
 					janus_mutex_unlock(&audiobridge->mutex);
 					janus_mutex_unlock(&rooms_mutex);
-					goto plugin_response;
+					goto prepare_response;
 				}
 				size_t i = 0;
 				for(i=0; i<json_array_size(allowed); i++) {
@@ -2362,14 +2325,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		JANUS_LOG(LOG_VERB, "Audiobridge room allowed list updated\n");
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing audiobridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, kick_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *room = json_object_get(root, "room");
 		json_t *id = json_object_get(root, "id");
 		guint64 room_id = json_integer_value(room);
@@ -2380,7 +2343,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&audiobridge->ref);
 		janus_mutex_lock(&audiobridge->mutex);
@@ -2391,7 +2354,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		if(error_code != 0) {
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_refcount_decrease(&audiobridge->ref);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		guint64 user_id = json_integer_value(id);
 		janus_audiobridge_participant *participant = g_hash_table_lookup(audiobridge->participants, &user_id);
@@ -2401,7 +2364,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such user %"SCNu64" in room %"SCNu64"\n", user_id, room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_USER;
 			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Notify all participants about the kick */
 		json_t *event = json_object();
@@ -2424,7 +2387,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(info, "event", json_string("kicked"));
 			json_object_set_new(info, "room", json_integer(room_id));
 			json_object_set_new(info, "id", json_integer(user_id));
-			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
 		}
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && participant->session)
@@ -2436,14 +2399,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		/* Done */
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_refcount_decrease(&audiobridge->ref);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room */
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2453,7 +2416,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_refcount_increase(&audiobridge->ref);
 		/* Return a list of all participants */
@@ -2479,37 +2442,37 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "audiobridge", json_string("participants"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "participants", list);
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "resetdecoder")) {
 		/* Mark the Opus decoder for the participant invalid and recreate it */
-		janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
+		janus_audiobridge_participant *participant = (janus_audiobridge_participant *)(session ? session->participant : NULL);
 		if(participant == NULL || participant->room == NULL) {
 			JANUS_LOG(LOG_ERR, "Can't reset (not in a room)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NOT_JOINED;
 			g_snprintf(error_cause, 512, "Can't reset (not in a room)");
-			goto plugin_response;
+			goto prepare_response;
 		}
 		participant->reset = TRUE;
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "rtp_forward")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, rtp_forward_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		if(lock_rtpfwd && admin_key != NULL) {
 			/* An admin key was specified: make sure it was provided, and that it's valid */
 			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 		}
 		/* Parse arguments */
 		guint64 room_id = json_integer_value(json_object_get(root, "room"));
@@ -2526,7 +2489,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "Invalid port number (%d)\n", port);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid port number (%d)", port);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		json_t *json_host = json_object_get(root, "host");
 		const char *host = json_string_value(json_host);
@@ -2543,7 +2506,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				JANUS_LOG(LOG_ERR, "Invalid SRTP suite (%d)\n", srtp_suite);
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid SRTP suite (%d)", srtp_suite);
-				goto plugin_response;
+				goto prepare_response;
 			}
 			srtp_crypto = json_string_value(s_crypto);
 		}
@@ -2555,14 +2518,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->mutex);
 		if(audiobridge->destroyed) {
@@ -2571,7 +2534,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 
 		if (janus_audiobridge_create_udp_socket_if_needed(audiobridge)) {
@@ -2579,7 +2542,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			janus_mutex_unlock(&rooms_mutex);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "Could not open UDP socket for RTP forwarder");
-			goto plugin_response;
+			goto prepare_response;
 		}
 
 		if (janus_audiobridge_create_opus_encoder_if_needed(audiobridge)) {
@@ -2587,7 +2550,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			janus_mutex_unlock(&rooms_mutex);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
 			g_snprintf(error_cause, 512, "Error creating Opus decoder for RTP forwarder");
-			goto plugin_response;
+			goto prepare_response;
 		}
 
 		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge,
@@ -2602,24 +2565,24 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
 		json_object_set_new(response, "host", json_string(host));
 		json_object_set_new(response, "port", json_integer(port));
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, stop_rtp_forward_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		if(lock_rtpfwd && admin_key != NULL) {
 			/* An admin key was specified: make sure it was provided, and that it's valid */
 			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 			if(error_code != 0)
-				goto plugin_response;
+				goto prepare_response;
 		}
 		/* Parse parameters */
 		guint64 room_id = json_integer_value(json_object_get(root, "room"));
@@ -2633,14 +2596,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->mutex);
 		if(audiobridge->destroyed) {
@@ -2649,7 +2612,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		janus_mutex_lock(&audiobridge->rtp_mutex);
 		g_hash_table_remove(audiobridge->rtp_forwarders, GUINT_TO_POINTER(stream_id));
@@ -2660,14 +2623,14 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
-		goto plugin_response;
+		goto prepare_response;
 	} else if(!strcasecmp(request_text, "listforwarders")) {
 		/* List all forwarders in a room */
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto plugin_response;
+			goto prepare_response;
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
@@ -2677,21 +2640,21 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		if(audiobridge->destroyed) {
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
-			goto plugin_response;
+			goto prepare_response;
 		}
 		/* Return a list of all forwarders */
 		json_t *list = json_array();
@@ -2719,6 +2682,85 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_object_set_new(response, "audiobridge", json_string("forwarders"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "rtp_forwarders", list);
+		goto prepare_response;
+	} else {
+		/* Not a request we recognize, don't do anything */
+		return NULL;
+	}
+
+prepare_response:
+		{
+			if(error_code == 0 && !response) {
+				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Invalid response");
+			}
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "audiobridge", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+
+}
+
+struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+
+	/* Pre-parse the message */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *root = message;
+	json_t *response = NULL;
+
+	janus_mutex_lock(&sessions_mutex);
+	janus_audiobridge_session *session = janus_audiobridge_lookup_session(handle);
+	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+		g_snprintf(error_cause, 512, "%s", "No session associated with this handle...");
+		goto plugin_response;
+	}
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
+	if(g_atomic_int_get(&session->destroyed)) {
+		JANUS_LOG(LOG_ERR, "Session has already been marked as destroyed...\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+		g_snprintf(error_cause, 512, "%s", "Session has already been marked as destroyed...");
+		goto plugin_response;
+	}
+
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_NO_MESSAGE;
+		g_snprintf(error_cause, 512, "%s", "No message??");
+		goto plugin_response;
+	}
+	if(!json_is_object(root)) {
+		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_JSON;
+		g_snprintf(error_cause, 512, "JSON error: not an object");
+		goto plugin_response;
+	}
+	/* Get the request first */
+	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	json_t *request = json_object_get(root, "request");
+	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
+	const char *request_text = json_string_value(request);
+	/* We have a separate method to process synchronous requests, as those may
+	 * arrive from the Admin API as well, and so we handle them the same way */
+	response = janus_audiobridge_process_synchronous_request(session, root);
+	if(response != NULL) {
+		/* We got a response, send it back */
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "configure")
 			|| !strcasecmp(request_text, "changeroom") || !strcasecmp(request_text, "leave")) {
@@ -2761,6 +2803,42 @@ plugin_response:
 			if(session != NULL)
 				janus_refcount_decrease(&session->ref);
 			return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
+		}
+
+}
+
+json_t *janus_audiobridge_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., 'create' and 'destroy') can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+	if((response = janus_audiobridge_process_synchronous_request(NULL, message)) != NULL) {
+		/* We got a response, send it back */
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "streaming", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
 		}
 
 }

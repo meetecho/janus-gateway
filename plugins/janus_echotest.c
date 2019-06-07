@@ -140,6 +140,7 @@ const char *janus_echotest_get_author(void);
 const char *janus_echotest_get_package(void);
 void janus_echotest_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_echotest_handle_admin_message(json_t *message);
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -165,6 +166,7 @@ static janus_plugin janus_echotest_plugin =
 
 		.create_session = janus_echotest_create_session,
 		.handle_message = janus_echotest_handle_message,
+		.handle_admin_message = janus_echotest_handle_admin_message,
 		.setup_media = janus_echotest_setup_media,
 		.incoming_rtp = janus_echotest_incoming_rtp,
 		.incoming_rtcp = janus_echotest_incoming_rtcp,
@@ -500,6 +502,13 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 	 * (a JSON object with a "hint" string in it, that's what the core expects),
 	 * but we don't have to: other plugins don't put anything in there */
 	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, "I'm taking my time!", NULL);
+}
+
+json_t *janus_echotest_handle_admin_message(json_t *message) {
+	/* Just here as a proof of concept: since there's nothing to configure,
+	 * as an EchoTest plugin we echo this Admin request back as well */
+	json_t *response = json_deep_copy(message);
+	return response;
 }
 
 void janus_echotest_setup_media(janus_plugin_session *handle) {
