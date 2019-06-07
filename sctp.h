@@ -6,16 +6,16 @@
  * The code takes care of the SCTP association between peers and the server,
  * and allows for sending and receiving text messages (binary stuff yet to
  * be implemented) after that.
- * 
+ *
  * \note Right now, the code is heavily based on the rtcweb.c sample code
  * provided in the \c usrsctp library code, and as such the copyright notice
  * that appears at the beginning of that code is ideally present here as
- * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c 
- * 
+ * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_SCTP_H
 #define _JANUS_SCTP_H
 
@@ -80,6 +80,8 @@ struct janus_ice_handle;
 typedef struct janus_sctp_channel {
 	/*! \brief SCTP channel ID */
 	uint32_t id;
+	/*! \brief SCTP channel label */
+	char label[64];
 	/*! \brief Value of the PR-SCTP policy (http://tools.ietf.org/html/rfc6458) */
 	uint32_t pr_value;
 	/*! \brief PR-SCTP policy to use (http://tools.ietf.org/html/rfc6458) */
@@ -200,9 +202,10 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 
 /*! \brief Method to send data via SCTP to the peer
  * \param[in] sctp The SCTP association this data is from
+ * @param[in] label The label of the data channel to use
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
+void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *buf, int len);
 
 #endif
 

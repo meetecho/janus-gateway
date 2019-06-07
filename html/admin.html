@@ -41,6 +41,7 @@
 					<li role="presentation" class="active"><a href="#home" aria-controls="home" role="tab" data-toggle="tab">Home</a></li>
 					<li role="presentation" class="disabled"><a href="#serverinfo" aria-controls="serverinfo" role="tab" data-toggle="tab">Server Info</a></li>
 					<li role="presentation" class="disabled"><a href="#settings" aria-controls="settings" role="tab" data-toggle="tab">Settings</a></li>
+					<li role="presentation" class="disabled"><a href="#plugins" aria-controls="plugins" role="tab" data-toggle="tab">Plugins</a></li>
 					<li role="presentation" class="disabled"><a href="#handlesinfo" aria-controls="handlesinfo" role="tab" data-toggle="tab">Handles</a></li>
 					<li role="presentation" class="disabled"><a href="#tokens" aria-controls="tokens" role="tab" data-toggle="tab">Stored Tokens</a></li>
 				</ul>
@@ -61,6 +62,9 @@
 						<p>The <code>Settings</code> tab instead allows you to inspect a
 						few of the current settings in Janus (e.g., debug level and so on)
 						and provides you with a way to change them dynamically.</p>
+						<p>The <code>Plugins</code> tab presents the list of media plugins
+						available in this Janus instance, and allows you to interact with
+						them, assuming they implement the <code>handle_admin_message</code> API.</p>
 						<p>The <code>Handles</code> tab allows you to browse the currently active sessions
 						and handles in Janus. Selecting a specific handle will provide you
 						with all the current info related to it, including plugin it is
@@ -80,37 +84,24 @@
 							<table class="table table-striped" id="server-details">
 							</table>
 						</div>
+						<h4>Dependencies</h4>
+						<div>
+							<table class="table table-striped" id="server-deps">
+							</table>
+						</div>
 						<h4>Plugins</h4>
 						<div>
 							<table class="table table-striped" id="server-plugins">
-								<tr>
-									<th>Name</th>
-									<th>Author</th>
-									<th>Description</th>
-									<th>Version</th>
-								</tr>
 							</table>
 						</div>
 						<h4>Transports</h4>
 						<div>
 							<table class="table table-striped" id="server-transports">
-								<tr>
-									<th>Name</th>
-									<th>Author</th>
-									<th>Description</th>
-									<th>Version</th>
-								</tr>
 							</table>
 						</div>
 						<h4>Event handlers</h4>
 						<div>
 							<table class="table table-striped" id="server-handlers">
-								<tr>
-									<th>Name</th>
-									<th>Author</th>
-									<th>Description</th>
-									<th>Version</th>
-								</tr>
 							</table>
 						</div>
 					</div>
@@ -119,6 +110,26 @@
 						<div>
 							<table class="table table-striped" id="server-settings">
 							</table>
+						</div>
+					</div>
+					<div role="tabpanel" class="tab-pane fade" id="plugins">
+						<h4>Plugins</h4>
+						<div class="row">
+							<div class="col-md-3">
+								<table class="table" id="plugins-list">
+								</table>
+							</div>
+							<div id="plugin-message" class="col-md-9 hide">
+								<div class="row">
+									<h5>Request</h5>
+									<table class="table" id="plugin-request">
+									</table>
+								</div>
+								<div class="row">
+									<h5>Response</h5>
+									<pre id="plugin-response"></pre>
+								</div>
+							</div>
 						</div>
 					</div>
 					<div role="tabpanel" class="tab-pane fade" id="handlesinfo">

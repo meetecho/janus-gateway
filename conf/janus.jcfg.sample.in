@@ -105,6 +105,17 @@ general: {
 									# application in the related Janus API responses
 									# or events; in case you need them to be in the
 									# Janus API too, set this property to 'true'.
+	#hide_dependencies = true		# By default, a call to the "info" endpoint of
+									# either the Janus or Admin API now also returns
+									# the versions of the main dependencies (e.g.,
+									# libnice, libsrtp, which crypto library is in
+									# use and so on). Should you want that info not
+									# to be disclose, set 'hide_dependencies' to true.
+
+		# The following is ONLY useful when debugging RTP/RTCP packets,
+		# e.g., to look at unencrypted live traffic with a browser. By
+		# default it is obviously disabled, as WebRTC mandates encryption.
+	#no_webrtc_encryption = true
 }
 
 # Certificate and key to use for DTLS (and passphrase if needed). If missing,

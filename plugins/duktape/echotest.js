@@ -7,8 +7,8 @@
 name = "echotest.js";
 
 // Let's add more info to errors
-Error.prototype.toString = function () { 
-	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')'; 
+Error.prototype.toString = function () {
+	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
 };
 // Let's add a prefix to all console.log lines
 var originalConsoleLog = console.log;
@@ -144,6 +144,13 @@ function handleMessage(id, tr, msg, jsep) {
 		// Asynchronous response: return value is a positive integer
 		return 1;
 	}
+}
+
+function handleAdminMessage(message) {
+	// This is just to showcase how you can handle incoming messages
+	// coming from the Admin API: we return the same message as a test
+	console.log("Got admin message:", message);
+	return message;
 }
 
 function setupMedia(id) {
