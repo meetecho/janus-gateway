@@ -907,6 +907,13 @@ static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_streaming_handler(void *data);
 
+/* RTP range to use for random ports */
+#define DEFAULT_RTP_RANGE_MIN 10000
+#define DEFAULT_RTP_RANGE_MAX 60000
+static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
+static uint16_t rtp_range_max = DEFAULT_RTP_RANGE_MAX;
+static uint16_t rtp_range_slider = DEFAULT_RTP_RANGE_MIN;
+
 static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
@@ -1359,6 +1366,36 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *range = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
+		if(range && range->value) {
+			/* Split in min and max port */
+			char *maxport = strrchr(range->value, '-');
+			if(maxport != NULL) {
+				*maxport = '\0';
+				maxport++;
+				rtp_range_min = atoi(range->value);
+				rtp_range_max = atoi(maxport);
+				maxport--;
+				*maxport = '-';
+			}
+			if(rtp_range_min > rtp_range_max) {
+				uint16_t temp_port = rtp_range_min;
+				rtp_range_min = rtp_range_max;
+				rtp_range_max = temp_port;
+			}
+			if(rtp_range_min % 2)
+				rtp_range_min++;	/* Pick an even port for RTP */
+			if(rtp_range_min > rtp_range_max) {
+				JANUS_LOG(LOG_WARN, "Incorrect port range (%u -- %u), switching min and max\n", rtp_range_min, rtp_range_max);
+				uint16_t range_temp = rtp_range_max;
+				rtp_range_max = rtp_range_min;
+				rtp_range_min = range_temp;
+			}
+			if(rtp_range_max == 0)
+				rtp_range_max = 65535;
+			rtp_range_slider = rtp_range_min;
+			JANUS_LOG(LOG_VERB, "Streaming RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
+		}
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
@@ -4457,81 +4494,172 @@ error:
 }
 
 /* Helpers to create a listener filedescriptor */
-static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_network_address *iface, const char *listenername, const char *medianame, const char *mountpointname) {
+static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_network_address *iface,
+		const char *listenername, const char *medianame, const char *mountpointname, gboolean quiet) {
 	struct sockaddr_in address;
 	janus_network_address_string_buffer address_representation;
-	int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if(fd < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s...\n", mountpointname, medianame);
-		return -1;
-	}
-	if(port > 0) {
-		if(IN_MULTICAST(ntohl(mcast))) {
+
+	uint16_t rtp_port_next = rtp_range_slider; 					/* Read global slider */
+	uint16_t rtp_port_start = rtp_port_next;
+	gboolean use_range = (port == 0), rtp_port_wrap = FALSE;
+
+	int fd = -1;
+	while(1) {
+		if(use_range && rtp_port_wrap && rtp_port_next >= rtp_port_start) {
+			/* Full range scanned */
+			JANUS_LOG(LOG_ERR, "No ports available for RTP/RTCP in range: %u -- %u\n",
+				  rtp_range_min, rtp_range_max);
+			break;
+		}
+		fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		if(fd < 0) {
+			JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s...\n", mountpointname, medianame);
+			break;
+		}
+		if(!use_range) {
+			/* Use the port specified in the arguments */
+			if(IN_MULTICAST(ntohl(mcast))) {
 #ifdef IP_MULTICAST_ALL
-			int mc_all = 0;
-			if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
-				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
-				close(fd);
-				return -1;
-			}
-#endif
-			struct ip_mreq mreq;
-			memset(&mreq, '\0', sizeof(mreq));
-			mreq.imr_multiaddr.s_addr = mcast;
-			if(!janus_network_address_is_null(iface)) {
-				if(iface->family == AF_INET) {
-					mreq.imr_interface = iface->ipv4;
-					(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
-					JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
-				} else {
-					JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
+				int mc_all = 0;
+				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
+					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
 					close(fd);
 					return -1;
 				}
-			} else {
-				JANUS_LOG(LOG_WARN, "[%s] No multicast interface for: %s. This may not work as expected if you have multiple network devices (NICs)\n", mountpointname, listenername);
+#endif
+				struct ip_mreq mreq;
+				memset(&mreq, '\0', sizeof(mreq));
+				mreq.imr_multiaddr.s_addr = mcast;
+				if(!janus_network_address_is_null(iface)) {
+					if(iface->family == AF_INET) {
+						mreq.imr_interface = iface->ipv4;
+						(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
+						JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
+					} else {
+						JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
+						close(fd);
+						return -1;
+					}
+				} else {
+					JANUS_LOG(LOG_WARN, "[%s] No multicast interface for: %s. This may not work as expected if you have multiple network devices (NICs)\n", mountpointname, listenername);
+				}
+				if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
+					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
+					close(fd);
+					return -1;
+				}
+				JANUS_LOG(LOG_INFO, "[%s] %s listener IP_ADD_MEMBERSHIP ok\n", mountpointname, listenername);
 			}
-			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
-				JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
+		} else {
+			/* Pick a port in the configured range */
+			port = rtp_port_next;
+			if((uint32_t)(rtp_port_next) < rtp_range_max) {
+				rtp_port_next++;
+			} else {
+				rtp_port_next = rtp_range_min;
+				rtp_port_wrap = TRUE;
+			}
+		}
+		address.sin_family = AF_INET;
+		address.sin_port = htons(port);
+		address.sin_addr.s_addr = INADDR_ANY;
+		/* If this is multicast, allow a re-use of the same ports (different groups may be used) */
+		if(!use_range && IN_MULTICAST(ntohl(mcast))) {
+			int reuse = 1;
+			if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
+				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, listenername);
 				close(fd);
 				return -1;
 			}
-			JANUS_LOG(LOG_INFO, "[%s] %s listener IP_ADD_MEMBERSHIP ok\n", mountpointname, listenername);
+			address.sin_addr.s_addr = mcast;
+		} else {
+			if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
+				if(iface->family == AF_INET) {
+					address.sin_addr = iface->ipv4;
+					(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
+					JANUS_LOG(LOG_INFO, "[%s] %s listener restricted to interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
+				} else {
+					JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid address/restriction type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
+					close(fd);
+					fd = -1;
+					continue;
+				}
+			}
 		}
-	}
-
-	address.sin_family = AF_INET;
-	address.sin_port = htons(port);
-	address.sin_addr.s_addr = INADDR_ANY;
-	/* If this is multicast, allow a re-use of the same ports (different groups may be used) */
-	if(port > 0 && IN_MULTICAST(ntohl(mcast))) {
-		int reuse = 1;
-		if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
-			JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, listenername);
+		/* Bind to the specified port */
+		if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
 			close(fd);
-			return -1;
-		}
-		address.sin_addr.s_addr = mcast;
-	} else {
-		if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
-			if(iface->family == AF_INET) {
-				address.sin_addr = iface->ipv4;
-				(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
-				JANUS_LOG(LOG_INFO, "[%s] %s listener restricted to interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
-			} else {
-				JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid address/restriction type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
-				close(fd);
-				return -1;
+			fd = -1;
+			if(!use_range && !quiet) {
+				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)...\n", mountpointname, medianame, port);
+				break;
 			}
+		} else {
+			if(use_range)
+				rtp_range_slider = port;	/* Update global slider */
+			break;
 		}
-	}
-	/* Bind to the specified port */
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)...\n", mountpointname, medianame, port);
-		close(fd);
-		return -1;
 	}
 	return fd;
+}
+/* Helper to bind RTP/RTCP port pair (for RTSP) */
+static int janus_streaming_allocate_port_pair(const char *name, const char *media,
+		in_addr_t mcast, const janus_network_address *iface, multiple_fds *fds, int ports[2]) {
+	/* Start from the global slider */
+	uint16_t rtp_port_next = rtp_range_slider;
+	if(rtp_port_next % 2 != 0)	/* We want an even port for RTP */
+		rtp_port_next++;
+	uint16_t rtp_port_start = rtp_port_next;
+	gboolean rtp_port_wrap = FALSE;
+
+	int rtp_fd = -1, rtcp_fd = -1;
+	while(1) {
+		if(rtp_port_wrap && rtp_port_next >= rtp_port_start) {
+			/* Full range scanned */
+			JANUS_LOG(LOG_ERR, "No ports available for audio/video channel in range: %u -- %u\n",
+				rtp_range_min, rtp_range_max);
+			break;
+		}
+		int rtp_port = rtp_port_next;
+		int rtcp_port = rtp_port+1;
+		if((uint32_t)(rtp_port_next + 2UL) < rtp_range_max) {
+			/* Advance to next pair */
+			rtp_port_next += 2;
+		} else {
+			rtp_port_next = rtp_range_min;
+			rtp_port_wrap = TRUE;
+		}
+		rtp_fd = janus_streaming_create_fd(rtp_port, mcast, iface, media, media, name, TRUE);
+		if(rtp_fd != -1) {
+			rtcp_fd = janus_streaming_create_fd(rtcp_port, mcast, iface, media, media, name, TRUE);
+			if(rtcp_fd != -1) {
+				/* Done */
+				fds->fd = rtp_fd;
+				fds->rtcp_fd = rtcp_fd;
+				ports[0] = rtp_port;
+				ports[1] = rtcp_port;
+				/* Update global slider */
+				rtp_range_slider = rtp_port_next;
+				return 0;
+			}
+		}
+		/* If we got here, something failed: try again */
+		if(rtp_fd != -1) {
+			close(rtp_fd);
+			rtp_fd = -1;
+		}
+		if(rtcp_fd != -1) {
+			close(rtcp_fd);
+			rtcp_fd = -1;
+		}
+	}
+	if(rtp_fd != -1) {
+		close(rtp_fd);
+	}
+	if(rtcp_fd != -1) {
+		close(rtcp_fd);
+	}
+	return -1;
 }
 
 /* Helper to return fd port */
@@ -4674,7 +4802,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	int audio_rtcp_fd = -1;
 	if(doaudio) {
 		audio_fd = janus_streaming_create_fd(aport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
-			"Audio", "audio", name ? name : tempname);
+			"Audio", "audio", name ? name : tempname, FALSE);
 		if(audio_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for audio...\n", aport);
 			janus_mutex_unlock(&mountpoints_mutex);
@@ -4683,7 +4811,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		aport = janus_streaming_get_fd_port(audio_fd);
 		if(artcpport > 0) {
 			audio_rtcp_fd = janus_streaming_create_fd(artcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
-				"Audio", "audio", name ? name : tempname);
+				"Audio", "audio", name ? name : tempname, FALSE);
 			if(audio_rtcp_fd < 0) {
 				JANUS_LOG(LOG_ERR, "Can't bind to port %d for audio rtcp...\n", aport+1);
 				if(audio_fd > -1)
@@ -4697,7 +4825,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	int video_rtcp_fd = -1;
 	if(dovideo) {
 		video_fd[0] = janus_streaming_create_fd(vport, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-			"Video", "video", name ? name : tempname);
+			"Video", "video", name ? name : tempname, FALSE);
 		if(video_fd[0] < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for video...\n", vport);
 			if(audio_fd > -1)
@@ -4710,7 +4838,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		vport = janus_streaming_get_fd_port(video_fd[0]);
 		if(vrtcpport > 0) {
 			video_rtcp_fd = janus_streaming_create_fd(vrtcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
-				"Video", "video", name ? name : tempname);
+				"Video", "video", name ? name : tempname, FALSE);
 			if(video_rtcp_fd < 0) {
 				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video rtcp...\n", vport+1);
 				if(audio_fd > -1)
@@ -4726,7 +4854,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		if(simulcast) {
 			if(vport2 > 0) {
 				video_fd[1] = janus_streaming_create_fd(vport2, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-					"Video", "video", name ? name : tempname);
+					"Video", "video", name ? name : tempname, FALSE);
 				if(video_fd[1] < 0) {
 					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (2nd port)...\n", vport2);
 					if(audio_fd > -1)
@@ -4744,7 +4872,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			}
 			if(vport3 > 0) {
 				video_fd[2] = janus_streaming_create_fd(vport3, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-					"Video", "video", name ? name : tempname);
+					"Video", "video", name ? name : tempname, FALSE);
 				if(video_fd[2] < 0) {
 					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (3rd port)...\n", vport3);
 					if(audio_fd > -1)
@@ -4768,7 +4896,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	if(dodata) {
 #ifdef HAVE_SCTP
 		data_fd = janus_streaming_create_fd(dport, INADDR_ANY, diface,
-			"Data", "data", name ? name : tempname);
+			"Data", "data", name ? name : tempname, FALSE);
 		if(data_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for data...\n", dport);
 			if(audio_fd > -1)
@@ -5145,41 +5273,17 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			mcast = inet_addr(ip);
 		}
 	}
-	int port;
-	struct sockaddr_in address;
-	socklen_t len = sizeof(address);
-	/* loop until can bind two adjacent ports for RTP and RTCP */
-	do {
-		fds->fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
-		if(fds->fd < 0) {
-			return -1;
-		}
-		if(getsockname(fds->fd, (struct sockaddr *)&address, &len) < 0) {
-			JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
-			close(fds->fd);
-			return -1;
-		}
-		port = ntohs(address.sin_port);
-		if (port & 1) {
-			close(fds->fd);
-			port = -1;
-			continue;
-		}
-		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
-		if(fds->rtcp_fd < 0) {
-			close(fds->fd);
-			port = -1;
-		} else if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
-			close(fds->fd);
-			close(fds->rtcp_fd);
-			port = -1;
-		}
-	} while(port == -1);
+	/* Bind two adjacent ports for RTP and RTCP */
+	int ports[2];
+	if(janus_streaming_allocate_port_pair(name, media, mcast, iface, fds, ports)) {
+		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
+		return -1;
+	}
 
 	if(IN_MULTICAST(ntohl(mcast))) {
-		g_snprintf(transport, 1024, "RTP/AVP/UDP;multicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP/UDP;multicast;client_port=%d-%d", ports[0], ports[1]);
 	} else {
-		g_snprintf(transport, 1024, "RTP/AVP/UDP;unicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP/UDP;unicast;client_port=%d-%d", ports[0], ports[1]);
 	}
 
 	return 0;
