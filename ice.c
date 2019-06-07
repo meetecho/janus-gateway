@@ -719,22 +719,18 @@ gint janus_trickle_parse(janus_handle *handle, json_t *candidate, const char **e
 	} else {
 		/* Handle remote candidate */
 		json_t *mid = json_object_get(candidate, "sdpMid");
-		if(!mid) {
-			*error = "Trickle error: missing mandatory element (sdpMid)";
-			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
-		}
-		if(!json_is_string(mid)) {
+		if(mid && !json_is_string(mid)) {
 			*error = "Trickle error: invalid element type (sdpMid should be a string)";
 			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
 		}
 		json_t *mline = json_object_get(candidate, "sdpMLineIndex");
-		if(!mline) {
-			*error = "Trickle error: missing mandatory element (sdpMLineIndex)";
-			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
-		}
-		if(!json_is_integer(mline) || json_integer_value(mline) < 0) {
-			*error = "Trickle error: invalid element type (sdpMLineIndex should be an integer)";
+		if(mline && (!json_is_integer(mline) || json_integer_value(mline) < 0)) {
+			*error = "Trickle error: invalid element type (sdpMLineIndex should be a positive integer)";
 			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		}
+		if(!mid && !mline) {
+			*error = "Trickle error: missing mandatory element (sdpMid or sdlMLineIndex)";
+			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
 		}
 		json_t *rc = json_object_get(candidate, "candidate");
 		if(!rc) {
@@ -747,10 +743,11 @@ gint janus_trickle_parse(janus_handle *handle, json_t *candidate, const char **e
 		}
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
 		/* Parse it */
-		int sdpMLineIndex = json_integer_value(mline);
-		if(sdpMLineIndex > 0) {
+		int sdpMLineIndex = mline ? json_integer_value(mline) : -1;
+		const char *sdpMid = json_string_value(mid);
+		if(sdpMLineIndex > 0 || (handle->pc_mid && sdpMid && strcmp(handle->pc_mid, sdpMid))) {
 			/* FIXME We bundle everything, so we ignore candidates for anything beyond the first m-line */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate (index %d) but we're bundling, ignoring...\n",
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a mid='%s' candidate (index %d) but we're bundling, ignoring...\n",
 				handle->handle_id, json_string_value(mid), sdpMLineIndex);
 			return 0;
 		}
@@ -2993,16 +2990,10 @@ void janus_handle_setup_remote_candidates(janus_handle *handle, guint stream_id,
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Password:   %s\n", handle->handle_id, c->password);
 		gsc = gsc->next;
 	}
-	if(rufrag && rpwd) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credentials...\n", handle->handle_id);
-		if(!nice_agent_set_remote_credentials(handle->agent, stream_id, rufrag, rpwd)) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]  failed to set remote credentials!\n", handle->handle_id);
-		}
-	}
-	guint added = nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, pc->candidates);
-	if(added < g_slist_length(pc->candidates)) {
+	gint added = nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, pc->candidates);
+	if(added < 0 || (guint)added < g_slist_length(pc->candidates)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-( (added %u, expected %u)\n",
-			handle->handle_id, added, g_slist_length(pc->candidates));
+			handle->handle_id, (guint)added, g_slist_length(pc->candidates));
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote candidates set!\n", handle->handle_id);
 		pc->process_started = TRUE;
@@ -3476,7 +3467,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			}
 		}
 		/* Now let's see if we need to notify the user about no incoming audio or video */
-		if(no_media_timer > 0 && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
+		if(no_media_timer > 0 && pc->dtls && pc->dtls->dtls_connected > 0 && (now - pc->dtls->dtls_connected >= G_USEC_PER_SEC)) {
 			gint64 last = medium->in_stats.info[0].updated;
 			if(!medium->in_stats.info[0].notified_lastsec && last &&
 					!medium->in_stats.info[0].bytes_lastsec && !medium->in_stats.info[0].bytes_lastsec_temp &&

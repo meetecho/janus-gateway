@@ -141,6 +141,10 @@ static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
+static struct janus_json_parameter messageplugin_parameters[] = {
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request", JSON_OBJECT, 0}
+};
 static struct janus_json_parameter customevent_parameters[] = {
 	{"schema", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -819,9 +823,10 @@ static void janus_request_handle_answer(janus_handle *handle, char *jsep_sdp) {
 			janus_trickle_destroy(trickle);
 		}
 	}
+
+	gboolean candidates_found = (handle->pc && g_slist_length(handle->pc->candidates) > 0);
 	/* This was an answer, check if it's time to start ICE */
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_TRICKLE) &&
-		!janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_ALL_TRICKLES)) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_TRICKLE) && !candidates_found) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- ICE Trickling is supported by the browser, waiting for remote candidates...\n", handle->handle_id);
 		janus_flags_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_START);
 	} else {
@@ -1960,6 +1965,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "message_plugin")) {
+			/* Contact a plugin and expect a response */
+			JANUS_VALIDATE_JSON_OBJECT(root, messageplugin_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *plugin = json_object_get(root, "plugin");
+			const char *plugin_value = json_string_value(plugin);
+			janus_plugin *p = janus_plugin_find(plugin_value);
+			if(p == NULL) {
+				/* No such handler... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Invalid plugin");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, error_cause);
+				goto jsondone;
+			}
+			if(p->handle_admin_message == NULL) {
+				/* Handler doesn't implement the hook... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Plugin doesn't support Admin API messages");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, error_cause);
+				goto jsondone;
+			}
+			json_t *query = json_object_get(root, "request");
+			json_t *response = p->handle_admin_message(query);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "response", response ? response : json_object());
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		} else if(!strcasecmp(message_text, "query_eventhandler")) {
 			/* Contact an event handler and expect a response */
 			JANUS_VALIDATE_JSON_OBJECT(root, queryhandler_parameters,
@@ -2243,6 +2282,27 @@ int janus_process_incoming_admin_request(janus_request *request) {
 	/* What is this? */
 	if(handle == NULL) {
 		/* Session-related */
+		if(!strcasecmp(message_text, "destroy_session")) {
+			janus_mutex_lock(&sessions_mutex);
+			g_hash_table_remove(sessions, &session->session_id);
+			janus_mutex_unlock(&sessions_mutex);
+			/* Notify the source that the session has been destroyed */
+			if(session->source && session->source->transport) {
+				session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
+			}
+			/* Schedule the session for deletion */
+			janus_session_destroy(session);
+
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			/* Notify event handlers as well */
+			if(janus_events_is_enabled())
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed", NULL);
+			goto jsondone;
+		}
+		/* If this is not a request to destroy a session, it must be a request to list the handles */
 		if(strcasecmp(message_text, "list_handles")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
@@ -2257,7 +2317,35 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	} else {
 		/* Handle-related */
-		if(!strcasecmp(message_text, "start_pcap") || !strcasecmp(message_text, "start_text2pcap")) {
+		if(!strcasecmp(message_text, "detach_handle")) {
+			if(handle->app == NULL || handle->app_handle == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
+				goto jsondone;
+			}
+			int error = janus_session_handles_remove(session, handle);
+			if(error != 0) {
+				/* TODO Make error struct to pass verbose information */
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
+				/* TODO Delete handle instance */
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "hangup_webrtc")) {
+			if(handle->app == NULL || handle->app_handle == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin attached");
+				goto jsondone;
+			}
+			janus_handle_webrtc_hangup(handle, "Admin API");
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", session_id, transaction_text);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "start_pcap") || !strcasecmp(message_text, "start_text2pcap")) {
 			/* Start dumping RTP and RTCP packets to a pcap or text2pcap file */
 			JANUS_VALIDATE_JSON_OBJECT(root, text2pcap_parameters,
 				error_code, error_cause, FALSE,
