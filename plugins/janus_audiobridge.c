@@ -3775,6 +3775,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Is the sampling rate of the new room the same as the one in the old room, or should we update the decoder/encoder? */
 			janus_audiobridge_room *old_audiobridge = participant->room;
 			/* Leave the old room first... */
+			janus_refcount_increase(&participant->ref);
 			janus_mutex_lock(&old_audiobridge->mutex);
 			g_hash_table_remove(old_audiobridge->participants, &participant->user_id);
 			if(old_audiobridge->sampling_rate != audiobridge->sampling_rate) {
