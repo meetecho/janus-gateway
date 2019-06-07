@@ -833,7 +833,7 @@ static void janus_websockets_destroy_client(
 		janus_websockets_client *ws_client,
 		struct lws *wsi,
 		const char *log_prefix) {
-	if(!ws_client)
+	if(!ws_client || !ws_client->ts)
 		return;
 	janus_mutex_lock(&ws_client->ts->mutex);
 	if(!g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1)) {
