@@ -3095,6 +3095,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/monstasat/janus-ocaml">Janus-ocaml</a></td>
  *		<td>Library for Janus WebRTC server handling written in OCaml (HTTP only)</td>
  * </tr>
+ * <tr>
+ * 		<td>Haskell</td>
+ * 		<td><a href="https://github.com/oofp">oofp</a></td>
+ * 		<td><a href="https://github.com/oofp/janus-connector">janus-connector</a></td>
+ *		<td>Haskell binding of Janus client protocol using WebSocket transport with examples</td>
+ * </tr>
  * </table>
  * <br/>
  *
