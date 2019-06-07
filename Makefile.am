@@ -195,12 +195,23 @@ version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
+	pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
 
 $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+##
+# Fuzzers checking
+##
+
+check-fuzzers: FORCE
+	CC=$(CC) SKIP_JANUS_BUILD=1 LIB_FUZZING_ENGINE=fuzzers/standalone.o ./fuzzers/build.sh
+	./fuzzers/run.sh rtcp_fuzzer out/rtcp_fuzzer_seed_corpus
+	./fuzzers/run.sh rtp_fuzzer out/rtp_fuzzer_seed_corpus
+	./fuzzers/run.sh sdp_fuzzer out/sdp_fuzzer_seed_corpus
 
 .PHONY: FORCE
 FORCE:
@@ -407,9 +418,9 @@ endif
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
-plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
+plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
+plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \
@@ -505,6 +516,8 @@ bin_PROGRAMS += janus-pp-rec
 bin_PROGRAMS += janus-pp-unperc
 
 janus_pp_rec_SOURCES = \
+	postprocessing/pp-cmdline.c \
+	postprocessing/pp-cmdline.h \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
 	postprocessing/pp-g722.c \
@@ -533,6 +546,16 @@ janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(NULL)
 
+BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
+postprocessing/pp-cmdline.h: postprocessing/pp-cmdline.c
+
+postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
+	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < postprocessing/janus-pp-rec.ggo
+
+EXTRA_DIST += postprocessing/janus-pp-rec.ggo
+CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
 janus_pp_unperc_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/janus-pp-unperc.c \
@@ -548,9 +571,11 @@ janus_pp_unperc_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
-endif
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
 dist_man1_MANS += postprocessing/janus-pp-unperc.1
+
+endif
 
 ##
 # Docs

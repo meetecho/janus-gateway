@@ -11,6 +11,11 @@ int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 
+/* This is to avoid linking with openSSL */
+int RAND_bytes(uint8_t *key, int len) {
+	return 0;
+}
+
 /* Clone libsrtp srtp_validate_rtp_header */
 #define octets_in_rtp_header 12
 #define uint32s_in_rtp_header 3
@@ -59,11 +64,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* RTP extensions parsers */
 	char sdes_item[16];
 	guint16 transport_seq_num;
+	guint8 temporal_layer_id;
 	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL);
 	janus_rtp_header_extension_parse_playout_delay((char *)data, size, 1, NULL, NULL);
-	janus_rtp_header_extension_parse_rtp_stream_id((char *)data, size, 1, sdes_item, sizeof(sdes_item));
+	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_transport_wide_cc((char *)data, size, 1, &transport_seq_num);
+	janus_rtp_header_extension_parse_framemarking((char *)data, size, 1, JANUS_VIDEOCODEC_NONE, &temporal_layer_id);
 
 	/* Extract codec payload */
 	int plen = 0;
