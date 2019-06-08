@@ -105,6 +105,12 @@ static gboolean ws_janus_api_enabled = FALSE;
 static gboolean ws_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
+static gchar* ws_server_host = NULL;
+static guint ws_server_port = 0;
+static gchar* ws_server_path = NULL;
+static struct lws* ws_server_connection = NULL;
+static guint ws_server_reconnect_timeout = 5;
+
 /* Clients maps */
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 static GHashTable *clients = NULL, *writable_clients = NULL;
@@ -205,6 +211,10 @@ static int janus_websockets_admin_callback_secure(
 static struct lws_protocols ws_protocols[] = {
 	{ "http-only", janus_websockets_callback_http, 0, 0 },
 	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
+	{ NULL, NULL, 0 }
+};
+static struct lws_protocols ws_client_protocols[] = {
+	{ "janus-client-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
 static struct lws_protocols sws_protocols[] = {
@@ -549,9 +559,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get(config, config_general, janus_config_type_item, "ws");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
+		if(!item || !item->value || (!janus_is_true(item->value) && 0 != strcmp(item->value, "client"))) {
+			JANUS_LOG(LOG_WARN, "WebSockets transport disabled\n");
 		} else {
+			const gboolean act_as_client = (0 == strcmp(item->value, "client"));
+
 			int wsport = 8188;
 			item = janus_config_get(config, config_general, janus_config_type_item, "ws_port");
 			if(item && item->value)
@@ -570,12 +582,17 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_host");
+			if(item && item->value)
+				ws_server_host = g_strdup((char *)item->value);
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_path");
+			if(item && item->value)
+				ws_server_path = g_strdup((char *)item->value);
+
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
-			info.port = wsport;
 			info.iface = ip ? ip : interface;
-			info.protocols = ws_protocols;
 			info.extensions = NULL;
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
@@ -583,12 +600,30 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
-			/* Create the WebSocket context */
-			wss = lws_create_vhost(wsc, &info);
-			if(wss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error creating vhost for WebSockets server...\n");
+
+			if(act_as_client) {
+				info.protocols = ws_client_protocols;
+				info.port = CONTEXT_PORT_NO_LISTEN;
+				ws_server_port = wsport;
+
+				/* Create the WebSocket context */
+				wss = lws_create_vhost(wsc, &info);
+				if(wss == NULL) {
+					JANUS_LOG(LOG_FATAL, "Error creating connection context for WebSockets server...\n");
+				} else {
+					JANUS_LOG(LOG_INFO, "WebSockets server connection context created...\n");
+				}
 			} else {
-				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
+				info.protocols = ws_protocols;
+				info.port = wsport;
+
+				/* Create the WebSocket context */
+				wss = lws_create_vhost(wsc, &info);
+				if(wss == NULL) {
+					JANUS_LOG(LOG_FATAL, "Error creating vhost for WebSockets server...\n");
+				} else {
+					JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
+				}
 			}
 			g_free(ip);
 		}
@@ -824,6 +859,15 @@ void janus_websockets_destroy(void) {
 	janus_mutex_unlock(&writable_mutex);
 #endif
 
+	if(ws_server_host) {
+		g_free(ws_server_host);
+		ws_server_host = NULL;
+	}
+	if(ws_server_path) {
+		g_free(ws_server_path);
+		ws_server_path= NULL;
+	}
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_WEBSOCKETS_NAME);
@@ -963,6 +1007,32 @@ void janus_websockets_session_claimed(janus_transport_session *transport, guint6
 	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
+static void janus_websocket_ws_connect(struct lws_context* context)
+{
+	if(ws_server_connection)
+		return;
+
+	if(!ws_server_host || !ws_server_port || !ws_server_path) {
+		JANUS_LOG(LOG_ERR, "Missing required connect parameters.\n");
+		return;
+	}
+
+	char host_and_port[strlen(ws_server_host) + 1 + 5 + 1];
+	snprintf(host_and_port, sizeof(host_and_port), "%s:%u",
+		ws_server_host, ws_server_port);
+
+	JANUS_LOG(LOG_INFO, "Connecting to %s... \n", host_and_port);
+
+	struct lws_client_connect_info connectInfo = {};
+	connectInfo.context = context;
+	connectInfo.address = ws_server_host;
+	connectInfo.port = ws_server_port;
+	connectInfo.path = ws_server_path;
+	connectInfo.protocol = ws_client_protocols[0].name;
+	connectInfo.host = host_and_port;
+
+	ws_server_connection = lws_client_connect_via_info(&connectInfo);
+}
 
 /* Thread */
 void *janus_websockets_thread(void *data) {
@@ -974,7 +1044,22 @@ void *janus_websockets_thread(void *data) {
 
 	JANUS_LOG(LOG_INFO, "WebSockets thread started\n");
 
+	time_t ws_disconnected_time = 1; // =1 to emulate timeout on startup
+
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+		if(ws_server_host && !ws_server_connection) {
+			struct timespec now;
+			if(0 == clock_gettime(CLOCK_MONOTONIC, &now)) {
+				if(!ws_disconnected_time) {
+					JANUS_LOG(LOG_INFO, "Disconnection from server detecteded ... \n");
+					ws_disconnected_time = now.tv_sec;
+				} else if(now.tv_sec - ws_disconnected_time > ws_server_reconnect_timeout) {
+					janus_websocket_ws_connect(service);
+					ws_disconnected_time = 0;
+				}
+			}
+		}
+
 		/* libwebsockets is single thread, we cycle through events here */
 		lws_service(service, 50);
 	}
@@ -995,6 +1080,9 @@ static int janus_websockets_callback_http(
 {
 	/* This endpoint cannot be used for HTTP */
 	switch(reason) {
+		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+			JANUS_LOG(LOG_ERR, "HTTP server connect failed...\n");
+			break;
 		case LWS_CALLBACK_HTTP:
 			JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint\n");
 			lws_return_http_status(wsi, 403, NULL);
@@ -1030,30 +1118,45 @@ static int janus_websockets_common_callback(
 		void *user, void *in, size_t len, gboolean admin)
 {
 	const char *log_prefix = admin ? "AdminWSS" : "WSS";
+
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
+		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
+			JANUS_LOG(LOG_ERR, "WebSockets server connect failed...\n");
+			ws_server_connection = NULL;
+			break;
+		}
+		case LWS_CALLBACK_CLIENT_ESTABLISHED:
 		case LWS_CALLBACK_ESTABLISHED: {
-			/* Is there any filtering we should apply? */
 			char ip[256];
 #ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
 			lws_get_peer_simple(wsi, ip, 256);
-			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s\n", log_prefix, wsi, ip);
 #else
 			char name[256];
 			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
-			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s by %s\n", log_prefix, wsi, ip, name);
 #endif
-			if(!janus_websockets_is_allowed(ip, admin)) {
-				JANUS_LOG(LOG_ERR, "[%s-%p] IP %s is unauthorized to connect to the WebSockets %s API interface\n", log_prefix, wsi, ip, admin ? "Admin" : "Janus");
-				/* Close the connection */
-				lws_callback_on_writable(wsi);
-				return -1;
+			if(reason == LWS_CALLBACK_CLIENT_ESTABLISHED) {
+				JANUS_LOG(LOG_INFO, "WebSockets server connection established.\n");
+			} else {
+				/* Is there any filtering we should apply? */
+#ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
+				JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s\n", log_prefix, wsi, ip);
+#else
+				JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s by %s\n", log_prefix, wsi, ip, name);
+#endif
+				if(!janus_websockets_is_allowed(ip, admin)) {
+					JANUS_LOG(LOG_ERR, "[%s-%p] IP %s is unauthorized to connect to the WebSockets %s API interface\n", log_prefix, wsi, ip, admin ? "Admin" : "Janus");
+					/* Close the connection */
+					lws_callback_on_writable(wsi);
+					return -1;
+				}
+				JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection accepted\n", log_prefix, wsi);
+				if(ws_client == NULL) {
+					JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
+					return -1;
+				}
 			}
-			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection accepted\n", log_prefix, wsi);
-			if(ws_client == NULL) {
-				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
-				return -1;
-			}
+
 			/* Prepare the session */
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
@@ -1081,6 +1184,7 @@ static int janus_websockets_common_callback(
 			}
 			return 0;
 		}
+		case LWS_CALLBACK_CLIENT_RECEIVE:
 		case LWS_CALLBACK_RECEIVE: {
 			JANUS_LOG(LOG_HUGE, "[%s-%p] Got %zu bytes:\n", log_prefix, wsi, len);
 			if(ws_client == NULL || ws_client->wsi == NULL) {
@@ -1139,6 +1243,7 @@ static int janus_websockets_common_callback(
 			return 0;
 		}
 #endif
+		case LWS_CALLBACK_CLIENT_WRITEABLE:
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
 			if(ws_client == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
@@ -1200,13 +1305,20 @@ static int janus_websockets_common_callback(
 			}
 			return 0;
 		}
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		case LWS_CALLBACK_CLIENT_CLOSED:
+#endif
 		case LWS_CALLBACK_CLOSED: {
+			ws_server_connection = NULL;
+
 			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, closing\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- closed\n", log_prefix, wsi);
 			return 0;
 		}
 		case LWS_CALLBACK_WSI_DESTROY: {
+			ws_server_connection = NULL;
+
 			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, destroying\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- destroyed\n", log_prefix, wsi);

@@ -42,11 +42,20 @@
 // in the presented order. The first working server will be used for
 // the whole session.
 //
+const useWebSockets = true;
 var server = null;
-if(window.location.protocol === 'http:')
-	server = "http://" + window.location.hostname + ":8088/janus";
-else
-	server = "https://" + window.location.hostname + ":8089/janus";
+
+if(useWebSockets) {
+    if(window.location.protocol === 'http:')
+        server = "ws://" + window.location.hostname + ":8188";
+    else
+        server = "wss://" + window.location.hostname + ":8989";
+} else {
+    if(window.location.protocol === 'http:')
+        server = "http://" + window.location.hostname + ":8088/janus";
+    else
+        server = "https://" + window.location.hostname + ":8089/janus";
+}
 
 var janus = null;
 var streaming = null;
