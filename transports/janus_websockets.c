@@ -111,6 +111,12 @@ static gchar* ws_server_path = NULL;
 static struct lws* ws_server_connection = NULL;
 static guint ws_server_reconnect_timeout = 5;
 
+static gchar* wss_server_host = NULL;
+static guint wss_server_port = 0;
+static gchar* wss_server_path = NULL;
+static struct lws* wss_server_connection = NULL;
+static guint wss_server_reconnect_timeout = 5;
+
 /* Clients maps */
 #if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 static GHashTable *clients = NULL, *writable_clients = NULL;
@@ -207,6 +213,12 @@ static int janus_websockets_admin_callback_secure(
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
 		void *user, void *in, size_t len);
+
+enum {
+	WS_CLIENT_PROTOCOL_ID = 1,
+	WSS_CLIENT_PROTOCOL_ID,
+};
+
 /* Protocol mappings */
 static struct lws_protocols ws_protocols[] = {
 	{ "http-only", janus_websockets_callback_http, 0, 0 },
@@ -214,12 +226,16 @@ static struct lws_protocols ws_protocols[] = {
 	{ NULL, NULL, 0 }
 };
 static struct lws_protocols ws_client_protocols[] = {
-	{ "janus-client-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
+	{ "janus-client-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0, WS_CLIENT_PROTOCOL_ID },
 	{ NULL, NULL, 0 }
 };
 static struct lws_protocols sws_protocols[] = {
 	{ "http-only", janus_websockets_callback_https, 0, 0 },
 	{ "janus-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0 },
+	{ NULL, NULL, 0 }
+};
+static struct lws_protocols sws_client_protocols[] = {
+	{ "janus-client-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0, WSS_CLIENT_PROTOCOL_ID },
 	{ NULL, NULL, 0 }
 };
 static struct lws_protocols admin_ws_protocols[] = {
@@ -628,9 +644,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			g_free(ip);
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "wss");
-		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
+		if(!item || !item->value || (!janus_is_true(item->value) && 0 != strcmp(item->value, "client"))) {
+			JANUS_LOG(LOG_WARN, "Secure WebSockets transport disabled\n");
 		} else {
+			const gboolean act_as_client = (0 == strcmp(item->value, "client"));
+
 			int wsport = 8989;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_port");
 			if(item && item->value)
@@ -649,12 +667,19 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_host");
+			if(item && item->value)
+				wss_server_host = g_strdup((char *)item->value);
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_path");
+			if(item && item->value)
+				wss_server_path = g_strdup((char *)item->value);
+
 			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
-			if(!item || !item->value) {
+			if((!item || !item->value) && !act_as_client) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				char *server_pem = (char *)item->value;
-				char *server_key = (char *)item->value;
+				char *server_pem = item ? (char *)item->value : NULL;
+				char *server_key = item ? (char *)item->value : NULL;
 				char *password = NULL;
 				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 				if(item && item->value)
@@ -662,7 +687,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 				if(item && item->value)
 					password = (char *)item->value;
-				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+				if(server_pem && server_key)
+					JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
@@ -680,12 +706,30 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
-				/* Create the secure WebSocket context */
-				swss = lws_create_vhost(wsc, &info);
-				if(swss == NULL) {
-					JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure WebSockets server...\n");
+
+				if(act_as_client) {
+					info.protocols = sws_client_protocols;
+					info.port = CONTEXT_PORT_NO_LISTEN;
+					wss_server_port = wsport;
+
+					/* Create the WebSocket context */
+					swss = lws_create_vhost(wsc, &info);
+					if(swss == NULL) {
+						JANUS_LOG(LOG_FATAL, "Error creating connection context for Secure WebSockets server...\n");
+					} else {
+						JANUS_LOG(LOG_INFO, "Secure WebSockets server connection context created...\n");
+					}
 				} else {
-					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
+					info.protocols = ws_protocols;
+					info.port = wsport;
+
+					/* Create the secure WebSocket context */
+					swss = lws_create_vhost(wsc, &info);
+					if(swss == NULL) {
+						JANUS_LOG(LOG_FATAL, "Error creating vhost for Secure WebSockets server...\n");
+					} else {
+						JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
+					}
 				}
 			}
 			g_free(ip);
@@ -867,6 +911,14 @@ void janus_websockets_destroy(void) {
 		g_free(ws_server_path);
 		ws_server_path= NULL;
 	}
+	if(wss_server_host) {
+		g_free(wss_server_host);
+		wss_server_host = NULL;
+	}
+	if(wss_server_path) {
+		g_free(wss_server_path);
+		wss_server_path= NULL;
+	}
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1034,6 +1086,34 @@ static void janus_websocket_ws_connect(struct lws_context* context)
 	ws_server_connection = lws_client_connect_via_info(&connectInfo);
 }
 
+static void janus_websocket_wss_connect(struct lws_context* context)
+{
+	if(wss_server_connection)
+		return;
+
+	if(!wss_server_host || !wss_server_port || !wss_server_path) {
+		JANUS_LOG(LOG_ERR, "Missing required connect parameters.\n");
+		return;
+	}
+
+	char host_and_port[strlen(wss_server_host) + 1 + 5 + 1];
+	snprintf(host_and_port, sizeof(host_and_port), "%s:%u",
+		wss_server_host, wss_server_port);
+
+	JANUS_LOG(LOG_INFO, "Connecting secure to %s... \n", host_and_port);
+
+	struct lws_client_connect_info connectInfo = {};
+	connectInfo.context = context;
+	connectInfo.address = wss_server_host;
+	connectInfo.port = wss_server_port;
+	connectInfo.path = wss_server_path;
+	connectInfo.protocol = sws_client_protocols[0].name;
+	connectInfo.host = host_and_port;
+	connectInfo.ssl_connection = TRUE;
+
+	wss_server_connection = lws_client_connect_via_info(&connectInfo);
+}
+
 /* Thread */
 void *janus_websockets_thread(void *data) {
 	struct lws_context *service = (struct lws_context *)data;
@@ -1045,17 +1125,28 @@ void *janus_websockets_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "WebSockets thread started\n");
 
 	time_t ws_disconnected_time = 1; // =1 to emulate timeout on startup
+	time_t wss_disconnected_time = 1; // =1 to emulate timeout on startup
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(ws_server_host && !ws_server_connection) {
 			struct timespec now;
 			if(0 == clock_gettime(CLOCK_MONOTONIC, &now)) {
 				if(!ws_disconnected_time) {
-					JANUS_LOG(LOG_INFO, "Disconnection from server detecteded ... \n");
 					ws_disconnected_time = now.tv_sec;
 				} else if(now.tv_sec - ws_disconnected_time > ws_server_reconnect_timeout) {
 					janus_websocket_ws_connect(service);
 					ws_disconnected_time = 0;
+				}
+			}
+		}
+		if(wss_server_host && !wss_server_connection) {
+			struct timespec now;
+			if(0 == clock_gettime(CLOCK_MONOTONIC, &now)) {
+				if(!wss_disconnected_time) {
+					wss_disconnected_time = now.tv_sec;
+				} else if(now.tv_sec - wss_disconnected_time > wss_server_reconnect_timeout) {
+					janus_websocket_wss_connect(service);
+					wss_disconnected_time = 0;
 				}
 			}
 		}
@@ -1117,13 +1208,22 @@ static int janus_websockets_common_callback(
 		enum lws_callback_reasons reason,
 		void *user, void *in, size_t len, gboolean admin)
 {
+	const struct lws_protocols* protocol = lws_get_protocol(wsi);
+	const gboolean is_ws_client = protocol ? WS_CLIENT_PROTOCOL_ID == protocol->id : FALSE;
+	const gboolean is_wss_client = protocol ? WSS_CLIENT_PROTOCOL_ID == protocol->id : FALSE;
+
 	const char *log_prefix = admin ? "AdminWSS" : "WSS";
 
-	janus_websockets_client *ws_client = (janus_websockets_client *)user;
+	struct janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-			JANUS_LOG(LOG_ERR, "WebSockets server connect failed...\n");
-			ws_server_connection = NULL;
+			if(is_ws_client) {
+				JANUS_LOG(LOG_ERR, "WebSockets server connect failed...\n");
+				ws_server_connection = NULL;
+			} else if(is_wss_client) {
+				JANUS_LOG(LOG_ERR, "WebSockets server secure connect failed...\n");
+				wss_server_connection = NULL;
+			}
 			break;
 		}
 		case LWS_CALLBACK_CLIENT_ESTABLISHED:
@@ -1309,7 +1409,10 @@ static int janus_websockets_common_callback(
 		case LWS_CALLBACK_CLIENT_CLOSED:
 #endif
 		case LWS_CALLBACK_CLOSED: {
-			ws_server_connection = NULL;
+			if(is_ws_client)
+				ws_server_connection = NULL;
+			else if(is_wss_client)
+				wss_server_connection = NULL;
 
 			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, closing\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
@@ -1317,7 +1420,10 @@ static int janus_websockets_common_callback(
 			return 0;
 		}
 		case LWS_CALLBACK_WSI_DESTROY: {
-			ws_server_connection = NULL;
+			if(is_ws_client)
+				ws_server_connection = NULL;
+			else if(is_wss_client)
+				wss_server_connection = NULL;
 
 			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, destroying\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
