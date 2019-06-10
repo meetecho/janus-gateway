@@ -142,8 +142,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("[caller] ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("[caller] Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("[caller] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");

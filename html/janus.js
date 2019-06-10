@@ -703,7 +703,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.mediaState(json["type"], json["receiving"]);
+			pluginHandle.mediaState(json["type"], json["receiving"], json["mid"]);
 		} else if(json["janus"] === "slowlink") {
 			Janus.debug("Got a slowlink event on session " + sessionId);
 			Janus.debug(json);
