@@ -514,6 +514,10 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
+						if(strcmp(line, "AS")) {
+							/* We only support b=AS, skip */
+							break;
+						}
 						mline->b_name = g_strdup(line);
 						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
