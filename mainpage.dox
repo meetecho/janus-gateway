@@ -2154,45 +2154,106 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * need to provide or other transport-specific ones.
  *
  * For what concerns the syntax, it's very similar to the \ref rest and
- * so this page will briefly discuss the differences. At the moment, a few
- * different methods are exposed:
+ * so this page will briefly discuss the differences. Notice that, when
+ * using WebSockets, you'll have to use <code>janus-admin-protocol</code>
+ * as the subprotocol, instead of the <code>janus-protocol</code> of the
+ * regular Janus API.
  *
- * - \c list_sessions: list all the sessions currently active in Janus
- * (returns an array of session identifiers);
- * - \c list_handles: list all the ICE handles currently active in a Janus
- * session (returns an array of handle identifiers);
- * - \c handle_info: list all the available info on a specific ICE handle;
- * - \c start_pcap: start dumping incoming and outgoing RTP/RTCP packets
- * of a handle to a pcap file (e.g., for ex-post analysis via Wireshark);
- * - \c stop_pcap: stop the pcap dump;
- * - \c start_text2pcap: same as above, but saves to a text file instead,
- * to be fed to \c text2pcap in order to generate a \c .pcap or \c .pcapng file;
- * - \c stop_text2pcap: stop the text2pcap dump;
- * - \c set_session_timeout: change the session timeout value in Janus on the fly;
- * - \c set_log_level: change the log level in Janus on the fly;
- * - \c set_locking_debug: selectively enable/disable a live debugging of
- * the locks in Janus on the fly (useful if you're experiencing deadlocks
- * and want to investigate them);
- * - \c set_libnice_debug: selectively enable/disable libnice debugging;
+ * \section adminreq Admin API requests
+ * There are several different requests that this API implementents, so,
+ * to make this documentation easier to read and the functionality easier
+ * to identify, we can group requests depending on what they provide.
+ *
+ * \subsection adminreqg Generic requests
+ * - \c info: get the generic on the Janus instance; this returns exactly
+ * the same information that a Janus API \c info request would return,
+ * and doesn't require any secret;
+ * - \c ping: a simple ping/pong mechanism for the Admin API, that returns
+ * a \c pong back that the client can use as a healthcheck or to measure
+ * the protocol round-trip time; together with the \c info request introduced
+ * above, it's the only one that doesn't require a secret.
+ *
+ * \subsection adminreqc Configuration-related requests
+ * - \c get_status: returns the current value for the settings that can be
+ * modified at runtime via the Admin API (see below);
+ * - \c set_session_timeout: change the session timeout value in Janus;
+ * - \c set_log_level: change the log level in Janus;
  * - \c set_log_timestamps: selectively enable/disable adding a timestamp
  * to all log lines Janus writes on the console and/or to file;
  * - \c set_log_colors: selectively enable/disable using colors in all
  * log lines Janus writes on the console and/or to file;
- * - \c set_max_nack_queue: change the value of the max NACK queue window
- * on the fly;
- * - \c set_no_media_timer: change the value of the no-media timer value
- * on the fly;
+ * - \c set_locking_debug: selectively enable/disable a live debugging of
+ * the locks in Janus on the fly (useful if you're experiencing deadlocks
+ * and want to investigate them);
+ * - \c set_refcount_debug: selectively enable/disable a live debugging of
+ * the reference counters in Janus on the fly (useful if you're experiencing
+ * memory leaks in the Janus structures and want to investigate them);
+ * - \c set_libnice_debug: selectively enable/disable libnice debugging;
+ * - \c set_max_nack_queue: change the value of the max NACK queue window;
+ * - \c set_no_media_timer: change the value of the no-media timer value.
+ *
+ * \subsection adminreqt Token-related requests
  * - \c add_token: add a valid token (only available if you enabled the \ref token);
  * - \c allow_token: give a token access to a plugin (only available if you enabled the \ref token);
  * - \c disallow_token: remove a token access from a plugin (only available if you enabled the \ref token);
  * - \c list_tokens: list the existing tokens (only available if you enabled the \ref token);
  * - \c remove_token: remove a token (only available if you enabled the \ref token).
  *
+ * \subsection adminreqs Session-related requests
+ * - \c accept_new_sessions: configure whether Janus should accept new
+ * incoming sessions or not; this can be particularly useful whenever, e.g.,
+ * you want to stop accepting new sessions because you're draining this instance;
+ * - \c list_sessions: list all the sessions currently active in Janus
+ * (returns an array of session identifiers);
+ * - \c destroy_session: destroy a specific session; this behaves exactly
+ * as the \c destroy request does in the Janus API.
+ *
+ * \subsection adminreqh Handle- and WebRTC-related requests
+ * - \c list_handles: list all the ICE handles currently active in a Janus
+ * session (returns an array of handle identifiers);
+ * - \c handle_info: list all the available info on a specific ICE handle;
+ * if a \c plugin_only property is set to \c true then only the plugin-specific
+ * information is returned, excluding the more verbose WebRTC info and stats;
+ * - \c start_pcap: start dumping incoming and outgoing RTP/RTCP packets
+ * of a handle to a pcap file (e.g., for ex-post analysis via Wireshark);
+ * - \c stop_pcap: stop the pcap dump;
+ * - \c start_text2pcap: same as above, but saves to a text file instead,
+ * to be fed to \c text2pcap in order to generate a \c .pcap or \c .pcapng file;
+ * - \c stop_text2pcap: stop the text2pcap dump;
+ * - \c message_plugin: send a synchronous request to a plugin and return a
+ * response; implemented by most plugins to facilitate and streamline the
+ * management of plugin resources (e.g., creating rooms in a conference plugin);
+ * - \c hangup_webrtc: hangups the PeerConnection associated with a specific
+ * handle; this behaves exactly as the \c hangup request does in the Janus API.
+ * - \c detach_handle: detached a specific handle; this behaves exactly
+ * as the \c detach request does in the Janus API.
+ *
+ * \subsection adminreqe Event handlers-related requests
+ * - \c query_eventhandler: send a synchronous request to an event handler and
+ * return a response; implemented by most event handlers to dynamically
+ * configure some of their properties;
+ * - \c custom_event: push a custom "external" event to notify via event handlers;
+ * this can be useful whenever info from a third-party application needs to be
+ * easily correlated to events originated by Janus, or to push information
+ * Janus doesn't have available (e.g., a script polling CPU usage regularly).
+ *
+ * \subsection adminreqz Helper requests
+ * - \c resolve_address: helper request to evaluate whether this Janus instance
+ * can resolve an address via DNS, and how long it takes;
+ * - \c test_stun: helper request to evaluate whether this Janus instance
+ * can contact a STUN server, what is returned, and how long it takes.
+ *
+ * \section adminsyntax Admin API syntax
  * Following the same spirit of the \ref rest these methods need to be
  * invoked on the right path and/or providing the right \c session_id and
- * \c handle_id identifiers. Specifically, \c list_sessions must be invoked
- * without any session/handle information, as it's a global request. Here's
- * an example of how such a request and its related response might look like:
+ * \c handle_id identifiers. Specifically, the following requests must be invoked
+ * without any session/handle information, as they're global requests:
+ *
+ * - \c info , \c ping , \c get_status , all the configuration setters, all
+ * the token requests, all the event-handler related requests, all the
+ * helper requests, \c accept_new_sessions and \c list_sessions
+ *
+ * Here's an example of how such a request and its related response might look like:
  *
 \verbatim
 POST /admin
@@ -2217,15 +2278,22 @@ POST /admin
 }
 \endverbatim
  *
- * On the other hand, since \c list_handles is related to a specific session,
- * a session must be referenced correctly. Using the REST API, this can
- * be done by appending the session identifier (e.g., one of the IDs
- * returned by the previous call) to the API root:
+ * On the other hand, some requests may be targeting a specific session,
+ * in which case a \c session_id property must be provided. Specifically,
+ * these are the requests that do need a valid session identifier:
+ *
+ * - \c destroy_session , \c list_handles
+ *
+ * Using the REST API, this can be done by appending the session identifier
+ (e.g., one of the ID returned by a \c list_sessions call) to the API root,
+ * but a more generic approach that works for all transports is to just
+ * specify a \c session_id property in the request, e.g.:
  *
 \verbatim
 POST /admin/12345678
 {
 	"janus" : "list_handles",
+	"session_id" : 12345678,
 	"transaction" : "<random alphanumeric string>",
 	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
@@ -2246,15 +2314,27 @@ POST /admin/12345678
 }
 \endverbatim
  *
- * Once a list of handles is available, detailed info on any of them can
- * be obtained by means of a \c handle_info call. Since this is a
- * handle-specific request, the correct handle identifier must be
- * referenced, e.g., by appending the ID to the session it belongs to:
+ * Finally, some requests need not only a valid session identifier, but
+ * a handle identifier as well, as they may address a specific handle
+ * that the Janus instance is serving. It is the case for all requests
+ * that address a specific handle and/or the related PeerConnection,
+ * namely:
+ *
+ * - \c handle_info , all the pcap-related requests, \c message_plugin ,
+ * \c hangup_webrtc and \c detach_handle
+ *
+ * The following is an example of how a \c handle_info call addressing
+ * a specific handle might look like. Since this is a handle-specific
+ * request, the correct handle identifier must be
+ * referenced, e.g., by appending the ID to the session it belongs to
+ * or adding a \c handle_id attribute besides the \c session_id parent:
  *
 \verbatim
 POST /admin/12345678/98765432
 {
 	"janus" : "handle_info",
+	"session_id" : 12345678,
+	"handle_id" : 98765432,
 	"transaction" : "<random alphanumeric string>",
 	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
@@ -2272,6 +2352,10 @@ POST /admin/12345678/98765432
 		"session_last_activity": 7927759122,
 		"session_transport": "janus.transport.websockets",
 		"handle_id" : 98765432,
+		"opaque_id": "echotest-YZcsLRCI4uSV",
+		"loop-running": true,
+		"created": 18695669309,
+		"current_time": 18706199704,
 		"plugin": "janus.plugin.echotest",
 		"plugin_specific": {
 			// plugin specific (e.g., EchoTest internals)
@@ -2279,30 +2363,42 @@ POST /admin/12345678/98765432
 		"flags": {
 			// flags
 		},
+		"agent-created": 18696092523,
+		"ice-mode": "full",
+		"ice-role": "controlled",
 		"sdps": {
+			"profile": "UDP/TLS/RTP/SAVPF",
 			"local": "v=0[..]",
 			"remote": "v=0[..]"
 		},
+		"queued-packets": 0,
 		"streams": [
-			// streams, components, etc.
+			// WebRTC info, including SSRCs, codecs, ICE and DTLS states, RTCP stats, etc.
 		]
 	}
 }
 \endverbatim
  *
- * The actual content of the last response is omitted for brevity, but
+ * With respect to the \c handle_info request we used as an example, here,
+ * the actual content of the last response is omitted for brevity, but
  * you're welcome to experiment with it in order to check whether more
  * information (of a different nature, maybe) may be useful to have. In
  * particular, you may want to play with the plugin-specific details, as
  * different plugins will return different information according to what
- * they provide: for instance, the videoroom plugin might clarify whether
+ * they provide: for instance, the VideoRoom plugin might clarify whether
  * a handle is being used for publishing media or for receiving it, and
  * what are the involved IDs, the current status of the delivery, and so on.
  * At the same time, the \c streams object will contain invaluable details
  * related to the WebRTC PeerConnection associated with the handle, as
  * in input/output statistics statistics (bytes, bytes per seconds, NACKs,
- * etc.) or the SDP/ICE/DTLS states.
+ * etc.) or the SDP/ICE/DTLS states. Notice that the information as
+ * returned by the Admin API here is just a snapshot: if you're more
+ * interested in how this information evolves in a more dynamic way, you
+ * may want to start using the Event Handlers instead, which return pretty
+ * much the same information, but conveying it as dynamic events pushed
+ * to an application you control.
  *
+ * \section adminpcap Capturing unencrypted WebRTC traffic
  * As anticipated, you can also enable/disable the dumping of the RTP/RTCP
  * packets a handle is sending and receiving to a pcap or text2pcap file. This is
  * especially useful for debugging reasons, e.g., to check whether or not
@@ -2342,41 +2438,6 @@ POST /admin/12345678/98765432
 	"admin_secret" : "<password specified in janus.jcfg, if any>"
 }
 \endverbatim
- *
- * Finally, the syntax for the \c set_log_level and \c set_locking_debug
- * commands is quite straightforward:
- *
-\verbatim
-POST /admin
-{
-	"janus" : "set_log_level",
-	"level" : <integer between 0 and 7, see debug.h>,
-	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.jcfg, if any>"
-}
-\endverbatim
- *
-\verbatim
-POST /admin
-{
-	"janus" : "set_locking_debug",
-	"debug" : <0 to disable, 1 to enable>,
-	"transaction" : "<random alphanumeric string>",
-	"admin_secret" : "<password specified in janus.jcfg, if any>"
-}
-\endverbatim
- *
- * Both commands will return the updated level/debug setting if successful,
- * and an error otherwise.
- *
- * To conclude, all of the above mentioned examples have assumed an usage
- * of HTTP to interact with the Admin API. The same considerations already
- * made for the Janus API as to the usage of different transports (WebSockets,
- * RabbitMQ, MQTT or others) apply here as well, particularly with respect to
- * the explicit \c session_id and \c handle_id in the JSON payload. Besides,
- * to use the Admin API over WebSockets you'll have to use <code>janus-admin-protocol</code>
- * as the subprotocol, instead of the <code>janus-protocol</code> of the
- * regular Janus API.
  *
  */
 
