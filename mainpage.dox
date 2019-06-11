@@ -2142,7 +2142,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * asynchronous notifications about the internal state of core and plugins,
  * check the recently added janus_eventhandler mechanism instead.
  *
- * The API, for security reasons, is typically noy enabled by default in any of the
+ * The API, for security reasons, is typically not enabled by default in any of the
  * transport plugins: that's definitely the case for the stock transport
  * plugins, for instance, while additional, third party plugins may choose
  * to expose the functionality without requiring any tweaking. As to the
