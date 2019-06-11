@@ -43,7 +43,9 @@
  * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page. Event handler
  * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
- * page if you're interested in creating your own.
+ * page if you're interested in creating your own. Janus also supports
+ * \ref recordings out of the box, so check the related documentation
+ * to know more about how that works.
  *
  * Finally, some information on how to deploy Janus and your web
  * applications that want to make use of it are provided in the \ref deploy
@@ -58,7 +60,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2019 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -1066,33 +1068,34 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 	"janus": "server_info",
 	"transaction": "i1bzIL341Kl2",
 	"name": "Janus WebRTC Server",
-	"version": 10,
-	"version_string": "0.1.0",
+	"version": 73,
+	"version_string": "0.7.3",
 	"author": "Meetecho s.r.l.",
 	"data_channels": "true",	// Data channels are supported
 	"ipv6": "false",			// IPv6 is not configured
-	"ice-tcp": "false",			// ICE-TCP support is disabled
+	"ice-tcp": "false",			// ICE-TCP support is disabled,
+	[..]
 	"transports": {
 		"janus.transport.http": {
 			"name": "JANUS REST (HTTP/HTTPS) transport plugin",
 			"author": "Meetecho s.r.l.",
 			"description": "This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd.",
-			"version_string": "0.0.1",
-			"version": 1
+			"version_string": "0.0.2",
+			"version": 2
 		},
 		[..]	// Other transport plugins
 	},
 	"plugins": {
 		"janus.plugin.sip": {		// The SIP plugin is available
-			"version_string": "0.0.2",
+			"version_string": "0.0.7",
 			"description": "This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through Janus.",
 			"author": "Meetecho s.r.l.",
 			"name": "JANUS SIP plugin",
-			"version": 2
+			"version": 7
 		},
-		"janus.plugin.videoroom": {	// The Video MCU plugin is available
+		"janus.plugin.videoroom": {	// The Video SFU plugin is available
 			"version_string": "0.0.3",
-			"description": "This is a plugin implementing a videoconferencing MCU for Janus, something like Licode.",
+			"description": "This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router.",
 			"author": "Meetecho s.r.l.",
 			"name": "JANUS VideoRoom plugin",
 			"version": 3
@@ -2406,7 +2409,7 @@ POST /admin/12345678/98765432
  * with tools like Wireshark. Notice that this is not supposed to be used
  * for recording Janus streams: while it can be used for that, the
  * janus_recorder utility is much more suited for the task, and is what
- * all plugins make use of when they're interested in recordings.
+ * all plugins make use of when they're interested in \ref recordings .
  *
  * The syntax for the \c start_pcap and \c start_text2pcap commands is
  * trivial, and apart from the command name pretty much the same: all you
@@ -3032,6 +3035,102 @@ ldd janus | grep asan
  * - \ref duktape
  */
 
+/*! \page recordings Recordings
+ * Janus supports recordings of WebRTC sessions out of the box, assuming
+ * plugins take advantage of the feature. Specifically, recording as a
+ * functionality is implemented in the Janus core, specifically using the
+ * janus_recorder structure and the related methods. When enabled, media
+ * streams are recorded to a custom format (that we introduce below):
+ * as such, it's then up to individual plugins to expose ways for users
+ * to configure/start/stop recordings, and using the core functionality
+ * to actually implementing the recording part. At the time of writing,
+ * most plugins do implement it.
+ *
+ * \note This section covers recordings for the purpose of storage,
+ * archiving or further manipulation. If you're interested in recording
+ * for the purpose of debugging media sessions, you may want to refer to
+ * the \ref adminpcap documentation instead, as that would allow you
+ * to capture unencrypted RTP/RTCP packets sent/received to/from Janus
+ * in a format tools like Wireshark and tcpdump support.
+ *
+ * \section mjr Meetecho Janus Recordings
+ * As anticipated, the janus_recorder core functionality saves media
+ * streams to a custom format that we call the "Meetecho Janus Recordings"
+ * format. When saved to file, the custom \c mjr extension is used.
+ *
+ * Each \c mjr file contains a single media stream. This means that if
+ * if you want to record, for instance, an audio/video stream, you'll need
+ * two separate \c mjr files: one just for audio, and the other just for
+ * video. Each \c mjr file then basically just contains a structured
+ * dump of the RTP packets exactly as they arrived: after a short header
+ * that describes the data contained in the recording (i.e., type of
+ * media, the codec, when it was created, when the first packet was written),
+ * each RTP packet is saved together with info on its length.
+ *
+ *\verbatim
++-----------------------------------------------+
+|               MJR00001 (8 bytes)              |
++-----------------------------------------------+
+| LEN (2 bytes) | JSON header (variable length) |
++-----------------------------------------------+
+|               MEETECHO (8 bytes)              |
++-----------------------------------------------+
+| LEN (2 bytes) | RTP packet (variable length)  |
++-----------------------------------------------+
+|               MEETECHO (8 bytes)              |
++-----------------------------------------------+
+| LEN (2 bytes) | RTP packet (variable length)  |
++-----------------------------------------------+
+|               MEETECHO (8 bytes)              |
++-----------------------------------------------+
+| LEN (2 bytes) | RTP packet (variable length)  |
++-----------------------------------------------+
+|                     ...                       |
++-----------------------------------------------+
+ \endverbatim
+ *
+ * This makes the recording process very lightweight, as Janus doesn't
+ * need to do anything more that just saving the packets to file: no
+ * CPU intensive operation like transcoding or frame manipulation is
+ * done by the janus_recorder instances. RTP packets don't even need to
+ * be saved in order, as the \c mjr files can be post-processed later
+ * and, as we'll see, re-ordering of the stored packets is part of the
+ * activities that our post-processor performs when doing so.
+ *
+ * \subsection mjrdata Saving data channels
+ * While we've so far only mentioned RTP packets, and so audio and video,
+ * Janus actually also natively supports the recording of datachannels.
+ * In that case, the recording will be a structured dump not of RTP
+ * packets, but of the individual messages that were received. Just as
+ * we said for audio and video, since \c mjr files only cover individual
+ * streams, data recordings will need their own instance as well.
+ *
+ * \section mjrproc Post-processing the recordings
+ * Once a recording is available in the \c mjr format, it obviously needs
+ * some transformation before it can be consumed by external tools, e.g.,
+ * media players or third-party applications for further processing (like
+ * muxing audio and video together, or mixing multiple video streams
+ * together).
+
+ * Out of the box, Janus comes with a simple post-processing tool whose
+ * only job is re-ordering the available RTP packets, extracting the
+ * media frames from the RTP packets (which for video might mean
+ * extracting the same frame from multiple packets in sequence), and
+ * saving the media frames to a well-known media format. To make this
+ * simple, this tool can, for instance, convert an audio \c mjr recording
+ * to an \c opus file, or a video \c mjr recording containing VP8 packets
+ * to a \c webm file instead. Notice that no transcoding is done by this
+ * postprocessor either: frames are extracted exactly as they were sent
+ * originally, and just saved to a media container in a way that multimedia
+ * applications can consume them. If further processing is needed (e.g.,
+ * muxing, mixing, transcoding, or other), then this is up to third-party
+ * applications that can work with existing media files.
+ *
+ * For more information on the Janus recordings post-processor, check
+ * the documentation for the janus-pp-rec.c executable.
+ *
+ */
+
 /*! \page resources Resources
  * This page contains pointers to some third-party resources, in particular
  * distro repos for an easier installation of Janus, where available,
@@ -3075,13 +3174,13 @@ ldd janus | grep asan
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
- *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway</td>
+ *		<td>node and browserify compatible integration layer for the Janus WebRTC server</td>
  * </tr>
  * <tr>
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/DamonOehlman">Damon Oehlman</a></td>
  * 		<td><a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a></td>
- *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway:
+ *		<td>node and browserify compatible integration layer for the Janus WebRTC server:
  * experimental and incomplete as per the author words, but a good starting point</td>
  * </tr>
  * <tr>
@@ -3106,7 +3205,7 @@ ldd janus | grep asan
  * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/TechTeamer">TechTeamer</a></td>
  * 		<td><a href="https://github.com/TechTeamer/janus-api">janus-api</a></td>
- * 		<td>Javascript (node and browser side) API for Janus WebRTC Gateway</td>
+ * 		<td>Javascript (node and browser side) API for Janus WebRTC server</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
@@ -3142,7 +3241,7 @@ ldd janus | grep asan
  * 		<td>Elixir</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/elixir-janus">elixir-janus</a></td>
- *		<td>Elixir client side API wrapper for the Janus WebRTC gateway</td>
+ *		<td>Elixir client side API wrapper for the Janus WebRTC server</td>
  * </tr>
  * <tr>
  * 		<td>OBS</td>
@@ -3185,7 +3284,7 @@ ldd janus | grep asan
  * 		<td>Android/iOS</td>
  * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
  * 		<td><a href="https://github.com/atyenoria/react-native-webrtc-janus-gateway">react-native-webrtc-janus-gateway</a></td>
- * 		<td>Video conference system for mobile application on react-native-webrtc + Janus Webrtc Gateway</td>
+ * 		<td>Video conference system for mobile application on react-native-webrtc + Janus WebRTC server</td>
  * </tr>
  * <tr>
  * 		<td>Android/iOS</td>
@@ -3225,7 +3324,7 @@ ldd janus | grep asan
  * <tr>
  * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
  * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
- *		<td>Janus WebRTC Gateway Docker Image for Media Streaming Expert User</td>
+ *		<td>Janus WebRTC server Docker Image for Media Streaming Expert User</td>
  * </tr>
  * </table>
  * <br/>
@@ -3287,7 +3386,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2018 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2019 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3779,7 +3878,7 @@ ldd janus | grep asan
  *    around, while most of the application login is in the modules. As
  *    you can imagine, different modules may have very different requirements
  *    and impact on the performances. For instance, the Echo Test is probably
- *    much lighter than the Video MCU, even if they're handling the same
+ *    much lighter than the Video SFU, even if they're handling the same
  *    number of users. This means that such a benchmarking does not have
  *    much sense unless you contextualise the scenarios.\n\n
  *    You can find some results on tests we made ourselves in a couple of
@@ -3936,9 +4035,9 @@ ldd janus | grep asan
  */
 
 /*! \defgroup postprocessing Recordings post-processing utility
- * \brief Recordings post-processing utility
+ * \brief \ref recordings post-processing utility
  * \details This simple utility (janus-pp-rec.c) allows you to
- * post-process recordings generated by the janus_recorder helper (e.g.,
- * in the Video MCU plugin).
+ * post-process \ref recordings generated by the janus_recorder helper (e.g.,
+ * in the Video SFU plugin).
  * \ingroup tools
  */
