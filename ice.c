@@ -3546,7 +3546,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	if(stream && stream->component && stream->component->out_stats.audio.packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 24;
+		int sdeslen = 16;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
@@ -3599,7 +3599,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 24;
+		int sdeslen = 16;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
