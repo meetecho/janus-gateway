@@ -137,7 +137,8 @@ certificates: {
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
 # video) being received before Janus notifies you about this (default=1s,
-# 0 disables these events entirely), and how often, in milliseconds,
+# 0 disables these events entirely), how many lost packets should trigger
+# a 'slowlink' event to users (default=4), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
 # to senders, if negotiated (default=1s). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
@@ -152,6 +153,7 @@ media: {
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
+	#slowlink_threshold = 4
 	#twcc_period = 200
 	#dtls_timeout = 500
 }

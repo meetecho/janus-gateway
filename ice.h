@@ -132,6 +132,12 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to modify the slowlink-threshold property (i.e., the number of lost packets per seconds that should trigger a slow-link event)
+ * @param[in] packets The new value, in lost packets per seconds */
+void janus_set_slowlink_threshold(uint packets);
+/*! \brief Method to get the current slowlink-threshold value (see above)
+ * @returns The current slowlink-threshold value */
+uint janus_get_slowlink_threshold(void);
 /*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
  * @param[in] timer The new period value, in milliseconds */
 void janus_set_twcc_period(uint period);
@@ -227,12 +233,10 @@ typedef struct janus_ice_stats {
 	janus_ice_stats_info video[3];
 	/*! \brief Data info */
 	janus_ice_stats_info data;
-	/*! \brief Last time the slow_link callback (of the plugin) was called */
-	gint64 last_slowlink_time;
-	/*! \brief Start time of recent NACKs (for slow_link) */
-	gint64 sl_nack_period_ts;
-	/*! \brief Count of recent NACKs (for slow_link) */
-	guint sl_nack_recent_cnt;
+	/*! \brief Last known count of lost audio packets (for slow_link) */
+	guint sl_lost_count_audio;
+	/*! \brief Last known count of lost video packets (for slow_link) */
+	guint sl_lost_count_video;
 } janus_ice_stats;
 
 /*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
