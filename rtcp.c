@@ -589,6 +589,10 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 					/* We handle NACKs ourselves as well, remove this too */
 					keep = FALSE;
 					break;
+				} else if(rtcp->rc == 15) {
+					/* We handle Transport Wide CC ourselves as well, remove this too */
+					keep = FALSE;
+					break;
 				}
 				break;
 			case RTCP_XR:

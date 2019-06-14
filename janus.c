@@ -154,6 +154,9 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"filename", JANUS_JSON_STRING, 0},
 	{"truncate", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter handleinfo_parameters[] = {
+	{"plugin_only", JANUS_JSON_BOOL, 0}
+};
 static struct janus_json_parameter resaddr_parameters[] = {
 	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
@@ -2401,6 +2404,15 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
+		JANUS_VALIDATE_JSON_OBJECT(root, handleinfo_parameters,
+			error_code, error_cause, FALSE,
+			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+		if(error_code != 0) {
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+			goto jsondone;
+		}
+		/* Check if we should limit the response to the plugin-specific info */
+		gboolean plugin_only = json_is_true(json_object_get(root, "plugin_only"));
 		/* Prepare info */
 		janus_mutex_lock(&handle->mutex);
 		json_t *info = json_object();
@@ -2433,6 +2445,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				}
 			}
 		}
+		if(plugin_only)
+			goto info_done;
 		json_t *flags = json_object();
 		json_object_set_new(flags, "got-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_OFFER) ? json_true() : json_false());
 		json_object_set_new(flags, "got-answer", janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_GOT_ANSWER) ? json_true() : json_false());
@@ -2483,6 +2497,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			if(w)
 				json_object_set_new(info, "webrtc", w);
 		}
+info_done:
 		janus_mutex_unlock(&handle->mutex);
 		/* Prepare JSON reply */
 		json_t *reply = janus_create_message("success", session_id, transaction_text);

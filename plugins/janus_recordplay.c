@@ -12,7 +12,8 @@
  * features: it allows you to record a message you send with WebRTC in
  * the format defined in recorded.c (MJR recording) and subsequently
  * replay this recording (or other previously recorded) through WebRTC
- * as well.
+ * as well. For more information on how Janus implements recordings
+ * natively and the MJR format, refer to the \ref recordings documentation.
  *
  * This application aims at showing how easy recording frames sent by
  * a peer is, and how this recording can be re-used directly, without
@@ -38,8 +39,8 @@
  * 		[12345678]
  * 		name = My videoroom recording
  * 		date = 2014-10-14 17:11:26
- * 		audio = mcu-audio.mjr
- * 		video = mcu-video.mjr
+ * 		audio = videoroom-audio.mjr
+ * 		video = videoroom-video.mjr
  *
  * \section recplayapi Record&Play API
  *

@@ -83,6 +83,8 @@
 general: {
 	#admin_key = "supersecret"		# If set, mountpoints can be created via API
 									# only if this key is provided in the request
+	#rtp_port_range = "20000-40000"	# Range of ports to use for RTP/RTCP when '0' is
+									# passed as port for a mountpoint (default=10000-60000)
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
 }
