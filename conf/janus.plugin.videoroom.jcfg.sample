@@ -27,7 +27,7 @@
 # playoutdelay_ext = true|false (whether the playout-delay RTP extension must
 #		be negotiated/used or not for new publishers, default=true)
 # transport_wide_cc_ext = true|false (whether the transport wide CC RTP extension must be
-#		negotiated/used or not for new publishers, default=false)
+#		negotiated/used or not for new publishers, default=true)
 # record = true|false (whether this room should be recorded, default=false)
 # rec_dir = <folder where recordings should be stored, when enabled>
 # notify_joining = true|false (optional, whether to notify all participants when a new
@@ -54,7 +54,6 @@ room-1234: {
 	fir_freq = 10
 	#audiocodec = "opus"
 	#videocodec = "vp8"
-	#transport_wide_cc_ext = true
 	record = false
 	#rec_dir = "/path/to/recordings-folder"
 }
@@ -72,5 +71,4 @@ room-5678: {
 	fir_freq = 10
 	videocodec = "vp9"
 	video_svc = true
-	#transport_wide_cc_ext = true
 }

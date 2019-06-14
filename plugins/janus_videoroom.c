@@ -76,7 +76,7 @@ room-<unique room ID>: {
 	playoutdelay_ext = true|false (whether the playout-delay RTP extension must be
 		negotiated/used or not for new publishers, default=true)
 	transport_wide_cc_ext = true|false (whether the transport wide CC RTP extension must be
-		negotiated/used or not for new publishers, default=false)
+		negotiated/used or not for new publishers, default=true)
 	record = true|false (whether this room should be recorded, default=false)
 	rec_dir = <folder where recordings should be stored, when enabled>
 	notify_joining = true|false (optional, whether to notify all participants when a new
@@ -2105,7 +2105,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->playoutdelay_ext = TRUE;
 			if(playoutdelay_ext != NULL && playoutdelay_ext->value != NULL)
 				videoroom->playoutdelay_ext = janus_is_true(playoutdelay_ext->value);
-			videoroom->transport_wide_cc_ext = FALSE;
+			videoroom->transport_wide_cc_ext = TRUE;
 			if(transport_wide_cc_ext != NULL && transport_wide_cc_ext->value != NULL)
 				videoroom->transport_wide_cc_ext = janus_is_true(transport_wide_cc_ext->value);
 			if(record && record->value) {
@@ -2860,7 +2860,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
-		videoroom->transport_wide_cc_ext = transport_wide_cc_ext ? json_is_true(transport_wide_cc_ext) : FALSE;
+		videoroom->transport_wide_cc_ext = transport_wide_cc_ext ? json_is_true(transport_wide_cc_ext) : TRUE;
 		/* By default, the videoroom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
@@ -2951,13 +2951,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
+			} else {
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			if(videoroom->videoorient_ext)
-				janus_config_add(config, c, janus_config_item_create("videoorient_ext", "yes"));
-			if(videoroom->playoutdelay_ext)
-				janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
-			if(videoroom->transport_wide_cc_ext)
-				janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", "yes"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
 			if(videoroom->notify_joining)
 				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
 			if(videoroom->record)
@@ -3109,13 +3108,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
+			} else {
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			if(videoroom->videoorient_ext)
-				janus_config_add(config, c, janus_config_item_create("videoorient_ext", "yes"));
-			if(videoroom->playoutdelay_ext)
-				janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
-			if(videoroom->transport_wide_cc_ext)
-				janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", "yes"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
 			if(videoroom->notify_joining)
 				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
 			if(videoroom->record)
