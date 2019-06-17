@@ -165,6 +165,7 @@ function handleMessage(id, tr, msg, jsep)
 		local bitrate = msgT["bitrate"]
 		local pliFreq = msgT["fir_freq"]
 		local requirePvtId = msgT["require_pvtid"]
+		local notifyJoining = msgT["notify_joining"]
 		if rooms[roomId] ~= nil then
 			local response = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_ROOM_EXISTS, error = "Room exists" }
 			local responsejson = json.encode(response)
@@ -180,6 +181,7 @@ function handleMessage(id, tr, msg, jsep)
 			bitrate = bitrate,
 			pliFreq = pliFreq,
 			requirePvtId = requirePvtId,
+			notifyJoining = notifyJoining,
 			participants = {},
 			privateIds = {}
 		}
@@ -344,11 +346,15 @@ function handleMessage(id, tr, msg, jsep)
 						configureMedium(id, "video", "in", false)
 						configureMedium(id, "data", "out", true)
 						configureMedium(id, "data", "in", false)
-						-- Send event back with a list of active publishers
+						-- Send event back with a list of active publishers (and possibly other attendees)
 						local event = { videoroom = "joined", room = roomId, description = room.description,
 							id = userId, private_id = privateId, publishers = {} }
+						if room.notifyJoining then
+							event.attendees = {}
+						end
 						for index,partId in pairs(room.participants) do
 							local p = sessions[partId]
+							-- Publishers first
 							if p ~= nil and p.id ~= id and p.sdp ~= nil and p.started == true then
 								event.publishers[#event.publishers+1] = {
 									id = p.userId,
@@ -357,13 +363,36 @@ function handleMessage(id, tr, msg, jsep)
 									video_codec = p.videoCodec
 								}
 							end
+							-- If notify_joining=true, send a list of attendees as well
+							if room.notifyJoining and p ~= nil and p.id ~= id then
+								event.attendees[#event.attendees+1] = {
+									id = p.userId,
+									display = p.display
+								}
+							end
 						end
 						local eventjson = json.encode(event)
 						if eventjson:find("\"publishers\":{}") ~= nil then
 							-- Ugly hack, as lua-json turns our empty array into an empty object
 							eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
 						end
+						if room.notifyJoining and eventjson:find("\"attendees\":{}") ~= nil then
+							-- Ugly hack, as lua-json turns our empty array into an empty object
+							eventjson = string.gsub(eventjson, "\"attendees\":{}", "\"attendees\":[]")
+						end
 						pushEvent(id, tr, eventjson, nil)
+						-- If notify_joining=true, notify other participants as well
+						if room.notifyJoining then
+							local event = { videoroom = "event", event = "joining",
+								room = room.roomId, id = s.userId, display = s.display }
+							local eventjson = json.encode(event)
+							for index,partId in pairs(room.participants) do
+								local p = sessions[partId]
+								if p ~= nil and p.id ~= id then
+									pushEvent(p.id, nil, eventjson, nil)
+								end
+							end
+						end
 					elseif pType == "subscriber" then
 						-- Setup new subscriber
 						local feedId = comsg["feed"]
