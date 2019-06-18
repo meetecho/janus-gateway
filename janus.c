@@ -3484,6 +3484,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 	janus_session_handles_remove(session, ice_handle);
 
 	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
 	return G_SOURCE_REMOVE;
 }
 
