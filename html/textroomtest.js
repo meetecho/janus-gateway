@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -50,7 +50,7 @@ else
 
 var janus = null;
 var textroom = null;
-var started = false;
+var opaqueId = "textroomtest-"+Janus.randomString(12);
 
 var myroom = 1234;	// Demo room
 var myusername = null;
@@ -62,10 +62,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -81,6 +78,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.textroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									textroom = pluginHandle;
@@ -105,7 +103,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									if(msg["error"] !== undefined && msg["error"] !== null) {
 										bootbox.alert(msg["error"]);
 									}
@@ -188,7 +186,22 @@ $(document).ready(function() {
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
+									} else if(what === "kicked") {
+										// Somebody was kicked
+										var username = json["username"];
+										var when = new Date();
+										$('#rp' + username).remove();
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' was kicked from the room</i></p>');
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
+										delete participants[username];
+										if(username === myid) {
+											bootbox.alert("You have been kicked from the room", function() {
+												window.location.reload();
+											});
+										}
 									} else if(what === "destroyed") {
+										if(json["room"] !== myroom)
+											return;
 										// Room was destroyed, goodbye!
 										Janus.warn("The room has been destroyed!");
 										bootbox.alert("The room has been destroyed", function() {
@@ -260,7 +273,17 @@ function registerUsername() {
 		transactions[transaction] = function(response) {
 			if(response["textroom"] === "error") {
 				// Something went wrong
-				bootbox.alert(response["error"]);
+				if(response["error_code"] === 417) {
+					// This is a "no such room" error: give a more meaningful description
+					bootbox.alert(
+						"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.cfg</code> " +
+						"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+						"from that sample in your current configuration file, then restart Janus and try again."
+					);
+				} else {
+					bootbox.alert(response["error"]);
+				}
 				$('#username').removeAttr('disabled').val("");
 				$('#register').removeAttr('disabled').click(registerUsername);
 				return;

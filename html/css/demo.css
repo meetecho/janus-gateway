@@ -97,3 +97,21 @@ div.no-video-container {
 .meetecho-logo > img {
 	height: 26px;
 }
+
+pre {
+	white-space: pre-wrap;
+	white-space: -moz-pre-wrap;
+	white-space: -pre-wrap;
+	white-space: -o-pre-wrap;
+	word-wrap: break-word;
+}
+
+.januscon {
+	font-weight: bold;
+	animation: pulsating 1s infinite;
+}
+@keyframes pulsating {
+	30% {
+		color: #FFD700;
+	}
+}

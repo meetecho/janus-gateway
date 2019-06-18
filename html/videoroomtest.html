@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Video Room Demo</title>
-<script type="text/javascript" src="jquery.min.js" ></script>
-<script type="text/javascript" src="jquery.blockUI.js" ></script>
-<script type="text/javascript" src="js/bootstrap.js"></script>
-<script type="text/javascript" src="js/bootbox.min.js"></script>
-<script type="text/javascript" src="js/spin.min.js"></script>
+<title>Janus WebRTC Server: Video Room Demo</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.0.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="videoroomtest.js"></script>
 <script>
@@ -21,9 +23,10 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="css/font-awesome.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.css"/>
 </head>
 <body>
 
@@ -51,6 +54,17 @@
 						No mixing is involved: all media are just relayed in a publisher/subscriber
 						approach. This means that the plugin acts as a SFU (Selective Forwarding Unit)
 						rather than an MCU (Multipoint Control Unit).</p>
+						<p>If you're interested in testing how simulcasting can be used within
+						the context of a videoconferencing application, just pass the
+						<code>?simulcast=true</code> query string to the url of this page and
+						reload it. If you're using a browser that does support simulcasting
+						(Chrome or Firefox) and the room is configured to use VP8, you'll
+						send multiple qualities of the video you're capturing. Notice that
+						simulcasting will only occur if the browser thinks there is enough
+						bandwidth, so you'll have to play with the Bandwidth selector to
+						increase it. New buttons to play with the feature will automatically
+						appear for viewers when receiving any simulcasted stream. Notice that
+						no simulcast support is needed for watching, only for publishing.</p>
 						<p>To use the demo, just insert a username to join the default room that
 						is configured. This will add you to the list of participants, and allow
 						you to automatically send your audio/video frames and receive the other
@@ -80,7 +94,24 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Local Video <span class="label label-primary hide" id="publisher"></span></h3>
+								<h3 class="panel-title">Local Video <span class="label label-primary hide" id="publisher"></span>
+									<div class="btn-group btn-group-xs pull-right hide">
+										<div class="btn-group btn-group-xs">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+												Bandwidth<span class="caret"></span>
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<li><a href="#" id="0">No limit</a></li>
+												<li><a href="#" id="128">Cap to 128kbit</a></li>
+												<li><a href="#" id="256">Cap to 256kbit</a></li>
+												<li><a href="#" id="512">Cap to 512kbit</a></li>
+												<li><a href="#" id="1024">Cap to 1mbit</a></li>
+												<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
+												<li><a href="#" id="2000">Cap to 2mbit</a></li>
+											</ul>
+										</div>
+									</div>
+								</h3>
 							</div>
 							<div class="panel-body" id="videolocal"></div>
 						</div>

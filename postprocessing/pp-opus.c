@@ -4,13 +4,17 @@
  * \brief    Post-processing to generate .opus files
  * \details  Implementation of the post-processing code (based on libogg)
  * needed to generate .opus files out of Opus RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
 
 #include <arpa/inet.h>
+#ifdef __MACH__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
@@ -20,6 +24,7 @@
 #include "pp-opus.h"
 #include "pp-opus-silence.h"
 #include "../debug.h"
+#include "../version.h"
 
 
 /* OGG/Opus helpers */
@@ -29,19 +34,15 @@ ogg_stream_state *stream = NULL;
 void le32(unsigned char *p, int v);
 void le16(unsigned char *p, int v);
 ogg_packet *op_opushead(void);
-ogg_packet *op_opustags(void);
+ogg_packet *op_opustags(char *metadata);
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len);
 void op_free(ogg_packet *op);
 int ogg_write(void);
 int ogg_flush(void);
 
 
-int janus_pp_opus_create(char *destination) {
+int janus_pp_opus_create(char *destination, char *metadata) {
 	stream = g_malloc0(sizeof(ogg_stream_state));
-	if(stream == NULL) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
-		return -1;
-	}
 	if(ogg_stream_init(stream, rand()) < 0) {
 		JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
 		return -1;
@@ -56,7 +57,7 @@ int janus_pp_opus_create(char *destination) {
 	ogg_packet *op = op_opushead();
 	ogg_stream_packetin(stream, op);
 	op_free(op);
-	op = op_opustags();
+	op = op_opustags(metadata);
 	ogg_stream_packetin(stream, op);
 	op_free(op);
 	ogg_flush();
@@ -88,6 +89,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				ogg_stream_packetin(stream, op);
 				ogg_write();
 			}
+			ogg_flush();
 			g_free(op);
 		}
 		if(tmp->drop) {
@@ -96,15 +98,25 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->audiolevel != -1) {
+			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
 		fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(buffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
@@ -112,13 +124,14 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			steps++;
 		}
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
-		pos = (tmp->ts - list->ts) / 48 / 20;
+		pos = (tmp->ts - list->ts) / 48 / 20 + 1;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
 		g_free(op);
 		ogg_write();
+		ogg_flush();
 		tmp = tmp->next;
 	}
 	g_free(buffer);
@@ -126,6 +139,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 }
 
 void janus_pp_opus_close(void) {
+	ogg_flush();
 	if(ogg_file)
 		fclose(ogg_file);
 	ogg_file = NULL;
@@ -154,17 +168,8 @@ void le16(unsigned char *p, int v) {
 /* Manufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
-
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	memcpy(data, "OpusHead", 8);  /* identifier */
 	data[8] = 1;                  /* version */
@@ -185,26 +190,30 @@ ogg_packet *op_opushead(void) {
 }
 
 /* Manufacture a generic OpusTags packet */
-ogg_packet *op_opustags(void) {
+ogg_packet *op_opustags(char *metadata) {
 	const char *identifier = "OpusTags";
-	const char *vendor = "Janus post-processing";
+	const char *desc = "DESCRIPTION=";
+	char vendor[256];
+	g_snprintf(vendor, sizeof(vendor), "Janus post-processor %s", janus_version_string);
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = g_malloc0(size);
-	ogg_packet *op = g_malloc0(sizeof(*op));
+	int dlen = strlen(desc), mlen = metadata ? strlen(metadata) : 0;
+	if(mlen > 0)
+		size += (4+dlen+mlen);
+	unsigned char *data = g_malloc(size);
+	ogg_packet *op = g_malloc(sizeof(*op));
 
-	if(!data) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
-		return NULL;
-	}
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
-		return NULL;
-	}
-
+	/* Write down the tags */
 	memcpy(data, identifier, 8);
 	le32(data + 8, strlen(vendor));
 	memcpy(data + 12, vendor, strlen(vendor));
-	le32(data + 12 + strlen(vendor), 0);
+	le32(data + 12 + strlen(vendor), mlen > 0 ? 1 : 0);
+	/* Check if we have metadata to write down: we'll use the "DESCRIPTION" tag */
+	if(metadata && strlen(metadata) > 0) {
+		/* Add a single comment */
+		le32(data + 12 + strlen(vendor) + 4, dlen+mlen);
+		memcpy(data + 12 + strlen(vendor) + 8, desc, dlen);
+		memcpy(data + 12 + strlen(vendor) + 8 + dlen, metadata, mlen);
+	}
 
 	op->packet = data;
 	op->bytes = size;
@@ -218,16 +227,14 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = g_malloc0(sizeof(*op));
-	if(!op) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
-		return NULL;
-	}
+	ogg_packet *op = g_malloc(sizeof(*op));
 
 	op->packet = (unsigned char *)pkt;
 	op->bytes = len;
 	op->b_o_s = 0;
 	op->e_o_s = 0;
+	op->granulepos = 0;
+	op->packetno = 0;
 
 	return op;
 }

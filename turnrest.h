@@ -8,15 +8,15 @@
  * rfc5766-turn-server and coturn, and so should be generic enough to
  * be usable here.
  * \note This implementation depends on \c libcurl and is optional.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_TURNREST_H
 #define _JANUS_TURNREST_H
 
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 
 #include <glib.h>
 

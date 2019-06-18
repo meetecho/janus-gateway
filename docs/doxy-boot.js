@@ -61,4 +61,6 @@ $(document).ready(function() {
 	$('div.groupHeader').addClass('alert-link').parent().parent().addClass('alert alert-info');
 	
 	$('#MSearchBox').remove();//.parent().appendTo('#topmenu');
+
+	$('code').each(function() { $(this).html($(this).html().replace("–", "--")); } );
 });

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Demo Tests</title>
-<script type="text/javascript" src="jquery.min.js" ></script>
-<script type="text/javascript" src="js/bootstrap.js"></script>
+<title>Janus WebRTC Server: Demo Tests</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
@@ -16,7 +16,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
@@ -30,13 +30,13 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Janus WebRTC Gateway: Demo Tests</h1>
+				<h1>Janus WebRTC Server: Demo Tests</h1>
 			</div>
-			<table class="table">
+			<table class="table table-striped">
 				<tr>
 					<td colspan=2><h3>Plugin demos</h3></td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="echotest.html">Echo Test</a></td>
 					<td>A simple Echo Test demo, with knobs to control the bitrate.</td>
 				</tr>
@@ -44,15 +44,15 @@
 					<td><a href="streamingtest.html">Streaming</a></td>
 					<td>A media Streaming demo, with sample live and on-demand streams.</td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="videocalltest.html">Video Call</a></td>
-					<td>A Video Call demo, a bit like AppRTC but with media passing through the gateway.</td>
+					<td>A Video Call demo, a bit like AppRTC but with media passing through Janus.</td>
 				</tr>
 				<tr>
-					<td><a href="siptest.html">SIP Gateway</a></td>
+					<td><a href="siptest.html">SIP Gateway (Sofia)</a></td>
 					<td>A SIP Gateway demo, allowing you to register at a SIP server and start/receive calls.</td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="videoroomtest.html">Video Room</a></td>
 					<td>A videoconferencing demo, allowing you to join a video room with up to six users.</td>
 				</tr>
@@ -60,7 +60,7 @@
 					<td><a href="audiobridgetest.html">Audio Room</a></td>
 					<td>An audio mixing/bridge demo, allowing you join an Audio Room room.</td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="textroomtest.html">Text Room</a></td>
 					<td>A text room demo, using DataChannels only.</td>
 				</tr>
@@ -68,7 +68,7 @@
 					<td><a href="voicemailtest.html">Voice Mail</a></td>
 					<td>A simple audio recorder demo, returning an .opus file after 10 seconds.</td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="recordplaytest.html">Recorder/Playout</a></td>
 					<td>A demo to record audio/video messages, and subsequently replay them through WebRTC.</td>
 				</tr>
@@ -77,13 +77,30 @@
 					<td>A webinar-like screen sharing session, based on the Video Room plugin.</td>
 				</tr>
 			</table>
-			<table class="table">
+			<table class="table table-striped">
 				<tr>
-					<td colspan=2><h3>Other demos</h3></td>
+					<td colspan=2><h3>Other legacy demos</h3></td>
 				</tr>
-				<tr class="active">
+				<tr>
+					<td><a href="sipretest.html">SIP Gateway (libre)</a></td>
+					<td>Same as the SIP demo above, but using the libre-based plugin instead of the Sofia-based one.</td>
+				</tr>
+				<tr>
+					<td><a href="nosiptest.html">NoSIP (SDP/RTP)</a></td>
+					<td>A legacy interop demo (e.g., with a SIP peer) where signalling is up to the application.</td>
+				</tr>
+			</table>
+			<table class="table table-striped">
+				<tr>
+					<td colspan=2><h3>Advanced demos</h3></td>
+				</tr>
+				<tr>
 					<td><a href="devicetest.html">Device Selection</a></td>
 					<td>A variant of the Echo Test demo, that allows you to choose a specific capture device.</td>
+				</tr>
+				<tr>
+					<td><a href="vp9svctest.html">VP9-SVC Video Room</a></td>
+					<td>A variant of the Video Room demo, that allows you to test the VP9 SVC layer selection, if available.</td>
 				</tr>
 				<tr>
 					<td><a href="admin.html">Admin/Monitor</a></td>

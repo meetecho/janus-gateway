@@ -1,4 +1,0 @@
-; path = where to place recordings in the file system
-
-[general]
-path = @recordingsdir@

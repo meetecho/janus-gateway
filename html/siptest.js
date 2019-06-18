@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -50,7 +50,8 @@ else
 
 var janus = null;
 var sipcall = null;
-var started = false;
+var opaqueId = "siptest-"+Janus.randomString(12);
+
 var spinner = null;
 
 var selectedApproach = null;
@@ -63,10 +64,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -82,6 +80,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.sip",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sipcall = pluginHandle;
@@ -128,7 +127,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -143,15 +142,23 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#videoleft").parent().unblock();
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									// Any error?
 									var error = msg["error"];
 									if(error != null && error != undefined) {
 										if(!registered) {
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -175,6 +182,7 @@ $(document).ready(function() {
 											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -201,12 +209,18 @@ $(document).ready(function() {
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
 											var doAudio = true, doVideo = true;
+											var offerlessInvite = false;
 											if(jsep !== null && jsep !== undefined) {
 												// What has been negotiated?
 												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
 												Janus.debug("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
 												Janus.debug("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+											} else {
+												Janus.log("This call doesn't contain an offer... we'll need to provide one ourselves");
+												offerlessInvite = true;
+												// In case you want to offer video when reacting to an offerless call, set this to true
+												doVideo = false;
 											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
@@ -217,8 +231,11 @@ $(document).ready(function() {
 												rtpType = " (SDES-SRTP mandatory)";
 											// Notify user
 											bootbox.hideAll();
+											var extra = "";
+											if(offerlessInvite)
+												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType,
+												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -228,12 +245,15 @@ $(document).ready(function() {
 														callback: function() {
 															incoming = null;
 															$('#peer').val(result["username"]).attr('disabled', true);
-															sipcall.createAnswer(
+															// Notice that we can only answer if we got an offer: if this was
+															// an offerless call, we'll need to create an offer ourselves
+															var sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
+															sipcallAction(
 																{
 																	jsep: jsep,
 																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
-																		Janus.debug("Got SDP! audio=" + doAudio + ", video=" + doVideo);
+																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
 																		Janus.debug(jsep);
 																		var body = { request: "accept" };
 																		// Note: as with "call", you can add a "srtp" attribute to
@@ -244,7 +264,16 @@ $(document).ready(function() {
 																		//		var body = { request: "accept", srtp: "sdes_mandatory" };
 																		// This way you'll tell the plugin to accept the call, but ONLY
 																		// if SDES is available, and you don't want plain RTP. If it
-																		// is not available, you'll get an error (452) back.
+																		// is not available, you'll get an error (452) back. You can
+																		// also specify the SRTP profile to negotiate by setting the
+																		// "srtp_profile" property accordingly (the default if not
+																		// set in the request is "AES_CM_128_HMAC_SHA1_80")
+																		// Note 2: by default, the SIP plugin auto-answers incoming
+																		// re-INVITEs, without involving the browser/client: this is
+																		// for backwards compatibility with older Janus clients that
+																		// may not be able to handle them. If you want to receive
+																		// re-INVITES to handle them yourself, specify it here, e.g.:
+																		//		body["autoaccept_reinvites"] = false;
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -270,13 +299,47 @@ $(document).ready(function() {
 														}
 													}
 												}
-											});											
-										} else if(event === 'accepted') {
-											Janus.log(result["username"] + " accepted the call!");
-											// TODO Video call can start
+											});
+										} else if(event === 'accepting') {
+											// Response to an offerless INVITE, let's wait for an 'accepted'
+										} else if(event === 'progress') {
+											Janus.log("There's early media from " + result["username"] + ", wairing for the call!");
+											Janus.log(jsep);
+											// Call can start already: handle the remote answer
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
+											toastr.info("Early media...");
+										} else if(event === 'accepted') {
+											Janus.log(result["username"] + " accepted the call!");
+											Janus.log(jsep);
+											// Call can start, now: handle the remote answer
+											if(jsep !== null && jsep !== undefined) {
+												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
+											}
+											toastr.success("Call accepted!");
+										} else if(event === 'updatingcall') {
+											// We got a re-INVITE: while we may prompt the user (e.g.,
+											// to notify about media changes), to keep things simple
+											// we just accept the update and send an answer right away
+											Janus.log("Got re-INVITE");
+											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+											sipcall.createAnswer(
+												{
+													jsep: jsep,
+													media: { audio: doAudio, video: doVideo },
+													success: function(jsep) {
+														Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
+														Janus.debug(jsep);
+														var body = { request: "update" };
+														sipcall.send({"message": body, "jsep": jsep});
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
@@ -296,39 +359,55 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									// No remote video yet
-									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-									if(spinner == null) {
-										var target = document.getElementById('videoright');
-										spinner = new Spinner({top:100}).spin(target);
-									} else {
-										spinner.spin();
+									if(sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											sipcall.webrtcStuff.pc.iceConnectionState !== "connected") {
+										$("#videoleft").parent().block({
+											message: '<b>Calling...</b>',
+											css: {
+												border: 'none',
+												backgroundColor: 'transparent',
+												color: 'white'
+											}
+										});
+										// No remote video yet
+										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										if(spinner == null) {
+											var target = document.getElementById('videoright');
+											spinner = new Spinner({top:100}).spin(target);
+										} else {
+											spinner.spin();
+										}
 									}
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No webcam
 										$('#myvideo').hide();
-										$('#videoleft').append(
-											'<div class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-												'<span class="no-video-text">No webcam available</span>' +
-											'</div>');
+										if($('#videoleft .no-video-container').length === 0) {
+											$('#videoleft').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No webcam available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videoleft .no-video-container').remove();
+										$('#myvideo').removeClass('hide').show();
 									}
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									if($('#remotevideo').length === 0) {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -340,29 +419,34 @@ $(document).ready(function() {
 										$('.dtmf').click(function() {
 											// Send DTMF tone (inband)
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
-
-											// You can also send DTMF tones using SIP INFO
-											// sipcall.send({"message": {"request": "dtmf_info", "digit": $(this).text()}});
+											// Notice you can also send DTMF tones using SIP INFO
+											// 		sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+										});
+										// Show the peer and hide the spinner when we get a playing event
+										$("#remotevideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											if(this.videoWidth)
+												$('#remotevideo').removeClass('hide').show();
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
 										});
 									}
-									// Show the peer and hide the spinner when we get a playing event
-									$("#remotevideo").bind("playing", function () {
-										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
-										if(spinner !== null && spinner !== undefined)
-											spinner.stop();
-										spinner = null;
-									});
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
 										// No remote video
 										$('#remotevideo').hide();
-										$('#videoright').append(
-											'<div class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-												'<span class="no-video-text">No remote video available</span>' +
-											'</div>');
+										if($('#videoright .no-video-container').length === 0) {
+											$('#videoright').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videoright .no-video-container').remove();
+										$('#remotevideo').removeClass('hide').show();
 									}
 								},
 								oncleanup: function() {
@@ -389,7 +473,7 @@ $(document).ready(function() {
 		});
 	}});
 });
-	
+
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -411,15 +495,24 @@ function registerUsername() {
 	// Try a registration
 	$('#server').attr('disabled', true);
 	$('#username').attr('disabled', true);
+	$('#authuser').attr('disabled', true);
 	$('#displayname').attr('disabled', true);
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
 	$('#registerset').attr('disabled', true);
+	// Let's see if the user provided a server address
+	// 		NOTE WELL! Even though the attribute we set in the request is called "proxy",
+	//		this is actually the _registrar_. If you want to set an outbound proxy (for this
+	//		REGISTER request and for all INVITEs that will follow), you'll need to set the
+	//		"outbound_proxy" property in the request instead. The two are of course not
+	//		mutually exclusive. If you set neither, the domain part of the user identity
+	//		will be used as the target of the REGISTER request the plugin might send.
 	var sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -432,38 +525,41 @@ function registerUsername() {
 			"request" : "register",
 			"type" : "guest"
 		};
-		if(sipserver !== "")
+		if(sipserver !== "") {
 			register["proxy"] = sipserver;
-		var username = $('#username').val();
-		if(username !== undefined && username !== null) {
-			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
-				$('#server').removeAttr('disabled');
-				$('#username').removeAttr('disabled');
-				$('#displayname').removeAttr('disabled');
-				$('#register').removeAttr('disabled').click(registerUsername);
-				$('#registerset').removeAttr('disabled');
-				return;
-			}
-			register.username = username;
+			// Uncomment this if you want to see an outbound proxy too
+			//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		}
+		var username = $('#username').val();
+		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
+			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
+			$('#server').removeAttr('disabled');
+			$('#username').removeAttr('disabled');
+			$('#authuser').removeAttr('disabled');
+			$('#displayname').removeAttr('disabled');
+			$('#register').removeAttr('disabled').click(registerUsername);
+			$('#registerset').removeAttr('disabled');
+			return;
+		}
+		register.username = username;
 		var displayname = $('#displayname').val();
-		if (displayname) {
+		if(displayname) {
 			register.display_name = displayname;
 		}
 		if(sipserver === "") {
-			bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+			bootbox.confirm("You didn't specify a SIP Registrar to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 				function(result) {
 					if(result) {
 						sipcall.send({"message": register});
 					} else {
 						$('#server').removeAttr('disabled');
 						$('#username').removeAttr('disabled');
+						$('#authuser').removeAttr('disabled');
 						$('#displayname').removeAttr('disabled');
 						$('#register').removeAttr('disabled').click(registerUsername);
 						$('#registerset').removeAttr('disabled');
 					}
-				}); 
+				});
 		} else {
 			sipcall.send({"message": register});
 		}
@@ -474,6 +570,7 @@ function registerUsername() {
 		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -485,6 +582,7 @@ function registerUsername() {
 		bootbox.alert("Insert the username secret (e.g., mypassword)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -495,8 +593,15 @@ function registerUsername() {
 		"request" : "register",
 		"username" : username
 	};
+	// By default, the SIP plugin tries to extract the username part from the SIP
+	// identity to register; if the username is different, you can provide it here
+	var authuser = $('#authuser').val();
+	if(authuser !== "") {
+		register.authuser = authuser;
+	}
+	// The display name is only needed when you want a friendly name to appear when you call someone
 	var displayname = $('#displayname').val();
-	if (displayname) {
+	if(displayname !== "") {
 		register.display_name = displayname;
 	}
 	if(selectedApproach === "secret") {
@@ -508,21 +613,24 @@ function registerUsername() {
 		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
 	if(sipserver === "") {
-		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+		bootbox.confirm("You didn't specify a SIP Registrar: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 			function(result) {
 				if(result) {
 					sipcall.send({"message": register});
 				} else {
 					$('#server').removeAttr('disabled');
 					$('#username').removeAttr('disabled');
+					$('#authuser').removeAttr('disabled');
 					$('#displayname').removeAttr('disabled');
 					$('#password').removeAttr('disabled');
 					$('#register').removeAttr('disabled').click(registerUsername);
 					$('#registerset').removeAttr('disabled');
 				}
-			}); 
+			});
 	} else {
 		register["proxy"] = sipserver;
+		// Uncomment this if you want to see an outbound proxy too
+		//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		sipcall.send({"message": register});
 	}
 }
@@ -549,7 +657,7 @@ function doCall() {
 	}
 	// Call this URI
 	doVideo = $('#dovideo').is(':checked');
-	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
+	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
 	sipcall.createOffer(
 		{
 			media: {
@@ -580,6 +688,12 @@ function doCall() {
 				// Just beware that some endpoints will NOT accept an INVITE
 				// with a crypto line in it if the protocol is not RTP/SAVP,
 				// so if you want SDES use "sdes_optional" with care.
+				// Note 2: by default, the SIP plugin auto-answers incoming
+				// re-INVITEs, without involving the browser/client: this is
+				// for backwards compatibility with older Janus clients that
+				// may not be able to handle them. If you want to receive
+				// re-INVITES to handle them yourself, specify it here, e.g.:
+				//		body["autoaccept_reinvites"] = false;
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {

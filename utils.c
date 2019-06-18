@@ -4,7 +4,7 @@
  * \brief    Utilities and helpers
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -14,11 +14,11 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
 #include <sys/file.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <inttypes.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -52,10 +52,8 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	if(strlen((char *)string2) > maxlen)
 		maxlen = strlen((char *)string2);
 	unsigned char *buf1 = g_malloc0(maxlen+1);
-	memset(buf1, 0, maxlen);
 	memcpy(buf1, string1, strlen(str1));
 	unsigned char *buf2 = g_malloc0(maxlen+1);
-	memset(buf2, 0, maxlen);
 	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
@@ -90,31 +88,31 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *numdup = g_malloc0(sizeof(guint64));
-	memcpy(numdup, &num, sizeof(num));
+	guint64 *numdup = g_malloc(sizeof(guint64));
+	*numdup = num;
 	return numdup;
 }
 
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)
-		*flags = 0;
+		g_atomic_pointer_set(flags, 0);
 }
 
-void janus_flags_set(janus_flags *flags, uint32_t flag) {
+void janus_flags_set(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		*flags |= flag;
+		g_atomic_pointer_or(flags, flag);
 	}
 }
 
-void janus_flags_clear(janus_flags *flags, uint32_t flag) {
+void janus_flags_clear(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		*flags &= ~(flag);
+		g_atomic_pointer_and(flags, ~(flag));
 	}
 }
 
-gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag) {
+gboolean janus_flags_is_set(janus_flags *flags, gsize flag) {
 	if(flags != NULL) {
-		uint32_t bit = *flags & flag;
+		gsize bit = ((gsize) g_atomic_pointer_get(flags)) & flag;
 		return (bit != 0);
 	}
 	return FALSE;
@@ -163,10 +161,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		/* Replace string */
@@ -189,10 +183,6 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
 			tmp = g_realloc(outgoing, new_stringlen);
-			if(!tmp) {
-				g_free(outgoing);
-				return NULL;
-			}
 			outgoing = tmp;
 		}
 		outgoing[strlen(outgoing)] = '\0';
@@ -246,6 +236,11 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 0;
 		format = "pcma/8000";
 		format2 = "PCMA/8000";
+	} else if(!strcasecmp(codec, "g722")) {
+		/* We know the payload type is 9: we just need to make sure it's there */
+		video = 0;
+		format = "g722/8000";
+		format2 = "G722/8000";
 	} else if(!strcasecmp(codec, "isac16")) {
 		video = 0;
 		format = "isac/16000";
@@ -318,6 +313,8 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 		return "pcmu";
 	if(pt == 8)
 		return "pcma";
+	if(pt == 9)
+		return "g722";
 	/* Look for the mapping */
 	char rtpmap[50];
 	g_snprintf(rtpmap, 50, "a=rtpmap:%d ", pt);
@@ -339,10 +336,12 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "h264";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
-					if(strstr(name, "pcmu") || strstr(name, "PMCU"))
+					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
 						return "pcmu";
-					if(strstr(name, "pcma") || strstr(name, "PMCA"))
+					if(strstr(name, "pcma") || strstr(name, "PCMA"))
 						return "pcma";
+					if(strstr(name, "g722") || strstr(name, "G722"))
+						return "g722";
 					if(strstr(name, "isac/16") || strstr(name, "ISAC/16"))
 						return "isac16";
 					if(strstr(name, "isac/32") || strstr(name, "ISAC/32"))
@@ -358,50 +357,6 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 	return NULL;
 }
 
-gboolean janus_is_ip_valid(const char *ip, int *family) {
-	if(ip == NULL)
-		return FALSE;
-
-	struct sockaddr_in addr4;
-	struct sockaddr_in6 addr6;
-
-	if(inet_pton(AF_INET, ip, &addr4) > 0) {
-		if(family != NULL)
-			*family = AF_INET;
-		return TRUE;
-	} else if(inet_pton(AF_INET6, ip, &addr6) > 0) {
-		if(family != NULL)
-			*family = AF_INET6;
-		return TRUE;
-	} else {
-		return FALSE;
-	}
-}
-
-char *janus_address_to_ip(struct sockaddr *address) {
-	if(address == NULL)
-		return NULL;
-	char addr_buf[INET6_ADDRSTRLEN];
-	const char *addr = NULL;
-	struct sockaddr_in *sin = NULL;
-	struct sockaddr_in6 *sin6 = NULL;
-
-	switch(address->sa_family) {
-		case AF_INET:
-			sin = (struct sockaddr_in *)address;
-			addr = inet_ntop(AF_INET, &sin->sin_addr, addr_buf, INET_ADDRSTRLEN);
-			break;
-		case AF_INET6:
-			sin6 = (struct sockaddr_in6 *)address;
-			addr = inet_ntop(AF_INET6, &sin6->sin6_addr, addr_buf, INET6_ADDRSTRLEN);
-			break;
-		default:
-			/* Unknown family */
-			break;
-	}
-	return addr ? g_strdup(addr) : NULL;
-}
-
 /* PID file management */
 static char *pidfile = NULL;
 static int pidfd = -1;
@@ -411,7 +366,7 @@ int janus_pidfile_create(const char *file) {
 		return 0;
 	pidfile = g_strdup(file);
 	/* Try creating a PID file (or opening an existing one) */
-	pidfd = open(pidfile, O_RDWR|O_CREAT, 0644);
+	pidfd = open(pidfile, O_RDWR|O_CREAT|O_TRUNC, 0644);
 	if(pidfd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
 		return -1;
@@ -530,4 +485,517 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 		}
 	}
 	return is_valid;
+}
+
+/* The following code is more related to codec specific helpers */
+#if defined(__ppc__) || defined(__ppc64__)
+	# define swap2(d)  \
+	((d&0x000000ff)<<8) |  \
+	((d&0x0000ff00)>>8)
+#else
+	# define swap2(d) d
+#endif
+
+gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 16)
+		return FALSE;
+	/* Parse VP8 header now */
+	uint8_t vp8pd = *buffer;
+	uint8_t xbit = (vp8pd & 0x80);
+	uint8_t sbit = (vp8pd & 0x10);
+	if(xbit) {
+		JANUS_LOG(LOG_HUGE, "  -- X bit is set!\n");
+		/* Read the Extended control bits octet */
+		buffer++;
+		vp8pd = *buffer;
+		uint8_t ibit = (vp8pd & 0x80);
+		uint8_t lbit = (vp8pd & 0x40);
+		uint8_t tbit = (vp8pd & 0x20);
+		uint8_t kbit = (vp8pd & 0x10);
+		if(ibit) {
+			JANUS_LOG(LOG_HUGE, "  -- I bit is set!\n");
+			/* Read the PictureID octet */
+			buffer++;
+			vp8pd = *buffer;
+			uint16_t picid = vp8pd, wholepicid = picid;
+			uint8_t mbit = (vp8pd & 0x80);
+			if(mbit) {
+				JANUS_LOG(LOG_HUGE, "  -- M bit is set!\n");
+				memcpy(&picid, buffer, sizeof(uint16_t));
+				wholepicid = ntohs(picid);
+				picid = (wholepicid & 0x7FFF);
+				buffer++;
+			}
+			JANUS_LOG(LOG_HUGE, "  -- -- PictureID: %"SCNu16"\n", picid);
+		}
+		if(lbit) {
+			JANUS_LOG(LOG_HUGE, "  -- L bit is set!\n");
+			/* Read the TL0PICIDX octet */
+			buffer++;
+			vp8pd = *buffer;
+		}
+		if(tbit || kbit) {
+			JANUS_LOG(LOG_HUGE, "  -- T/K bit is set!\n");
+			/* Read the TID/KEYIDX octet */
+			buffer++;
+			vp8pd = *buffer;
+		}
+		buffer++;	/* Now we're in the payload */
+		if(sbit) {
+			JANUS_LOG(LOG_HUGE, "  -- S bit is set!\n");
+			unsigned long int vp8ph = 0;
+			memcpy(&vp8ph, buffer, 4);
+			vp8ph = ntohl(vp8ph);
+			uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+			if(!pbit) {
+				JANUS_LOG(LOG_HUGE, "  -- P bit is NOT set!\n");
+				/* It is a key frame! Get resolution for debugging */
+				unsigned char *c = (unsigned char *)buffer+3;
+				/* vet via sync code */
+				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
+				} else {
+					unsigned short val3, val5;
+					memcpy(&val3,c+3,sizeof(short));
+					int vp8w = swap2(val3)&0x3fff;
+					int vp8ws = swap2(val3)>>14;
+					memcpy(&val5,c+5,sizeof(short));
+					int vp8h = swap2(val5)&0x3fff;
+					int vp8hs = swap2(val5)>>14;
+					JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
+					return TRUE;
+				}
+			}
+		}
+	}
+	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 16)
+		return FALSE;
+	/* Parse VP9 header now */
+	uint8_t vp9pd = *buffer;
+	uint8_t ibit = (vp9pd & 0x80);
+	uint8_t pbit = (vp9pd & 0x40);
+	uint8_t lbit = (vp9pd & 0x20);
+	uint8_t fbit = (vp9pd & 0x10);
+	uint8_t vbit = (vp9pd & 0x02);
+	buffer++;
+	len--;
+	if(ibit) {
+		/* Read the PictureID octet */
+		vp9pd = *buffer;
+		uint16_t picid = vp9pd, wholepicid = picid;
+		uint8_t mbit = (vp9pd & 0x80);
+		if(!mbit) {
+			buffer++;
+			len--;
+		} else {
+			memcpy(&picid, buffer, sizeof(uint16_t));
+			wholepicid = ntohs(picid);
+			picid = (wholepicid & 0x7FFF);
+			buffer += 2;
+			len -= 2;
+		}
+	}
+	if(lbit) {
+		buffer++;
+		len--;
+		if(!fbit) {
+			/* Non-flexible mode, skip TL0PICIDX */
+			buffer++;
+			len--;
+		}
+	}
+	if(fbit && pbit) {
+		/* Skip reference indices */
+		uint8_t nbit = 1;
+		while(nbit) {
+			vp9pd = *buffer;
+			nbit = (vp9pd & 0x01);
+			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overflow */
+				return FALSE;
+		}
+	}
+	if(vbit) {
+		/* Parse and skip SS */
+		vp9pd = *buffer;
+		uint n_s = (vp9pd & 0xE0) >> 5;
+		n_s++;
+		uint8_t ybit = (vp9pd & 0x10);
+		if(ybit) {
+			/* Iterate on all spatial layers and get resolution */
+			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overflow */
+				return FALSE;
+			uint i=0;
+			for(i=0; i<n_s && len>=4; i++,len-=4) {
+				/* Width */
+				uint16_t w;
+				memcpy(&w, buffer, sizeof(uint16_t));
+				int vp9w = ntohs(w);
+				buffer += 2;
+				/* Height */
+				uint16_t h;
+				memcpy(&h, buffer, sizeof(uint16_t));
+				int vp9h = ntohs(h);
+				buffer += 2;
+				if(vp9w || vp9h) {
+					JANUS_LOG(LOG_HUGE, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					return TRUE;
+				}
+			}
+		}
+	}
+	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+gboolean janus_h264_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 16)
+		return FALSE;
+	/* Parse H264 header now */
+	uint8_t fragment = *buffer & 0x1F;
+	uint8_t nal = *(buffer+1) & 0x1F;
+	if(fragment == 7 || ((fragment == 28 || fragment == 29) && nal == 7)) {
+		JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");
+		return TRUE;
+	} else if(fragment == 24) {
+		/* May we find an SPS in this STAP-A? */
+		buffer++;
+		len--;
+		uint16_t psize = 0;
+		/* We're reading 3 bytes */
+		while(len > 2) {
+			memcpy(&psize, buffer, 2);
+			psize = ntohs(psize);
+			buffer += 2;
+			len -= 2;
+			int nal = *buffer & 0x1F;
+			if(nal == 7) {
+				JANUS_LOG(LOG_HUGE, "Got an SPS/PPS\n");
+				return TRUE;
+			}
+			buffer += psize;
+			len -= psize;
+		}
+	}
+	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+int janus_vp8_parse_descriptor(char *buffer, int len,
+		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
+	if(!buffer || len < 6)
+		return -1;
+	if(picid)
+		*picid = 0;
+	if(tl0picidx)
+		*tl0picidx = 0;
+	if(tid)
+		*tid = 0;
+	if(y)
+		*y = 0;
+	if(keyidx)
+		*keyidx = 0;
+	uint8_t vp8pd = *buffer;
+	uint8_t xbit = (vp8pd & 0x80);
+	/* Read the Extended control bits octet */
+	if(xbit) {
+		buffer++;
+		vp8pd = *buffer;
+		uint8_t ibit = (vp8pd & 0x80);
+		uint8_t lbit = (vp8pd & 0x40);
+		uint8_t tbit = (vp8pd & 0x20);
+		uint8_t kbit = (vp8pd & 0x10);
+		if(ibit) {
+			/* Read the PictureID octet */
+			buffer++;
+			vp8pd = *buffer;
+			uint16_t partpicid = vp8pd, wholepicid = partpicid;
+			uint8_t mbit = (vp8pd & 0x80);
+			if(mbit) {
+				memcpy(&partpicid, buffer, sizeof(uint16_t));
+				wholepicid = ntohs(partpicid);
+				partpicid = (wholepicid & 0x7FFF);
+				if(picid)
+					*picid = partpicid;
+				buffer++;
+			}
+		}
+		if(lbit) {
+			/* Read the TL0PICIDX octet */
+			buffer++;
+			vp8pd = *buffer;
+			if(tl0picidx)
+				*tl0picidx = vp8pd;
+		}
+		if(tbit || kbit) {
+			/* Read the TID/Y/KEYIDX octet */
+			buffer++;
+			vp8pd = *buffer;
+			if(tid)
+				*tid = (vp8pd & 0xC0) >> 6;
+			if(y)
+				*y = (vp8pd & 0x20) >> 5;
+			if(keyidx)
+				*keyidx = (vp8pd & 0x1F) >> 4;
+		}
+	}
+	return 0;
+}
+
+static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, uint8_t tl0picidx) {
+	if(!buffer || len < 6)
+		return -1;
+	uint8_t vp8pd = *buffer;
+	uint8_t xbit = (vp8pd & 0x80);
+	/* Read the Extended control bits octet */
+	if(xbit) {
+		buffer++;
+		vp8pd = *buffer;
+		uint8_t ibit = (vp8pd & 0x80);
+		uint8_t lbit = (vp8pd & 0x40);
+		uint8_t tbit = (vp8pd & 0x20);
+		uint8_t kbit = (vp8pd & 0x10);
+		if(ibit) {
+			/* Overwrite the PictureID octet */
+			buffer++;
+			vp8pd = *buffer;
+			uint8_t mbit = (vp8pd & 0x80);
+			if(!mbit) {
+				*buffer = picid;
+			} else {
+				uint16_t wholepicid = htons(picid);
+				memcpy(buffer, &wholepicid, 2);
+				*buffer |= 0x80;
+				buffer++;
+			}
+		}
+		if(lbit) {
+			/* Overwrite the TL0PICIDX octet */
+			buffer++;
+			*buffer = tl0picidx;
+		}
+		if(tbit || kbit) {
+			/* Should we overwrite the TID/Y/KEYIDX octet? */
+			buffer++;
+		}
+	}
+	return 0;
+}
+
+void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	context->last_picid = 0;
+	context->base_picid = 0;
+	context->base_picid_prev = 0;
+	context->last_tlzi = 0;
+	context->base_tlzi = 0;
+	context->base_tlzi_prev = 0;
+}
+
+void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched) {
+	if(!buffer || len < 0)
+		return;
+	uint16_t picid = 0;
+	uint8_t tlzi = 0;
+	uint8_t tid = 0;
+	uint8_t ybit = 0;
+	uint8_t keyidx = 0;
+	/* Parse the identifiers in the VP8 payload descriptor */
+	if(janus_vp8_parse_descriptor(buffer, len, &picid, &tlzi, &tid, &ybit, &keyidx) < 0)
+		return;
+	if(switched) {
+		context->base_picid_prev = context->last_picid;
+		context->base_picid = picid;
+		context->base_tlzi_prev = context->last_tlzi;
+		context->base_tlzi = tlzi;
+	}
+	context->last_picid = (picid-context->base_picid)+context->base_picid_prev+1;
+	context->last_tlzi = (tlzi-context->base_tlzi)+context->base_tlzi_prev+1;
+	/* Overwrite the values in the VP8 payload descriptors with the ones we have */
+	janus_vp8_replace_descriptor(buffer, len, context->last_picid, context->last_tlzi);
+}
+
+/* Helper method to parse a VP9 RTP video frame and get some SVC-related info:
+ * notice that this only works with VP9, right now, on an experimental basis */
+int janus_vp9_parse_svc(char *buffer, int len, int *found,
+		int *spatial_layer, int *temporal_layer,
+		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
+	if(!buffer || len < 8)
+		return -1;
+	/* VP9 depay: */
+		/* https://tools.ietf.org/html/draft-ietf-payload-vp9-04 */
+	/* Read the first octet (VP9 Payload Descriptor) */
+	uint8_t vp9pd = *buffer;
+	uint8_t ibit = (vp9pd & 0x80) >> 7;
+	uint8_t pbit = (vp9pd & 0x40) >> 6;
+	uint8_t lbit = (vp9pd & 0x20) >> 5;
+	uint8_t fbit = (vp9pd & 0x10) >> 4;
+	uint8_t bbit = (vp9pd & 0x08) >> 3;
+	uint8_t ebit = (vp9pd & 0x04) >> 2;
+	uint8_t vbit = (vp9pd & 0x02) >> 1;
+	if(!lbit) {
+		/* No Layer indices present, no need to go on */
+		if(found)
+			*found = 0;
+		return 0;
+	}
+	/* Move to the next octet and see what's there */
+	buffer++;
+	len--;
+	if(ibit) {
+		/* Read the PictureID octet */
+		vp9pd = *buffer;
+		uint16_t picid = vp9pd, wholepicid = picid;
+		uint8_t mbit = (vp9pd & 0x80);
+		if(!mbit) {
+			buffer++;
+			len--;
+		} else {
+			memcpy(&picid, buffer, sizeof(uint16_t));
+			wholepicid = ntohs(picid);
+			picid = (wholepicid & 0x7FFF);
+			buffer += 2;
+			len -= 2;
+		}
+	}
+	if(lbit) {
+		/* Read the octet and parse the layer indices now */
+		vp9pd = *buffer;
+		int tlid = (vp9pd & 0xE0) >> 5;
+		uint8_t ubit = (vp9pd & 0x10) >> 4;
+		int slid = (vp9pd & 0x0E) >> 1;
+		uint8_t dbit = (vp9pd & 0x01);
+		JANUS_LOG(LOG_HUGE, "Parsed Layer indices: Temporal: %d (%u), Spatial: %d (%u)\n",
+			tlid, ubit, slid, dbit);
+		if(temporal_layer)
+			*temporal_layer = tlid;
+		if(spatial_layer)
+			*spatial_layer = slid;
+		if(p)
+			*p = pbit;
+		if(d)
+			*d = dbit;
+		if(u)
+			*u = ubit;
+		if(b)
+			*b = bbit;
+		if(e)
+			*e = ebit;
+		if(found)
+			*found = 1;
+		/* Go on, just to get to the SS, if available (which we currently ignore anyway) */
+		buffer++;
+		len--;
+		if(!fbit) {
+			/* Non-flexible mode, skip TL0PICIDX */
+			buffer++;
+			len--;
+		}
+	}
+	if(fbit && pbit) {
+		/* Skip reference indices */
+		uint8_t nbit = 1;
+		while(nbit) {
+			vp9pd = *buffer;
+			nbit = (vp9pd & 0x01);
+			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overflow */
+				return -1;
+		}
+	}
+	if(vbit) {
+		/* Parse and skip SS */
+		vp9pd = *buffer;
+		int n_s = (vp9pd & 0xE0) >> 5;
+		n_s++;
+		JANUS_LOG(LOG_HUGE, "There are %d spatial layers\n", n_s);
+		uint8_t ybit = (vp9pd & 0x10);
+		uint8_t gbit = (vp9pd & 0x08);
+		if(ybit) {
+			/* Iterate on all spatial layers and get resolution */
+			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overflow */
+				return -1;
+			int i=0;
+			for(i=0; i<n_s; i++) {
+				/* Been there, done that: skip skip skip */
+				buffer += 4;
+				len -= 4;
+				if(len <= 0)	/* Make sure we don't overflow */
+					return -1;
+			}
+		}
+		if(gbit) {
+			if(!ybit) {
+				buffer++;
+				len--;
+				if(len == 0)	/* Make sure we don't overflow */
+					return -1;
+			}
+			uint8_t n_g = *buffer;
+			JANUS_LOG(LOG_HUGE, "There are %u frames in a GOF\n", n_g);
+			buffer++;
+			len--;
+			if(len == 0)	/* Make sure we don't overflow */
+				return -1;
+			if(n_g > 0) {
+				int i=0;
+				for(i=0; i<n_g; i++) {
+					/* Read the R bits */
+					vp9pd = *buffer;
+					int r = (vp9pd & 0x0C) >> 2;
+					if(r > 0) {
+						/* Skip reference indices */
+						buffer += r;
+						len -= r;
+						if(len <= 0)	/* Make sure we don't overflow */
+							return -1;
+					}
+					buffer++;
+					len--;
+					if(len == 0)	/* Make sure we don't overflow */
+						return -1;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+inline guint32 janus_push_bits(guint32 word, size_t num, guint32 val) {
+	return (word << num) | (val & (0xFFFFFFFF>>(32-num)));
+}
+
+inline void janus_set1(guint8 *data,size_t i,guint8 val) {
+	data[i] = val;
+}
+
+inline void janus_set2(guint8 *data,size_t i,guint32 val) {
+	data[i+1] = (guint8)(val);
+	data[i]   = (guint8)(val>>8);
+}
+
+inline void janus_set3(guint8 *data,size_t i,guint32 val) {
+	data[i+2] = (guint8)(val);
+	data[i+1] = (guint8)(val>>8);
+	data[i]   = (guint8)(val>>16);
+}
+
+inline void janus_set4(guint8 *data,size_t i,guint32 val) {
+	data[i+3] = (guint8)(val);
+	data[i+2] = (guint8)(val>>8);
+	data[i+1] = (guint8)(val>>16);
+	data[i]   = (guint8)(val>>24);
 }

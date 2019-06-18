@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Echo Test</title>
-<script type="text/javascript" src="jquery.min.js" ></script>
-<script type="text/javascript" src="jquery.blockUI.js" ></script>
-<script type="text/javascript" src="js/bootstrap.js"></script>
-<script type="text/javascript" src="js/bootbox.min.js"></script>
-<script type="text/javascript" src="js/spin.min.js"></script>
+<title>Janus WebRTC Server: Echo Test</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.0.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="echotest.js"></script>
 <script>
@@ -21,9 +23,10 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="css/font-awesome.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.css"/>
 </head>
 <body>
 
@@ -46,14 +49,20 @@
 						<h3>Demo details</h3>
 						<p>This Echo Test demo just blindly sends you back whatever you
 						send to it. You're basically attached to yourself, and so your audio
-						and video you send to the gateway are echoed back to you. The same
+						and video you send to Janus are echoed back to you. The same
 						is done for RTCP packets as well, with the information properly updated.</p>
 						<p>The demo also provides a few controls to manipulate the media
 						before you send them. You can mute audio and video, for instance,
-						which will tell the gateway to drop the frames and not echo them
+						which will tell the server to drop the frames and not echo them
 						back to you. You can also try and cap the bitrate: such control
-						will tell the gateway to manipulate the RTCP REMB packets passing
-						through, in order to simulate a bandwidth limitation.</p>
+						will tell the server to manipulate the RTCP REMB packets passing
+						through, in order to simulate a bandwidth limitation. In case
+						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
+						query string to the url of this page and reload it: buttons will appear
+						to allow you to try and switch between lower and higher quality
+						versions of the video you're capturing: notice that you may have
+						to increase the bandwidth indicator to have the higher quality
+						versions appear, as the browser will not encode them otherwise.</p>
 						<p>Finally, this demo also includes Data Channels: whatever you
 						write in the text box under your local video, will be sent via
 						Data Channels to the plugins, modified by adding a fixed prefix,
@@ -62,7 +71,7 @@
 						sake of simplicity accesses the default devices you have available on
 						your machine. If you're interested in a demo that shows you how you
 						can select specific devices with <code>janus.js</code>, open the
-						<a class="alert-link" href="devices.html">Devices</a> demo instead.</div>
+						<a class="alert-link" href="devicetest.html">Devices</a> demo instead.</div>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>

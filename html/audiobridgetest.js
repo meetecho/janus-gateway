@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -50,7 +50,8 @@ else
 
 var janus = null;
 var mixertest = null;
-var started = false;
+var opaqueId = "audiobridgetest-"+Janus.randomString(12);
+
 var spinner = null;
 
 var myroom = 1234;	// Demo room
@@ -64,10 +65,7 @@ $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -83,6 +81,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.audiobridge",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									mixertest = pluginHandle;
@@ -123,7 +122,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var event = msg["audiobridge"];
 									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
@@ -157,17 +156,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "roomchanged") {
@@ -183,17 +189,24 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											}
 										} else if(event === "destroyed") {
@@ -210,20 +223,37 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
+													var setup = list[f]["setup"];
 													var muted = list[f]["muted"];
-													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (setup=" + setup + ", muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
-														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></li>');
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+
+															' <i class="absetup fa fa-chain-broken"></i>' +
+															' <i class="abmuted fa fa-microphone-slash"></i></li>');
 														$('#rp'+id + ' > i').hide();
 													}
 													if(muted === true || muted === "true")
-														$('#rp'+id + ' > i').removeClass('hide').show();
+														$('#rp'+id + ' > i.abmuted').removeClass('hide').show();
 													else
-														$('#rp'+id + ' > i').hide();
+														$('#rp'+id + ' > i.abmuted').hide();
+													if(setup === true || setup === "true")
+														$('#rp'+id + ' > i.absetup').hide();
+													else
+														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
-												bootbox.alert(msg["error"]);
+												if(msg["error_code"] === 485) {
+													// This is a "no such room" error: give a more meaningful description
+													bootbox.alert(
+														"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+														"does not exist...</p><p>Do you have an updated <code>janus.plugin.audiobridge.cfg</code> " +
+														"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+														"from that sample in your current configuration file, then restart Janus and try again."
+													);
+												} else {
+													bootbox.alert(msg["error"]);
+												}
 												return;
 											}
 											// Any new feed to attach to?
@@ -243,7 +273,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									// We're not going to attach the local audio stream
 									$('#audiojoin').hide();
 									$('#room').removeClass('hide').show();
@@ -251,10 +281,14 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									$('#room').removeClass('hide').show();
+									var addButtons = false;
 									if($('#roomaudio').length === 0) {
+										addButtons = true;
 										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
 									}
 									Janus.attachMediaStream($('#roomaudio').get(0), stream);
+									if(!addButtons)
+										return;
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(

@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -50,7 +50,8 @@ else
 
 var janus = null;
 var recordplay = null;
-var started = false;
+var opaqueId = "recordplaytest-"+Janus.randomString(12);
+
 var spinner = null;
 var bandwidth = 1024 * 1024;
 
@@ -61,15 +62,15 @@ var recordingId = null;
 var selectedRecording = null;
 var selectedRecordingInfo = null;
 
+var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
-		$('#start').click(function() {
-			if(started)
-				return;
-			started = true;
+		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
 			// Make sure the browser supports WebRTC
 			if(!Janus.isWebrtcSupported()) {
@@ -85,6 +86,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.recordplay",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									recordplay = pluginHandle;
@@ -106,7 +108,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -127,12 +129,12 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
 											var event = result["status"];
-											if(event === 'preparing') {
+											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
 												recordplay.createAnswer(
 													{
@@ -228,33 +230,51 @@ $(document).ready(function() {
 									if(playing === true)
 										return;
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videotitle').html("Recording...");
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
-									$("#videobox").parent().block({
-										message: '<b>Publishing...</b>',
-										css: {
-											border: 'none',
-											backgroundColor: 'transparent',
-											color: 'white'
+									if(recordplay.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											recordplay.webrtcStuff.pc.iceConnectionState !== "connected") {
+										$("#videobox").parent().block({
+											message: '<b>Publishing...</b>',
+											css: {
+												border: 'none',
+												backgroundColor: 'transparent',
+												color: 'white'
+											}
+										});
+									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No remote video
+										$('#thevideo').hide();
+										if($('#videobox .no-video-container').length === 0) {
+											$('#videobox').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
 										}
-									});
+									} else {
+										$('#videobox .no-video-container').remove();
+										$('#thevideo').removeClass('hide').show();
+									}
 								},
 								onremotestream: function(stream) {
 									if(playing === false)
 										return;
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									$('#videotitle').html(selectedRecordingInfo);
-									$('#stop').unbind('click').click(stop);
-									$('#video').removeClass('hide').show();
+									Janus.debug(stream);
 									if($('#thevideo').length === 0) {
-										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										$('#videotitle').html(selectedRecordingInfo);
+										$('#stop').unbind('click').click(stop);
+										$('#video').removeClass('hide').show();
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay playsinline/>');
 										// No remote video yet
 										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 										if(spinner == null) {
@@ -263,16 +283,31 @@ $(document).ready(function() {
 										} else {
 											spinner.spin();
 										}
+										// Show the video, hide the spinner and show the resolution when we get a playing event
+										$("#thevideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											$('#thevideo').removeClass('hide');
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
+										});
 									}
-									// Show the video, hide the spinner and show the resolution when we get a playing event
-									$("#thevideo").bind("playing", function () {
-										$('#waitingvideo').remove();
-										$('#thevideo').removeClass('hide');
-										if(spinner !== null && spinner !== undefined)
-											spinner.stop();
-										spinner = null;
-									});
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No remote video
+										$('#thevideo').hide();
+										if($('#videobox .no-video-container').length === 0) {
+											$('#videobox').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+													'<span class="no-video-text">No remote video available</span>' +
+												'</div>');
+										}
+									} else {
+										$('#videobox .no-video-container').remove();
+										$('#thevideo').removeClass('hide').show();
+									}
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
@@ -375,7 +410,7 @@ function startRecording() {
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
 
-		// bitrate and keyframe interval can be set at any time: 
+		// bitrate and keyframe interval can be set at any time:
 		// before, after, during recording
 		recordplay.send({
 			'message': {
@@ -384,10 +419,14 @@ function startRecording() {
 				'video-keyframe-interval': 15000 // 15 seconds
 			}
 		});
-		
+
 		recordplay.createOffer(
 			{
-				// By default, it's sendrecv for audio and video...
+				// By default, it's sendrecv for audio and video... no datachannels
+				// If you want to test simulcasting (Chrome and Firefox only), then
+				// pass a ?simulcast=true when opening this demo page: it will turn
+				// the following 'simulcast' property to pass to janus.js to true
+				simulcast: doSimulcast,
 				success: function(jsep) {
 					Janus.debug("Got SDP!");
 					Janus.debug(jsep);
@@ -428,4 +467,12 @@ function stop() {
 	var stop = { "request": "stop" };
 	recordplay.send({"message": stop});
 	recordplay.hangup();
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }

@@ -4,13 +4,17 @@
  * \brief    Post-processing to generate .srt files
  * \details  Implementation of the post-processing code needed to
  * generate .srt files out of text data recordings.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
 
 #include <arpa/inet.h>
+#ifdef __MACH__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
@@ -33,15 +37,16 @@ static void janus_pp_srt_format_time(char *buffer, int len, guint64 when) {
 }
 
 /* Processing methods */
-int janus_pp_srt_create(char *destination) {
+int janus_pp_srt_create(char *destination, char *metadata) {
 	/* Create srt file */
 	srt_file = fopen(destination, "wb");
 	if(srt_file == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
 		return -1;
 	}
-
-	/* TODO Any header? */
+	/* Note: apparently .srt files don't have any "comment" syntax or
+	 * anything like that, so there's no way we can add a text prefix,
+	 * header or intro, and nothing we can do with the metadata either */
 
 	return 0;
 }

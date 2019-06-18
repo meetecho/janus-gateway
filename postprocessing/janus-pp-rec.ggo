@@ -1,0 +1,13 @@
+#Janus-pp-rec 0.7.3 gengetopt file
+usage "janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]"
+option "json" j "Only print JSON header" flag off
+option "header" H "Only parse .mjr header" flag off
+option "parse" p "Only parse and re-order packets" flag off
+option "metadata" m "Save this metadata string in the target file" string typestr="metadata" optional
+option "postreset-trigger" r "Number of packets needed to detect a timestamp reset (default=200)" int typestr="count" optional
+option "ignore-first" i "Number of first packets to ignore when processing, e.g., in case they're cause of issues (default=0)" int typestr="count" optional
+option "audiolevel-ext" a "ID of the audio-levels RTP extension (default=none)" int typestr="id" optional
+option "videoorient-ext" v "ID of the video-orientation RTP extension (default=none)" int typestr="id" optional
+option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
+option "debug-timestamps" D "Enable debug/logging timestamps" flag off
+option "disable-colors" o "Disable color in the logging" flag off

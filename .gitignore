@@ -1,11 +1,14 @@
 cmdline.c
 cmdline.h
+version.c
 docs/html/
 
 /janus
+/janus-cfgconv
 /janus-pp-rec
 /plugins/*.so
 /transports/*.so
+/events/*.so
 
 Makefile
 Makefile.in
@@ -31,17 +34,40 @@ Makefile.in
 /plugins/*.lo
 /plugins/*.la
 /plugins/.libs
+/plugins/duktape-deps/*.lo
+/plugins/duktape-deps/.libs
 /transports/*.o
 /transports/*.lo
 /transports/*.la
 /transports/.libs
+/events/*.o
+/events/*.lo
+/events/*.la
+/events/.libs
 /postprocessing/*.o
+/postprocessing/pp-cmdline.c
+/postprocessing/pp-cmdline.h
+/fuzzers/*.a
+/fuzzers/*.o
+/fuzzers/out
 
 /conf/janus.cfg.sample
+/conf/janus.plugin.duktape.cfg.sample
+/conf/janus.plugin.lua.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
+/conf/janus.plugin.voicemail.cfg.sample
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
+/conf/janus.jcfg.sample
+/conf/janus.plugin.duktape.jcfg.sample
+/conf/janus.plugin.lua.jcfg.sample
+/conf/janus.plugin.recordplay.jcfg.sample
+/conf/janus.plugin.streaming.jcfg.sample
+/conf/janus.plugin.voicemail.jcfg.sample
 
 .deps
 .dirstamp
+
+# OS X
+.DS_Store
