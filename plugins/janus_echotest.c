@@ -700,8 +700,11 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
 			json_object_set_new(event, "event", json_string("slow_link"));
-			/* Also add info on what the current bitrate cap is */
-			json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
+			json_object_set_new(event, "media", json_string(video ? "video" : "audio"));
+			if(video) {
+				/* Also add info on what the current bitrate cap is */
+				json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
+			}
 			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 			json_decref(event);
 		}

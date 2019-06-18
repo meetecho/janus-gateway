@@ -856,12 +856,12 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 	session->slowlink_count++;
 	if(uplink && !video && !session->audio_active) {
 		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
+		JANUS_LOG(LOG_VERB, "Getting a lot of lost packets (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
 	} else if(uplink && video && !session->video_active) {
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
+		JANUS_LOG(LOG_VERB, "Getting a lot of lost packets (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s\n",
+		JANUS_LOG(LOG_WARN, "Getting a lot of lost packets (slow %s) for %s\n",
 			uplink ? "uplink" : "downlink", video ? "video" : "audio");
 		if(!uplink) {
 			/* Send an event on the handle to notify the application: it's
@@ -871,7 +871,9 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 			/* Also add info on what the current bitrate cap is */
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("slow_link"));
-			json_object_set_new(result, "current-bitrate", json_integer(session->bitrate));
+			json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+			if(video)
+				json_object_set_new(result, "current-bitrate", json_integer(session->bitrate));
 			json_object_set_new(event, "result", result);
 			gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
 			json_decref(event);
