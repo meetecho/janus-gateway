@@ -3578,7 +3578,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
-		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
+		janus_slow_link_update(stream->component, handle, FALSE, TRUE, lost);
 	}
 	if(stream && stream->audio_recv) {
 		/* Create a RR too */
@@ -3597,7 +3597,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, 32, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE);
-		janus_slow_link_update(stream->component, handle, FALSE, TRUE, lost);
+		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
 	}
 	/* Now do the same for video */
 	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
@@ -3637,7 +3637,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
-		janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
+		janus_slow_link_update(stream->component, handle, TRUE, TRUE, lost);
 	}
 	if(stream && stream->video_recv) {
 		/* Create a RR too (for each SSRC, if we're simulcasting) */
@@ -3662,7 +3662,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		}
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[0], FALSE);
-		janus_slow_link_update(stream->component, handle, TRUE, TRUE, lost);
+		janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
 	}
 	if(twcc_period == 1000) {
 		/* The Transport Wide CC feedback period is 1s as well, send it here */
