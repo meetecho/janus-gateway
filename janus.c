@@ -3468,8 +3468,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 		return G_SOURCE_REMOVE;
 	}
 	janus_refcount_increase(&ice_handle->ref);
-	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		janus_refcount_decrease(&plugin_session->ref);
 		janus_refcount_decrease(&ice_handle->ref);
 		return G_SOURCE_REMOVE;
