@@ -3434,6 +3434,18 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(audio_handle > 0) {
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("rtp_forward"));
+				json_object_set_new(info, "room", json_integer(room_id));
+				json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+				json_object_set_new(info, "media", json_string("audio"));
+				json_object_set_new(info, "stream_id", json_integer(audio_handle));
+				json_object_set_new(info, "host", json_string(host));
+				json_object_set_new(info, "port", json_integer(audio_port));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
 		}
 		if(video_handle[0] > 0 || video_handle[1] > 0 || video_handle[2] > 0) {
 			janus_videoroom_reqfir(publisher, "New RTP forward publisher");
@@ -3441,19 +3453,71 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(video_handle[0] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
 				json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					if(video_handle[1] > 0 || video_handle[2] > 0)
+						json_object_set_new(info, "video_substream", json_integer(0));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[0]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[0]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 			if(video_handle[1] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id_2", json_integer(video_handle[1]));
 				json_object_set_new(rtp_stream, "video_2", json_integer(video_port[1]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "video_substream", json_integer(1));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[1]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[1]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 			if(video_handle[2] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id_3", json_integer(video_handle[2]));
 				json_object_set_new(rtp_stream, "video_3", json_integer(video_port[2]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "video_substream", json_integer(2));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[2]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[2]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 		}
 		if(data_handle > 0) {
 			json_object_set_new(rtp_stream, "data_stream_id", json_integer(data_handle));
 			json_object_set_new(rtp_stream, "data", json_integer(data_port));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("rtp_forward"));
+				json_object_set_new(info, "room", json_integer(room_id));
+				json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+				json_object_set_new(info, "media", json_string("data"));
+				json_object_set_new(info, "stream_id", json_integer(data_handle));
+				json_object_set_new(info, "host", json_string(host));
+				json_object_set_new(info, "port", json_integer(data_port));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
 		}
 		/* These two unrefs are related to the message handling */
 		janus_refcount_decrease(&publisher->ref);
@@ -3527,6 +3591,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "publisher_id", json_integer(publisher_id));
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("stop_rtp_forward"));
+			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+			json_object_set_new(info, "stream_id", json_integer(stream_id));
+			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		}
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */
