@@ -1838,7 +1838,7 @@ function Janus(gatewayCallbacks) {
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate();
+								config.pc.addIceCandidate({candidate:''});
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
