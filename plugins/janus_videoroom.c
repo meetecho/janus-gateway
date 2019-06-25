@@ -5786,7 +5786,6 @@ static void *janus_videoroom_handler(void *data) {
 								/* We have such an m-line and it's active, should it be changed? */
 								if(m_new == NULL || m_new->port == 0 || m_new->direction == JANUS_SDP_INACTIVE) {
 									/* Turn the m-line to inactive */
-									m->port = 0;
 									m->direction = JANUS_SDP_INACTIVE;
 								}
 							} else {
