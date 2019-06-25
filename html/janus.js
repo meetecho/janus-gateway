@@ -375,6 +375,30 @@ Janus.init = function(options) {
 				});
 			}
 		}
+		// Check if this browser supports Unified Plan and transceivers
+		// Based on https://codepen.io/anon/pen/ZqLwWV?editors=0010
+		Janus.unifiedPlan = false;
+		if(Janus.webRTCAdapter.browserDetails.browser === 'firefox' &&
+				Janus.webRTCAdapter.browserDetails.version >= 59) {
+			// Firefox definitely does, starting from version 59
+			Janus.unifiedPlan = true;
+		} else if(Janus.webRTCAdapter.browserDetails.browser === 'chrome' &&
+				Janus.webRTCAdapter.browserDetails.version < 72) {
+			// Chrome does, but it's only usable from version 72 on
+			Janus.unifiedPlan = false;
+		} else if(!('currentDirection' in RTCRtpTransceiver.prototype)) {
+			// Safari supports addTransceiver() but not Unified Plan when
+			// currentDirection is not defined (see codepen above)
+			Janus.unifiedPlan = false;
+		} else {
+			// Check if addTransceiver() throws an exception
+			const tempPc = new RTCPeerConnection();
+			try {
+				tempPc.addTransceiver('audio');
+				Janus.unifiedPlan = true;
+			} catch (e) {}
+			tempPc.close();
+		}
 		Janus.initDone = true;
 		options.callback();
 	}
@@ -1612,9 +1636,7 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isAudioSendEnabled(media)) || (media.update && (media.addAudio || media.replaceAudio))) &&
 					stream.getAudioTracks() && stream.getAudioTracks().length) {
 				config.myStream.addTrack(stream.getAudioTracks()[0]);
-				if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
-						(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
-						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+				if(Janus.unifiedPlan) {
 					// Use Transceivers
 					Janus.log((media.replaceAudio ? "Replacing" : "Adding") + " audio track:", stream.getAudioTracks()[0]);
 					var audioTransceiver = null;
@@ -1642,9 +1664,7 @@ function Janus(gatewayCallbacks) {
 			if(((!media.update && isVideoSendEnabled(media)) || (media.update && (media.addVideo || media.replaceVideo))) &&
 					stream.getVideoTracks() && stream.getVideoTracks().length) {
 				config.myStream.addTrack(stream.getVideoTracks()[0]);
-				if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
-						(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
-						(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
+				if(Janus.unifiedPlan) {
 					// Use Transceivers
 					Janus.log((media.replaceVideo ? "Replacing" : "Adding") + " video track:", stream.getVideoTracks()[0]);
 					var videoTransceiver = null;
@@ -1740,16 +1760,26 @@ function Janus(gatewayCallbacks) {
 					return;
 				config.remoteStream = event.streams[0];
 				pluginHandle.onremotestream(config.remoteStream);
-				if(event.track && !event.track.onended) {
-					Janus.log("Adding onended callback to track:", event.track);
-					event.track.onended = function(ev) {
-						Janus.log("Remote track removed:", ev);
-						if(config.remoteStream) {
-							config.remoteStream.removeTrack(ev.target);
-							pluginHandle.onremotestream(config.remoteStream);
-						}
+				if(event.track.onended)
+					return;
+				Janus.log("Adding onended callback to track:", event.track);
+				event.track.onended = function(ev) {
+					Janus.log("Remote track muted/removed:", ev);
+					if(config.remoteStream) {
+						config.remoteStream.removeTrack(ev.target);
+						pluginHandle.onremotestream(config.remoteStream);
 					}
-				}
+				};
+				event.track.onmute = event.track.onended;
+				event.track.onunmute = function(ev) {
+					Janus.log("Remote track flowing again:", ev);
+					try {
+						config.remoteStream.addTrack(ev.target);
+						pluginHandle.onremotestream(config.remoteStream);
+					} catch(e) {
+						Janus.error(e);
+					};
+				};
 			};
 		}
 		if(addTracks && stream !== null && stream !== undefined) {
@@ -1999,9 +2029,8 @@ function Janus(gatewayCallbacks) {
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var ra = true;
-					if(media.replaceAudio && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-							(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
-						// On Firefox we can use replaceTrack
+					if(media.replaceAudio && Janus.unifiedPlan) {
+						// We can use replaceTrack
 						ra = false;
 					}
 					if(ra) {
@@ -2026,9 +2055,8 @@ function Janus(gatewayCallbacks) {
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var rv = true;
-					if(media.replaceVideo && (Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-							(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72))) {
-						// On Firefox we can use replaceTrack
+					if(media.replaceVideo && Janus.unifiedPlan) {
+						// We can use replaceTrack
 						rv = false;
 					}
 					if(rv) {
@@ -2420,10 +2448,8 @@ function Janus(gatewayCallbacks) {
 		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = {};
-		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
-				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
-				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
-			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
+		if(Janus.unifiedPlan) {
+			// We can use Transceivers
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
@@ -2623,10 +2649,8 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
 		}
 		var mediaConstraints = null;
-		if((Janus.webRTCAdapter.browserDetails.browser === "firefox" && Janus.webRTCAdapter.browserDetails.version >= 59) ||
-				(Janus.webRTCAdapter.browserDetails.browser === "safari" && window.RTCRtpSender.prototype.replaceTrack) ||
-				(Janus.webRTCAdapter.browserDetails.browser === "chrome" && Janus.webRTCAdapter.browserDetails.version >= 72)) {
-			// Firefox >= 59, Safari and Chrome >= 72 use Transceivers
+		if(Janus.unifiedPlan) {
+			// We can use Transceivers
 			mediaConstraints = {};
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
@@ -2653,41 +2677,57 @@ function Janus(gatewayCallbacks) {
 			if(!audioSend && !audioRecv) {
 				// Audio disabled: have we removed it?
 				if(media.removeAudio && audioTransceiver) {
-					if (audioTransceiver.setDirection) {
-						audioTransceiver.setDirection("inactive");
-					} else {
-						audioTransceiver.direction = "inactive";
+					try {
+						if (audioTransceiver.setDirection) {
+							audioTransceiver.setDirection("inactive");
+						} else {
+							audioTransceiver.direction = "inactive";
+						}
+						Janus.log("Setting audio transceiver to inactive:", audioTransceiver);
+					} catch(e) {
+						Janus.error(e);
 					}
-					Janus.log("Setting audio transceiver to inactive:", audioTransceiver);
 				}
 			} else {
 				// Take care of audio m-line
 				if(audioSend && audioRecv) {
 					if(audioTransceiver) {
-						if (audioTransceiver.setDirection) {
-							audioTransceiver.setDirection("sendrecv");
-						} else {
-							audioTransceiver.direction = "sendrecv";
+						try {
+							if (audioTransceiver.setDirection) {
+								audioTransceiver.setDirection("sendrecv");
+							} else {
+								audioTransceiver.direction = "sendrecv";
+							}
+							Janus.log("Setting audio transceiver to sendrecv:", audioTransceiver);
+						} catch(e) {
+							Janus.error(e);
 						}
-						Janus.log("Setting audio transceiver to sendrecv:", audioTransceiver);
 					}
 				} else if(audioSend && !audioRecv) {
-					if(audioTransceiver) {
-						if (audioTransceiver.setDirection) {
-							audioTransceiver.setDirection("sendonly");
-						} else {
-							audioTransceiver.direction = "sendonly";
+					try {
+						if(audioTransceiver) {
+							if (audioTransceiver.setDirection) {
+								audioTransceiver.setDirection("sendonly");
+							} else {
+								audioTransceiver.direction = "sendonly";
+							}
+							Janus.log("Setting audio transceiver to sendonly:", audioTransceiver);
 						}
-						Janus.log("Setting audio transceiver to sendonly:", audioTransceiver);
+					} catch(e) {
+						Janus.error(e);
 					}
 				} else if(!audioSend && audioRecv) {
 					if(audioTransceiver) {
-						if (audioTransceiver.setDirection) {
-							audioTransceiver.setDirection("recvonly");
-						} else {
-							audioTransceiver.direction = "recvonly";
+						try {
+							if (audioTransceiver.setDirection) {
+								audioTransceiver.setDirection("recvonly");
+							} else {
+								audioTransceiver.direction = "recvonly";
+							}
+							Janus.log("Setting audio transceiver to recvonly:", audioTransceiver);
+						} catch(e) {
+							Janus.error(e);
 						}
-						Janus.log("Setting audio transceiver to recvonly:", audioTransceiver);
 					} else {
 						// In theory, this is the only case where we might not have a transceiver yet
 						audioTransceiver = config.pc.addTransceiver("audio", { direction: "recvonly" });
@@ -2701,41 +2741,57 @@ function Janus(gatewayCallbacks) {
 			if(!videoSend && !videoRecv) {
 				// Video disabled: have we removed it?
 				if(media.removeVideo && videoTransceiver) {
-					if (videoTransceiver.setDirection) {
-						videoTransceiver.setDirection("inactive");
-					} else {
-						videoTransceiver.direction = "inactive";
+					try {
+						if (videoTransceiver.setDirection) {
+							videoTransceiver.setDirection("inactive");
+						} else {
+							videoTransceiver.direction = "inactive";
+						}
+						Janus.log("Setting video transceiver to inactive:", videoTransceiver);
+					} catch(e) {
+						Janus.error(e);
 					}
-					Janus.log("Setting video transceiver to inactive:", videoTransceiver);
 				}
 			} else {
 				// Take care of video m-line
 				if(videoSend && videoRecv) {
 					if(videoTransceiver) {
-						if (videoTransceiver.setDirection) {
-							videoTransceiver.setDirection("sendrecv");
-						} else {
-							videoTransceiver.direction = "sendrecv";
+						try {
+							if (videoTransceiver.setDirection) {
+								videoTransceiver.setDirection("sendrecv");
+							} else {
+								videoTransceiver.direction = "sendrecv";
+							}
+							Janus.log("Setting video transceiver to sendrecv:", videoTransceiver);
+						} catch(e) {
+							Janus.error(e);
 						}
-						Janus.log("Setting video transceiver to sendrecv:", videoTransceiver);
 					}
 				} else if(videoSend && !videoRecv) {
 					if(videoTransceiver) {
-						if (videoTransceiver.setDirection) {
-							videoTransceiver.setDirection("sendonly");
-						} else {
-							videoTransceiver.direction = "sendonly";
+						try {
+							if (videoTransceiver.setDirection) {
+								videoTransceiver.setDirection("sendonly");
+							} else {
+								videoTransceiver.direction = "sendonly";
+							}
+							Janus.log("Setting video transceiver to sendonly:", videoTransceiver);
+						} catch(e) {
+							Janus.error(e);
 						}
-						Janus.log("Setting video transceiver to sendonly:", videoTransceiver);
 					}
 				} else if(!videoSend && videoRecv) {
 					if(videoTransceiver) {
-						if (videoTransceiver.setDirection) {
-							videoTransceiver.setDirection("recvonly");
-						} else {
-							videoTransceiver.direction = "recvonly";
+						try {
+							if (videoTransceiver.setDirection) {
+								videoTransceiver.setDirection("recvonly");
+							} else {
+								videoTransceiver.direction = "recvonly";
+							}
+							Janus.log("Setting video transceiver to recvonly:", videoTransceiver);
+						} catch(e) {
+							Janus.error(e);
 						}
-						Janus.log("Setting video transceiver to recvonly:", videoTransceiver);
 					} else {
 						// In theory, this is the only case where we might not have a transceiver yet
 						videoTransceiver = config.pc.addTransceiver("video", { direction: "recvonly" });
