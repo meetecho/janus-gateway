@@ -86,6 +86,9 @@ Maximum size of the NACK queue per user for retransmissions
 .BR \-t ", " \-\-no-media-timer=\fInumber\fR
 Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this
 .TP
+.BR \-W ", " \-\-slowlink-threshold=\fInumber\fR
+Number of lost packets (per s) that should trigger a 'slowlink' Janus API event to users
+.TP
 .BR \-r ", " \-\-rtp-port-range=\fImin\-max\fR
 Port range to use for RTP/RTCP
 .TP
