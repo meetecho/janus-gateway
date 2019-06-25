@@ -1558,7 +1558,6 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",
 					codec, am->type == JANUS_SDP_AUDIO ? "audio" : "video");
-				am->port = 0;
 				am->direction = JANUS_SDP_INACTIVE;
 				am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
 				break;
