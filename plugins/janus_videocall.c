@@ -291,7 +291,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videocall_query_session(janus_plugin_session *handle);
@@ -843,7 +843,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, ch
 	}
 }
 
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -857,12 +857,12 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 	session->slowlink_count++;
 	if(uplink && !video && !session->audio_active) {
 		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
+		JANUS_LOG(LOG_VERB, "Getting a lot of lost packets (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
 	} else if(uplink && video && !session->video_active) {
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
+		JANUS_LOG(LOG_VERB, "Getting a lot of lost packets (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s\n",
+		JANUS_LOG(LOG_WARN, "Getting a lot of lost packets (slow %s) for %s\n",
 			uplink ? "uplink" : "downlink", video ? "video" : "audio");
 		if(!uplink) {
 			/* Send an event on the handle to notify the application: it's
@@ -872,7 +872,9 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 			/* Also add info on what the current bitrate cap is */
 			json_t *result = json_object();
 			json_object_set_new(result, "event", json_string("slow_link"));
-			json_object_set_new(result, "current-bitrate", json_integer(session->bitrate));
+			json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+			if(video)
+				json_object_set_new(result, "current-bitrate", json_integer(session->bitrate));
 			json_object_set_new(event, "result", result);
 			gateway->push_event(session->handle, &janus_videocall_plugin, NULL, event, NULL);
 			json_decref(event);

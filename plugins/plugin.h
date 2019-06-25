@@ -65,7 +65,7 @@ janus_plugin *create(void) {
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
  * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
- * - \c slow_link(): a callback to notify you a peer has sent a lot of NACKs recently, and the media path may be slow;
+ * - \c slow_link(): a callback to notify you Janus or the peer have lost packets recently, and the media path may be slow;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
  * - \c query_session(): this method is called by the core to get plugin-specific info on a session between you and a peer;
  * - \c destroy_session(): this method is called by the core to destroy a session between you and a peer.
@@ -325,7 +325,7 @@ struct janus_plugin {
 	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
 	 * or downlink (peer to Janus)
 	 * @param[in] video Whether this is related to an audio or a video stream */
-	void (* const slow_link)(janus_plugin_session *handle, int uplink, int video);
+	void (* const slow_link)(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);

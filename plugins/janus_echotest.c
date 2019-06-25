@@ -145,7 +145,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
-void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_echotest_query_session(janus_plugin_session *handle);
@@ -668,7 +668,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, cha
 	}
 }
 
-void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -701,8 +701,11 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
 			json_object_set_new(event, "event", json_string("slow_link"));
-			/* Also add info on what the current bitrate cap is */
-			json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
+			json_object_set_new(event, "media", json_string(video ? "video" : "audio"));
+			if(video) {
+				/* Also add info on what the current bitrate cap is */
+				json_object_set_new(event, "current-bitrate", json_integer(session->bitrate));
+			}
 			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 			json_decref(event);
 		}

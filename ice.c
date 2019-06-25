@@ -407,10 +407,25 @@ void janus_set_no_media_timer(uint timer) {
 	if(no_media_timer == 0)
 		JANUS_LOG(LOG_VERB, "Disabling no-media timer\n");
 	else
-		JANUS_LOG(LOG_VERB, "Setting no-media timer to %ds\n", no_media_timer);
+		JANUS_LOG(LOG_VERB, "Setting no-media timer to %us\n", no_media_timer);
 }
 uint janus_get_no_media_timer(void) {
 	return no_media_timer;
+}
+
+/* Number of lost packets per seconds on a media stream (uplink or downlink,
+ * audio or video), that should result in a slow-link event to the iser */
+#define DEFAULT_SLOWLINK_THRESHOLD	4
+static uint slowlink_threshold = DEFAULT_SLOWLINK_THRESHOLD;
+void janus_set_slowlink_threshold(uint packets) {
+	slowlink_threshold = packets;
+	if(slowlink_threshold == 0)
+		JANUS_LOG(LOG_VERB, "Disabling slow-link events\n");
+	else
+		JANUS_LOG(LOG_VERB, "Setting slowlink-threshold to %u packets\n", slowlink_threshold);
+}
+uint janus_get_slowlink_threshold(void) {
+	return slowlink_threshold;
 }
 
 /* Period, in milliseconds, to refer to for sending TWCC feedback */
@@ -1577,37 +1592,19 @@ static void janus_handle_webrtc_medium_free(const janus_refcount *medium_ref) {
 	//~ janus_mutex_unlock(&handle->mutex);
 }
 
-/* Call plugin slow_link callback if enough NACKs within a second */
-#define SLOW_LINK_NACKS_PER_SEC 8
+/* Call plugin slow_link callback if a minimum of lost packets are detected within a second */
 static void
-janus_slow_link_update(janus_handle_webrtc_medium *medium, janus_handle *handle,
-		guint nacks, int video, int uplink, gint64 now) {
-	/* We keep the counters in different janus_media_stats objects, depending on the direction */
-	gint64 sl_nack_period_ts = uplink ? medium->in_stats.sl_nack_period_ts : medium->out_stats.sl_nack_period_ts;
-	/* Is the NACK too old? */
-	if(now-sl_nack_period_ts > 2*G_USEC_PER_SEC) {
-		/* Old nacks too old, don't count them */
-		if(uplink) {
-			medium->in_stats.sl_nack_period_ts = now;
-			medium->in_stats.sl_nack_recent_cnt = 0;
-		} else {
-			medium->out_stats.sl_nack_period_ts = now;
-			medium->out_stats.sl_nack_recent_cnt = 0;
-		}
-	}
-	if(uplink) {
-		medium->in_stats.sl_nack_recent_cnt += nacks;
-	} else {
-		medium->out_stats.sl_nack_recent_cnt += nacks;
-	}
-	gint64 last_slowlink_time = uplink ? medium->in_stats.last_slowlink_time : medium->out_stats.last_slowlink_time;
-	guint sl_nack_recent_cnt = uplink ? medium->in_stats.sl_nack_recent_cnt : medium->out_stats.sl_nack_recent_cnt;
-	if((sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC) && (now-last_slowlink_time > 1*G_USEC_PER_SEC)) {
+janus_slow_link_update(janus_handle_webrtc_medium *medium, janus_handle *handle, gboolean uplink, guint lost) {
+	/* We keep the counters in different janus_ice_stats objects, depending on the direction */
+	gboolean video = (medium->type == JANUS_MEDIA_VIDEO);
+	guint sl_lost_last_count = uplink ? medium->in_stats.sl_lost_count : medium->out_stats.sl_lost_count;
+	guint sl_lost_recently = (lost >= sl_lost_last_count) ? (lost - sl_lost_last_count) : 0;
+	if(slowlink_threshold > 0 && sl_lost_recently >= slowlink_threshold) {
 		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
 				!g_atomic_int_get(&handle->destroyed))
-			plugin->slow_link(handle->app_handle, uplink, video);
+			plugin->slow_link(handle->app_handle, medium->mindex, video, uplink);
 		/* Notify the user/application too */
 		janus_session *session = (janus_session *)handle->session;
 		if(session != NULL) {
@@ -1617,30 +1614,29 @@ janus_slow_link_update(janus_handle_webrtc_medium *medium, janus_handle *handle,
 			json_object_set_new(event, "sender", json_integer(handle->handle_id));
 			if(opaqueid_in_api && handle->opaque_id != NULL)
 				json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
+			json_object_set_new(event, "mid", json_string(medium->mid));
+			json_object_set_new(event, "media", json_string(video ? "video" : "audio"));
 			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
-			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
+			json_object_set_new(event, "lost", json_integer(sl_lost_recently));
 			/* Send the event */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 			janus_session_notify_event(session, event);
 			/* Finally, notify event handlers */
 			if(janus_events_is_enabled()) {
 				json_t *info = json_object();
+				json_object_set_new(info, "mid", json_string(medium->mid));
 				json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
 				json_object_set_new(info, "slow_link", json_string(uplink ? "uplink" : "downlink"));
-				json_object_set_new(info, "nacks_lastsec", json_integer(sl_nack_recent_cnt));
+				json_object_set_new(info, "lost_lastsec", json_integer(sl_lost_recently));
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, handle->opaque_id, info);
 			}
 		}
-		/* Update the counters */
-		if(uplink) {
-			medium->in_stats.last_slowlink_time = now;
-			medium->in_stats.sl_nack_period_ts = now;
-			medium->in_stats.sl_nack_recent_cnt = 0;
-		} else {
-			medium->out_stats.last_slowlink_time = now;
-			medium->out_stats.sl_nack_period_ts = now;
-			medium->out_stats.sl_nack_recent_cnt = 0;
-		}
+	}
+	/* Update the counter */
+	if(uplink) {
+		medium->in_stats.sl_lost_count = lost;
+	} else {
+		medium->out_stats.sl_lost_count = lost;
 	}
 }
 
@@ -2555,8 +2551,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Update stats */
 					medium->nack_sent_recent_cnt += nacks_count;
 					medium->out_stats.info[vindex].nacks += nacks_count;
-					/* Inform the plugin about the slow downlink in case it's needed */
-					janus_slow_link_update(medium, handle, nacks_count, video, 0, now);
 				}
 				if(medium->nack_sent_recent_cnt &&
 						(now - medium->nack_sent_log_ts) > 5*G_USEC_PER_SEC) {
@@ -2702,8 +2696,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					buflen = janus_rtcp_remove_nacks(buf, buflen);
 					/* Update stats */
 					medium->in_stats.info[vindex].nacks += nacks_count;
-					/* Inform the plugin about the slow uplink in case it's needed */
-					janus_slow_link_update(medium, handle, retransmits_cnt, video, 1, now);
 					janus_mutex_unlock(&medium->mutex);
 					g_slist_free(nacks);
 					nacks = NULL;
@@ -3369,7 +3361,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	uint mi=0;
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
 		medium = g_hash_table_lookup(pc->media, GUINT_TO_POINTER(mi));
-		if(!medium)
+		if(!medium || (medium->type != JANUS_MEDIA_AUDIO && medium->type != JANUS_MEDIA_VIDEO))
 			continue;
 		if(medium->out_stats.info[0].packets > 0) {
 			/* Create a SR/SDES compound */
@@ -3406,6 +3398,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			sdes->chunk.ssrc = htonl(medium->ssrc);
 			/* Enqueue it, we'll send it later */
 			janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, srlen+sdeslen, FALSE);
+			/* Check if we detected too many losses, and send a slowlink event in case */
+			guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+			janus_slow_link_update(medium, handle, TRUE, lost);
 		}
 		if(medium->recv) {
 			/* Create a RR too (for each SSRC, if we're simulcasting) */
@@ -3426,6 +3421,11 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 					rr->rb[0].ssrc = htonl(medium->ssrc_peer[vindex]);
 					/* Enqueue it, we'll send it later */
 					janus_ice_relay_rtcp_internal(handle, medium->mindex, medium->type == JANUS_MEDIA_VIDEO, rtcpbuf, 32, FALSE);
+					if(vindex == 0) {
+						/* Check if we detected too many losses, and send a slowlink event in case */
+						guint lost = janus_rtcp_context_get_lost_all(medium->rtcp_ctx[vindex], FALSE);
+						janus_slow_link_update(medium, handle, FALSE, lost);
+					}
 				}
 			}
 		}
@@ -3487,6 +3487,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 				for(vindex=0; vindex<3; vindex++) {
 					if(medium->rtcp_ctx[vindex]) {
 						json_t *info = json_object();
+						json_object_set_new(info, "mid", json_string(medium->mid));
 						json_object_set_new(info, "mindex", json_integer(medium->mindex));
 						if(vindex == 0)
 							json_object_set_new(info, "media", json_string(medium->type == JANUS_MEDIA_VIDEO ? "video" : "audio"));

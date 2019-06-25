@@ -155,9 +155,9 @@ $(document).ready(function() {
 										});
 									}
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost, mid) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -482,9 +482,9 @@ function newRemoteFeed(id, display) {
 			webrtcState: function(on) {
 				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
 			},
-			slowLink: function(uplink, nacks) {
+			slowLink: function(uplink, lost, mid) {
 				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-					" packets on this PeerConnection (feed #" + remoteFeed.rfindex + ", " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::");

@@ -217,7 +217,7 @@ void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
-void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_lua_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_lua_hangup_media(janus_plugin_session *handle);
 void janus_lua_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_lua_query_session(janus_plugin_session *handle);
@@ -1894,7 +1894,7 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *bu
 	g_free(text);
 }
 
-void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_lua_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_mutex_lock(&lua_sessions_mutex);

@@ -297,7 +297,7 @@ json_t *janus_recordplay_handle_admin_message(json_t *message);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int mindex, gboolean video, char *buf, int len);
-void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_recordplay_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_recordplay_query_session(janus_plugin_session *handle);
@@ -1236,7 +1236,7 @@ void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int mindex, gb
 		return;
 }
 
-void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_recordplay_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 
@@ -1253,8 +1253,10 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_object_set_new(event, "recordplay", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("slow_link"));
+	json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+	if(video)
+		json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	/* What is uplink for the server is downlink for the client, so turn the tables */
-	json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
 	json_object_set_new(event, "result", result);
 	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event, NULL);
