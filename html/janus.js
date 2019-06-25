@@ -694,7 +694,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.slowLink(json["uplink"], json["nacks"]);
+			pluginHandle.slowLink(json["uplink"], json["lost"]);
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
