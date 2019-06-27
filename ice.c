@@ -3826,6 +3826,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] WebRTC encryption disabled, skipping DTLS handshake\n", handle->handle_id);
 			janus_ice_dtls_handshake_done(handle, component);
 			return G_SOURCE_CONTINUE;
+		} else if(!component) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE component not initialized, aborting DTLS handshake\n", handle->handle_id);
+			return G_SOURCE_CONTINUE;
 		}
 		/* Start the DTLS handshake */
 		janus_dtls_srtp_handshake(component->dtls);
