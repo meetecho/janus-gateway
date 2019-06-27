@@ -52,7 +52,7 @@ var defaultExtension = {
 	isInstalled: function() { return document.querySelector('#janus-extension-installed') !== null; },
 	getScreen: function (callback) {
 		var pending = window.setTimeout(function () {
-			error = new Error('NavigatorUserMediaError');
+			var error = new Error('NavigatorUserMediaError');
 			error.name = 'The required Chrome extension is not installed: click <a href="#">here</a> to install it. (NOTE: this will need you to refresh the page)';
 			return callback(error);
 		}, 1000);
