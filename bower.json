@@ -33,7 +33,6 @@
     "tests"
   ],
   "dependencies": {
-    "jquery": "*",
-    "webrtc-adapter": "6.0.3"
+    "webrtc-adapter": "6.4.0"
   }
 }
