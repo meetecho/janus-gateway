@@ -1306,10 +1306,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
-		if(item && item->value) {
-			sdp_ip = g_strdup(item->value);
-			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		sdp_ip = secure_getenv("SDP_IP");
+
+		if (!sdp_ip) {
+			item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
+			if(item && item->value) {
+				sdp_ip = g_strdup(item->value);
+				JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+			}
 		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "keepalive_interval");
