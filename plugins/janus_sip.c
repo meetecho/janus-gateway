@@ -4766,14 +4766,20 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	char sip_url[128];
 	char sips_url[128];
 	char *ipv6;
+  char *contact_ip = secure_getenv("CONTACT_IP");
+
+  if(!contact_ip) {
+    contact_ip = local_ip;
+  }
+
 	ipv6 = strstr(local_ip, ":");
 	if(session->account.force_udp)
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=udp;maddr=%s", ipv6 ? "[" : "", contact_ip, ipv6 ? "]" : "", local_ip);
 	else if(session->account.force_tcp)
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=tcp", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;transport=tcp;maddr=%s", ipv6 ? "[" : "", contact_ip, ipv6 ? "]" : "", local_ip);
 	else
-		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
-	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+		g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*;maddr=%s", ipv6 ? "[" : "", contact_ip, ipv6 ? "]" : "", local_ip);
+	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*;maddr=%s", ipv6 ? "[" : "", contact_ip, ipv6 ? "]" : "", local_ip);
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
