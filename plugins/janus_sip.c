@@ -4212,6 +4212,9 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 		g_free(sdp->c_addr);
 		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 	}
+
+  sdp->o_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
