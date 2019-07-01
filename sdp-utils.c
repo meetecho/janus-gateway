@@ -406,6 +406,13 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						/* Start with media type, port and protocol */
 						char type[32];
 						char proto[64];
+						if(strlen(line) > 200) {
+							janus_sdp_mline_destroy(m);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line (too long): %zu", strlen(line));
+							success = FALSE;
+							break;
+						}
 						if(sscanf(line, "m=%31s %"SCNu16" %63s %*s", type, &m->port, proto) != 3) {
 							janus_sdp_mline_destroy(m);
 							if(error)

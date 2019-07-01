@@ -195,6 +195,7 @@ version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
+	pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
@@ -417,9 +418,9 @@ endif
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
-plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
+plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
+plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \

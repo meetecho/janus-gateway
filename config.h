@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    Configuration files parsing (headers)
  * \details  Implementation of a parser of INI and libconfig configuration files.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -78,7 +78,7 @@ void janus_config_print_as(janus_config *config, int level);
 /*! \brief Helper method to save a configuration to a file
  * @param[in] config The configuration to sav
  * @param[in] folder The folder the file should be saved to
- * @param[in] filename The file name, extension included (should be .cfg)
+ * @param[in] filename The file name, extension included (should be .jcfg, or .cfg for legacy INI files)
  * @returns 0 if successful, a negative integer otherwise */
 int janus_config_save(janus_config *config, const char *folder, const char *filename);
 /*! \brief Destroy a configuration container instance

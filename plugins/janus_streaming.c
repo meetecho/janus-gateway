@@ -816,9 +816,11 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"audiortpmap", JSON_STRING, 0},
 	{"audiofmtp", JSON_STRING, 0},
+	{"audiopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"videortpmap", JSON_STRING, 0},
 	{"videofmtp", JSON_STRING, 0},
+	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtspiface", JSON_STRING, 0},
 	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
@@ -1102,8 +1104,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc,
 		char *url, char *username, char *password,
-		gboolean doaudio, char *artpmap, char *afmtp,
-		gboolean dovideo, char *vrtpmap, char *vfmtp,
+		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
+		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
 		gboolean error_on_failure);
 
@@ -1722,8 +1724,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *password = janus_config_get(config, cat, janus_config_type_item, "rtsp_pwd");
 				janus_config_item *audio = janus_config_get(config, cat, janus_config_type_item, "audio");
 				janus_config_item *artpmap = janus_config_get(config, cat, janus_config_type_item, "audiortpmap");
+				janus_config_item *acodec = janus_config_get(config, cat, janus_config_type_item, "audiopt");
 				janus_config_item *afmtp = janus_config_get(config, cat, janus_config_type_item, "audiofmtp");
 				janus_config_item *video = janus_config_get(config, cat, janus_config_type_item, "video");
+				janus_config_item *vcodec = janus_config_get(config, cat, janus_config_type_item, "videopt");
 				janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
 				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
@@ -1776,9 +1780,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
 						doaudio,
+						(acodec && acodec->value) ? atoi(acodec->value) : -1,
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
 						dovideo,
+						(vcodec && vcodec->value) ? atoi(vcodec->value) : -1,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
 						iface && iface->value ? &iface_value : NULL,
@@ -2618,9 +2624,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *desc = json_object_get(root, "description");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *audio = json_object_get(root, "audio");
+			json_t *audiopt = json_object_get(root, "audiopt");
 			json_t *audiortpmap = json_object_get(root, "audiortpmap");
 			json_t *audiofmtp = json_object_get(root, "audiofmtp");
 			json_t *video = json_object_get(root, "video");
+			json_t *videopt = json_object_get(root, "videopt");
 			json_t *videortpmap = json_object_get(root, "videortpmap");
 			json_t *videofmtp = json_object_get(root, "videofmtp");
 			json_t *url = json_object_get(root, "url");
@@ -2656,8 +2664,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
 					password ? (char *)json_string_value(password) : NULL,
-					doaudio, (char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
-					dovideo, (char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
+					doaudio, (audiopt ? json_integer_value(audiopt) : -1),
+						(char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
+					dovideo, (videopt ? json_integer_value(videopt) : -1),
+						(char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
 					&multicast_iface,
 					error_on_failure);
 			if(mp == NULL) {
@@ -2720,8 +2730,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(source->askew)
 						janus_config_add(config, c, janus_config_item_create("askew", "yes"));
 				}
-				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt >= 0? "yes" : "no"));
-				if(mp->codecs.video_pt >= 0) {
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
+				if(mp->codecs.video_pt > 0) {
 					g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
 					janus_config_add(config, c, janus_config_item_create("videoport", value));
 					if(source->video_rtcp_port > 0) {
@@ -2783,8 +2793,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
 				janus_streaming_file_source *source = mp->source;
 				janus_config_add(config, c, janus_config_item_create("filename", source->filename));
-				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
-				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
 			} else if(!strcasecmp(type_text, "rtsp")) {
 #ifdef HAVE_LIBCURL
 				janus_streaming_rtp_source *source = mp->source;
@@ -2795,15 +2805,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(source->rtsp_password)
 					janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
 #endif
+				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
 				if(mp->codecs.audio_pt >= 0) {
-					janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
 					if(mp->codecs.audio_rtpmap)
 						janus_config_add(config, c, janus_config_item_create("audiortpmap", mp->codecs.audio_rtpmap));
 					if(mp->codecs.audio_fmtp)
 						janus_config_add(config, c, janus_config_item_create("audiofmtp", mp->codecs.audio_fmtp));
 				}
-				if(mp->codecs.video_pt >= 0) {
-					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
+				if(mp->codecs.video_pt > 0) {
 					if(mp->codecs.video_rtpmap)
 						janus_config_add(config, c, janus_config_item_create("videortpmap", mp->codecs.video_rtpmap));
 					if(mp->codecs.video_fmtp)
@@ -2838,8 +2848,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			if(source->audio_fd != -1) {
 				json_object_set_new(ml, "audio_port", json_integer(source->audio_port));
 			}
+			if(source->audio_rtcp_fd != -1) {
+				json_object_set_new(ml, "audio_rtcp_port", json_integer(source->audio_rtcp_port));
+			}
 			if(source->video_fd[0] != -1) {
 				json_object_set_new(ml, "video_port", json_integer(source->video_port[0]));
+			}
+			if(source->video_rtcp_fd != -1) {
+				json_object_set_new(ml, "video_rtcp_port", json_integer(source->video_rtcp_port));
 			}
 			if(source->video_fd[1] != -1) {
 				json_object_set_new(ml, "video_port_2", json_integer(source->video_port[1]));
@@ -2965,15 +2981,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					if(source->rtsp_password)
 						janus_config_add(config, c, janus_config_item_create("rtsp_pwd", source->rtsp_password));
 #endif
+					janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
 					if(mp->codecs.audio_pt >= 0) {
-						janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
 						if(mp->codecs.audio_rtpmap)
 							janus_config_add(config, c, janus_config_item_create("audiortpmap", mp->codecs.audio_rtpmap));
 						if(mp->codecs.audio_fmtp)
 							janus_config_add(config, c, janus_config_item_create("audiofmtp", mp->codecs.audio_fmtp));
 					}
-					if(mp->codecs.video_pt >= 0) {
-						janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
+					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
+					if(mp->codecs.video_pt > 0) {
 						if(mp->codecs.video_rtpmap)
 							janus_config_add(config, c, janus_config_item_create("videortpmap", mp->codecs.video_rtpmap));
 						if(mp->codecs.video_fmtp)
@@ -3007,8 +3023,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 						if(source->askew)
 							janus_config_add(config, c, janus_config_item_create("askew", "yes"));
 					}
-					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt >= 0? "yes" : "no"));
-					if(mp->codecs.video_pt >= 0) {
+					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
+					if(mp->codecs.video_pt > 0) {
 						g_snprintf(value, BUFSIZ, "%d", source->video_port[0]);
 						janus_config_add(config, c, janus_config_item_create("videoport", value));
 						if(source->video_rtcp_port > 0) {
@@ -3072,8 +3088,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				janus_config_add(config, c, janus_config_item_create("type", (mp->streaming_type == janus_streaming_type_live) ? "live" : "ondemand"));
 				janus_streaming_file_source *source = mp->source;
 				janus_config_add(config, c, janus_config_item_create("filename", source->filename));
-				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt ? "yes" : "no"));
-				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
+				janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
 			}
 			/* Some more common values */
 			if(mp->secret)
@@ -3969,7 +3985,7 @@ done:
 				}
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 			}
-			if(mp->codecs.video_pt >= 0 && session->video) {
+			if(mp->codecs.video_pt > 0 && session->video) {
 				/* Add video line */
 				g_snprintf(buffer, 512,
 					"m=video 1 RTP/SAVPF %d\r\n"
@@ -4550,6 +4566,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "mp-%"SCNu64, id);
+	} else if(atoi(name) != 0) {
+		JANUS_LOG(LOG_VERB, "Names can't start with a number, prefixing it...\n");
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	if(!doaudio && !dovideo && !dodata) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio, video or data have to be streamed...\n");
@@ -4943,6 +4964,10 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	if(!name) {
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "mp-%"SCNu64, file_source->id);
+	} else if(atoi(name) != 0) {
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	file_source->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -5306,13 +5331,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 	}
 
-	/* Update the source (but check if rtpmap/fmtp need to be overridden) */
-	mp->codecs.audio_pt = doaudio ? apt : -1;
+	/* Update the source (but check if ptype/rtpmap/fmtp need to be overridden) */
+	if(mp->codecs.audio_pt == -1)
+		mp->codecs.audio_pt = doaudio ? apt : -1;
 	if(mp->codecs.audio_rtpmap == NULL)
 		mp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	if(mp->codecs.audio_fmtp == NULL)
 		mp->codecs.audio_fmtp = doaudio ? g_strdup(afmtp) : NULL;
-	mp->codecs.video_pt = dovideo ? vpt : -1;
+	if(mp->codecs.video_pt == -1)
+		mp->codecs.video_pt = dovideo ? vpt : -1;
 	if(mp->codecs.video_rtpmap == NULL)
 		mp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
 	if(mp->codecs.video_fmtp == NULL)
@@ -5429,8 +5456,8 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc,
 		char *url, char *username, char *password,
-		gboolean doaudio, char *artpmap, char *afmtp,
-		gboolean dovideo, char *vrtpmap, char *vfmtp,
+		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
+		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp,
 		const janus_network_address *iface,
 		gboolean error_on_failure) {
 	if(url == NULL) {
@@ -5456,6 +5483,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 		memset(tempname, 0, 255);
 		g_snprintf(tempname, 255, "%"SCNu64, id);
+	} else if(atoi(name) != 0) {
+		JANUS_LOG(LOG_VERB, "Names can't start with a number, prefixing it...\n");
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "mp-%s", name);
+		name = NULL;
 	}
 	char *sourcename =  g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -5509,9 +5541,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_atomic_int_set(&live_rtsp->destroyed, 0);
 	janus_refcount_init(&live_rtsp->ref, janus_streaming_mountpoint_free);
 	janus_mutex_init(&live_rtsp->mutex);
-	/* We may have to override the rtpmap and/or fmtp for audio and/or video */
+	/* We may have to override the payload type and/or rtpmap and/or fmtp for audio and/or video */
+	live_rtsp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtsp->codecs.audio_rtpmap = doaudio ? (artpmap ? g_strdup(artpmap) : NULL) : NULL;
 	live_rtsp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
+	live_rtsp->codecs.video_pt = dovideo ? vcodec : -1;
 	live_rtsp->codecs.video_rtpmap = dovideo ? (vrtpmap ? g_strdup(vrtpmap) : NULL) : NULL;
 	live_rtsp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
 	/* If we need to return an error on failure, try connecting right now */
@@ -5553,8 +5587,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc,
 		char *url, char *username, char *password,
-		gboolean doaudio, char *audiortpmap, char *audiofmtp,
-		gboolean dovideo, char *videortpmap, char *videofmtp,
+		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
+		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp,
 		const janus_network_address *iface,
 		gboolean error_on_failure) {
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
@@ -6072,7 +6106,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -6161,7 +6195,7 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, &remote, &addrlen);
-					if(!janus_is_rtp(buffer, bytes)) {
+					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
 						/* Failed to read or not an RTP packet? */
 						continue;
 					}
@@ -6384,11 +6418,15 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(audio_rtcp_fd != -1 && fds[i].fd == audio_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
+					if(bytes < 0 || (!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes))) {
+						/* For latching we need an RTP or RTCP packet */
+						continue;
+					}
+					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
-					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
@@ -6404,11 +6442,15 @@ static void *janus_streaming_relay_thread(void *data) {
 				} else if(video_rtcp_fd != -1 && fds[i].fd == video_rtcp_fd) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_rtcp_fd, buffer, 1500, 0, &remote, &addrlen);
+					if(bytes < 0 || (!janus_is_rtp(buffer, bytes) && !janus_is_rtcp(buffer, bytes))) {
+						/* For latching we need an RTP or RTCP packet */
+						continue;
+					}
+					memcpy(&source->video_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
 						continue;
 					}
-					memcpy(&source->video_rtcp_addr, &remote, addrlen);
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: SSRC %"SCNu32"\n",
 						name, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */

@@ -1,4 +1,4 @@
-#Janus 0.7.0 gengetopt file
+#Janus 0.7.2 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -35,3 +35,4 @@ option "apisecret" a "API secret all requests need to pass in order to be accept
 option "token-auth" A "Enable token-based authentication for all requests" flag off
 option "token-auth-secret" - "Secret to verify HMAC-signed tokens with, to be used with -A" string typestr="randomstring" optional
 option "event-handlers" e "Enable event handlers" flag off
+option "no-webrtc-encryption" w "Disable WebRTC encryption, so no DTLS or SRTP (only for debugging!)" flag off

@@ -228,13 +228,13 @@ Everything else works exactly the same way as on Linux.
 ## Configure and start
 To start the server, you can use the `janus` executable. There are several things you can configure, either in a configuration file:
 
-	<installdir>/etc/janus/janus.cfg
+	<installdir>/etc/janus/janus.jcfg
 
 or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.0
+	janus 0.7.2
 
 	Usage: janus [OPTIONS]...
 

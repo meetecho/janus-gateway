@@ -265,7 +265,7 @@ Janus.init = function(options) {
 		Janus.listDevices = function(callback, config) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
 			if (config == null) config = { audio: true, video: true };
-			if(navigator.mediaDevices) {
+			if(Janus.isGetUserMediaAvailable()) {
 				navigator.mediaDevices.getUserMedia(config)
 				.then(function(stream) {
 					navigator.mediaDevices.enumerateDevices().then(function(devices) {
@@ -382,8 +382,11 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
-		navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
+	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null;
+};
+// Helper method to check whether devices can be accessed by this browser (e.g., not possible via plain HTTP)
+Janus.isGetUserMediaAvailable = function() {
+	return navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
 		navigator.mediaDevices.getUserMedia !== undefined && navigator.mediaDevices.getUserMedia !== null;
 };
 
@@ -921,6 +924,9 @@ function Janus(gatewayCallbacks) {
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
+		var cleanupHandles = false;
+		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
+			cleanupHandles = (callbacks.cleanupHandles === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the server down? (connected=false)");
@@ -934,7 +940,10 @@ function Janus(gatewayCallbacks) {
 				gatewayCallbacks.destroyed();
 			return;
 		}
-		delete Janus.sessions[sessionId];
+		if(cleanupHandles) {
+			for(var handleId in pluginHandles)
+				destroyHandle(handleId, { noRequest: true });
+		}
 		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
@@ -1106,8 +1115,8 @@ function Janus(gatewayCallbacks) {
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
 						onmessage : callbacks.onmessage,
-						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						createOffer : function(callbacks) { prepareWebrtc(handleId, true, callbacks); },
+						createAnswer : function(callbacks) { prepareWebrtc(handleId, false, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
 						onlocalstream : callbacks.onlocalstream,
 						onremotestream : callbacks.onremotestream,
@@ -1191,8 +1200,8 @@ function Janus(gatewayCallbacks) {
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
 						onmessage : callbacks.onmessage,
-						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						createOffer : function(callbacks) { prepareWebrtc(handleId, true, callbacks); },
+						createAnswer : function(callbacks) { prepareWebrtc(handleId, false, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
 						onlocalstream : callbacks.onlocalstream,
 						onremotestream : callbacks.onremotestream,
@@ -1378,7 +1387,7 @@ function Janus(gatewayCallbacks) {
 		var onDataChannelStateChange = function(event) {
 			Janus.log('Received state change on data channel:', event);
 			var label = event.target.label;
-			var dcState = config.dataChannel[label] !== null ? config.dataChannel[label].readyState : "null";
+			var dcState = config.dataChannel[label] ? config.dataChannel[label].readyState : "null";
 			Janus.log('State change on <' + label + '> data channel: ' + dcState);
 			if(dcState === 'open') {
 				// Any pending messages to send?
@@ -1519,11 +1528,20 @@ function Janus(gatewayCallbacks) {
 		var asyncRequest = true;
 		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
 			asyncRequest = (callbacks.asyncRequest === true);
+		var noRequest = true;
+		if(callbacks.noRequest !== undefined && callbacks.noRequest !== null)
+			noRequest = (callbacks.noRequest === true);
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined || pluginHandle.detached) {
 			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
+			delete pluginHandles[handleId];
+			callbacks.success();
+			return;
+		}
+		if(noRequest) {
+			// We're only removing the handle locally
 			delete pluginHandles[handleId];
 			callbacks.success();
 			return;
@@ -1800,11 +1818,20 @@ function Janus(gatewayCallbacks) {
 		}
 	}
 
-	function prepareWebrtc(handleId, callbacks) {
+	function prepareWebrtc(handleId, offer, callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : webrtcError;
 		var jsep = callbacks.jsep;
+		if(offer && jsep) {
+			Janus.error("Provided a JSEP to a createOffer");
+			callbacks.error("Provided a JSEP to a createOffer");
+			return;
+		} else if(!offer && (!jsep || !jsep.type || !jsep.sdp)) {
+			Janus.error("A valid JSEP is required for createAnswer");
+			callbacks.error("A valid JSEP is required for createAnswer");
+			return;
+		}
 		callbacks.media = callbacks.media || { audio: true, video: true };
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
@@ -2047,6 +2074,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
+			if(!Janus.isGetUserMediaAvailable()) {
+				callbacks.error("getUserMedia not available");
+				return;
+			}
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
 			var audioSupport = isAudioSendEnabled(media);
@@ -2372,6 +2403,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
+		callbacks.customizeSdp = (typeof callbacks.customizeSdp == "function") ? callbacks.customizeSdp : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2537,6 +2569,14 @@ function Janus(gatewayCallbacks) {
 		config.pc.createOffer(mediaConstraints)
 			.then(function(offer) {
 				Janus.debug(offer);
+				// JSON.stringify doesn't work on some WebRTC objects anymore
+				// See https://code.google.com/p/chromium/issues/detail?id=467366
+				var jsep = {
+					"type": offer.type,
+					"sdp": offer.sdp
+				};
+				callbacks.customizeSdp(jsep);
+				offer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
 					// This SDP munging only works with Chrome (Safari STP may support it too)
@@ -2559,13 +2599,7 @@ function Janus(gatewayCallbacks) {
 				}
 				Janus.log("Offer ready");
 				Janus.debug(callbacks);
-				// JSON.stringify doesn't work on some WebRTC objects anymore
-				// See https://code.google.com/p/chromium/issues/detail?id=467366
-				var jsep = {
-					"type": offer.type,
-					"sdp": offer.sdp
-				};
-				callbacks.success(jsep);
+				callbacks.success(offer);
 			}, callbacks.error);
 	}
 
@@ -2573,6 +2607,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
+		callbacks.customizeSdp = (typeof callbacks.customizeSdp == "function") ? callbacks.customizeSdp : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
@@ -2742,6 +2777,14 @@ function Janus(gatewayCallbacks) {
 		config.pc.createAnswer(mediaConstraints)
 			.then(function(answer) {
 				Janus.debug(answer);
+				// JSON.stringify doesn't work on some WebRTC objects anymore
+				// See https://code.google.com/p/chromium/issues/detail?id=467366
+				var jsep = {
+					"type": answer.type,
+					"sdp": answer.sdp
+				};
+				callbacks.customizeSdp(jsep);
+				answer.sdp = jsep.sdp;
 				Janus.log("Setting local description");
 				if(sendVideo && simulcast) {
 					// This SDP munging only works with Chrome
@@ -2763,13 +2806,7 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
-				// JSON.stringify doesn't work on some WebRTC objects anymore
-				// See https://code.google.com/p/chromium/issues/detail?id=467366
-				var jsep = {
-					"type": answer.type,
-					"sdp": answer.sdp
-				};
-				callbacks.success(jsep);
+				callbacks.success(answer);
 			}, callbacks.error);
 	}
 

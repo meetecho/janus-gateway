@@ -603,8 +603,9 @@ function addSvcButtons(feed) {
 		'<div id="layers'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
 		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 50%">SL 1</button>' +
-		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 50%">SL 0</button>' +
+		'			<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to high resolution" style="width: 34%">SL 2</button>' +
+		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 33%">SL 1</button>' +
+		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 33%">SL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
@@ -620,6 +621,8 @@ function addSvcButtons(feed) {
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});
+			if(!$('#sl' + index + '-2').hasClass('btn-success'))
+				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
@@ -628,7 +631,19 @@ function addSvcButtons(feed) {
 	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (normal resolution)", null, {timeOut: 2000});
+			if(!$('#sl' + index + '-2').hasClass('btn-success'))
+				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl' + index + '-0').hasClass('btn-success'))
+				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
+		});
+	$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching SVC spatial layer, wait for it... (high resolution)", null, {timeOut: 2000});
+			$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl' + index + '-1').hasClass('btn-success'))
+				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
@@ -670,11 +685,18 @@ function updateSvcButtons(feed, spatial, temporal) {
 	var index = feed;
 	if(spatial === 0) {
 		toastr.success("Switched SVC spatial layer! (lower resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(spatial === 1) {
 		toastr.success("Switched SVC spatial layer! (normal resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	} else if(spatial === 2) {
+		toastr.success("Switched SVC spatial layer! (high resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	}
 	// Check the temporal layer

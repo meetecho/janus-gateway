@@ -105,6 +105,12 @@ static gboolean ws_janus_api_enabled = FALSE;
 static gboolean ws_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
+/* Clients maps */
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+static GHashTable *clients = NULL, *writable_clients = NULL;
+#endif
+static janus_mutex writable_mutex;
+
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
@@ -768,6 +774,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	ws_janus_api_enabled = wss || swss;
 	ws_admin_api_enabled = admin_wss || admin_swss;
 
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	clients = g_hash_table_new(NULL, NULL);
+	writable_clients = g_hash_table_new(NULL, NULL);
+#endif
+	janus_mutex_init(&writable_mutex);
+
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
@@ -803,6 +815,15 @@ void janus_websockets_destroy(void) {
 		wsc = NULL;
 	}
 
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	janus_mutex_lock(&writable_mutex);
+	g_hash_table_destroy(clients);
+	clients = NULL;
+	g_hash_table_destroy(writable_clients);
+	writable_clients = NULL;
+	janus_mutex_unlock(&writable_mutex);
+#endif
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_WEBSOCKETS_NAME);
@@ -812,11 +833,21 @@ static void janus_websockets_destroy_client(
 		janus_websockets_client *ws_client,
 		struct lws *wsi,
 		const char *log_prefix) {
-	if(!ws_client || !g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1))
+	if(!ws_client || !ws_client->ts)
 		return;
-	/* Cleanup */
 	janus_mutex_lock(&ws_client->ts->mutex);
+	if(!g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1)) {
+		janus_mutex_unlock(&ws_client->ts->mutex);
+		return;
+	}
+	/* Cleanup */
 	JANUS_LOG(LOG_INFO, "[%s-%p] Destroying WebSocket client\n", log_prefix, wsi);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	janus_mutex_lock(&writable_mutex);
+	g_hash_table_remove(clients, ws_client);
+	g_hash_table_remove(writable_clients, ws_client);
+	janus_mutex_unlock(&writable_mutex);
+#endif
 	ws_client->wsi = NULL;
 	/* Notify handlers about this transport being gone */
 	if(notify_events && gateway->events_is_enabled()) {
@@ -901,7 +932,19 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	/* On libwebsockets >= 3.x we use lws_cancel_service */
+	janus_mutex_lock(&writable_mutex);
+	if(g_hash_table_lookup(clients, client) == client)
+		g_hash_table_insert(writable_clients, client, client);
+	janus_mutex_unlock(&writable_mutex);
+	lws_cancel_service(wsc);
+#else
+	/* On libwebsockets < 3.x we use lws_callback_on_writable */
+	janus_mutex_lock(&writable_mutex);
 	lws_callback_on_writable(client->wsi);
+	janus_mutex_unlock(&writable_mutex);
+#endif
 	janus_mutex_unlock(&transport->mutex);
 	json_decref(message);
 	return 0;
@@ -1020,6 +1063,11 @@ static int janus_websockets_common_callback(
 			ws_client->bufoffset = 0;
 			g_atomic_int_set(&ws_client->destroyed, 0);
 			ws_client->ts = janus_transport_session_create(ws_client, NULL);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+			janus_mutex_lock(&writable_mutex);
+			g_hash_table_insert(clients, ws_client, ws_client);
+			janus_mutex_unlock(&writable_mutex);
+#endif
 			/* Let us know when the WebSocket channel becomes writeable */
 			lws_callback_on_writable(wsi);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- Ready to be used!\n", log_prefix, wsi);
@@ -1072,6 +1120,25 @@ static int janus_websockets_common_callback(
 			gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
 			return 0;
 		}
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		/* On libwebsockets >= 3.x, we use this event to mark connections as writable in the event loop */
+		case LWS_CALLBACK_EVENT_WAIT_CANCELLED: {
+			janus_mutex_lock(&writable_mutex);
+			/* We iterate on all the clients we marked as writable and act on them */
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, writable_clients);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_websockets_client *client = value;
+				if(client == NULL || client->wsi == NULL)
+					continue;
+				lws_callback_on_writable(client->wsi);
+			}
+			g_hash_table_remove_all(writable_clients);
+			janus_mutex_unlock(&writable_mutex);
+			return 0;
+		}
+#endif
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
 			if(ws_client == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);

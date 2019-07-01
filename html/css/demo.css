@@ -105,3 +105,13 @@ pre {
 	white-space: -o-pre-wrap;
 	word-wrap: break-word;
 }
+
+.januscon {
+	font-weight: bold;
+	animation: pulsating 1s infinite;
+}
+@keyframes pulsating {
+	30% {
+		color: #FFD700;
+	}
+}

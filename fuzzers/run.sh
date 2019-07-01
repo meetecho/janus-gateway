@@ -31,9 +31,10 @@ if [ -f "${TARGET}_seed_corpus.zip" ]; then
 fi
 
 # Run the target
+# Use -max_len=65535 for network protocols
+# Use -timeout=25 -rss_limit_mb=2048 for time and memory limits
 if [ -z "$CRASH_FILE" ]; then
 	# No crash file supplied, start the fuzzer
-	# Use -max_len=65535 for network protocols
 	ASAN_OPTIONS=detect_leaks=1 ./$TARGET -artifact_prefix="./$TARGET-" -print_final_stats=0 -print_corpus_stats=0 -print_coverage=0 -jobs=${JOBS} -workers=${WORKERS} "$TARGET"_corpus "$TARGET"_seed_corpus
 	# tail -f fuzz*.log
 elif [ -f "$CRASH_FILE" ]; then
@@ -55,6 +56,8 @@ else
 fi
 
 # Run without fuzzing, using the extracted corpus dataset (regression testing)
+# Use -max_len=65535 for network protocols
+# Use -timeout=25 -rss_limit_mb=2048 for time and memory limits
 # ASAN_OPTIONS=detect_leaks=1 ./$TARGET "$TARGET"_seed_corpus/*
 
 # Run the target for coverage testing
