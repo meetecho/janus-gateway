@@ -4607,6 +4607,13 @@ static void *janus_sip_relay_thread(void *data) {
 				int error = 0;
 				socklen_t errlen = sizeof(error);
 				getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+
+				// lets try to log and ignore the error and see what happens
+				if (error > 0) {
+					JANUS_LOG(LOG_ERR, "[SIP-%s] -- %d (%s)\n", session->account.username, error, strerror(error));
+					continue;
+				}
+
 				if(error == 0) {
 					/* Maybe not a breaking error after all? */
 					continue;
