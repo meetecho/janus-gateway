@@ -56,8 +56,8 @@ void janus_sctp_deinit(void);
 
 
 #define BUFFER_SIZE (1<<16)
-#define NUMBER_OF_CHANNELS (100)
-#define NUMBER_OF_STREAMS (16)
+#define NUMBER_OF_CHANNELS (128)
+#define NUMBER_OF_STREAMS (256)
 
 #define DATA_CHANNEL_PPID_CONTROL           50
 #define DATA_CHANNEL_PPID_DOMSTRING         51

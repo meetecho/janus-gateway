@@ -200,7 +200,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	/* Allow resetting streams */
 	struct sctp_assoc_value av;
 	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = 1;
+	av.assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET (%d)\n", sctp->handle_id, errno);
 		janus_refcount_decrease(&sctp->ref);
@@ -229,8 +229,8 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	/* Configure our INIT message */
 	struct sctp_initmsg initmsg;
 	memset(&initmsg, 0, sizeof(struct sctp_initmsg));
-	initmsg.sinit_num_ostreams = 16;	/* What Firefox says in the INIT (Chrome says 1023) */
-	initmsg.sinit_max_instreams = 2048;	/* What both Chrome and Firefox say in the INIT */
+	initmsg.sinit_num_ostreams = NUMBER_OF_STREAMS;
+	initmsg.sinit_max_instreams = NUMBER_OF_STREAMS;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(struct sctp_initmsg)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG (%d)\n", sctp->handle_id, errno);
 		janus_refcount_decrease(&sctp->ref);
@@ -759,6 +759,12 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	uint16_t pr_policy;
 	uint8_t unordered;
 
+	if(stream >= NUMBER_OF_STREAMS) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Exceeded number of allowed streams (%u > %u).\n", sctp->handle_id, (stream+1), NUMBER_OF_STREAMS);
+		/* XXX: some error handling */
+		return;
+	}
+
 	if((channel = janus_sctp_find_channel_by_stream(sctp, stream))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] channel %d is in state %d instead of CLOSED.\n", sctp->handle_id, channel->id, channel->state);
 		/* XXX: some error handling */
@@ -1262,6 +1268,8 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 		case SCTP_ASSOC_RESET_EVENT:
 			break;
 		case SCTP_STREAM_CHANGE_EVENT:
+			JANUS_LOG(LOG_VERB, "Stream change (in/out) = (%u/%u)\n",
+				notif->sn_strchange_event.strchange_instrms, notif->sn_strchange_event.strchange_outstrms);
 			break;
 		default:
 			break;
