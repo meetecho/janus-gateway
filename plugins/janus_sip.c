@@ -4539,6 +4539,7 @@ static void *janus_sip_relay_thread(void *data) {
 		if(session->media.updated) {
 			/* Apparently there was a session update */
 			if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
+				JANUS_LOG(LOG_VERB, "[SIP-%s] Reconnecting media sockets to remote ip %s\n", session->account.username, session->media.remote_ip);
 				janus_sip_connect_sockets(session, &server_addr);
 			} else {
 				JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: missing or invalid remote IP address? (%s)\n",
