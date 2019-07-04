@@ -1416,7 +1416,7 @@ function Janus(gatewayCallbacks) {
 			if(dcState === 'open') {
 				// Any pending messages to send?
 				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
-					Janus.log("Sending pending messages on <' + label + '>:", config.dataChannel[label].pending.length);
+					Janus.log("Sending pending messages on <" + label + ">:", config.dataChannel[label].pending.length);
 					for(var i in config.dataChannel[label].pending) {
 						var text = config.dataChannel[label].pending[i];
 						Janus.log("Sending string on data channel <" + label + ">: " + text);
