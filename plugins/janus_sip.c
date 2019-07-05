@@ -4663,6 +4663,8 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
+					// override source pt
+					header->type =session->media.audio_pt;
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -4728,6 +4730,8 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
+					// override source pt
+					header->type = session->media.video_pt;
 					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
