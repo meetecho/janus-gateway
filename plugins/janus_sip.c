@@ -4559,7 +4559,9 @@ static void *janus_sip_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
+			if(session->media.remote_ip != NULL && strcmp(session->media.remote_ip, "0.0.0.0") == 0) {
+				JANUS_LOG(LOG_VERB, "[SIP-%s] Not reconnecting media sockets to ip %s\n", session->account.username, session->media.remote_ip);
+			} else if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				JANUS_LOG(LOG_VERB, "[SIP-%s] Reconnecting media sockets to remote ip %s\n", session->account.username, session->media.remote_ip);
 				janus_sip_connect_sockets(session, &server_addr);
 			} else {
@@ -4631,10 +4633,10 @@ static void *janus_sip_relay_thread(void *data) {
 				getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
 
 				// lets try to log and ignore the error and see what happens
-				if (error > 0) {
+				/*if (error > 0) {
 					JANUS_LOG(LOG_ERR, "[SIP-%s] -- %d (%s)\n", session->account.username, error, strerror(error));
 					continue;
-				}
+				}*/
 
 				if(error == 0) {
 					/* Maybe not a breaking error after all? */
