@@ -1745,7 +1745,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						header->type = session->media.remote_video_pt;
+						header->type = htons(session->media.remote_video_pt);
 						/* Forward the frame to the peer */
 						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
@@ -1756,7 +1756,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)&buf;
-					header->type = session->media.remote_video_pt;
+					header->type = htons(session->media.remote_video_pt);
 					/* Forward the frame to the peer */
 					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
@@ -1793,7 +1793,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						header->type = session->media.remote_audio_pt;
+						header->type = htons(session->media.remote_audio_pt);
 						/* Forward the frame to the peer */
 						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
@@ -1804,7 +1804,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)&buf;
-					header->type = session->media.remote_audio_pt;
+					header->type = htons(session->media.remote_audio_pt);
 					/* Forward the frame to the peer */
 					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
@@ -4685,7 +4685,7 @@ static void *janus_sip_relay_thread(void *data) {
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					// override source pt
-					header->type =session->media.audio_pt;
+					header->type = htons(session->media.audio_pt);
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -4752,7 +4752,7 @@ static void *janus_sip_relay_thread(void *data) {
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					// override source pt
-					header->type = session->media.video_pt;
+					header->type = htons(session->media.video_pt);
 					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
