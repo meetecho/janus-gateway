@@ -1755,7 +1755,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						}
 					}
 				} else {
-					janus_rtp_header *header = (janus_rtp_header *)&buf;
+					janus_rtp_header *header = (janus_rtp_header *)buf;
 					header->type = session->media.remote_video_pt;
 					/* Forward the frame to the peer */
 					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
@@ -1803,7 +1803,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						}
 					}
 				} else {
-					janus_rtp_header *header = (janus_rtp_header *)&buf;
+					janus_rtp_header *header = (janus_rtp_header *)buf;
 					header->type = session->media.remote_audio_pt;
 					/* Forward the frame to the peer */
 					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
