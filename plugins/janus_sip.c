@@ -689,6 +689,7 @@ typedef struct janus_sip_media {
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
 	guint32 audio_ssrc, audio_ssrc_peer;
 	int audio_pt;
+	int remote_audio_pt;
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
@@ -701,6 +702,7 @@ typedef struct janus_sip_media {
 	guint32 video_ssrc, video_ssrc_peer;
 	guint32 simulcast_ssrc;
 	int video_pt;
+	int remote_video_pt;
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
@@ -1534,6 +1536,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc = 0;
 	session->media.audio_ssrc_peer = 0;
 	session->media.audio_pt = -1;
+	session->media.remote_audio_pt = -1;
 	session->media.audio_pt_name = NULL;
 	session->media.audio_send = TRUE;
 	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
@@ -1548,6 +1551,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc_peer = 0;
 	session->media.simulcast_ssrc = 0;
 	session->media.video_pt = -1;
+	session->media.remote_video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
@@ -1740,9 +1744,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
+						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
+						header->type = session->media.remote_video_pt;
 						/* Forward the frame to the peer */
 						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
-							janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1750,9 +1755,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						}
 					}
 				} else {
+					janus_rtp_header *header = (janus_rtp_header *)&buf;
+					header->type = session->media.remote_video_pt;
 					/* Forward the frame to the peer */
 					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
-						janus_rtp_header *header = (janus_rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1786,9 +1792,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
+						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
+						header->type = session->media.remote_audio_pt;
 						/* Forward the frame to the peer */
 						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
-							janus_rtp_header *header = (janus_rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1796,9 +1803,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						}
 					}
 				} else {
+					janus_rtp_header *header = (janus_rtp_header *)&buf;
+					header->type = session->media.remote_audio_pt;
 					/* Forward the frame to the peer */
 					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
-						janus_rtp_header *header = (janus_rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -3559,6 +3567,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sip->sip_payload ? sip->sip_payload->pl_data : "(no SDP)");
 			gboolean changed = FALSE;
 			if(sdp) {
+				int remote_audio_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.audio_pt_name);
+				int remote_video_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.video_pt_name);
+				if (remote_audio_pt != -1) {
+					session->media.remote_audio_pt = remote_audio_pt;
+				}
+
+				if (remote_video_pt != -1) {
+					session->media.remote_video_pt = remote_video_pt;
+				}
 				janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 				/* Check if offer has neither audio nor video, fail with 488 */
 				if(!session->media.has_audio && !session->media.has_video) {
@@ -4183,8 +4200,10 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			if(pt > -1) {
 				if(m->type == JANUS_SDP_AUDIO) {
 					session->media.audio_pt = pt;
+					session->media.remote_audio_pt = pt;
 				} else {
 					session->media.video_pt = pt;
+					session->media.remote_video_pt = pt;
 				}
 			}
 		}
@@ -4253,8 +4272,10 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 			if(pt > -1) {
 				if(m->type == JANUS_SDP_AUDIO) {
 					session->media.audio_pt = pt;
+					session->media.remote_audio_pt = pt;
 				} else {
 					session->media.video_pt = pt;
+					session->media.remote_video_pt = pt;
 				}
 			}
 		}
