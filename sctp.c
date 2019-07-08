@@ -327,8 +327,11 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 
 static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore addr, void *data, size_t datalen, struct sctp_rcvinfo rcv, int flags, void *ulp_info) {
 	janus_sctp_association *sctp = (janus_sctp_association *)ulp_info;
-	if(sctp == NULL || sctp->dtls == NULL)
+	if(sctp == NULL || sctp->dtls == NULL) {
+		if(data)
+			free(data);
 		return 0;
+	}
 	if(data) {
 		if(flags & MSG_NOTIFICATION) {
 			janus_sctp_handle_notification(sctp, (union sctp_notification *)data, datalen);
