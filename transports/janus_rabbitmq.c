@@ -664,7 +664,6 @@ void *janus_rmq_in_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Joining RabbitMQ in thread\n");
-
 	struct timeval timeout;
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 20000;
@@ -771,7 +770,18 @@ void *janus_rmq_out_thread(void *data) {
 		if(!rmq_client->destroy && !g_atomic_int_get(&stopping) && response->payload) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
-			char *payload_text = response->payload;
+      char *payload_text = response->payload;
+      if (!payload_text) {
+        JANUS_LOG(LOG_ERR, "Error while attempting to send message to "
+                  "RabbitMq: Null payload\n");
+        if (response->payload && json_is_object(response->payload)) {
+          json_decref(response->payload);
+          response->payload = NULL;
+        }
+        goto cont;
+      }
+			json_decref(response->payload);
+			response->payload = NULL;
 			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
 			JANUS_LOG(LOG_VERB, "%s\n", payload_text);
 			amqp_basic_properties_t props;
@@ -785,15 +795,16 @@ void *janus_rmq_out_thread(void *data) {
 			props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(payload_text);
-			int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_empty_bytes,
-					response->reply_to ? amqp_cstring_bytes(response->reply_to)
-					: (response->admin ? rmq_client->from_janus_admin_queue
-						: rmq_client->from_janus_queue),
-					0, 0, &props, message);
-			
-      if(status != AMQP_STATUS_OK) {
+      int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_empty_bytes,
+                                      response->reply_to ? amqp_cstring_bytes(response->reply_to)
+                                      : (response->admin ? rmq_client->from_janus_admin_queue
+                                         : rmq_client->from_janus_queue),
+                                      0, 0, &props, message);
+
+			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
+    cont:
 			g_free(response->correlation_id);
 			response->correlation_id = NULL;
 			g_free(response->reply_to);

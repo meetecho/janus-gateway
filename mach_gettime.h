@@ -16,7 +16,7 @@
 #define CLOCK_REALTIME CALENDAR_CLOCK
 #define CLOCK_MONOTONIC SYSTEM_CLOCK
 
-#if !defined(__DARWIN_C_LEVEL) || __DARWIN_C_LEVEL < 199309L
+#if !defined(__DARWIN_C_LEVEL) || __DARWIN_C_LEVEL < 900001L
 typedef int clockid_t;
 #endif
 
