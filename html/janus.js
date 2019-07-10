@@ -1829,7 +1829,7 @@ function Janus(gatewayCallbacks) {
 					config.remoteSdp = jsep.sdp;
 					// Any trickle candidate we cached?
 					if(config.candidates && config.candidates.length > 0) {
-						for(var i in config.candidates) {
+						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
@@ -2406,7 +2406,7 @@ function Janus(gatewayCallbacks) {
 					config.remoteSdp = jsep.sdp;
 					// Any trickle candidate we cached?
 					if(config.candidates && config.candidates.length > 0) {
-						for(var i in config.candidates) {
+						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
