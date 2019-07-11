@@ -771,18 +771,7 @@ void *janus_rmq_out_thread(void *data) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
       char *payload_text = response->payload;
-      if (!payload_text) {
-        JANUS_LOG(LOG_ERR, "Error while attempting to send message to "
-                  "RabbitMq: Null payload\n");
-        if (response->payload && json_is_object(response->payload)) {
-          json_decref(response->payload);
-          response->payload = NULL;
-        }
-        goto cont;
-      }
-			json_decref(response->payload);
-			response->payload = NULL;
-			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
+      JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
 			JANUS_LOG(LOG_VERB, "%s\n", payload_text);
 			amqp_basic_properties_t props;
 			props._flags = 0;
@@ -804,17 +793,8 @@ void *janus_rmq_out_thread(void *data) {
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
-    cont:
-			g_free(response->correlation_id);
-			response->correlation_id = NULL;
-			g_free(response->reply_to);
-			response->reply_to = NULL;
-			g_free(payload_text);
-			payload_text = NULL;
-			g_free(response);
-			response = NULL;
-			janus_mutex_unlock(&rmq_client->mutex);
-		}
+      janus_mutex_unlock(&rmq_client->mutex);
+    }
 		/* Free the message */
 		g_free(response->correlation_id);
 		response->correlation_id = NULL;
