@@ -1298,7 +1298,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		}
 		/* Add last attributes, rtcp and ssrc (msid) */
-		if(m->type == JANUS_SDP_VIDEO && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX) &&
+		if(medium->ssrc_rtx > 0 && m->type == JANUS_SDP_VIDEO && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX) &&
 				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			/* Add FID group to negotiate the RFC4588 stuff */
 			a = janus_sdp_attribute_create("ssrc-group", "FID %"SCNu32" %"SCNu32, medium->ssrc, medium->ssrc_rtx);
@@ -1308,12 +1308,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("msid", "janus janus%s", medium->mid);
 			m->attributes = g_list_append(m->attributes, a);
-			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);
-			m->attributes = g_list_append(m->attributes, a);
-			if(m->type == JANUS_SDP_VIDEO && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
-				/* Add rtx SSRC group to negotiate the RFC4588 stuff */
-				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc_rtx);
+			if(medium->ssrc > 0) {
+				a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc);
 				m->attributes = g_list_append(m->attributes, a);
+				if(m->type == JANUS_SDP_VIDEO && janus_flags_is_set(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_RFC4588_RTX)) {
+					/* Add rtx SSRC group to negotiate the RFC4588 stuff */
+					a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", medium->ssrc_rtx);
+					m->attributes = g_list_append(m->attributes, a);
+				}
 			}
 		}
 		/* FIXME If the peer is Firefox and is negotiating simulcasting, add the rid attributes */
