@@ -143,9 +143,9 @@ typedef struct janus_rabbitmq_opaque_id {
 /* RabbitMQ response */
 typedef struct janus_rabbitmq_response {
 	gboolean admin;			/* Whether this is a Janus or Admin API response */
-	gchar *correlation_id;	/* Correlation ID, if any */
+	char  *correlation_id;	/* Correlation ID, if any */
 	gchar *reply_to;			/* AMQP incoming messages explicit queue name */
-	json_t *payload;		/* Payload to send to the client */
+	char  *payload;		/* Payload to send to the client */
 } janus_rabbitmq_response;
 static janus_rabbitmq_response exit_message;
 
@@ -632,7 +632,8 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = g_malloc0(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
-  response->payload = message;
+  response->payload = json_dumps(message, json_format);
+  json_decref(message);
 	if (request_id) {
 		janus_rabbitmq_opaque_id *opaque_id = (janus_rabbitmq_opaque_id*)request_id;
 		response->correlation_id = opaque_id->correlation_id;
