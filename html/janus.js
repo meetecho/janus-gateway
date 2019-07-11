@@ -198,6 +198,10 @@ Janus.noop = function() {};
 
 Janus.dataChanDefaultLabel = "JanusDataChannel";
 
+// Note: in the future we may want to change this, e.g., as was
+// attempted in https://github.com/meetecho/janus-gateway/issues/1670
+Janus.endOfCandidates = null;
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
@@ -627,7 +631,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("Adding remote candidate:", candidate);
 				if(!candidate || candidate.completed === true) {
 					// end-of-candidates
-					config.pc.addIceCandidate({candidate:''});
+					config.pc.addIceCandidate(Janus.endOfCandidates);
 				} else {
 					// New candidate
 					config.pc.addIceCandidate(candidate);
@@ -1834,7 +1838,7 @@ function Janus(gatewayCallbacks) {
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
@@ -2411,7 +2415,7 @@ function Janus(gatewayCallbacks) {
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
