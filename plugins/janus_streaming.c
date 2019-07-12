@@ -4642,10 +4642,8 @@ static int janus_streaming_allocate_port_pair(const char *name, const char *medi
 			}
 		}
 		/* If we got here, something failed: try again */
-		if(rtp_fd != -1) {
+		if(rtp_fd != -1)
 			close(rtp_fd);
-			rtp_fd = -1;
-		}
 	}
 	return -1;
 }
