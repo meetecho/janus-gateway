@@ -170,9 +170,9 @@ $(document).ready(function() {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on this PeerConnection (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");

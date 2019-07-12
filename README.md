@@ -234,7 +234,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.3
+	janus 0.7.4
 
 	Usage: janus [OPTIONS]...
 
@@ -285,6 +285,9 @@ or on the command line:
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
+	-W, --slowlink-threshold=number
+                                  Number of lost packets (per s) that should
+                                  trigger a 'slowlink' Janus API event to users
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to

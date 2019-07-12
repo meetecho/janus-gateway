@@ -7,15 +7,16 @@
  * file just saves RTP frames in a structured way, so that they can be
  * post-processed later on to get a valid container file (e.g., a .opus
  * file for Opus audio or a .webm file for VP8 video) and keep things
- * simpler on the plugin and core side.
+ * simpler on the plugin and core side. Check the \ref recordings
+ * documentation for more details.
  * \note If you want to record both audio and video, you'll have to use
  * two different recorders. Any muxing in the same container will have
  * to be done in the post-processing phase.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_RECORD_H
 #define _JANUS_RECORD_H
 
@@ -37,9 +38,9 @@ typedef enum janus_recorder_medium {
 
 /*! \brief Structure that represents a recorder */
 typedef struct janus_recorder {
-	/*! \brief Absolute path to the directory where the recorder file is stored */ 
+	/*! \brief Absolute path to the directory where the recorder file is stored */
 	char *dir;
-	/*! \brief Filename of this recorder file */ 
+	/*! \brief Filename of this recorder file */
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
@@ -51,9 +52,9 @@ typedef struct janus_recorder {
 	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	volatile int header;
-	/*! \brief Whether this recorder instance can be used for writing or not */ 
+	/*! \brief Whether this recorder instance can be used for writing or not */
 	volatile int writable;
-	/*! \brief Mutex to lock/unlock this recorder instance */ 
+	/*! \brief Mutex to lock/unlock this recorder instance */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;

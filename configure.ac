@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.7.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.7.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=73
+JANUS_VERSION=74
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.7.3"
+JANUS_VERSION_STRING="0.7.4"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -81,12 +81,11 @@ darwin*)
 	LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
-	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
 *)
 	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 	AM_CONDITIONAL([DARWIN_OS], false)
-	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
+	AC_DEFINE(HAS_DTLS_WINDOW_SIZE, 1)
 esac
 
 glib_version=2.34

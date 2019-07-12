@@ -76,7 +76,7 @@ room-<unique room ID>: {
 	playoutdelay_ext = true|false (whether the playout-delay RTP extension must be
 		negotiated/used or not for new publishers, default=true)
 	transport_wide_cc_ext = true|false (whether the transport wide CC RTP extension must be
-		negotiated/used or not for new publishers, default=false)
+		negotiated/used or not for new publishers, default=true)
 	record = true|false (whether this room should be recorded, default=false)
 	rec_dir = <folder where recordings should be stored, when enabled>
 	notify_joining = true|false (optional, whether to notify all participants when a new
@@ -1356,7 +1356,6 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 /* A host whose ports gets streamed RTP packets of the corresponding type */
 typedef struct janus_videoroom_srtp_context janus_videoroom_srtp_context;
 typedef struct janus_videoroom_rtp_forwarder {
-	GSource base;
 	void *source;
 	gboolean is_video;
 	gboolean is_data;
@@ -1367,6 +1366,7 @@ typedef struct janus_videoroom_rtp_forwarder {
 	/* Only needed for RTCP */
 	int rtcp_fd;
 	uint16_t local_rtcp_port, remote_rtcp_port;
+	GSource *rtcp_recv;
 	/* Only needed when forwarding simulcasted streams to a single endpoint */
 	gboolean simulcast;
 	janus_rtp_switching_context context;
@@ -1393,21 +1393,28 @@ struct janus_videoroom_srtp_context {
 };
 static void janus_videoroom_srtp_context_free(gpointer data);
 /* RTCP support in RTP forwarders */
+typedef struct janus_videoroom_rtcp_receiver {
+	GSource parent;
+	janus_videoroom_rtp_forwarder *forward;
+	GDestroyNotify destroy;
+} janus_videoroom_rtcp_receiver;
 static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwarder *forward);
 static gboolean janus_videoroom_rtp_forwarder_rtcp_prepare(GSource *source, gint *timeout) {
 	*timeout = -1;
 	return FALSE;
 }
 static gboolean janus_videoroom_rtp_forwarder_rtcp_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
-	janus_videoroom_rtp_forwarder *f = (janus_videoroom_rtp_forwarder *)source;
+	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
 	/* Receive the packet */
-	janus_videoroom_rtp_forwarder_rtcp_receive(f);
+	if(r)
+		janus_videoroom_rtp_forwarder_rtcp_receive(r->forward);
 	return G_SOURCE_CONTINUE;
 }
 static void janus_videoroom_rtp_forwarder_rtcp_finalize(GSource *source) {
-	janus_videoroom_rtp_forwarder *f = (janus_videoroom_rtp_forwarder *)source;
+	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
 	/* Remove the reference to the forwarder */
-	janus_refcount_decrease(&f->ref);
+	if(r && r->forward)
+		janus_refcount_decrease(&r->forward->ref);
 }
 static GSourceFuncs janus_videoroom_rtp_forwarder_rtcp_funcs = {
 	janus_videoroom_rtp_forwarder_rtcp_prepare,
@@ -1733,15 +1740,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 		JANUS_LOG(LOG_VERB, "Bound local %s RTCP port: %"SCNu16"\n",
 			is_video ? "video" : "audio", local_rtcp_port);
 	}
-	janus_videoroom_rtp_forwarder *forward = NULL;
-	if(fd < 0) {
-		forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
-	} else {
-		GSource *source = g_source_new(&janus_videoroom_rtp_forwarder_rtcp_funcs, sizeof(janus_videoroom_rtp_forwarder));
-		g_source_set_priority(source, G_PRIORITY_DEFAULT);
-		g_source_add_unix_fd(source, fd, G_IO_IN | G_IO_ERR);
-		forward = (janus_videoroom_rtp_forwarder *)source;
-	}
+	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
 	forward->source = p;
 	forward->rtcp_fd = fd;
 	forward->local_rtcp_port = local_rtcp_port;
@@ -1838,7 +1837,12 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	if(fd > -1) {
 		/* We need RTCP: track this file descriptor, and ref the forwarder */
 		janus_refcount_increase(&forward->ref);
-		g_source_attach((GSource *)forward, rtcpfwd_ctx);
+		forward->rtcp_recv = g_source_new(&janus_videoroom_rtp_forwarder_rtcp_funcs, sizeof(janus_videoroom_rtcp_receiver));
+		janus_videoroom_rtcp_receiver *rr = (janus_videoroom_rtcp_receiver *)forward->rtcp_recv;
+		rr->forward = forward;
+		g_source_set_priority(forward->rtcp_recv, G_PRIORITY_DEFAULT);
+		g_source_add_unix_fd(forward->rtcp_recv, fd, G_IO_IN | G_IO_ERR);
+		g_source_attach((GSource *)forward->rtcp_recv, rtcpfwd_ctx);
 		/* Send a couple of empty RTP packets to the remote port to do latching */
 		struct sockaddr_in address;
 		socklen_t addrlen = sizeof(address);
@@ -1861,8 +1865,8 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward) {
 	if(forward && g_atomic_int_compare_and_exchange(&forward->destroyed, 0, 1)) {
 		if(forward->rtcp_fd > -1) {
-			g_source_destroy((GSource *)forward);
-			janus_refcount_decrease(&forward->ref);
+			g_source_destroy(forward->rtcp_recv);
+			g_source_unref(forward->rtcp_recv);
 		}
 		janus_refcount_decrease(&forward->ref);
 	}
@@ -2105,7 +2109,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->playoutdelay_ext = TRUE;
 			if(playoutdelay_ext != NULL && playoutdelay_ext->value != NULL)
 				videoroom->playoutdelay_ext = janus_is_true(playoutdelay_ext->value);
-			videoroom->transport_wide_cc_ext = FALSE;
+			videoroom->transport_wide_cc_ext = TRUE;
 			if(transport_wide_cc_ext != NULL && transport_wide_cc_ext->value != NULL)
 				videoroom->transport_wide_cc_ext = janus_is_true(transport_wide_cc_ext->value);
 			if(record && record->value) {
@@ -2860,7 +2864,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
-		videoroom->transport_wide_cc_ext = transport_wide_cc_ext ? json_is_true(transport_wide_cc_ext) : FALSE;
+		videoroom->transport_wide_cc_ext = transport_wide_cc_ext ? json_is_true(transport_wide_cc_ext) : TRUE;
 		/* By default, the videoroom plugin does not notify about participants simply joining the room.
 		   It only notifies when the participant actually starts publishing media. */
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
@@ -2951,13 +2955,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
+			} else {
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			if(videoroom->videoorient_ext)
-				janus_config_add(config, c, janus_config_item_create("videoorient_ext", "yes"));
-			if(videoroom->playoutdelay_ext)
-				janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
-			if(videoroom->transport_wide_cc_ext)
-				janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", "yes"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
 			if(videoroom->notify_joining)
 				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
 			if(videoroom->record)
@@ -3109,13 +3112,12 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					g_snprintf(value, BUFSIZ, "%d", videoroom->audio_level_average);
 					janus_config_add(config, c, janus_config_item_create("audio_level_average", value));
 				}
+			} else {
+				janus_config_add(config, c, janus_config_item_create("audiolevel_ext", "no"));
 			}
-			if(videoroom->videoorient_ext)
-				janus_config_add(config, c, janus_config_item_create("videoorient_ext", "yes"));
-			if(videoroom->playoutdelay_ext)
-				janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", "yes"));
-			if(videoroom->transport_wide_cc_ext)
-				janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", "yes"));
+			janus_config_add(config, c, janus_config_item_create("videoorient_ext", videoroom->videoorient_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("playoutdelay_ext", videoroom->playoutdelay_ext ? "yes" : "no"));
+			janus_config_add(config, c, janus_config_item_create("transport_wide_cc_ext", videoroom->transport_wide_cc_ext ? "yes" : "no"));
 			if(videoroom->notify_joining)
 				janus_config_add(config, c, janus_config_item_create("notify_joining", "yes"));
 			if(videoroom->record)
@@ -3436,6 +3438,18 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(audio_handle > 0) {
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("rtp_forward"));
+				json_object_set_new(info, "room", json_integer(room_id));
+				json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+				json_object_set_new(info, "media", json_string("audio"));
+				json_object_set_new(info, "stream_id", json_integer(audio_handle));
+				json_object_set_new(info, "host", json_string(host));
+				json_object_set_new(info, "port", json_integer(audio_port));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
 		}
 		if(video_handle[0] > 0 || video_handle[1] > 0 || video_handle[2] > 0) {
 			janus_videoroom_reqfir(publisher, "New RTP forward publisher");
@@ -3443,19 +3457,71 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(video_handle[0] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
 				json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					if(video_handle[1] > 0 || video_handle[2] > 0)
+						json_object_set_new(info, "video_substream", json_integer(0));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[0]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[0]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 			if(video_handle[1] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id_2", json_integer(video_handle[1]));
 				json_object_set_new(rtp_stream, "video_2", json_integer(video_port[1]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "video_substream", json_integer(1));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[1]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[1]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 			if(video_handle[2] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id_3", json_integer(video_handle[2]));
 				json_object_set_new(rtp_stream, "video_3", json_integer(video_port[2]));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("rtp_forward"));
+					json_object_set_new(info, "room", json_integer(room_id));
+					json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "video_substream", json_integer(2));
+					json_object_set_new(info, "stream_id", json_integer(video_handle[2]));
+					json_object_set_new(info, "host", json_string(host));
+					json_object_set_new(info, "port", json_integer(video_port[2]));
+					gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+				}
 			}
 		}
 		if(data_handle > 0) {
 			json_object_set_new(rtp_stream, "data_stream_id", json_integer(data_handle));
 			json_object_set_new(rtp_stream, "data", json_integer(data_port));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("rtp_forward"));
+				json_object_set_new(info, "room", json_integer(room_id));
+				json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+				json_object_set_new(info, "media", json_string("data"));
+				json_object_set_new(info, "stream_id", json_integer(data_handle));
+				json_object_set_new(info, "host", json_string(host));
+				json_object_set_new(info, "port", json_integer(data_port));
+				gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+			}
 		}
 		/* These two unrefs are related to the message handling */
 		janus_refcount_decrease(&publisher->ref);
@@ -3529,6 +3595,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "publisher_id", json_integer(publisher_id));
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("stop_rtp_forward"));
+			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "publisher_id", json_integer(publisher_id));
+			json_object_set_new(info, "stream_id", json_integer(stream_id));
+			gateway->notify_event(&janus_videoroom_plugin, NULL, info);
+		}
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */
@@ -5715,7 +5790,6 @@ static void *janus_videoroom_handler(void *data) {
 								/* We have such an m-line and it's active, should it be changed? */
 								if(m_new == NULL || m_new->port == 0 || m_new->direction == JANUS_SDP_INACTIVE) {
 									/* Turn the m-line to inactive */
-									m->port = 0;
 									m->direction = JANUS_SDP_INACTIVE;
 								}
 							} else {

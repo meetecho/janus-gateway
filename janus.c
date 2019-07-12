@@ -134,6 +134,9 @@ static struct janus_json_parameter mnq_parameters[] = {
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter st_parameters[] = {
+	{"slowlink_threshold", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter ans_parameters[] = {
 	{"accept", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
@@ -153,6 +156,9 @@ static struct janus_json_parameter text2pcap_parameters[] = {
 	{"folder", JSON_STRING, 0},
 	{"filename", JSON_STRING, 0},
 	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter handleinfo_parameters[] = {
+	{"plugin_only", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter resaddr_parameters[] = {
 	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
@@ -1772,6 +1778,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
+			json_object_set_new(status, "slowlink_threshold", json_integer(janus_get_slowlink_threshold()));
 			json_object_set_new(reply, "status", status);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1954,6 +1961,26 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_slowlink_threshold")) {
+			/* Change the current value for the slowlink-threshold value */
+			JANUS_VALIDATE_JSON_OBJECT(root, st_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *nmt = json_object_get(root, "slowlink_threshold");
+			int nmt_num = json_integer_value(nmt);
+			janus_set_slowlink_threshold(nmt_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "slowlink_threshold", json_integer(janus_get_slowlink_threshold()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2412,6 +2439,15 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
+		JANUS_VALIDATE_JSON_OBJECT(root, handleinfo_parameters,
+			error_code, error_cause, FALSE,
+			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+		if(error_code != 0) {
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+			goto jsondone;
+		}
+		/* Check if we should limit the response to the plugin-specific info */
+		gboolean plugin_only = json_is_true(json_object_get(root, "plugin_only"));
 		/* Prepare info */
 		janus_mutex_lock(&handle->mutex);
 		json_t *info = json_object();
@@ -2444,6 +2480,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				}
 			}
 		}
+		if(plugin_only)
+			goto info_done;
 		json_t *flags = json_object();
 		json_object_set_new(flags, "got-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER) ? json_true() : json_false());
 		json_object_set_new(flags, "got-answer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER) ? json_true() : json_false());
@@ -2498,6 +2536,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				json_array_append_new(streams, s);
 		}
 		json_object_set_new(info, "streams", streams);
+info_done:
 		janus_mutex_unlock(&handle->mutex);
 		/* Prepare JSON reply */
 		json_t *reply = janus_create_message("success", session_id, transaction_text);
@@ -3453,8 +3492,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 		return G_SOURCE_REMOVE;
 	}
 	janus_refcount_increase(&ice_handle->ref);
-	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		janus_refcount_decrease(&plugin_session->ref);
 		janus_refcount_decrease(&ice_handle->ref);
 		return G_SOURCE_REMOVE;
@@ -3469,6 +3507,7 @@ static gboolean janus_plugin_end_session_internal(gpointer user_data) {
 	janus_session_handles_remove(session, ice_handle);
 
 	janus_refcount_decrease(&plugin_session->ref);
+	janus_refcount_decrease(&ice_handle->ref);
 	return G_SOURCE_REMOVE;
 }
 
@@ -3859,6 +3898,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
 		janus_config_add(config, config_media, janus_config_item_create("no_media_timer", nmt));
 	}
+	if(args_info.slowlink_threshold_given) {
+		char st[20];
+		g_snprintf(st, 20, "%d", args_info.slowlink_threshold_arg);
+		janus_config_add(config, config_media, janus_config_item_create("slowlink_threshold", st));
+	}
 	if(args_info.twcc_period_given) {
 		char tp[20];
 		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
@@ -4220,6 +4264,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
 		} else {
 			janus_set_no_media_timer(nmt);
+		}
+	}
+	/* slowlink-threshold value */
+	item = janus_config_get(config, config_media, janus_config_type_item, "slowlink_threshold");
+	if(item && item->value) {
+		int st = atoi(item->value);
+		if(st < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring slowlink_threshold value as it's not a positive integer\n");
+		} else {
+			janus_set_slowlink_threshold(st);
 		}
 	}
 	/* TWCC period */

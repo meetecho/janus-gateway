@@ -110,7 +110,7 @@ room-<unique room ID>: {
 	"pin" : "<password required to join the room, optional>",
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"allowed" : [ array of string tokens users can use to join this room, optional],
-	"sampling" : <sampling rate of the room, optional, 16000 by default>,
+	"sampling_rate" : <sampling rate of the room, optional, 16000 by default>,
 	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default=true>,
 	"audiolevel_event" : true|false (whether to emit event to other users or not),
 	"audio_active_packets" : 100 (number of packets with audio level, default=100, 2 seconds),
@@ -719,7 +719,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"pin", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"allowed", JSON_ARRAY, 0},
-	{"sampling", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"sampling_rate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"sampling", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},	/* We keep this to be backwards compatible */
 	{"record", JANUS_JSON_BOOL, 0},
 	{"record_file", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
@@ -1725,7 +1726,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *pin = json_object_get(root, "pin");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *allowed = json_object_get(root, "allowed");
-		json_t *sampling = json_object_get(root, "sampling");
+		json_t *sampling = json_object_get(root, "sampling_rate");
+		if(sampling == NULL)
+			sampling = json_object_get(root, "sampling");
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
 		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
 		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");

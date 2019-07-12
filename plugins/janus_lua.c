@@ -1677,7 +1677,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 json_t *janus_lua_handle_admin_message(json_t *message) {
 	if(!has_handle_admin_message || message == NULL)
 		return NULL;
-	char *message_text = message ? json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
+	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	/* Invoke the script function */
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
