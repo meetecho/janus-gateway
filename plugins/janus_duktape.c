@@ -1963,7 +1963,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 json_t *janus_duktape_handle_admin_message(json_t *message) {
 	if(!has_handle_admin_message || message == NULL)
 		return NULL;
-	char *message_text = message ? json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
+	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
 	/* Invoke the script function */
 	janus_mutex_lock(&duktape_mutex);
 	duk_idx_t thr_idx = duk_push_thread(duktape_ctx);

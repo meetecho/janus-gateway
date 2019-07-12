@@ -4646,16 +4646,6 @@ static int janus_streaming_allocate_port_pair(const char *name, const char *medi
 			close(rtp_fd);
 			rtp_fd = -1;
 		}
-		if(rtcp_fd != -1) {
-			close(rtcp_fd);
-			rtcp_fd = -1;
-		}
-	}
-	if(rtp_fd != -1) {
-		close(rtp_fd);
-	}
-	if(rtcp_fd != -1) {
-		close(rtcp_fd);
 	}
 	return -1;
 }
