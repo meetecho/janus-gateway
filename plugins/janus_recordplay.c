@@ -12,7 +12,8 @@
  * features: it allows you to record a message you send with WebRTC in
  * the format defined in recorded.c (MJR recording) and subsequently
  * replay this recording (or other previously recorded) through WebRTC
- * as well.
+ * as well. For more information on how Janus implements recordings
+ * natively and the MJR format, refer to the \ref recordings documentation.
  *
  * This application aims at showing how easy recording frames sent by
  * a peer is, and how this recording can be re-used directly, without
@@ -38,8 +39,8 @@
  * 		[12345678]
  * 		name = My videoroom recording
  * 		date = 2014-10-14 17:11:26
- * 		audio = mcu-audio.mjr
- * 		video = mcu-video.mjr
+ * 		audio = videoroom-audio.mjr
+ * 		video = videoroom-video.mjr
  *
  * \section recplayapi Record&Play API
  *
@@ -1249,8 +1250,10 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_object_set_new(event, "recordplay", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("slow_link"));
+	json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+	if(video)
+		json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	/* What is uplink for the server is downlink for the client, so turn the tables */
-	json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
 	json_object_set_new(event, "result", result);
 	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event, NULL);

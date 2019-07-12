@@ -514,6 +514,10 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
+						if(strcmp(line, "AS")) {
+							/* We only support b=AS, skip */
+							break;
+						}
 						mline->b_name = g_strdup(line);
 						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
@@ -1226,7 +1230,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			}
 			if(!do_audio || audio > 1) {
 				/* Reject */
-				am->port = 0;
+				if(audio > 1)
+					am->port = 0;
 				temp = temp->next;
 				continue;
 			}
@@ -1236,7 +1241,8 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			}
 			if(!do_video || video > 1) {
 				/* Reject */
-				am->port = 0;
+				if(video > 1)
+					am->port = 0;
 				temp = temp->next;
 				continue;
 			}
@@ -1336,7 +1342,6 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",
 					codec, m->type == JANUS_SDP_AUDIO ? "audio" : "video");
-				am->port = 0;
 				am->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;

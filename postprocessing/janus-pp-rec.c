@@ -1,8 +1,9 @@
 /*! \file    janus-pp-rec.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Simple utility to post-process .mjr files saved by Janus
- * \details  Our Janus WebRTC gateway provides a simple helper (janus_recorder)
+ * \brief    Simple utility to post-process .mjr \ref recordings saved by Janus
+ * \details  As explained in the \ref recordings documentation,
+ * our Janus WebRTC server provides a simple helper (janus_recorder)
  * to allow plugins to record audio, video and text frames sent by users. At the time
  * of writing, this helper has been integrated in several plugins in Janus.
  * To keep things simple on the Janus side, though, no processing

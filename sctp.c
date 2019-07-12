@@ -172,20 +172,22 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 		sctp->stream_buffer[i] = 0;
 	}
 	sctp->stream_buffer_counter = 0;
-	sctp->sock = NULL;
 
 	usrsctp_register_address((void *)sctp);
 	usrsctp_sysctl_set_sctp_ecn_enable(0);
 	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0, (void *)sctp)) == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket... (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
+	/* Store the socket handle to make sure it is closed in any case if the association creation fails */
+	sctp->sock = sock;
+
 	/* Make the socket non-blocking. Connect, close, shutdown etc will not block
 	 * the thread waiting for the socket operation to complete. */
 	if (usrsctp_set_non_blocking(sock, 1) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting socket to non-blocking... (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Set SO_LINGER */
@@ -194,23 +196,23 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	linger_opt.l_linger = 0;
 	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Allow resetting streams */
 	struct sctp_assoc_value av;
 	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = 1;
+	av.assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Disable Nagle */
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Enable the events of interest */
@@ -222,18 +224,18 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 		event.se_type = event_types[i];
 		if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) < 0) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_EVENT (%d)\n", sctp->handle_id, errno);
-			janus_refcount_decrease(&sctp->ref);
+			janus_sctp_association_destroy(sctp);
 			return NULL;
 		}
 	}
 	/* Configure our INIT message */
 	struct sctp_initmsg initmsg;
 	memset(&initmsg, 0, sizeof(struct sctp_initmsg));
-	initmsg.sinit_num_ostreams = 16;	/* What Firefox says in the INIT (Chrome says 1023) */
-	initmsg.sinit_max_instreams = 2048;	/* What both Chrome and Firefox say in the INIT */
+	initmsg.sinit_num_ostreams = NUMBER_OF_STREAMS;
+	initmsg.sinit_max_instreams = NUMBER_OF_STREAMS;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(struct sctp_initmsg)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG (%d)\n", sctp->handle_id, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Bind our side of the communication, using AF_CONN as we're doing the actual delivery ourselves */
@@ -243,7 +245,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	sconn.sconn_addr = (void *)sctp;
 	if(usrsctp_bind(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16" (%d)\n", sctp->handle_id, sctp->local_port, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 
@@ -266,11 +268,10 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	int res = usrsctp_connect(sock, (struct sockaddr *)&rconn, sizeof(struct sockaddr_conn));
 	if(res < 0 && errno != EINPROGRESS) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16" (%d)\n", sctp->handle_id, sctp->remote_port, errno);
-		janus_refcount_decrease(&sctp->ref);
+		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Connected to the DataChannel peer\n", sctp->handle_id);
-	sctp->sock = sock;
 	return sctp;
 }
 
@@ -279,8 +280,10 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 		return;
 
 	usrsctp_deregister_address(sctp);
-	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
-	usrsctp_close(sctp->sock);
+	if (sctp->sock != NULL) {
+		usrsctp_shutdown(sctp->sock, SHUT_RDWR);
+		usrsctp_close(sctp->sock);
+	}
 	janus_refcount_decrease(&sctp->ref);
 }
 
@@ -324,8 +327,11 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 
 static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore addr, void *data, size_t datalen, struct sctp_rcvinfo rcv, int flags, void *ulp_info) {
 	janus_sctp_association *sctp = (janus_sctp_association *)ulp_info;
-	if(sctp == NULL || sctp->dtls == NULL)
+	if(sctp == NULL || sctp->dtls == NULL) {
+		if(data)
+			free(data);
 		return 0;
+	}
 	if(data) {
 		if(flags & MSG_NOTIFICATION) {
 			janus_sctp_handle_notification(sctp, (union sctp_notification *)data, datalen);
@@ -759,6 +765,12 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	uint16_t pr_policy;
 	uint8_t unordered;
 
+	if(stream >= NUMBER_OF_STREAMS) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Exceeded number of allowed streams (%u > %u).\n", sctp->handle_id, (stream+1), NUMBER_OF_STREAMS);
+		/* XXX: some error handling */
+		return;
+	}
+
 	if((channel = janus_sctp_find_channel_by_stream(sctp, stream))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] channel %d is in state %d instead of CLOSED.\n", sctp->handle_id, channel->id, channel->state);
 		/* XXX: some error handling */
@@ -807,26 +819,22 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	channel->stream = stream;
 	channel->flags = 0;
 	sctp->stream_channel[stream] = channel;
-	if(stream == 0) {
-		janus_sctp_request_more_streams(sctp);
+	if(janus_sctp_send_open_ack_message(sctp->sock, stream)) {
+		sctp->stream_channel[stream] = channel;
 	} else {
-		if(janus_sctp_send_open_ack_message(sctp->sock, stream)) {
+		if(errno == EAGAIN) {
+			channel->flags |= DATA_CHANNEL_FLAGS_SEND_ACK;
 			sctp->stream_channel[stream] = channel;
 		} else {
-			if(errno == EAGAIN) {
-				channel->flags |= DATA_CHANNEL_FLAGS_SEND_ACK;
-				sctp->stream_channel[stream] = channel;
-			} else {
-				/* XXX: Signal error to the other end */
-				sctp->stream_channel[stream] = NULL;
-				channel->label[0] = '\0';
-				channel->state = DATA_CHANNEL_CLOSED;
-				channel->unordered = 0;
-				channel->pr_policy = 0;
-				channel->pr_value = 0;
-				channel->stream = 0;
-				channel->flags = 0;
-			}
+			/* XXX: Signal error to the other end */
+			sctp->stream_channel[stream] = NULL;
+			channel->label[0] = '\0';
+			channel->state = DATA_CHANNEL_CLOSED;
+			channel->unordered = 0;
+			channel->pr_policy = 0;
+			channel->pr_value = 0;
+			channel->stream = 0;
+			channel->flags = 0;
 		}
 	}
 	/* Read label, if available */
@@ -1262,6 +1270,8 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 		case SCTP_ASSOC_RESET_EVENT:
 			break;
 		case SCTP_STREAM_CHANGE_EVENT:
+			JANUS_LOG(LOG_VERB, "Stream change (in/out) = (%u/%u)\n",
+				notif->sn_strchange_event.strchange_instrms, notif->sn_strchange_event.strchange_outstrms);
 			break;
 		default:
 			break;

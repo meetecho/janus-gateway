@@ -371,6 +371,22 @@ function updateSettings() {
 							setNoMediaTimer(result);
 						});
 					});
+				} else if(k === 'slowlink_threshold') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit slowlink-threshold value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new desired slowlink-threshold value (in lost packets per seconds, currently " + settings["slowlink_threshold"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid slowlink-threshold timer (should be a positive integer)");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								bootbox.alert("Invalid slowlink-threshold timer (should be a positive integer)");
+								return;
+							}
+							setSlowlinkThreshold(result);
+						});
+					});
 				} else if(k === 'locking_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
@@ -501,6 +517,11 @@ function setMaxNackQueue(queue) {
 
 function setNoMediaTimer(timer) {
 	var request = { "janus": "set_no_media_timer", "no_media_timer": timer, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
+function setSlowlinkThreshold(packets) {
+	var request = { "janus": "set_slowlink_threshold", "slowlink_threshold": packets, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 

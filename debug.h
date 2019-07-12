@@ -3,7 +3,6 @@
  * \copyright GNU General Public License v3
  * \brief    Logging and Debugging
  * \details  Implementation of a wrapper on printf (or g_print) to either log or debug.
- * \todo     Improve this wrappers to optionally save logs on file
  *
  * \ingroup core
  * \ref core
