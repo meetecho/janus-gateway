@@ -149,7 +149,6 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				medium->send = FALSE;
 				medium->recv = FALSE;
 			}
-#ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* Find the internal medium instance */
 			medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(m->index));
@@ -159,6 +158,7 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 			}
 			/* Is this SCTP for DataChannels? */
 			if(!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP")) {
+#ifdef HAVE_SCTP
 				if(m->port > 0) {
 					/* Yep */
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, pc->stream_id);
@@ -179,6 +179,13 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 					medium->send = FALSE;
 					medium->recv = FALSE;
 				}
+#else
+				/* Data channels unsupported */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data channels unsupported...\n", handle->handle_id);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
+				medium->send = FALSE;
+				medium->recv = FALSE;
+#endif
 			} else {
 				/* Unsupported data channels format. */
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data channels format %s unsupported, skipping\n", handle->handle_id, m->proto);
@@ -186,7 +193,6 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				medium->send = FALSE;
 				medium->recv = FALSE;
 			}
-#endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 			medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(m->index));
@@ -194,6 +200,11 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				/* We don't have it, create one now */
 				medium = janus_handle_webrtc_medium_create(handle, JANUS_MEDIA_UNKNOWN);
 			}
+		}
+		if(medium == NULL) {
+			/* No medium? */
+			temp = temp->next;
+			continue;
 		}
 		/* Look for mid, ICE credentials and fingerprint first: check media attributes */
 		GList *tempA = m->attributes;
@@ -1000,7 +1011,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 			if(m->proto != NULL && (!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP"))) {
 				data++;
-				m->port = data == 1 ? 9 : 0;
+				m->port = (data == 1 ? 9 : 0);
 			} else {
 				m->port = 0;
 			}
@@ -1236,8 +1247,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 					g_list_free(ptypes);
 				}
 			}
-#ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
+#ifdef HAVE_SCTP
 			/* Is this SCTP for DataChannels? */
 			if(m->port > 0 && (!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP"))) {
 				/* Yep */
@@ -1256,6 +1267,12 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				temp = temp->next;
 				continue;
 			}
+#else
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported application media line...\n", handle->handle_id);
+			m->port = 0;
+			m->direction = JANUS_SDP_INACTIVE;
+			temp = temp->next;
+			continue;
 #endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
