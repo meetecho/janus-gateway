@@ -3545,6 +3545,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_handle *handle, janus_ic
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] WebRTC encryption disabled, skipping DTLS handshake\n", handle->handle_id);
 			janus_handle_dtls_handshake_done(handle);
 			return G_SOURCE_CONTINUE;
+		} else if(!pc) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] PeerConnection not initialized, aborting DTLS handshake\n", handle->handle_id);
+			return G_SOURCE_CONTINUE;
 		}
 		/* Start the DTLS handshake */
 		janus_dtls_srtp_handshake(pc->dtls);

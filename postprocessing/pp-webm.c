@@ -382,7 +382,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 		keyFrame = 0;
 		frameLen = 0;
 		len = 0;
-		while(1) {
+		while(tmp != NULL) {
 			if(tmp->drop) {
 				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
@@ -395,12 +395,16 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			len = tmp->len-12-tmp->skip;
 			if(len < 1) {
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			}
 			bytes = fread(buffer, sizeof(char), len, file);
 			if(bytes != len) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			}

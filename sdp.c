@@ -626,7 +626,7 @@ int janus_sdp_parse_candidate(void *webrtc, const char *candidate, int trickle) 
 	janus_handle *handle = pc->handle;
 	if(handle == NULL)
 		return -2;
-	if(strstr(candidate, "end-of-candidates")) {
+	if(strlen(candidate) == 0 || strstr(candidate, "end-of-candidates")) {
 		/* FIXME Should we do something with this? */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] end-of-candidates received\n", handle->handle_id);
 		return 0;

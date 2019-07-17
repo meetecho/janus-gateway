@@ -1683,7 +1683,6 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 /* A host whose ports gets streamed RTP packets of the corresponding type */
 typedef struct janus_videoroom_srtp_context janus_videoroom_srtp_context;
 typedef struct janus_videoroom_rtp_forwarder {
-	GSource base;
 	void *source;
 	guint32 stream_id;
 	gboolean is_video;
@@ -1695,6 +1694,7 @@ typedef struct janus_videoroom_rtp_forwarder {
 	/* Only needed for RTCP */
 	int rtcp_fd;
 	uint16_t local_rtcp_port, remote_rtcp_port;
+	GSource *rtcp_recv;
 	/* Only needed when forwarding simulcasted streams to a single endpoint */
 	gboolean simulcast;
 	janus_rtp_switching_context context;
@@ -1721,21 +1721,28 @@ struct janus_videoroom_srtp_context {
 };
 static void janus_videoroom_srtp_context_free(gpointer data);
 /* RTCP support in RTP forwarders */
+typedef struct janus_videoroom_rtcp_receiver {
+	GSource parent;
+	janus_videoroom_rtp_forwarder *forward;
+	GDestroyNotify destroy;
+} janus_videoroom_rtcp_receiver;
 static void janus_videoroom_rtp_forwarder_rtcp_receive(janus_videoroom_rtp_forwarder *forward);
 static gboolean janus_videoroom_rtp_forwarder_rtcp_prepare(GSource *source, gint *timeout) {
 	*timeout = -1;
 	return FALSE;
 }
 static gboolean janus_videoroom_rtp_forwarder_rtcp_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
-	janus_videoroom_rtp_forwarder *f = (janus_videoroom_rtp_forwarder *)source;
+	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
 	/* Receive the packet */
-	janus_videoroom_rtp_forwarder_rtcp_receive(f);
+	if(r)
+		janus_videoroom_rtp_forwarder_rtcp_receive(r->forward);
 	return G_SOURCE_CONTINUE;
 }
 static void janus_videoroom_rtp_forwarder_rtcp_finalize(GSource *source) {
-	janus_videoroom_rtp_forwarder *f = (janus_videoroom_rtp_forwarder *)source;
+	janus_videoroom_rtcp_receiver *r = (janus_videoroom_rtcp_receiver *)source;
 	/* Remove the reference to the forwarder */
-	janus_refcount_decrease(&f->ref);
+	if(r && r->forward)
+		janus_refcount_decrease(&r->forward->ref);
 }
 static GSourceFuncs janus_videoroom_rtp_forwarder_rtcp_funcs = {
 	janus_videoroom_rtp_forwarder_rtcp_prepare,
@@ -2159,15 +2166,7 @@ static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(j
 		JANUS_LOG(LOG_VERB, "Bound local %s RTCP port: %"SCNu16"\n",
 			is_video ? "video" : "audio", local_rtcp_port);
 	}
-	janus_videoroom_rtp_forwarder *forward = NULL;
-	if(fd < 0) {
-		forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
-	} else {
-		GSource *source = g_source_new(&janus_videoroom_rtp_forwarder_rtcp_funcs, sizeof(janus_videoroom_rtp_forwarder));
-		g_source_set_priority(source, G_PRIORITY_DEFAULT);
-		g_source_add_unix_fd(source, fd, G_IO_IN | G_IO_ERR);
-		forward = (janus_videoroom_rtp_forwarder *)source;
-	}
+	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
 	forward->source = stream;
 	forward->rtcp_fd = fd;
 	forward->local_rtcp_port = local_rtcp_port;
@@ -2267,7 +2266,12 @@ static janus_videoroom_rtp_forwarder *janus_videoroom_rtp_forwarder_add_helper(j
 	if(fd > -1) {
 		/* We need RTCP: track this file descriptor, and ref the forwarder */
 		janus_refcount_increase(&forward->ref);
-		g_source_attach((GSource *)forward, rtcpfwd_ctx);
+		forward->rtcp_recv = g_source_new(&janus_videoroom_rtp_forwarder_rtcp_funcs, sizeof(janus_videoroom_rtcp_receiver));
+		janus_videoroom_rtcp_receiver *rr = (janus_videoroom_rtcp_receiver *)forward->rtcp_recv;
+		rr->forward = forward;
+		g_source_set_priority(forward->rtcp_recv, G_PRIORITY_DEFAULT);
+		g_source_add_unix_fd(forward->rtcp_recv, fd, G_IO_IN | G_IO_ERR);
+		g_source_attach((GSource *)forward->rtcp_recv, rtcpfwd_ctx);
 		/* Send a couple of empty RTP packets to the remote port to do latching */
 		struct sockaddr_in address;
 		socklen_t addrlen = sizeof(address);
@@ -2327,8 +2331,8 @@ static json_t *janus_videoroom_rtp_forwarder_summary(janus_videoroom_rtp_forward
 static void janus_videoroom_rtp_forwarder_destroy(janus_videoroom_rtp_forwarder *forward) {
 	if(forward && g_atomic_int_compare_and_exchange(&forward->destroyed, 0, 1)) {
 		if(forward->rtcp_fd > -1) {
-			g_source_destroy((GSource *)forward);
-			janus_refcount_decrease(&forward->ref);
+			g_source_destroy(forward->rtcp_recv);
+			g_source_unref(forward->rtcp_recv);
 		}
 		janus_refcount_decrease(&forward->ref);
 	}

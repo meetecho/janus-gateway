@@ -52,7 +52,7 @@ var defaultExtension = {
 	isInstalled: function() { return document.querySelector('#janus-extension-installed') !== null; },
 	getScreen: function (callback) {
 		var pending = window.setTimeout(function () {
-			error = new Error('NavigatorUserMediaError');
+			var error = new Error('NavigatorUserMediaError');
 			error.name = 'The required Chrome extension is not installed: click <a href="#">here</a> to install it. (NOTE: this will need you to refresh the page)';
 			return callback(error);
 		}, 1000);
@@ -197,6 +197,10 @@ Janus.useOldDependencies = function (deps) {
 Janus.noop = function() {};
 
 Janus.dataChanDefaultLabel = "JanusDataChannel";
+
+// Note: in the future we may want to change this, e.g., as was
+// attempted in https://github.com/meetecho/janus-gateway/issues/1670
+Janus.endOfCandidates = null;
 
 // Initialization
 Janus.init = function(options) {
@@ -627,7 +631,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("Adding remote candidate:", candidate);
 				if(!candidate || candidate.completed === true) {
 					// end-of-candidates
-					config.pc.addIceCandidate({candidate:''});
+					config.pc.addIceCandidate(Janus.endOfCandidates);
 				} else {
 					// New candidate
 					config.pc.addIceCandidate(candidate);
@@ -1394,7 +1398,7 @@ function Janus(gatewayCallbacks) {
 			if(dcState === 'open') {
 				// Any pending messages to send?
 				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
-					Janus.log("Sending pending messages on <' + label + '>:", config.dataChannel[label].pending.length);
+					Janus.log("Sending pending messages on <" + label + ">:", config.dataChannel[label].pending.length);
 					for(var i in config.dataChannel[label].pending) {
 						var text = config.dataChannel[label].pending[i];
 						Janus.log("Sending string on data channel <" + label + ">: " + text);
@@ -1838,7 +1842,7 @@ function Janus(gatewayCallbacks) {
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
@@ -2425,7 +2429,7 @@ function Janus(gatewayCallbacks) {
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);

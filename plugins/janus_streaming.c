@@ -1108,6 +1108,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 	gboolean is_video;
 	gboolean is_keyframe;
 	gboolean simulcast;
+	uint32_t ssrc[3];
 	janus_videocodec codec;
 	int substream;
 	uint32_t timestamp;
@@ -1314,13 +1315,8 @@ typedef struct janus_streaming_session_stream {
 	janus_streaming_rtp_source_stream *stream;
 	gboolean send;			/* Whether this stream media must be sent to this subscriber */
 	janus_rtp_switching_context context;
-	/* The following is only relevant when simulcasting */
-	int substream;			/* Which simulcast substream we should forward, in case the mountpoint is simulcasting */
-	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
-	int templayer;			/* Which simulcast temporal layer we should forward, in case the mountpoint is simulcasting */
-	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
-	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
-	janus_vp8_simulcast_context simulcast_context;
+	janus_rtp_simulcasting_context sim_context;
+	janus_vp8_simulcast_context vp8_context;
 	/* The following are only relevant the mountpoint is VP9-SVC, and are not to be confused with VP8
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
@@ -2383,10 +2379,10 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 				json_object_set_new(info, "mid", json_string(stream->mid));
 				if(stream->simulcast) {
 					json_t *simulcast = json_object();
-					json_object_set_new(simulcast, "substream", json_integer(s->substream));
-					json_object_set_new(simulcast, "substream-target", json_integer(s->substream_target));
-					json_object_set_new(simulcast, "temporal-layer", json_integer(s->templayer));
-					json_object_set_new(simulcast, "temporal-layer-target", json_integer(s->templayer_target));
+					json_object_set_new(simulcast, "substream", json_integer(s->sim_context.substream));
+					json_object_set_new(simulcast, "substream-target", json_integer(s->sim_context.substream_target));
+					json_object_set_new(simulcast, "temporal-layer", json_integer(s->sim_context.templayer));
+					json_object_set_new(simulcast, "temporal-layer-target", json_integer(s->sim_context.templayer_target));
 					json_object_set_new(info, "simulcast", simulcast);
 				}
 				if(stream->svc) {
@@ -4747,23 +4743,21 @@ static void *janus_streaming_handler(void *data) {
 							goto error;
 						}
 						/* In case this mountpoint is simulcasting, let's aim high by default */
-						s->substream = -1;
-						s->substream_target = 2;
-						s->templayer = -1;
-						s->templayer_target = 2;
-						janus_vp8_simulcast_context_reset(&s->simulcast_context);
+						s->sim_context.substream_target = 2;
+						s->sim_context.templayer_target = 2;
+						janus_vp8_simulcast_context_reset(&s->vp8_context);
 						/* Unless the request contains a target for either layer */
 						json_t *substream = json_object_get(root, "substream");
 						if(substream) {
-							s->substream_target = json_integer_value(substream);
+							s->sim_context.substream_target = json_integer_value(substream);
 							JANUS_LOG(LOG_VERB, "Setting video substream to let through (simulcast): %d (was %d)\n",
-								s->substream_target, s->substream);
+								s->sim_context.substream_target, s->sim_context.substream);
 						}
 						json_t *temporal = json_object_get(root, "temporal");
 						if(temporal) {
-							s->templayer_target = json_integer_value(temporal);
+							s->sim_context.templayer_target = json_integer_value(temporal);
 							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
-								s->templayer_target, s->templayer);
+								s->sim_context.templayer_target, s->sim_context.templayer);
 						}
 					} else if(stream && stream->svc) {
 						/* FIXME What if we're doing SVC on two different video streams? */
@@ -5029,16 +5023,16 @@ done:
 						/* Check if the viewer is requesting a different substream/temporal layer */
 						json_t *substream = json_object_get(root, "substream");
 						if(substream) {
-							s->substream_target = json_integer_value(substream);
+							s->sim_context.substream_target = json_integer_value(substream);
 							JANUS_LOG(LOG_VERB, "Setting video substream to let through (simulcast): %d (was %d)\n",
-								s->substream_target, s->substream);
-							if(s->substream_target == s->substream) {
+								s->sim_context.substream_target, s->sim_context.substream);
+							if(s->sim_context.substream_target == s->sim_context.substream) {
 								/* No need to do anything, we're already getting the right substream, so notify the viewer */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
 								json_object_set_new(result, "mid", json_string(stream->mid));
-								json_object_set_new(result, "substream", json_integer(s->substream));
+								json_object_set_new(result, "substream", json_integer(s->sim_context.substream));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -5046,16 +5040,17 @@ done:
 						}
 						json_t *temporal = json_object_get(root, "temporal");
 						if(temporal) {
-							s->templayer_target = json_integer_value(temporal);
+							s->sim_context.templayer_target = json_integer_value(temporal);
 							JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
-								s->templayer_target, s->templayer);
-							if(stream->codecs.video_codec == JANUS_VIDEOCODEC_VP8 && s->templayer_target == s->templayer) {
+								s->sim_context.templayer_target, s->sim_context.templayer);
+							if(stream->codecs.video_codec == JANUS_VIDEOCODEC_VP8 &&
+									s->sim_context.templayer_target == s->sim_context.templayer) {
 								/* No need to do anything, we're already getting the right temporal layer, so notify the viewer */
 								json_t *event = json_object();
 								json_object_set_new(event, "streaming", json_string("event"));
 								json_t *result = json_object();
 								json_object_set_new(result, "mid", json_string(stream->mid));
-								json_object_set_new(result, "temporal", json_integer(s->templayer));
+								json_object_set_new(result, "temporal", json_integer(s->sim_context.templayer));
 								json_object_set_new(event, "result", result);
 								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 								json_decref(event);
@@ -5444,20 +5439,8 @@ static int janus_streaming_allocate_port_pair(const char *name, const char *medi
 			}
 		}
 		/* If we got here, something failed: try again */
-		if(rtp_fd != -1) {
+		if(rtp_fd != -1)
 			close(rtp_fd);
-			rtp_fd = -1;
-		}
-		if(rtcp_fd != -1) {
-			close(rtcp_fd);
-			rtcp_fd = -1;
-		}
-	}
-	if(rtp_fd != -1) {
-		close(rtp_fd);
-	}
-	if(rtcp_fd != -1) {
-		close(rtcp_fd);
 	}
 	return -1;
 }
@@ -7103,9 +7086,9 @@ static void *janus_streaming_relay_thread(void *data) {
 								name, ret, stream->last_ssrc[0]);
 						}
 					}
-					packet.data->ssrc = ntohl((uint32_t)mountpoint->id);
+					packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 					janus_recorder_save_frame(stream->rc, buffer, bytes);
-					packet.data->ssrc = ssrc;
+					packet.data->ssrc = htonl(ssrc);
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
@@ -7302,13 +7285,19 @@ static void *janus_streaming_relay_thread(void *data) {
 						}
 					}
 					if(index == 0) {
-						packet.data->ssrc = ntohl((uint32_t)mountpoint->id);
+						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 						janus_recorder_save_frame(stream->rc, buffer, bytes);
-						packet.data->ssrc = ssrc;
+						packet.data->ssrc = htonl(ssrc);
 					}
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
+					/* Take note of the simulcast SSRCs */
+					if(stream->simulcast) {
+						packet.ssrc[0] = stream->last_ssrc[0];
+						packet.ssrc[1] = stream->last_ssrc[1];
+						packet.ssrc[2] = stream->last_ssrc[2];
+					}
 					/* Go! */
 					janus_mutex_lock(&mountpoint->mutex);
 					g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
@@ -7589,99 +7578,46 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				char *payload = janus_rtp_payload((char *)packet->data, packet->length, &plen);
 				if(payload == NULL)
 					return;
-				gboolean switched = FALSE;
-				if(s->substream != s->substream_target) {
-					/* There has been a change: let's wait for a keyframe on the target */
-					int step = (s->substream < 1 && s->substream_target == 2);
-					if(packet->substream == s->substream_target || (step && packet->substream == step)) {
-						if(janus_vp8_is_keyframe(payload, plen)) {
-							JANUS_LOG(LOG_VERB, "Received keyframe on substream %d, switching (was %d)\n",
-								packet->substream, s->substream);
-							s->substream = packet->substream;
-							switched = TRUE;
-							/* Notify the viewer */
-							json_t *event = json_object();
-							json_object_set_new(event, "streaming", json_string("event"));
-							json_t *result = json_object();
-							json_object_set_new(result, "mid", json_string(stream->mid));
-							json_object_set_new(result, "substream", json_integer(s->substream));
-							json_object_set_new(event, "result", result);
-							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-							json_decref(event);
-						//~ } else {
-							//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
-						}
-					}
-				}
-				/* If we haven't received our desired substream yet, let's drop temporarily */
-				if(s->last_relayed == 0) {
-					/* Let's start slow */
-					s->last_relayed = janus_get_monotonic_time();
-				} else {
-					/* Check if 250ms went by with no packet relayed */
-					gint64 now = janus_get_monotonic_time();
-					if(now-s->last_relayed >= 250000) {
-						s->last_relayed = now;
-						int substream = s->substream-1;
-						if(substream < 0)
-							substream = 0;
-						if(s->substream != substream) {
-							JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-								s->substream, substream);
-							s->substream = substream;
-							/* Notify the viewer */
-							json_t *event = json_object();
-							json_object_set_new(event, "streaming", json_string("event"));
-							json_t *result = json_object();
-							json_object_set_new(result, "mid", json_string(stream->mid));
-							json_object_set_new(result, "substream", json_integer(s->substream));
-							json_object_set_new(event, "result", result);
-							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-							json_decref(event);
-						}
-					}
-				}
-				if(packet->substream != s->substream) {
-					JANUS_LOG(LOG_HUGE, "Dropping packet (it's from substream %d, but we're only relaying substream %d now\n",
-						packet->substream, s->substream);
+				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
+				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&s->sim_context,
+					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &s->context);
+				/* Do we need to drop this? */
+				if(!relay)
 					return;
+				/* Any event we should notify? */
+				if(s->sim_context.changed_substream) {
+					/* Notify the user about the substream change */
+					json_t *event = json_object();
+					json_object_set_new(event, "streaming", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "substream", json_integer(s->sim_context.substream));
+					json_object_set_new(event, "result", result);
+					gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
+					json_decref(event);
 				}
-				s->last_relayed = janus_get_monotonic_time();
+				if(s->sim_context.need_pli) {
+					/* Schedule a PLI */
+					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+					g_atomic_int_set(&stream->need_pli, 1);
+				}
+				if(s->sim_context.changed_temporal) {
+					/* Notify the user about the temporal layer change */
+					json_t *event = json_object();
+					json_object_set_new(event, "streaming", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "temporal", json_integer(s->sim_context.templayer));
+					json_object_set_new(event, "result", result);
+					gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
+					json_decref(event);
+				}
+				/* If we got here, update the RTP header and send the packet */
+				janus_rtp_header_update(packet->data, &s->context, TRUE);
 				char vp8pd[6];
 				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
-					/* Check if there's any temporal scalability to take into account */
-					uint16_t picid = 0;
-					uint8_t tlzi = 0;
-					uint8_t tid = 0;
-					uint8_t ybit = 0;
-					uint8_t keyidx = 0;
-					if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
-						//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
-						if(s->templayer != s->templayer_target) {
-							/* FIXME We should be smarter in deciding when to switch */
-							s->templayer = s->templayer_target;
-								/* Notify the viewer */
-								json_t *event = json_object();
-								json_object_set_new(event, "streaming", json_string("event"));
-								json_t *result = json_object();
-								json_object_set_new(result, "mid", json_string(stream->mid));
-								json_object_set_new(result, "temporal", json_integer(s->templayer));
-								json_object_set_new(event, "result", result);
-								gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-								json_decref(event);
-						}
-						if(tid > s->templayer) {
-							JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
-								tid, s->templayer);
-							/* We increase the base sequence number, or there will be gaps when delivering later */
-							s->context.base_seq++;
-							return;
-						}
-					}
-					/* If we got here, update the RTP header and send the packet */
-					janus_rtp_header_update(packet->data, &s->context, TRUE);
+					/* For VP8, we save the original payload descriptor, to restore it after */
 					memcpy(vp8pd, payload, sizeof(vp8pd));
-					janus_vp8_simulcast_descriptor_update(payload, plen, &s->simulcast_context, switched);
+					janus_vp8_simulcast_descriptor_update(payload, plen, &s->vp8_context,
+						s->sim_context.changed_substream);
 				}
 				/* Send the packet */
 				if(gateway != NULL) {
@@ -7778,6 +7714,9 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 	copy->is_video = packet->is_video;
 	copy->is_keyframe = packet->is_keyframe;
 	copy->simulcast = packet->simulcast;
+	copy->ssrc[0] = packet->ssrc[0];
+	copy->ssrc[1] = packet->ssrc[1];
+	copy->ssrc[2] = packet->ssrc[2];
 	copy->codec = packet->codec;
 	copy->substream = packet->substream;
 	copy->timestamp = packet->timestamp;
