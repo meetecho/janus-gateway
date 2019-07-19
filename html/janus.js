@@ -513,20 +513,20 @@ function Janus(gatewayCallbacks) {
 		longPollTimeout = 60000;
 
 	// overrides for default maxBitrate values for simulcasting
-	function getMaxBitrates() {
+	function getMaxBitrates(simulcastMaxBitrates) {
 		var maxBitrates = {
 			high: 900000,
 			medium: 300000,
 			low: 100000,
 		};
 
-		if (gatewayCallbacks.simulcastMaxBitrates !== undefined && gatewayCallbacks.simulcastMaxBitrates !== undefined ) {
-			if (gatewayCallbacks.simulcastMaxBitrates.high)
-				maxBitrates.high = gatewayCallbacks.simulcastMaxBitrates.high;
-			if (gatewayCallbacks.simulcastMaxBitrates.medium)
-				maxBitrates.medium = gatewayCallbacks.simulcastMaxBitrates.medium;
-			if (gatewayCallbacks.simulcastMaxBitrates.low)
-				maxBitrates.low = gatewayCallbacks.simulcastMaxBitrates.low;
+		if (simulcastMaxBitrates !== undefined && simulcastMaxBitrates !== null) {
+			if (simulcastMaxBitrates.high)
+				maxBitrates.high = simulcastMaxBitrates.high;
+			if (simulcastMaxBitrates.medium)
+				maxBitrates.medium = simulcastMaxBitrates.medium;
+			if (simulcastMaxBitrates.low)
+				maxBitrates.low = simulcastMaxBitrates.low;
 		}
 
 		return maxBitrates;
@@ -1818,7 +1818,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(track, stream);
 					} else {
 						Janus.log('Enabling rid-based simulcasting:', track);
-						const maxBitrates = getMaxBitrates();
+						const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
 						config.pc.addTransceiver(track, {
 							direction: "sendrecv",
 							streams: [stream],
@@ -2611,7 +2611,7 @@ function Janus(gatewayCallbacks) {
 					parameters = {};
 
 
-				const maxBitrates = getMaxBitrates();
+				const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
 				parameters.encodings = [
 					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
@@ -2853,7 +2853,7 @@ function Janus(gatewayCallbacks) {
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
 
-			const maxBitrates = getMaxBitrates();
+			const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
 			sender.setParameters({encodings: [
 				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
 				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
