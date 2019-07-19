@@ -1818,7 +1818,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(track, stream);
 					} else {
 						Janus.log('Enabling rid-based simulcasting:', track);
-						const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
+						const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 						config.pc.addTransceiver(track, {
 							direction: "sendrecv",
 							streams: [stream],
@@ -2611,7 +2611,7 @@ function Janus(gatewayCallbacks) {
 					parameters = {};
 
 
-				const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
+				const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 				parameters.encodings = [
 					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
@@ -2853,7 +2853,7 @@ function Janus(gatewayCallbacks) {
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
 
-			const maxBitrates = getMaxBitrates(gatewayCallbacks.simulcastMaxBitrates);
+			const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 			sender.setParameters({encodings: [
 				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
 				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
