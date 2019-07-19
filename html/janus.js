@@ -512,6 +512,22 @@ function Janus(gatewayCallbacks) {
 	if(isNaN(longPollTimeout))
 		longPollTimeout = 60000;
 
+	// overrides for default maxBitrate values for simulcasting
+	var simulcastMaxBitrates = {
+		high: 900000,
+		medium: 300000,
+		low: 100000,
+	};
+
+	if (gatewayCallbacks.simulcastMaxBitrates !== undefined && gatewayCallbacks.simulcastMaxBitrates !== undefined ) {
+		if (gatewayCallbacks.simulcastMaxBitrates.high)
+			simulcastMaxBitrates.high = gatewayCallbacks.simulcastMaxBitrates.high;
+		if (gatewayCallbacks.simulcastMaxBitrates.medium)
+			simulcastMaxBitrates.medium = gatewayCallbacks.simulcastMaxBitrates.medium;
+		if (gatewayCallbacks.simulcastMaxBitrates.low)
+			simulcastMaxBitrates.low = gatewayCallbacks.simulcastMaxBitrates.low;
+	}
+
 	var connected = false;
 	var sessionId = null;
 	var pluginHandles = {};
@@ -1802,9 +1818,9 @@ function Janus(gatewayCallbacks) {
 							direction: "sendrecv",
 							streams: [stream],
 							sendEncodings: [
-								{ rid: "h", active: true, maxBitrate: 900000 },
-								{ rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
-								{ rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+								{ rid: "h", active: true, maxBitrate: simulcastMaxBitrates.high },
+								{ rid: "m", active: true, maxBitrate: simulcastMaxBitrates.medium, scaleResolutionDownBy: 2 },
+								{ rid: "l", active: true, maxBitrate: simulcastMaxBitrates.low, scaleResolutionDownBy: 4 }
 							]
 						});
 					}
@@ -2589,9 +2605,9 @@ function Janus(gatewayCallbacks) {
 				if(!parameters)
 					parameters = {};
 				parameters.encodings = [
-					{ rid: "h", active: true, maxBitrate: 900000 },
-					{ rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
-					{ rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+					{ rid: "h", active: true, maxBitrate: simulcastMaxBitrates.high },
+					{ rid: "m", active: true, maxBitrate: simulcastMaxBitrates.medium, scaleResolutionDownBy: 2 },
+					{ rid: "l", active: true, maxBitrate: simulcastMaxBitrates.low, scaleResolutionDownBy: 4 }
 				];
 				sender.setParameters(parameters);
 			}
@@ -2829,9 +2845,9 @@ function Janus(gatewayCallbacks) {
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
 			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
-				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+				{ rid: "high", active: true, priority: "high", maxBitrate: simulcastMaxBitrates.high },
+				{ rid: "medium", active: true, priority: "medium", maxBitrate: simulcastMaxBitrates.medium },
+				{ rid: "low", active: true, priority: "low", maxBitrate: simulcastMaxBitrates.low }
 			]});
 		}
 		config.pc.createAnswer(mediaConstraints)
