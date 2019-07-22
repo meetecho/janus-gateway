@@ -1168,7 +1168,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 	if(error_code != 0)
 		goto admin_response;
-	json_t *request = json_object_get(message, "textroom");
+	json_t *request = json_object_get(message, "request");
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")
 			|| !strcasecmp(request_text, "exists")
