@@ -6793,7 +6793,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
 					packet->spatial_layer, packet->temporal_layer);
 				/* Fix sequence number and timestamp (video source switching may be involved) */
-				janus_rtp_header_update(packet->data, &session->context, TRUE, 4500);
+				janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 1;
 				}
@@ -6848,7 +6848,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_decref(event);
 				}
 				/* If we got here, update the RTP header and send the packet */
-				janus_rtp_header_update(packet->data, &session->context, TRUE, 4500);
+				janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
 				char vp8pd[6];
 				if(packet->codec == JANUS_VIDEOCODEC_VP8) {
 					/* For VP8, we save the original payload descriptor, to restore it after */
@@ -6954,7 +6954,7 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 static void *janus_streaming_helper_thread(void *data) {
 	janus_streaming_helper *helper = (janus_streaming_helper *)data;
 	janus_streaming_mountpoint *mp = helper->mp;
-	JANUS_LOG(LOG_INFO, "[%s/#%d] Joining Streaming helper thread\n", mp->name, helper->id);
+	JANUS_LOG(LOG_INFO, "[%s/#%d] Starting Streaming helper thread\n", mp->name, helper->id);
 	janus_streaming_rtp_relay_packet *pkt = NULL;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mp->destroyed)) {
 		pkt = g_async_queue_pop(helper->queued_packets);
