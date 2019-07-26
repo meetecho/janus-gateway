@@ -3293,8 +3293,6 @@ static void *janus_sipre_relay_thread(void *data) {
 	/* Loop */
 	int num = 0;
 	gboolean goon = TRUE;
-	int astep = 0, vstep = 0;
-	guint32 ats = 0, vts = 0;
 	while(goon && session != NULL && !g_atomic_int_get(&session->destroyed) &&
 			session->status > janus_sipre_call_status_idle &&
 			session->status < janus_sipre_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
@@ -3455,25 +3453,6 @@ static void *janus_sipre_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
 					janus_rtp_header_update(header, video ? &session->media.vcontext : &session->media.acontext, video);
-					if(video) {
-						if(vts == 0) {
-							vts = timestamp;
-						} else if(vstep == 0) {
-							vstep = timestamp-vts;
-							if(vstep < 0) {
-								vstep = 0;
-							}
-						}
-					} else {
-						if(ats == 0) {
-							ats = timestamp;
-						} else if(astep == 0) {
-							astep = timestamp-ats;
-							if(astep < 0) {
-								astep = 0;
-							}
-						}
-					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
