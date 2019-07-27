@@ -857,7 +857,7 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if(g711) {
-			if(janus_pp_g711_create(destination, metadata) < 0) {
+			if(janus_pp_g711_create(destination, metadata, fsize) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);
