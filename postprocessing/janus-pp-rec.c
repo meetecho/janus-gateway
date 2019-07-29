@@ -806,10 +806,13 @@ int main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
+	int rate = video ? 90000 : 48000;
+	if(g711 || g722)
+		rate = 8000;
 	while(tmp) {
 		count++;
 		if(!data)
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (tmp->ts-list->ts)/90000);
+			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (tmp->ts-list->ts)/rate);
 		else
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
