@@ -381,8 +381,6 @@ int main(int argc, char *argv[])
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				if(!jsonheader_only)
-					JANUS_LOG(LOG_WARN, "New .mjr header format\n");
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
