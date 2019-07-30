@@ -242,7 +242,7 @@ int main(int argc, char *argv[])
 				}
 				const char *t = json_string_value(type);
 				if(!strcasecmp(t, "d")) {
-					/* Data recordings don't go through the PERC process */
+					/* Data recordings are not supported yet */
 					json_decref(mjr_header);
 					fclose(file);
 					JANUS_LOG(LOG_ERR, "Not an RTP recording (data currently unsupported)...\n");
