@@ -4263,7 +4263,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_r_subscribe: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			if(status == 200) {
+			if(status == 200 || status == 202) {
 				/* Success */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
