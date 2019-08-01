@@ -4215,6 +4215,20 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 		}
 		temp = temp->next;
 	}
+
+	if (session->media.remote_alt_video_ip &&
+		(!session->media.remote_ip || !strcmp(session->media.remote_ip, session->media.remote_alt_video_ip))) {
+		/* We set remote_alt_video_ip only if different from session level connection address
+		 * or audio media level connection address. If we have video only address we */
+		if (!session->media.remote_ip)
+			session->media.remote_ip = session->media.remote_alt_video_ip;
+		else {
+			/* remote_alt_video_ip duplicates remote_ip*/
+			g_free(session->media.remote_alt_video_ip);
+		}
+		session->media.remote_alt_video_ip = NULL;
+	}
+
 	if(update && changed && *changed) {
 		/* Something changed: mark this on the session, so that the thread can update the sockets */
 		session->media.updated = TRUE;
@@ -4571,8 +4585,7 @@ static void *janus_sip_relay_thread(void *data) {
 			memcpy(&video_server_addr, &audio_server_addr, sizeof(struct sockaddr_in));
 
 			/* However, if video IP address is specified we use it for video media */
-			if (session->media.remote_alt_video_ip &&
-				(!session->media.remote_ip || strcmp(session->media.remote_ip, session->media.remote_alt_video_ip))) {
+			if (session->media.remote_alt_video_ip) {
 				have_video_server_ip = TRUE;
 				if(inet_aton(session->media.remote_alt_video_ip, &video_server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 					struct hostent *host = gethostbyname(session->media.remote_alt_video_ip);	/* ...resolve name */
