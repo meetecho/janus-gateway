@@ -2635,7 +2635,6 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_AUTOACK(FALSE),
 				TAG_END());
 			g_free(sdp);
-			session->callee = g_strdup(uri_text);
 			g_free(session->transaction);
 			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			/* Send an ack back */
