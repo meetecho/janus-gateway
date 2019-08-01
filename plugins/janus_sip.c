@@ -3826,11 +3826,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* We expect a payload */
 			if(!sip) {
 				/* No SIP message? Maybe an internal message? */
-				JANUS_LOG(LOG_WARN, "No SIP message for incoming NOTIFY, ignoring...\n");
 				return;
 			}
 			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				/* Send a 200 back and ignore the message */
+				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 				return;
 			}
 			/* Notify the application */
