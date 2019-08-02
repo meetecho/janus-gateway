@@ -84,12 +84,25 @@
 \endverbatim
  *
  * Coming to the available requests, you send a SIP REGISTER using the
- * \c register request, which has to be formatted as follows:
+ * \c register request. To be more precise, a \c register request MAY result
+ * in a SIP REGISTER, as this method actually provides ways to start using
+ * a SIP account with no need for a registration. It is the case, for instance,
+ * of the so-called \c guest registrations: if you register as a \c guest ,
+ * it means you'll use the provided SIP URI in your \c From headers for calls,
+ * but you will actually not send a SIP REGISTER; this is especially useful
+ * for outgoing calls to services that don't require registration (e.g., IVR
+ * systems, or conference bridges), but also means you won't be able to
+ * receive calls unless peers know what your private SIP address is. A SIP
+ * REGISTER isn't sent also when registering as a \c helper : as we'll
+ * explain later, \c helper sessions are sessions only meant to facilitate
+ * the setup of \ref sipmc.
+ *
+ * That said, a \c register request has to be formatted as follows:
  *
 \verbatim
 {
 	"request" : "register",
-	"type" : "<if guest, no SIP REGISTER is actually sent; optional>",
+	"type" : "<if guest or helper, no SIP REGISTER is actually sent; optional>",
 	"send_register" : <true|false; if false, no SIP REGISTER is actually sent; optional>,
 	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
@@ -103,7 +116,8 @@
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
-	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>"
+	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
+	"master_id" : <ID of an already registered account, if ths is an helper for multiple calls (more on that later); optional>
 }
 \endverbatim
  *
@@ -122,7 +136,8 @@
 	"result" : {
 		"event" : "registered",
 		"username" : <SIP URI username>,
-		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>
+		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>,
+		"master_id" : <unique ID of this registered session in the plugin, if a potential master>
 	}
 }
 \endverbatim
@@ -449,6 +464,54 @@
  * that will be used for the up-to-four recordings that may need to be enabled.
  *
  * A \c recordingupdated event is sent back in case the request is successful.
+ *
+ * \section sipmc Simultaneous SIP calls using the same account
+ *
+ * As anticipated in the previous sections, attaching to the SIP plugin
+ * with a Janus handle means creating a SIP stack on behalf of a user
+ * or application: this typically means registering an account, and being
+ * able to start or receive calls, handle subscriptions, and so on. This
+ * also means that, since in Janus each core handle can only be associated
+ * with a single PeerConnection, each SIP account is limited to a single
+ * call per time: if a user is in a SIP session already, and another call
+ * comes in, it's automatically rejected with a \c 486 \c Busy .
+ *
+ * While usually not a big deal, there are use cases where it might make
+ * sense to be able to support multiple concurrent calls, and maybe switch
+ * from one to the other seamlessly. This is possible in the SIP plugin
+ * using the so-called \c helper sessions. Specifically, \c helper sessions
+ * work under the assumption that there's a \c master session that is
+ * registered normally (the "regular" SIP plugin handle, that is), and
+ * that this \c helper sessions can simply be associated to that: any time
+ * another concurrent call is needed, if the \c master session is busy
+ * one of the \c helpers can be used; the more \c helper sessions are
+ * available, the more simultaneous calls can be established.
+ *
+ * The way this works is simple:
+ *
+ * 1. you create a SIP session the usual way, and send a regular \c register
+ * there; this will be the \c master session, and will return a \c master_id
+ * when successfully registered;
+ * 2. for each \c helper you want to add, you attach a new Janus handle
+ * to the SIP plugin, and send a \c register with \c type: \c helper and
+ * providing the same \c username as the master, plus a \c master_id attribute
+ * referencing the main session;
+ * 3. at this point, the new \c helper is associated to the \c master ,
+ * meaning it can be used to start new calls or receive calls exactly
+ * as the main session, and using the same account information, credentials,
+ * etc.
+ *
+ * Notice that, as soon as the \c master unregisters, or the Janus handle
+ * it's on is detached, all the \c helper sessions associated to it are
+ * automatically torn down as well. Specifically, the plugin will forcibly
+ * detach the related handles. Should you need to register again, and want
+ * some helpers there too, you'll have to add them again.
+ *
+ * If you want to see this in practice, the SIP plugin demo has a "hidden"
+ * function you can invoke from the JavaScript console to play with helpers:
+ * calling the \c addHelper() function will add a new helper, and show additional
+ * controls. You can add as many helpers as you want.
+ *
  */
 
 #include "plugin.h"
@@ -2161,9 +2224,29 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Parse the request */
-			json_t *master = json_object_get(root, "master_id");
-			if(master != NULL) {
+			gboolean guest = FALSE, helper = FALSE;
+			json_t *type = json_object_get(root, "type");
+			if(type != NULL) {
+				const char *type_text = json_string_value(type);
+				if(!strcmp(type_text, "guest")) {
+					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
+					guest = TRUE;
+				} else if(!strcmp(type_text, "helper")) {
+					JANUS_LOG(LOG_INFO, "Registering as a helper\n");
+					helper = TRUE;
+				} else {
+					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
+				}
+			}
+			if(helper) {
 				/* This is actually an helper session, for an already registered one */
+				json_t *master = json_object_get(root, "master_id");
+				if(master == NULL) {
+					JANUS_LOG(LOG_ERR, "Missing mandatory element for helper (master_id)\n");
+					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing mandatory element for helper (master_id)");
+					goto error;
+				}
 				guint32 master_id = json_integer_value(master);
 				janus_mutex_lock(&sessions_mutex);
 				if(session->master != NULL) {
@@ -2223,17 +2306,6 @@ static void *janus_sip_handler(void *data) {
 				error_code = JANUS_SIP_ERROR_HELPER_ERROR;
 				g_snprintf(error_cause, 512, "Can't register on a helper session");
 				goto error;
-			}
-			gboolean guest = FALSE;
-			json_t *type = json_object_get(root, "type");
-			if(type != NULL) {
-				const char *type_text = json_string_value(type);
-				if(!strcmp(type_text, "guest")) {
-					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
-					guest = TRUE;
-				} else {
-					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
-				}
 			}
 
 			gboolean send_register = TRUE;
@@ -2552,6 +2624,26 @@ static void *janus_sip_handler(void *data) {
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (register first)");
 				goto error;
+			}
+			if(session->helper) {
+				/* Not really "unregistering", we're just removing the association to the "master" */
+				janus_sip_session *master = session->master;
+				janus_mutex_lock(&master->mutex);
+				gboolean found = (g_list_find(master->helpers, session) != NULL);
+				if(found) {
+					master->helpers = g_list_remove(master->helpers, session);
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_decrease(&master->ref);
+				}
+				janus_mutex_unlock(&master->mutex);
+				session->helper = FALSE;
+				session->master = NULL;
+				session->master_id = FALSE;
+				/* Done */
+				session->account.registration_status = janus_sip_registration_status_unregistered;
+				result = json_object();
+				json_object_set_new(result, "event", json_string("unregistering"));
+				goto done;
 			}
 			if(session->account.registration_status < janus_sip_registration_status_registered) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
@@ -4374,6 +4466,24 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, reg, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(reg);
+				/* If we unregistered and this session had helpers, get rid of them */
+				if(event == nua_r_unregister) {
+					janus_mutex_lock(&session->mutex);
+					GList *temp = NULL;
+					while(session->helpers != NULL) {
+						temp = session->helpers;
+						session->helpers = g_list_remove_link(session->helpers, temp);
+						janus_sip_session *helper = (janus_sip_session *)temp->data;
+						if(helper != NULL && helper->handle != NULL) {
+							/* TODO Get rid of this helper */
+							janus_refcount_decrease(&session->ref);
+							janus_refcount_decrease(&helper->ref);
+							gateway->end_session(helper->handle);
+						}
+						g_list_free(temp);
+					}
+					janus_mutex_unlock(&session->mutex);
+				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();

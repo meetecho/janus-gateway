@@ -789,6 +789,7 @@ function addHelper() {
 				helpers[helperId].sipcall.send({
 					message: {
 						request: "register",
+						type: "helper",
 						username: $('#username').val(),	// We use the same username as the master session
 						master_id: masterId				// Then we add the ID of the master session, nothing else
 					}
