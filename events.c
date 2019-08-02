@@ -61,24 +61,6 @@ int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers)
 			return -1;
 		}
 	}
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_CORE),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_CORE));
 	return 0;
 }
 
