@@ -358,12 +358,12 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	} else if(strcmp(mqtt_version_str, JANUS_MQTT_VERSION_3_1_1) == 0) {
 		ctx->connect.mqtt_version = MQTTVERSION_3_1_1;
 	} else if(strcmp(mqtt_version_str, JANUS_MQTT_VERSION_5) == 0) {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		ctx->connect.mqtt_version = MQTTVERSION_5;
-	#else
+#else
 		JANUS_LOG(LOG_FATAL, "Using MQTT v5 requires compilation with Paho >= 1.3.0\n");
 		goto error;
-	#endif
+#endif
 	} else {
 		JANUS_LOG(LOG_FATAL, "Unknown MQTT version\n");
 		goto error;
@@ -853,7 +853,7 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 	}
 
 	MQTTAsync_disconnectOptions options = MQTTAsync_disconnectOptions_initializer;
-	
+
 #ifdef MQTTVERSION_5
 	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 		options.onSuccess5 = janus_mqtt_client_disconnect_success5;
@@ -866,7 +866,7 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 	options.onSuccess = janus_mqtt_client_disconnect_success;
 	options.onFailure = janus_mqtt_client_disconnect_failure;
 #endif
-	
+
 	options.context = ctx;
 	options.timeout = ctx->disconnect.timeout;
 	return MQTTAsync_disconnect(ctx->client, &options);
@@ -919,7 +919,7 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
 	if(admin) {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_admin_subscribe_success5;
 			options.onFailure5 = janus_mqtt_client_admin_subscribe_failure5;
@@ -927,13 +927,13 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 			options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 			options.onFailure = janus_mqtt_client_admin_subscribe_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 		options.onFailure = janus_mqtt_client_admin_subscribe_failure;
-	#endif
+#endif
 		return MQTTAsync_subscribe(ctx->client, ctx->admin.subscribe.topic, ctx->admin.subscribe.qos, &options);
 	} else {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_subscribe_success5;
 			options.onFailure5 = janus_mqtt_client_subscribe_failure5;
@@ -941,10 +941,10 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 			options.onSuccess = janus_mqtt_client_subscribe_success;
 			options.onFailure = janus_mqtt_client_subscribe_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_subscribe_success;
 		options.onFailure = janus_mqtt_client_subscribe_failure;
-	#endif
+#endif
 		return MQTTAsync_subscribe(ctx->client, ctx->subscribe.topic, ctx->subscribe.qos, &options);
 	}
 }
@@ -1048,7 +1048,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 	options.context = ctx;
 
 	if(admin) {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_publish_admin_success5;
 			options.onFailure5 = janus_mqtt_client_publish_admin_failure5;
@@ -1056,13 +1056,13 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 			options.onSuccess = janus_mqtt_client_publish_admin_success;
 			options.onFailure = janus_mqtt_client_publish_admin_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
 		options.onFailure = janus_mqtt_client_publish_admin_failure;
-	#endif
+#endif
 		return MQTTAsync_sendMessage(ctx->client, ctx->admin.publish.topic, &msg, &options);
 	} else {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_publish_janus_success5;
 			options.onFailure5 = janus_mqtt_client_publish_janus_failure5;
@@ -1070,10 +1070,10 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 			options.onSuccess = janus_mqtt_client_publish_janus_success;
 			options.onFailure = janus_mqtt_client_publish_janus_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_publish_janus_success;
 		options.onFailure = janus_mqtt_client_publish_janus_failure;
-	#endif
+#endif
 		return MQTTAsync_sendMessage(ctx->client, ctx->publish.topic, &msg, &options);
 	}
 }
@@ -1151,7 +1151,7 @@ int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payl
 
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
-	
+
 #ifdef MQTTVERSION_5
 	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 		options.onSuccess5 = janus_mqtt_client_publish_status_success5;
