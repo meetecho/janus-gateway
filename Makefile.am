@@ -513,6 +513,7 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
+bin_PROGRAMS += mjr2pcap
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-cmdline.c \
@@ -555,7 +556,24 @@ postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
 EXTRA_DIST += postprocessing/janus-pp-rec.ggo
 CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
 
+mjr2pcap_SOURCES = \
+	postprocessing/pp-rtp.h \
+	postprocessing/mjr2pcap.c \
+	log.c \
+	$(NULL)
+
+mjr2pcap_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(POST_PROCESSING_CFLAGS) \
+	$(NULL)
+
+mjr2pcap_LDADD = \
+	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
+	$(NULL)
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
+dist_man1_MANS += postprocessing/mjr2pcap.1
 
 endif
 

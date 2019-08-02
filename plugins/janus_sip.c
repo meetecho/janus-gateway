@@ -290,6 +290,7 @@
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
+        "autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -3076,6 +3077,8 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
+                        json_t *aar = json_object_get(root, "autoaccept_reinvites");
+                        session->media.autoaccept_reinvites = aar ? json_is_true(aar) : TRUE;
 			/* Any SDP to handle? if not, something's wrong */
 			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
@@ -4135,8 +4138,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_notify: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
+			if(!sip) {
+				/* No SIP message? Maybe an internal message? */
+				return;
+			}
 			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				/* Send a 200 back and ignore the message */
+				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 				return;
 			}
 			/* Notify the application */
@@ -4597,7 +4605,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_r_subscribe: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			if(status == 200) {
+			if(status == 200 || status == 202) {
 				/* Success */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
