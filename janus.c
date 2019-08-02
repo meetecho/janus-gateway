@@ -2958,30 +2958,28 @@ static void *janus_transport_requests(void *data) {
 			break;
 		/* Should we process the request synchronously or with a task from the thread pool? */
 		destroy = TRUE;
-		if(!request->admin) {
-			/* Process the request synchronously only it's not a message for a plugin */
-			json_t *message = json_object_get(request->message, "janus");
-			const gchar *message_text = json_string_value(message);
-			if(message_text && !strcasecmp(message_text, "message")) {
-				/* Spawn a task thread */
-				GError *tperror = NULL;
-				g_thread_pool_push(tasks, request, &tperror);
-				if(tperror != NULL) {
-					/* Something went wrong... */
-					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
-					json_t *transaction = json_object_get(message, "transaction");
-					const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
-					janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
-				} else {
-					/* Don't destroy the request now, the task will take care of that */
-					destroy = FALSE;
-				}
+		/* Process the request synchronously only it's not a message for a plugin */
+		json_t *message = json_object_get(request->message, "janus");
+		const gchar *message_text = json_string_value(message);
+		if(message_text && !strcasecmp(message_text, request->admin ? "message_plugin" : "message")) {
+			/* Spawn a task thread */
+			GError *tperror = NULL;
+			g_thread_pool_push(tasks, request, &tperror);
+			if(tperror != NULL) {
+				/* Something went wrong... */
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				json_t *transaction = json_object_get(message, "transaction");
+				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+				janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
 			} else {
-				janus_process_incoming_request(request);
+				/* Don't destroy the request now, the task will take care of that */
+				destroy = FALSE;
 			}
 		} else {
-			/* Admin requests are always handled synchronously */
-			janus_process_incoming_admin_request(request);
+			if(!request->admin)
+				janus_process_incoming_request(request);
+			else
+				janus_process_incoming_admin_request(request);
 		}
 		/* Done */
 		if(destroy)

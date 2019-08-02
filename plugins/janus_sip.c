@@ -275,6 +275,7 @@
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
+        "autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -2746,7 +2747,6 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_AUTOACK(FALSE),
 				TAG_END());
 			g_free(sdp);
-			session->callee = g_strdup(uri_text);
 			g_free(session->transaction);
 			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			/* Send an ack back */
@@ -2795,6 +2795,8 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			answer_srtp = answer_srtp || session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video;
+                        json_t *aar = json_object_get(root, "autoaccept_reinvites");
+                        session->media.autoaccept_reinvites = aar ? json_is_true(aar) : TRUE;
 			/* Any SDP to handle? if not, something's wrong */
 			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
