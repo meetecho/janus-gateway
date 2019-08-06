@@ -21,7 +21,7 @@
  * a "setup" message, by which the user initializes the PeerConnection
  * itself. Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
- * "create", "edit", "destroy", "list" and "exists" are available through the
+ * "create", "edit", "destroy", "list", "listparticipants" and "exists" are available through the
  * Janus API as well: notice that in this case you'll have to use "request"
  * and not "textroom" as the name of the request.
  *
@@ -99,6 +99,33 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 			"num_participants" : <count of the participants>
 		},
 		// Other rooms
+	]
+}
+\endverbatim
+ *
+ * To get a list of the participants in a specific room, instead, you
+ * can make use of the \c listparticipants request, which has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "listparticipants",
+	"room" : <unique numeric ID of the room>
+}
+\endverbatim
+ *
+ * A successful request will produce a list of participants in a
+ * \c participants response:
+ *
+\verbatim
+{
+	"room" : <unique numeric ID of the room>,
+	"participants" : [		// Array of participant objects
+		{	// Participant #1
+			"username" : "<username of participant>",
+			"display" : "<display name of participant, if any>"
+		},
+		// Other participants
 	]
 }
 \endverbatim
@@ -1094,6 +1121,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	/* Some requests (e.g., 'create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")
+			|| !strcasecmp(request_text, "listparticipants")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
@@ -1171,6 +1199,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 	json_t *request = json_object_get(message, "request");
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")
+			|| !strcasecmp(request_text, "listparticipants")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
@@ -1667,7 +1696,6 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
-			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);
 			janus_mutex_unlock(&room->mutex);
@@ -1679,6 +1707,46 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "list", list);
+		}
+	} else if(!strcasecmp(request_text, "listparticipants")) {
+		/* List all participants in a room */
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		if(textroom == NULL || g_atomic_int_get(&textroom->destroyed)) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto msg_response;
+		}
+		janus_refcount_increase(&textroom->ref);
+		/* Return a list of all participants */
+		json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, textroom->participants);
+		while (!g_atomic_int_get(&textroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_textroom_participant *p = value;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "username", json_string(p->username));
+			if(p->display != NULL)
+				json_object_set_new(pl, "display", json_string(p->display));
+			json_array_append_new(list, pl);
+		}
+		janus_refcount_decrease(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		if(!internal) {
+			/* Send response back */
+			reply = json_object();
+			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "participants", list);
 		}
 	} else if(!strcasecmp(request_text, "allowed")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing textroom room\n");
