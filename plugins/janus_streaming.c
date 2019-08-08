@@ -5082,6 +5082,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			helper->id = i+1;
 			helper->mp = live_rtp;
 			helper->queued_packets = g_async_queue_new_full((GDestroyNotify)janus_streaming_rtp_relay_packet_free);
+			/* Add a reference because janus_streaming_relay_thread is going to push on these queues */
+			g_async_queue_ref(helper->queued_packets);
 			janus_mutex_init(&helper->mutex);
 			live_rtp->helper_threads++;
 			g_snprintf(tname, sizeof(tname), "help %u-%"SCNu64, helper->id, live_rtp->id);
@@ -6669,6 +6671,16 @@ static void *janus_streaming_relay_thread(void *data) {
 	}
 	json_decref(event);
 	janus_mutex_unlock(&mountpoint->mutex);
+
+	/* Unref the helper threads queues */
+	if(mountpoint->helper_threads > 0) {
+		GList *l = mountpoint->threads;
+		while(l) {
+			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+			g_async_queue_unref(ht->queued_packets);
+			l = l->next;
+		}
+	}
 
 	JANUS_LOG(LOG_VERB, "[%s] Leaving streaming relay thread\n", name);
 	g_free(name);
