@@ -178,11 +178,13 @@ int main(int argc, char *argv[])
 
 	/* Pre-parse */
 	JANUS_LOG(LOG_INFO, "Pre-parsing file...\n");
+	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
 	json_t *mjr_header = NULL;
 	int bytes = 0;
 	long offset = 0;
 	uint16_t len = 0;
+	gint64 started = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -217,6 +219,12 @@ int main(int argc, char *argv[])
 			}
 		} else if(prebuffer[1] == 'J') {
 			/* New .mjr format, check if this is an RTP recording */
+			if(prebuffer[2] == 'R' && prebuffer[3] == '0' && prebuffer[4] == '0' &&
+					prebuffer[5] == '0' && prebuffer[6] == '0' && prebuffer[7] == '2') {
+				/* Main header is MJR00002: this means we have timestamps too */
+				has_timestamps = TRUE;
+				JANUS_LOG(LOG_VERB, "New .mjr format, will parse timestamps too\n");
+			}
 			offset += 8;
 			bytes = fread(&len, sizeof(uint16_t), 1, file);
 			len = ntohs(len);
@@ -248,6 +256,14 @@ int main(int argc, char *argv[])
 					JANUS_LOG(LOG_ERR, "Not an RTP recording (data currently unsupported)...\n");
 					exit(1);
 				}
+				json_t *updated = json_object_get(mjr_header, "u");
+				if(!updated || !json_is_integer(updated)) {
+					json_decref(mjr_header);
+					fclose(file);
+					JANUS_LOG(LOG_ERR, "Missing/invalid updated time in info header...\n");
+					exit(1);
+				}
+				started = json_integer_value(updated);
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
@@ -274,6 +290,7 @@ int main(int argc, char *argv[])
 	/* Now iterate on all packets, and save them to the .pcap file */
 	offset = 0;
 	JANUS_LOG(LOG_INFO, "Traversing RTP packets...\n");
+	uint32_t pkt_ts = 0;
 	while(working && offset < fsize) {
 		/* Read frame header */
 		fseek(file, offset, SEEK_SET);
@@ -282,8 +299,11 @@ int main(int argc, char *argv[])
 			/* Broken packet? Stop here */
 			break;
 		}
-		prebuffer[8] = '\0';
-		JANUS_LOG(LOG_VERB, "Header: %s\n", prebuffer);
+		if(has_timestamps) {
+			/* Read the packet timestamp */
+			memcpy(&pkt_ts, prebuffer+4, sizeof(uint32_t));
+			pkt_ts = ntohl(pkt_ts);
+		}
 		offset += 8;
 		bytes = fread(&len, sizeof(uint16_t), 1, file);
 		len = ntohs(len);
@@ -315,7 +335,15 @@ int main(int argc, char *argv[])
 		mjr2pcap_udp_header_init(&udp, len);
 		/* Now prepare the packet header */
 		struct timeval tv;
-		gettimeofday(&tv, NULL);	/* FIXME */
+		if(has_timestamps) {
+			/* Prepare a valid timestamp */
+			gint64 timestamp = started + (pkt_ts*1000);
+			tv.tv_sec = timestamp / G_USEC_PER_SEC;
+			tv.tv_usec = timestamp -  (tv.tv_sec*G_USEC_PER_SEC);
+		} else {
+			/* Craft a dummy timestamp */
+			gettimeofday(&tv, NULL);
+		}
 		mjr2pcap_packet_header header = {
 			tv.tv_sec, tv.tv_usec, hsize, hsize
 		};

@@ -34,9 +34,9 @@
 
 
 /* Info header in the structured recording */
-static const char *header = "MJR00001";
+static const char *header = "MJR00002";
 /* Frame header in the structured recording */
-static const char *frame_header = "MEETECHO";
+static const char *frame_header = "MEET";
 
 /* Whether the filenames should have a temporary extension, while saving, or not (default=false) */
 static gboolean rec_tempname = FALSE;
@@ -224,6 +224,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
+	gint64 now = janus_get_monotonic_time();
 	if(!g_atomic_int_get(&recorder->header)) {
 		/* Write info header as a JSON formatted info */
 		json_t *info = json_object();
@@ -246,10 +247,14 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		free(info_text);
 		/* Done */
+		recorder->started = now;
 		g_atomic_int_set(&recorder->header, 1);
 	}
-	/* Write frame header */
+	/* Write frame header (fixed part[4], timestamp[4], length[2]) */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
+	uint32_t timestamp = (uint32_t)(now > recorder->started ? ((now - recorder->started)/1000) : 0);
+	timestamp = htonl(timestamp);
+	fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
 	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
 	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	if(recorder->type == JANUS_RECORDER_DATA) {
