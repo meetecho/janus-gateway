@@ -8,8 +8,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_CONFIG_H
-#define _JANUS_CONFIG_H
+#ifndef JANUS_CONFIG_H
+#define JANUS_CONFIG_H
 
 #include <glib.h>
 

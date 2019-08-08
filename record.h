@@ -17,8 +17,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_RECORD_H
-#define _JANUS_RECORD_H
+#ifndef JANUS_RECORD_H
+#define JANUS_RECORD_H
 
 #include <inttypes.h>
 #include <string.h>

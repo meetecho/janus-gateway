@@ -9,8 +9,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_G722
-#define _JANUS_PP_G722
+#ifndef JANUS_PP_G722
+#define JANUS_PP_G722
 
 #include <stdio.h>
 
