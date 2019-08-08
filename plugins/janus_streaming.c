@@ -2632,7 +2632,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
 			json_t *iface = json_object_get(root, "rtspiface");
-			json_t *failerr = json_object_get(root, "rtsp_check");
+			json_t *failerr = json_object_get(root, "rtsp_failcheck");
+			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
+				failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
