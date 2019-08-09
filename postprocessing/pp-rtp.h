@@ -10,8 +10,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_RTP
-#define _JANUS_PP_RTP
+#ifndef JANUS_PP_RTP
+#define JANUS_PP_RTP
 
 #ifdef __MACH__
 #include <machine/endian.h>
