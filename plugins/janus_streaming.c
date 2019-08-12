@@ -2527,8 +2527,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_mutex_lock(&mountpoints_mutex);
 				guint64 mpid = json_integer_value(id);
 				mp = g_hash_table_lookup(mountpoints, &mpid);
-				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL || g_hash_table_lookup(mountpoints_temp, &mpid)) {
+					janus_mutex_unlock(&mountpoints_mutex);
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
@@ -2600,8 +2600,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_mutex_lock(&mountpoints_mutex);
 				guint64 mpid = json_integer_value(id);
 				mp = g_hash_table_lookup(mountpoints, &mpid);
-				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL || g_hash_table_lookup(mountpoints_temp, &mpid)) {
+					janus_mutex_unlock(&mountpoints_mutex);
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
@@ -2623,12 +2623,6 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_mutex_unlock(&mountpoints_mutex);
 			}
 			if(mp == NULL) {
-				guint64 mpid = json_integer_value(id);
-				if(mpid > 0) {
-					janus_mutex_lock(&mountpoints_mutex);
-					g_hash_table_remove(mountpoints_temp, &mpid);
-					janus_mutex_unlock(&mountpoints_mutex);
-				}
 				JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "Error creating 'ondemand' stream");
@@ -2695,8 +2689,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_mutex_lock(&mountpoints_mutex);
 				guint64 mpid = json_integer_value(id);
 				mp = g_hash_table_lookup(mountpoints, &mpid);
-				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL || g_hash_table_lookup(mountpoints_temp, &mpid)) {
+					janus_mutex_unlock(&mountpoints_mutex);
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
