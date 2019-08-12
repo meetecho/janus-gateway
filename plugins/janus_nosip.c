@@ -336,6 +336,8 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_nosip_srtp_cleanup(janus_nosip_session *session);
 
+static void janus_nosip_media_reset(janus_nosip_session *session);
+
 static void janus_nosip_session_destroy(janus_nosip_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		janus_refcount_decrease(&session->ref);
@@ -580,6 +582,27 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
+}
+
+void janus_nosip_media_reset(janus_nosip_session *session) {
+	if(session == NULL)
+		return;
+	g_free(session->media.remote_audio_ip);
+	session->media.remote_audio_ip = NULL;
+	g_free(session->media.remote_video_ip);
+	session->media.remote_video_ip = NULL;
+	session->media.updated = FALSE;
+	session->media.ready = FALSE;
+	session->media.require_srtp = FALSE;
+	session->media.has_audio = 0;
+	session->media.audio_pt = -1;
+	session->media.audio_pt_name = NULL;	/* Immutable string, no need to free*/
+	session->media.audio_send = TRUE;
+	session->media.has_video = 0;
+	session->media.video_pt = -1;
+	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
+	session->media.video_send = TRUE;
+	janus_rtp_switching_context_reset(&session->media.context);
 }
 
 
@@ -844,22 +867,10 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
-	session->media.audio_srtp_in = NULL;
-	session->media.audio_srtp_out = NULL;
-	session->media.audio_remote_policy.key = NULL;
 	session->media.audio_remote_policy.ssrc.type = ssrc_any_inbound;
-	session->media.audio_remote_policy.next = NULL;
-	session->media.audio_local_policy.key = NULL;
 	session->media.audio_local_policy.ssrc.type = ssrc_any_inbound;
-	session->media.audio_local_policy.next = NULL;
-	session->media.video_srtp_in = NULL;
-	session->media.video_srtp_out = NULL;
-	session->media.video_remote_policy.key = NULL;
 	session->media.video_remote_policy.ssrc.type = ssrc_any_inbound;
-	session->media.video_remote_policy.next = NULL;
-	session->media.video_local_policy.key = NULL;
 	session->media.video_local_policy.ssrc.type = ssrc_any_inbound;
-	session->media.video_local_policy.next = NULL;
 	janus_mutex_init(&session->rec_mutex);
 	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -2107,24 +2118,8 @@ static void janus_nosip_media_cleanup(janus_nosip_session *session) {
 	/* Clean up SRTP stuff, if needed */
 	janus_nosip_srtp_cleanup(session);
 
-	// media fields not cleaned up elsewhere
-	g_free(session->media.remote_audio_ip);
-	session->media.remote_audio_ip = NULL;
-	g_free(session->media.remote_video_ip);
-	session->media.remote_video_ip = NULL;
-	session->media.updated = FALSE;
-	session->media.ready = FALSE;
-	session->media.require_srtp = FALSE;
-	session->media.has_audio = 0;
-	session->media.audio_pt = -1;
-	session->media.audio_pt_name = NULL;	/* Immutable string, no need to free*/
-	session->media.audio_send = TRUE;
-	session->media.has_video = 0;
-	session->media.video_pt = -1;
-	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
-	session->media.video_send = TRUE;
-	janus_rtp_switching_context_reset(&session->media.context);
-
+	/* Media fields not cleaned up elsewhere */
+	janus_nosip_media_reset(session);
 }
 
 /* Thread to relay RTP/RTCP frames coming from the peer */
@@ -2407,5 +2402,4 @@ static void *janus_nosip_relay_thread(void *data) {
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
-
 
