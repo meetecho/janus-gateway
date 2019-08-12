@@ -4826,7 +4826,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			video_rtcp_fd = janus_streaming_create_fd(vrtcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
 				"Video", "video", name ? name : tempname, FALSE);
 			if(video_rtcp_fd < 0) {
-				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video rtcp...\n", vport+1);
+				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video rtcp...\n", vrtcpport);
 				if(audio_fd > -1)
 					close(audio_fd);
 				if(audio_rtcp_fd > -1)
