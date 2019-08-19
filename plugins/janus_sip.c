@@ -3569,13 +3569,20 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sdp) {
 				int remote_audio_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.audio_pt_name);
 				int remote_video_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.video_pt_name);
-				if (remote_audio_pt != -1) {
+				if (remote_audio_pt >= 0) {
 					session->media.remote_audio_pt = remote_audio_pt;
 				}
 
-				if (remote_video_pt != -1) {
+				JANUS_LOG(LOG_VERB, "Looked for %s audio codec, and got %d as response, so remote_audio_pt will be %d\n",
+						session->media.audio_pt_name, remote_audio_pt, session->media.remote_audio_pt);
+
+				if (remote_video_pt >= 0) {
 					session->media.remote_video_pt = remote_video_pt;
 				}
+
+				JANUS_LOG(LOG_VERB, "Looked for %s video codec, and got %d as response, so remote_video_pt will be %d\n",
+						session->media.video_pt_name, remote_video_pt, session->media.remote_video_pt);
+
 				janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 				/* Check if offer has neither audio nor video, fail with 488 */
 				if(!session->media.has_audio && !session->media.has_video) {
@@ -4687,7 +4694,7 @@ static void *janus_sip_relay_thread(void *data) {
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					// override source pt
-					header->type =session->media.audio_pt;
+					header->type = session->media.audio_pt;
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
