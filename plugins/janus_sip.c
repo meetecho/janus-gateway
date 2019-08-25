@@ -1749,7 +1749,9 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						header->type = session->media.remote_video_pt;
+						if(session->media.remote_video_pt >= 0) {
+							header->type = session->media.remote_video_pt;
+						}
 						/* Forward the frame to the peer */
 						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
@@ -1760,7 +1762,9 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)buf;
-					header->type = session->media.remote_video_pt;
+					if(session->media.remote_video_pt >= 0) {
+						header->type = session->media.remote_video_pt;
+					}
 					/* Forward the frame to the peer */
 					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
@@ -1797,7 +1801,9 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						header->type = session->media.remote_audio_pt;
+						if(session->media.remote_audio_pt >= 0) {
+							header->type = session->media.remote_audio_pt;
+						}
 						/* Forward the frame to the peer */
 						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
@@ -1808,7 +1814,9 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)buf;
-					header->type = session->media.remote_audio_pt;
+					if(session->media.remote_audio_pt >= 0) {
+						header->type = session->media.remote_audio_pt;
+					}
 					/* Forward the frame to the peer */
 					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
@@ -3606,21 +3614,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sip->sip_payload ? sip->sip_payload->pl_data : "(no SDP)");
 			gboolean changed = FALSE;
 			if(sdp) {
-				int remote_audio_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.audio_pt_name);
-				int remote_video_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.video_pt_name);
-				if (remote_audio_pt >= 0) {
-					session->media.remote_audio_pt = remote_audio_pt;
-				}
-
-				JANUS_LOG(LOG_VERB, "Looked for %s audio codec, and got %d as response, so remote_audio_pt will be %d\n",
-						session->media.audio_pt_name, remote_audio_pt, session->media.remote_audio_pt);
-
-				if (remote_video_pt >= 0) {
-					session->media.remote_video_pt = remote_video_pt;
-				}
-
-				JANUS_LOG(LOG_VERB, "Looked for %s video codec, and got %d as response, so remote_video_pt will be %d\n",
-						session->media.video_pt_name, remote_video_pt, session->media.remote_video_pt);
+				session->media.remote_audio_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.audio_pt_name);
+				session->media.remote_video_pt = janus_get_codec_pt(sip->sip_payload->pl_data, session->media.video_pt_name);
 
 				janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 				/* Check if offer has neither audio nor video, fail with 488 */
