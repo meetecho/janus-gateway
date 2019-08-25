@@ -87,11 +87,11 @@ typedef GCond janus_condition;
 /*! \brief Janus condition wait */
 #define janus_condition_wait(a, b) g_cond_wait(a, b);
 /*! \brief Janus condition wait until */
-#define janus_condition_wait_until(a, b, c) g_cond_wait_until(a, b, c);
+#define janus_condition_wait_until(a, b, c) g_cond_wait_until(a, b, c)
 /*! \brief Janus condition signal */
-#define janus_condition_signal(a) g_cond_signal(a);
+#define janus_condition_signal(a) g_cond_signal(a)
 /*! \brief Janus condition broadcast */
-#define janus_condition_broadcast(a) g_cond_broadcast(a);
+#define janus_condition_broadcast(a) g_cond_broadcast(a)
 
 #endif
 

@@ -432,6 +432,7 @@
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
 #include <sofia-sip/su_log.h>
+#include <sofia-sip/sip_protos.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -734,6 +735,9 @@ typedef struct janus_sip_session {
 	volatile gint destroyed;
 	janus_refcount ref;
 	janus_mutex mutex;
+	gboolean options_request_pending;
+	janus_condition options_condition;
+	sip_contact_t * contact;
 } janus_sip_session;
 static GHashTable *sessions;
 static GHashTable *identities;
@@ -850,7 +854,7 @@ struct ssip_s {
 	su_home_t s_home[1];
 	su_root_t *s_root;
 	nua_t *s_nua;
-	nua_handle_t *s_nh_r, *s_nh_i;
+	nua_handle_t *s_nh_r, *s_nh_i, *s_nh_o;
 	janus_sip_session *session;
 };
 
@@ -2553,6 +2557,39 @@ static void *janus_sip_handler(void *data) {
 			} else {
 				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
 			}
+
+			/* Send options request, in order to create a proper Contact using
+			   rport,received in response via headers. */
+			if(session->stack->s_nh_o != NULL) {
+				nua_handle_destroy(session->stack->s_nh_o);
+			}
+			session->stack->s_nh_o = nua_handle(session->stack->s_nua, session, TAG_END());
+			session->options_request_pending = TRUE;
+			session->contact = NULL;
+			janus_condition_init(&session->options_condition);
+
+			nua_options(session->stack->s_nh_o,
+					NUTAG_URL(session->account.outbound_proxy),
+					TAG_END());
+
+			janus_mutex_lock(&session->mutex);
+
+			gint64 end_time = g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
+
+			while(session->options_request_pending) {
+				if(!janus_condition_wait_until(&session->options_condition, &session->mutex, end_time)) {
+					janus_mutex_unlock(&session->mutex);
+					g_free(sdp);
+					session->sdp = NULL;
+					JANUS_LOG(LOG_WARN, "Timed out while waiting for warmup options response\n");
+					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+					g_snprintf(error_cause, 512, "Timed out while waiting for warmup options response");
+
+					goto error;
+				}
+			}
+			janus_mutex_unlock(&session->mutex);
+
 			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
@@ -2621,6 +2658,7 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_atomic_int_set(&session->establishing, 1);
+
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -2630,6 +2668,7 @@ static void *janus_sip_handler(void *data) {
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
 				NUTAG_AUTOACK(FALSE),
+				TAG_IF(session->contact, SIPTAG_CONTACT(session->contact)),
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
@@ -4099,6 +4138,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			break;
 		}
+		case nua_r_options: {
+			const char* username = session->account.username;
+			const char* via_ip = sip->sip_via->v_received;
+			const char* via_port = sip->sip_via->v_rport;
+			const char* via_proto = "tcp";
+			char contact[128];
+			g_snprintf(contact, sizeof(contact), "<sip:%s@%s:%s;transport=%s>", username, via_ip, via_port, via_proto);
+			JANUS_LOG(LOG_VERB, "Contact derived from warmup options response via header: %s\n", contact);
+
+			janus_mutex_lock(&session->mutex);
+			session->contact = sip_contact_make(session->stack->s_home, contact);
+			session->options_request_pending = FALSE;
+			janus_condition_signal(&session->options_condition);
+			janus_mutex_unlock(&session->mutex);
+			break;
+		}
 		default:
 			/* unknown event -> print out error message */
 			JANUS_LOG(LOG_ERR, "Unknown event %d (%s)\n", event, nua_event_name(event));
@@ -4850,17 +4905,18 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;
 	session->stack->s_nh_i = NULL;
+	session->stack->s_nh_o = NULL;
 	session->stack->s_root = su_root_create(session->stack);
 	su_home_init(session->stack->s_home);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
 	char sips_url[128];
 	char *ipv6;
-  char *contact_ip = secure_getenv("CONTACT_IP");
+	char *contact_ip = secure_getenv("CONTACT_IP");
 
-  if(!contact_ip) {
-    contact_ip = local_ip;
-  }
+	if(!contact_ip) {
+		contact_ip = local_ip;
+	}
 
 	ipv6 = strstr(local_ip, ":");
 	if(session->account.force_udp)
@@ -4886,6 +4942,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
+				TPTAG_PUBLIC(tport_type_client),
+				NTATAG_TCP_RPORT(1),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
