@@ -1396,7 +1396,9 @@ int janus_process_incoming_request(janus_request *request) {
 						json_object_set_new(msc, "ssrcs", ssrcs);
 					}
 					if(handle->pc->framemarking_ext_id > 0)
-						json_object_set_new(simulcast, "framemarking-ext", json_integer(handle->pc->framemarking_ext_id));
+						json_object_set_new(msc, "framemarking-ext", json_integer(handle->pc->framemarking_ext_id));
+					if (medium->mindex >=0 )
+						json_object_set_new(msc, "mindex", json_integer(medium->mindex));
 					json_array_append_new(simulcast, msc);
 				}
 			}
