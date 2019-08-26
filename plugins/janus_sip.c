@@ -4937,7 +4937,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
-				TPTAG_PUBLIC(tport_type_client),
+				//TPTAG_PUBLIC(tport_type_client), /* Genesys doesn't like is.invalid urls in via headers
 				NTATAG_TCP_RPORT(1),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
