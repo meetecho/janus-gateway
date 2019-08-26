@@ -50,6 +50,10 @@ const char *janus_get_api_error(int error) {
 			return "Unexpected ANSWER (no OFFER)";
 		case JANUS_ERROR_TOKEN_NOT_FOUND:
 			return "Token not found";
+		case JANUS_ERROR_WEBRTC_STATE:
+			return "Wrong WebRTC state";
+		case JANUS_ERROR_NOT_ACCEPTING_SESSIONS:
+			return "Currently not accepting new sessions";
 		default:
 			return "Unknown error";
 	}

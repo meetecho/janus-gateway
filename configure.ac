@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.6.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.7.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -52,7 +52,7 @@ CFLAGS="$CFLAGS \
 	-Wswitch-default \
 	-Wunused \
 	-Wwrite-strings"
-	
+
 case "$CC" in
 clang*)
 	# Specific clang flags
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=61
+JANUS_VERSION=74
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.6.1"
+JANUS_VERSION_STRING="0.7.4"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -81,12 +81,11 @@ darwin*)
 	LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
-	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
 *)
 	LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 	AM_CONDITIONAL([DARWIN_OS], false)
-	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
+	AC_DEFINE(HAS_DTLS_WINDOW_SIZE, 1)
 esac
 
 glib_version=2.34
@@ -299,7 +298,7 @@ PKG_CHECK_MODULES([JANUS],
                     libssl >= $ssl_version
                     libcrypto
                   ])
-JANUS_MANUAL_LIBS+=" -lm"
+JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
 AS_IF([test "x${boringssl_dir}" != "x"],
@@ -349,7 +348,7 @@ AC_CHECK_LIB([nice],
 
 AC_CHECK_LIB([dl],
              [dlopen],
-             [JANUS_MANUAL_LIBS+=" -ldl"],
+             [JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -ldl"],
              [AC_MSG_ERROR([libdl not found.])])
 
 AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
@@ -360,7 +359,7 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                       AC_CHECK_HEADER([srtp2/srtp.h],
                                       [
                                         AC_DEFINE(HAVE_SRTP_2)
-                                        JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp2"
                                         enable_libsrtp2=yes
                                         AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
                                         AC_CHECK_LIB([srtp2],
@@ -385,7 +384,7 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                          [
                            AC_CHECK_HEADER([srtp/srtp.h],
                                            [
-                                             JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp"
                                              enable_libsrtp2=no
                                              PKG_CHECK_MODULES([SRTP15X],
                                                                [
@@ -407,7 +406,7 @@ AC_CHECK_LIB([usrsctp],
                AS_IF([test "x$enable_data_channels" != "xno"],
                [
                   AC_DEFINE(HAVE_SCTP)
-                  JANUS_MANUAL_LIBS+=" -lusrsctp"
+                  JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lusrsctp"
                   enable_data_channels=yes
                ])
              ],
@@ -420,17 +419,17 @@ AM_CONDITIONAL([ENABLE_SCTP], [test "x$enable_data_channels" = "xyes"])
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
+                    AC_DEFINE(HAVE_LIBCURL)
+                    JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lcurl"
                     AS_IF(
                       [test "x$enable_turn_rest_api" != "xno"],
                       [
-                        AC_DEFINE(HAVE_LIBCURL)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        AC_DEFINE(HAVE_TURNRESTAPI)
                         enable_turn_rest_api=yes
                       ])
                     AS_IF([test "x$enable_sample_event_handler" != "xno"],
                       [
                         AC_DEFINE(HAVE_SAMPLEEVH)
-                        JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_sample_event_handler=yes
                       ])
                   ],

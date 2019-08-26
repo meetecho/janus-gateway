@@ -260,7 +260,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	/* Connect */
 	rmq_conn = amqp_new_connection();
 	amqp_socket_t *socket = NULL;
-	int status;
+	int status = AMQP_STATUS_OK;
 	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Creating RabbitMQ socket...\n");
 	if (ssl_enable) {
 		socket = amqp_ssl_socket_new(rmq_conn);

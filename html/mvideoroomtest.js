@@ -129,8 +129,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
@@ -153,9 +153,9 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost, mid) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -257,7 +257,7 @@ $(document).ready(function() {
 													sfutest.hangup();
 													return;
 												}
-												unsubscribeFrom(leaving);
+												unsubscribeFrom(unpublished);
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												if(msg["error_code"] === 426) {
 													// This is a "no such room" error: give a more meaningful description
@@ -370,7 +370,7 @@ $(document).ready(function() {
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
 										Janus.log(stream.getVideoTracks());
-										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
 									}
 									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -631,9 +631,9 @@ function subscribeTo(sources) {
 			webrtcState: function(on) {
 				Janus.log("Janus says this WebRTC PeerConnection (remote feed) is " + (on ? "up" : "down") + " now");
 			},
-			slowLink: function(uplink, nacks) {
+			slowLink: function(uplink, lost, mid) {
 				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-					" packets on this PeerConnection (remote feed, " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (subscriber) :::");
@@ -711,9 +711,15 @@ function subscribeTo(sources) {
 				Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
 				// Which publisher are we getting on this mid?
 				var sub = subStreams[mid];
-				var slot = slots[mid];
 				var feed = feedStreams[sub.feed_id];
 				Janus.debug(" >> This track is coming from feed " + sub.feed_id + ":", feed);
+				var slot = slots[mid];
+				if(feed && !slot) {
+					slot = feed.slot;
+					slots[mid] = feed.slot;
+					mids[feed.slot] = mid;
+				}
+				Janus.debug(" >> mid " + mid + " is in slot " + slot);
 				if(!on) {
 					// Track removed, get rid of the stream and the rendering
 					var stream = remoteTracks[mid];
@@ -751,6 +757,8 @@ function subscribeTo(sources) {
 					feed.spinner.stop();
 					feed.spinner = null;
 				}
+				if($('#remotevideo' + slot + '-' + mid).length > 0)
+					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
@@ -777,18 +785,23 @@ function subscribeTo(sources) {
 					stream.addTrack(track.clone());
 					remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
-					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#videoremote' + slot).append('<video class="rounded centered" id="remotevideo' + slot + '-' + mid + '" width=100% autoplay playsinline/>');
+					$('#videoremote' + slot).append(
+						'<span class="label label-primary hide" id="curres'+slot+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="label label-info hide" id="curbitrate'+slot+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 					Janus.attachMediaStream($('#remotevideo' + slot + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
-					if(!bitrateTimer) {
+					if(!bitrateTimer[slot]) {
 						$('#curbitrate' + slot).removeClass('hide').show();
-						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+						bitrateTimer[slot] = setInterval(function() {
+							if(!$("#videoremote" + slot + ' video').get(0))
+								return;
 							// Display updated bitrate, if supported
-							var bitrate = remoteFeed.getBitrate();
+							var bitrate = remoteFeed.getBitrate(mid);
 							$('#curbitrate' + slot).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#remotevideo" + slot).get(0).videoWidth;
-							var height = $("#remotevideo" + slot).get(0).videoHeight;
+							var width = $("#videoremote" + slot + ' video').get(0).videoWidth;
+							var height = $("#videoremote" + slot + ' video').get(0).videoHeight;
 							if(width > 0 && height > 0)
 								$('#curres' + slot).removeClass('hide').text(width+'x'+height).show();
 						}, 1000);
@@ -821,6 +834,9 @@ function unsubscribeFrom(id) {
 	if(!feed)
 		return;
 	Janus.debug("Feed " + id + " (" + feed.display + ") has left the room, detaching");
+	if(bitrateTimer[feed.slot] !== null && bitrateTimer[feed.slot] !== null)
+		clearInterval(bitrateTimer[feed.slot]);
+	bitrateTimer[feed.slot] = null;
 	$('#remote' + feed.slot).empty().hide();
 	$('#videoremote' + feed.slot).empty();
 	delete simulcastStarted[feed.slot];

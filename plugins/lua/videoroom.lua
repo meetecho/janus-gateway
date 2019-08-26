@@ -87,8 +87,19 @@ function destroySession(id)
 						pushEvent(p.id, nil, eventjson, nil)
 					end
 				end
+				-- If private IDs are required to prevent lurking, get rid of the subscriptions as well
+				if room.requirePvtId == true then
+					for index,sub in ipairs(s.subscriptions) do
+						logger.print("  -- Getting rid of publisher's subscription: " .. sub)
+						endSession(sub)
+					end
+				end
+				s.subscriptions = {}
+				if s.privateId ~= nil then
+					room.privateIds[s.privateId] = nil
+				end
+				room.participants[s.userId] = nil
 			end
-			room.participants[s.userId] = nil
 		end
 		s.userId = nil
 	end
@@ -104,7 +115,9 @@ function querySession(id)
 	end
 	local info = { script = s["lua"], id = s["id"], display = s["display"],
 		room = s["roomId"], ptype = s["pType"], user = s["userId"], feed = s["feedId"],
-		audio = s["audio"], video = s["video"], data = s["data"], bitrate = s["bitrate"] }
+		audio = s["audio"], audioCodec = s["audioCodec"],
+		video = s["video"], videoCodec = s["videoCodec"],
+		data = s["data"], bitrate = s["bitrate"] }
 	local infojson = json.encode(info)
 	return infojson
 end
@@ -151,6 +164,8 @@ function handleMessage(id, tr, msg, jsep)
 		end
 		local bitrate = msgT["bitrate"]
 		local pliFreq = msgT["fir_freq"]
+		local requirePvtId = msgT["require_pvtid"]
+		local notifyJoining = msgT["notify_joining"]
 		if rooms[roomId] ~= nil then
 			local response = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_ROOM_EXISTS, error = "Room exists" }
 			local responsejson = json.encode(response)
@@ -161,11 +176,14 @@ function handleMessage(id, tr, msg, jsep)
 			description = description,
 			secret = secret,
 			publishers = publishers,
-			audioCodec = audioCodec,
-			videoCodec = videoCodec,
+			audioCodec = split(audioCodec, ","),
+			videoCodec = split(videoCodec, ","),
 			bitrate = bitrate,
 			pliFreq = pliFreq,
-			participants = {}
+			requirePvtId = requirePvtId,
+			notifyJoining = notifyJoining,
+			participants = {},
+			privateIds = {}
 		}
 		local response = { videoroom = "created", room = roomId }
 		local responsejson = json.encode(response)
@@ -202,6 +220,7 @@ function handleMessage(id, tr, msg, jsep)
 			end
 		end
 		room.participants = {}
+		room.privateIds = {}
 		-- Done
 		rooms[roomId] = nil
 		local response = { videoroom = "destroyed", room = roomId }
@@ -243,8 +262,8 @@ function handleMessage(id, tr, msg, jsep)
 				response.participants[#response.participants+1] = {
 					id = p.userId,
 					display = p.display,
-					audio_codec = room.audioCodec,
-					video_codec = room.videoCodec
+					audio_codec = p.audioCodec,
+					video_codec = p.videoCodec
 				}
 			end
 		end
@@ -300,12 +319,16 @@ function handleMessage(id, tr, msg, jsep)
 						s["pType"] = pType
 						s["roomId"] = roomId
 						s["userId"] = userId
+						local privateId = math.random(4294967296)
+						s.subscriptions = {}
+						s["privateId"] = privateId
 						s["display"] = display
 						s["subscribers"] = {}
 						room.participants[userId] = id
+						room.privateIds[privateId] = id
 						-- Import the room settings
-						s["audioCodec"] = room.audioCodec
-						s["videoCodec"] = room.videoCodec
+						s["audioCodec"] = nil	-- We'll figure out this later
+						s["videoCodec"] = nil	-- We'll figure out this later
 						if room.bitrate ~= nil then
 							logger.print("Setting bitrate: " .. room.bitrate)
 							setBitrate(id, room.bitrate)
@@ -323,17 +346,28 @@ function handleMessage(id, tr, msg, jsep)
 						configureMedium(id, "video", "in", false)
 						configureMedium(id, "data", "out", true)
 						configureMedium(id, "data", "in", false)
-						-- Send event back with a list of active publishers
+						-- Send event back with a list of active publishers (and possibly other attendees)
 						local event = { videoroom = "joined", room = roomId, description = room.description,
-							id = userId, publishers = {} }
+							id = userId, private_id = privateId, publishers = {} }
+						if room.notifyJoining then
+							event.attendees = {}
+						end
 						for index,partId in pairs(room.participants) do
 							local p = sessions[partId]
+							-- Publishers first
 							if p ~= nil and p.id ~= id and p.sdp ~= nil and p.started == true then
 								event.publishers[#event.publishers+1] = {
 									id = p.userId,
 									display = p.display,
-									audio_codec = room.audioCodec,
-									video_codec = room.videoCodec
+									audio_codec = p.audioCodec,
+									video_codec = p.videoCodec
+								}
+							end
+							-- If notify_joining=true, send a list of attendees as well
+							if room.notifyJoining and p ~= nil and p.id ~= id then
+								event.attendees[#event.attendees+1] = {
+									id = p.userId,
+									display = p.display
 								}
 							end
 						end
@@ -342,7 +376,23 @@ function handleMessage(id, tr, msg, jsep)
 							-- Ugly hack, as lua-json turns our empty array into an empty object
 							eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
 						end
+						if room.notifyJoining and eventjson:find("\"attendees\":{}") ~= nil then
+							-- Ugly hack, as lua-json turns our empty array into an empty object
+							eventjson = string.gsub(eventjson, "\"attendees\":{}", "\"attendees\":[]")
+						end
 						pushEvent(id, tr, eventjson, nil)
+						-- If notify_joining=true, notify other participants as well
+						if room.notifyJoining then
+							local event = { videoroom = "event", event = "joining",
+								room = room.roomId, id = s.userId, display = s.display }
+							local eventjson = json.encode(event)
+							for index,partId in pairs(room.participants) do
+								local p = sessions[partId]
+								if p ~= nil and p.id ~= id then
+									pushEvent(p.id, nil, eventjson, nil)
+								end
+							end
+						end
 					elseif pType == "subscriber" then
 						-- Setup new subscriber
 						local feedId = comsg["feed"]
@@ -360,6 +410,21 @@ function handleMessage(id, tr, msg, jsep)
 							pushEvent(id, tr, eventjson, nil)
 							return
 						end
+						local privateId = comsg["private_id"]
+						if room.requirePvtId == true then
+							-- Make sure a valid private ID was provided
+							local owner = room.privateIds[privateId]
+							if owner == nil then
+								local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED, error = "Unauthorized (this room requires a valid private_id)" }
+								local eventjson = json.encode(event)
+								pushEvent(id, tr, eventjson, nil)
+								return
+							end
+							local o = sessions[owner];
+							-- Add this session to the owner's subscriptions
+							o.subscriptions[#o.subscriptions+1] = id
+						end
+						s["privateId"] = privateId
 						s["pType"] = pType
 						s["roomId"] = roomId
 						s["feedId"] = feedId
@@ -397,11 +462,48 @@ function handleMessage(id, tr, msg, jsep)
 							configureMedium(id, "data", "in", false)
 							s["data"] = false
 						end
+						local offer_audio = true
+						if comsg["offer_audio"] == false then
+							offer_audio = false
+						end
+						local offer_video = true
+						if comsg["offer_video"] == false then
+							offer_video = false
+						end
+						local offer_data = true
+						if comsg["offer_data"] == false then
+							offer_data = false
+						end
 						-- Prepare offer and send it back
+						local baseOffer = sdp.parse(f["sdp"])
+						-- Check if we need to remove some m-lines
+						if offer_audio == false then
+							-- Remove audio m-line
+							logger.print("  -- Subscriber doesn't want audio")
+							sdp.removeMLine(baseOffer, "audio")
+							configureMedium(id, "audio", "in", false)
+							s["audio"] = false
+						end
+						if offer_video == false then
+							-- Remove video m-line
+							logger.print("  -- Subscriber doesn't want video")
+							sdp.removeMLine(baseOffer, "video")
+							configureMedium(id, "video", "in", false)
+							s["video"] = false
+						end
+						if offer_data == false then
+							-- Remove application m-line
+							logger.print("  -- Subscriber doesn't want data")
+							sdp.removeMLine(baseOffer, "application")
+							configureMedium(id, "data", "in", false)
+							s["data"] = false
+						end
+						-- Generate the offer
+						s["sdp"] = sdp.render(baseOffer)
 						local event = { videoroom = "attached", room = roomId, id = feedId, display = f["display"] }
 						local eventjson = json.encode(event)
-						logger.print("Preparing offer from publisher: " .. f["sdp"])
-						local offer = { type = "offer", sdp = f["sdp"] }
+						logger.print("Prepared offer for subscriber: " .. s["sdp"])
+						local offer = { type = "offer", sdp = s["sdp"] }
 						local offerjson = json.encode(offer)
 						pushEvent(id, tr, eventjson, offerjson)
 					else
@@ -430,9 +532,75 @@ function handleMessage(id, tr, msg, jsep)
 							local sdpoffer = string.gsub(cojsep["sdp"], "sendrecv", "sendonly")
 							local offer = sdp.parse(sdpoffer)
 							logger.print("Got offer from publisher: " .. sdp.render(offer))
+							-- Check which codecs are allowed in the room
+							local audioCodec = comsg["audiocodec"]
+							if audioCodec ~= nil then
+								-- The publisher wants to use a specific codec, let's see if that's possible
+								logger.print("Publisher wants to use audio codec: " .. audioCodec)
+								for index,codec in ipairs(room.audioCodec) do
+									if codec == audioCodec then
+										logger.print("  -- Publisher audio codec found");
+										s.audioCodec = codec
+									end
+								end
+								if s.audioCodec == nil then
+									logger.print("  -- Publisher audio codec NOT found");
+									local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, error = "Audio codec unavailable in this room" }
+									local eventjson = json.encode(event)
+									pushEvent(id, tr, eventjson, nil)
+									return
+								end
+							else
+								-- Pick the best audio codec (SDP vs. room preferences)
+								s["audioCodec"] = nil
+								for index,codec in ipairs(room.audioCodec) do
+									if s.audioCodec == nil then
+										logger.print("Looking for audio codec " .. codec)
+										if sdp.findPayloadType(offer, codec) == -1 then
+											logger.print("  -- Not found, trying next audio codec...")
+										else
+											logger.print("  -- Publisher audio codec found")
+											s.audioCodec = codec
+										end
+									end
+								end
+							end
+							local videoCodec = comsg["videocodec"]
+							if videoCodec ~= nil then
+								-- The publisher wants to use a specific codec, let's see if that's possible
+								logger.print("Publisher wants to use video codec: " .. videoCodec)
+								for index,codec in ipairs(room.videoCodec) do
+									if codec == videoCodec then
+										logger.print("  -- Publisher video codec found");
+										s.videoCodec = codec
+									end
+								end
+								if s.videoCodec == nil then
+									logger.print("  -- Publisher video codec NOT found");
+									local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, error = "Video codec unavailable in this room" }
+									local eventjson = json.encode(event)
+									pushEvent(id, tr, eventjson, nil)
+									return
+								end
+							else
+								-- Pick the best video codec (SDP vs. room preferences)
+								s["videoCodec"] = nil
+								for index,codec in ipairs(room.videoCodec) do
+									if s.videoCodec == nil then
+										logger.print("Looking for video codec " .. codec)
+										if sdp.findPayloadType(offer, codec) == -1 then
+											logger.print("  -- Not found, trying next video codec...")
+										else
+											logger.print("  -- Publisher video codec found")
+											s.videoCodec = codec
+										end
+									end
+								end
+							end
+							-- Generate answer
 							local answer = sdp.generateAnswer(offer, {
-								audio = true, audioCodec = room.audioCodec,
-								video = true, videoCodec = room.videoCodec,
+								audio = (s.audioCodec ~= nil), audioCodec = s.audioCodec,
+								video = (s.videoCodec ~= nil), videoCodec = s.videoCodec,
 								data = true })
 							logger.print("Generated answer for publisher: " .. sdp.render(answer))
 							local jsepanswer = { type = "answer", sdp = sdp.render(answer) }
@@ -440,8 +608,8 @@ function handleMessage(id, tr, msg, jsep)
 							-- Prepare a revised version of the offer to send to subscribers
 							s["sdp"] = string.gsub(jsepanswer.sdp, "recvonly", "sendonly")
 							-- Prepare the event to send back
-							event["audio_codec"] = room.audioCodec
-							event["video_codec"] = room.videoCodec
+							event["audio_codec"] = s.audioCodec
+							event["video_codec"] = s.videoCodec
 						end
 						-- Check what we need to configure
 						if comsg["audio"] == true then
@@ -515,9 +683,9 @@ function handleMessage(id, tr, msg, jsep)
 						if comsg["restart"] == true then
 							-- Prepare new offer and send it back
 							local f = sessions[s["feedSessionId"]]
-							if f ~= nil then
-								logger.print("Preparing new offer (ICE restart) from publisher: " .. f["sdp"])
-								local offer = { type = "offer", sdp = f["sdp"], restart = true }
+							if f ~= nil and s["sdp"] ~= nil then
+								logger.print("Preparing new offer (ICE restart) for subscriber: " .. s["sdp"])
+								local offer = { type = "offer", sdp = s["sdp"], restart = true }
 								restartjson = json.encode(offer)
 							end
 						end
@@ -546,9 +714,23 @@ function handleMessage(id, tr, msg, jsep)
 					logger.print("Leaving room: " .. s["roomId"])
 					-- Clean up the PeerConnection
 					hangupMedia(id)
+					closePc(id)
 					local event = { videoroom = "event", room = s["roomId"], leaving = "ok" }
 					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
+					-- If private IDs are required to prevent lurking, get rid of the subscriptions as well
+					local room = rooms[s["roomId"]]
+					if room ~= nil and room.requirePvtId == true then
+						for index,sub in ipairs(s.subscriptions) do
+							logger.print("  -- Getting rid of publisher's subscription: " .. sub)
+							endSession(sub)
+						end
+					end
+					s.subscriptions = {}
+					if room ~= nil and s.privateId ~= nil then
+						room.privateIds[s.privateId] = nil
+					end
+					room.participants[s.userId] = nil
 				elseif request == "start" then
 					-- Start subscribing to a publisher (subscribers only)
 					logger.print("Starting a subscription")
@@ -640,8 +822,8 @@ function setupMedia(id)
 		event.publishers[#event.publishers+1] = {
 			id = s.userId,
 			display = s.display,
-			audio_codec = room.audioCodec,
-			video_codec = room.videoCodec
+			audio_codec = s.audioCodec,
+			video_codec = s.videoCodec
 		}
 		local eventjson = json.encode(event)
 		if eventjson:find("\"publishers\":{}") ~= nil then
@@ -735,6 +917,26 @@ function dumpTable(o)
 	else
 		return tostring(o)
 	end
+end
+
+-- Helper for splitting strings using a pattern (http://lua-users.org/wiki/SplitJoin)
+function split(str, pat)
+	local t = {}  -- NOTE: use {n = 0} in Lua-5.0
+	local fpat = "(.-)" .. pat
+	local last_end = 1
+	local s, e, cap = str:find(fpat, 1)
+	while s do
+		if s ~= 1 or cap ~= "" then
+			table.insert(t,cap)
+		end
+		last_end = e+1
+		s, e, cap = str:find(fpat, last_end)
+	end
+	if last_end <= #str then
+		cap = str:sub(last_end)
+		table.insert(t, cap)
+	end
+	return t
 end
 
 -- Done

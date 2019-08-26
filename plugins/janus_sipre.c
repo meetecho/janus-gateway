@@ -205,7 +205,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL;
+static char *local_ip = NULL, *sdp_ip = NULL;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
@@ -480,6 +480,7 @@ typedef struct janus_sipre_media {
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
 	guint32 video_ssrc, video_ssrc_peer;
+	guint32 simulcast_ssrc;
 	int video_pt;
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
@@ -508,6 +509,7 @@ struct janus_sipre_session {
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	GThread *relayer_thread;
+	volatile gint establishing, established;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1033,6 +1035,12 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
+		if(item && item->value) {
+			sdp_ip = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		}
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value) {
 			register_ttl = atol(item->value);
@@ -1184,6 +1192,7 @@ void janus_sipre_destroy(void) {
 	g_atomic_int_set(&stopping, 0);
 
 	g_free(local_ip);
+	g_free(sdp_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIPRE_NAME);
 }
@@ -1280,6 +1289,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->media.simulcast_ssrc = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
@@ -1292,6 +1302,8 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->media.updated = FALSE;
 	janus_mutex_init(&session->rec_mutex);
 	g_atomic_int_set(&session->destroyed, 0);
+	g_atomic_int_set(&session->establishing, 0);
+	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
@@ -1368,8 +1380,10 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
-	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	json_object_set_new(info, "establishing", g_atomic_int_get(&session->establishing) ? json_true() : json_false());
+	json_object_set_new(info, "established", g_atomic_int_get(&session->established) ? json_true() : json_false());
+	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
+	json_object_set_new(info, "destroyed", g_atomic_int_get(&session->destroyed) ? json_true() : json_false());
 	janus_refcount_decrease(&session->ref);
 	return info;
 }
@@ -1414,6 +1428,8 @@ void janus_sipre_setup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	g_atomic_int_set(&session->established, 1);
+	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Only relay RTP/RTCP when we get this event */
@@ -1433,6 +1449,15 @@ void janus_sipre_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean
 		if((video && !session->media.video_send) || (!video && !session->media.audio_send)) {
 			/* Dropping packet, peer doesn't want to receive it */
 			return;
+		}
+		if(video && session->media.simulcast_ssrc) {
+			/* The user is simulcasting: drop everything except the base layer */
+			janus_rtp_header *header = (janus_rtp_header *)buf;
+			uint32_t ssrc = ntohl(header->ssrc);
+			if(ssrc != session->media.simulcast_ssrc) {
+				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+				return;
+			}
 		}
 		if((video && session->media.video_ssrc == 0) || (!video && session->media.audio_ssrc == 0)) {
 			rtp_header *header = (rtp_header *)buf;
@@ -1596,26 +1621,28 @@ static void janus_sipre_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
-	if(!(session->status == janus_sipre_call_status_inviting ||
-		 session->status == janus_sipre_call_status_invited ||
-		 session->status == janus_sipre_call_status_incall)) {
-		g_atomic_int_set(&session->hangingup, 0);
-		return;
-	}
-	session->media.ready = FALSE;
-	session->media.on_hold = FALSE;
-	session->status = janus_sipre_call_status_closing;
-	/* Enqueue the BYE */
-	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+	session->media.simulcast_ssrc = 0;
 	/* Do cleanup if media thread has not been created */
 	if(!session->media.ready && !session->relayer_thread) {
 		janus_sipre_media_cleanup(session);
 	}
+	session->media.ready = FALSE;
+	session->media.on_hold = FALSE;
+	session->status = janus_sipre_call_status_closing;
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
 	janus_sipre_recorder_close(session, TRUE, TRUE, TRUE, TRUE);
 	janus_mutex_unlock(&session->rec_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
+	g_atomic_int_set(&session->establishing, 0);
+	g_atomic_int_set(&session->established, 0);
+	if(!(session->status == janus_sipre_call_status_inviting ||
+		 session->status == janus_sipre_call_status_invited ||
+		 session->status == janus_sipre_call_status_incall)) {
+		return;
+	}
+	/* Enqueue the BYE */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 }
 
 /* Thread to handle incoming messages */
@@ -2068,9 +2095,16 @@ static void *janus_sipre_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_inviting;
-			/* Create a random call-id */
-			char callid[24];
-			janus_sipre_random_string(24, (char *)&callid);
+			char *callid;
+			json_t *request_callid = json_object_get(root, "call_id");
+			/* Take call-id from request, if it exists */
+			if (request_callid) {
+				callid = g_strdup(json_string_value(request_callid));
+			} else {
+				/* If call-id does not exist in request, create a random one */
+				callid = g_malloc0(24);
+				janus_sipre_random_string(24, callid);
+			}
 			/* Take note of custom headers, if any */
 			char *data = NULL;
 			if(strlen(custom_headers))
@@ -2083,6 +2117,21 @@ static void *janus_sipre_handler(void *data) {
 				json_object_set_new(info, "call-id", json_string(callid));
 				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+			}
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *sobj = json_array_get(msg_simulcast, i);
+					json_t *s = json_object_get(sobj, "ssrcs");
+					if(s && json_array_size(s) > 0)
+						session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+					session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
+				}
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
@@ -2097,8 +2146,9 @@ static void *janus_sipre_handler(void *data) {
 				session->account.secret_type = janus_sipre_secret_type_plaintext;
 			}
 			/* Enqueue the INVITE */
+			g_atomic_int_set(&session->establishing, 1);
 			session->callee = g_strdup(uri_text);
-			session->callid = g_strdup(callid);
+			session->callid = callid;
 			g_hash_table_insert(callids, session->callid, session);
 			session->temp_sdp = sdp;
 			mqueue_push(mq, janus_sipre_mqueue_event_do_call, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
@@ -2217,6 +2267,21 @@ static void *janus_sipre_handler(void *data) {
 			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
+				size_t i = 0;
+				for(i=0; i<json_array_size(msg_simulcast); i++) {
+					json_t *sobj = json_array_get(msg_simulcast, i);
+					json_t *s = json_object_get(sobj, "ssrcs");
+					if(s && json_array_size(s) > 0)
+						session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+					session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+					/* FIXME We're stopping at the first item, there may be more */
+					break;
+				}
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -2756,6 +2821,7 @@ static void *janus_sipre_handler(void *data) {
 		json_object_set_new(event, "sip", json_string("event"));
 		if(result != NULL)
 			json_object_set_new(event, "result", result);
+		json_object_set_new(event, "call_id", json_string(session->callid));
 		int ret = gateway->push_event(msg->handle, &janus_sipre_plugin, msg->transaction, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(event);
@@ -2769,6 +2835,7 @@ error:
 			json_object_set_new(event, "sip", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
+			json_object_set_new(event, "call_id", json_string(session->callid));
 			int ret = gateway->push_event(msg->handle, &janus_sipre_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
@@ -2907,6 +2974,10 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 		return NULL;
 	/* Start replacing stuff */
 	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	if(sdp->c_addr) {
+		g_free(sdp->c_addr);
+		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+	}
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -2936,7 +3007,7 @@ char *janus_sipre_sdp_manipulate(janus_sipre_session *session, janus_sdp *sdp, g
 			}
 		}
 		g_free(m->c_addr);
-		m->c_addr = g_strdup(local_ip);
+		m->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 		if(answer && (m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO)) {
 			/* Check which codec was negotiated eventually */
 			int pt = -1;
@@ -3162,6 +3233,7 @@ static void janus_sipre_media_cleanup(janus_sipre_session *session) {
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
+	session->media.simulcast_ssrc = 0;
 	if(session->media.pipefd[0] > 0) {
 		close(session->media.pipefd[0]);
 		session->media.pipefd[0] = -1;
@@ -3221,8 +3293,6 @@ static void *janus_sipre_relay_thread(void *data) {
 	/* Loop */
 	int num = 0;
 	gboolean goon = TRUE;
-	int astep = 0, vstep = 0;
-	guint32 ats = 0, vts = 0;
 	while(goon && session != NULL && !g_atomic_int_get(&session->destroyed) &&
 			session->status > janus_sipre_call_status_idle &&
 			session->status < janus_sipre_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
@@ -3347,6 +3417,10 @@ static void *janus_sipre_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Not an RTP packet? */
+						continue;
+					}
 					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
@@ -3379,25 +3453,6 @@ static void *janus_sipre_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
 					janus_rtp_header_update(header, video ? &session->media.vcontext : &session->media.acontext, video);
-					if(video) {
-						if(vts == 0) {
-							vts = timestamp;
-						} else if(vstep == 0) {
-							vstep = timestamp-vts;
-							if(vstep < 0) {
-								vstep = 0;
-							}
-						}
-					} else {
-						if(ats == 0) {
-							ats = timestamp;
-						} else if(astep == 0) {
-							astep = timestamp-ats;
-							if(astep < 0) {
-								astep = 0;
-							}
-						}
-					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
@@ -3405,6 +3460,10 @@ static void *janus_sipre_relay_thread(void *data) {
 					continue;
 				} else {
 					/* Audio or Video RTCP */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Not an RTCP packet? */
+						continue;
+					}
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect_rtcp(
@@ -3580,6 +3639,7 @@ void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 		json_t *result = json_object();
 		json_object_set_new(result, "event", json_string("ringing"));
 		json_object_set_new(ringing, "result", result);
+		json_object_set_new(ringing, "call_id", json_string(session->callid));
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, ringing, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(ringing);
@@ -3610,7 +3670,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
 	/* Make sure we're not in a call already */
-	if(session->stack.sess != NULL) {
+	if(session->stack.sess != NULL || g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established) || session->relayer_thread != NULL) {
 		/* Already in a call */
 		JANUS_LOG(LOG_VERB, "Already in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, session));
@@ -3624,6 +3684,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 			json_object_set_new(result, "displayname", json_string(dname));
 		}
 		json_object_set_new(missed, "result", result);
+		json_object_set_new(missed, "call_id", json_string(session->callid));
 		if(!g_atomic_int_get(&session->destroyed)) {
 			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, missed, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -3639,6 +3700,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		return;
 	}
 	/* New incoming call, check if there's an SDP to process */
+	g_atomic_int_set(&session->establishing, 1);
 	char sdp_offer[1024];
 	janus_sdp *sdp = NULL;
 	const char *offer = (const char *)mbuf_buf(msg->mb);
@@ -3652,6 +3714,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
 		if(!sdp) {
 			JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
+			g_atomic_int_set(&session->establishing, 0);
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 			return;
 		}
@@ -3669,12 +3732,14 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		janus_sipre_sdp_process(session, sdp, FALSE, FALSE, &changed);
 		/* Check if offer has neither audio nor video, fail with 488 */
 		if(!session->media.has_audio && !session->media.has_video) {
+			g_atomic_int_set(&session->establishing, 0);
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 			janus_sdp_destroy(sdp);
 			return;
 		}
 		/* Also fail with 488 if there's no remote IP address that can be used for RTP */
 		if(!session->media.remote_ip) {
+			g_atomic_int_set(&session->establishing, 0);
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 			janus_sdp_destroy(sdp);
 			return;
@@ -3698,6 +3763,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 	}
 	json_object_set_new(call, "result", calling);
+	json_object_set_new(call, "call_id", json_string(session->callid));
 	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -3873,6 +3939,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	json_object_set_new(calling, "event", json_string(in_progress ? "progress" : "accepted"));
 	json_object_set_new(calling, "username", json_string(session->callee));
 	json_object_set_new(call, "result", calling);
+	json_object_set_new(call, "call_id", json_string(session->callid));
 	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -3980,6 +4047,7 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	}
 	json_object_set_new(result, "reason", json_string(err ? strerror(err) : reason));
 	json_object_set_new(event, "result", result);
+	json_object_set_new(event, "call_id", json_string(session->callid));
 	if(!g_atomic_int_get(&session->destroyed)) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4202,6 +4270,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
+				json_object_set_new(event, "call_id", json_string(session->callid));
 				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4245,6 +4314,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
+				json_object_set_new(event, "call_id", json_string(session->callid));
 				if(!g_atomic_int_get(&session->destroyed)) {
 					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4415,6 +4485,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			json_object_set_new(result, "code", json_integer(200));
 			json_object_set_new(result, "reason", json_string("BYE"));
 			json_object_set_new(event, "result", result);
+			json_object_set_new(event, "call_id", json_string(session->callid));
 			if(!g_atomic_int_get(&session->destroyed)) {
 				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));

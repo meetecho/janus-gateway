@@ -45,6 +45,11 @@ Makefile.in
 /events/*.la
 /events/.libs
 /postprocessing/*.o
+/postprocessing/pp-cmdline.c
+/postprocessing/pp-cmdline.h
+/fuzzers/*.a
+/fuzzers/*.o
+/fuzzers/out
 
 /conf/janus.cfg.sample
 /conf/janus.plugin.duktape.cfg.sample
@@ -60,8 +65,6 @@ Makefile.in
 /conf/janus.plugin.recordplay.jcfg.sample
 /conf/janus.plugin.streaming.jcfg.sample
 /conf/janus.plugin.voicemail.jcfg.sample
-/conf/janus.transport.http.jcfg.sample
-/conf/janus.transport.websockets.jcfg.sample
 
 .deps
 .dirstamp

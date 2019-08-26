@@ -262,7 +262,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL;
+static char *local_ip = NULL, *sdp_ip = NULL;
 #define DEFAULT_RTP_RANGE_MIN 10000
 #define DEFAULT_RTP_RANGE_MAX 60000
 static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
@@ -303,6 +303,7 @@ typedef struct janus_nosip_media {
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
 	guint32 video_ssrc, video_ssrc_peer;
+	guint32 simulcast_ssrc;
 	int video_pt;
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
@@ -651,6 +652,12 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
+		if(item && item->value) {
+			sdp_ip = g_strdup(item->value);
+			JANUS_LOG(LOG_VERB, "IP to advertise in SDP: %s\n", sdp_ip);
+		}
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "rtp_port_range");
 		if(item && item->value) {
 			/* Split in min and max port */
@@ -748,6 +755,7 @@ void janus_nosip_destroy(void) {
 	g_atomic_int_set(&stopping, 0);
 
 	g_free(local_ip);
+	g_free(sdp_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_NOSIP_NAME);
 }
@@ -824,6 +832,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->media.simulcast_ssrc = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
@@ -899,8 +908,8 @@ json_t *janus_nosip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
-	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
+	json_object_set_new(info, "hangingup", g_atomic_int_get(&session->hangingup) ? json_true() : json_false());
+	json_object_set_new(info, "destroyed", g_atomic_int_get(&session->destroyed) ? json_true() : json_false());
 	janus_refcount_decrease(&session->ref);
 	return info;
 }
@@ -964,6 +973,15 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int mindex, gboolean
 		if((video && !session->media.video_send) || (!video && !session->media.audio_send)) {
 			/* Dropping packet, peer doesn't want to receive it */
 			return;
+		}
+		if(video && session->media.simulcast_ssrc) {
+			/* The user is simulcasting: drop everything except the base layer */
+			janus_rtp_header *header = (janus_rtp_header *)buf;
+			uint32_t ssrc = ntohl(header->ssrc);
+			if(ssrc != session->media.simulcast_ssrc) {
+				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+				return;
+			}
 		}
 		if((video && session->media.video_ssrc == 0) || (!video && session->media.audio_ssrc == 0)) {
 			rtp_header *header = (rtp_header *)buf;
@@ -1119,6 +1137,7 @@ static void janus_nosip_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	session->media.simulcast_ssrc = 0;
 	/* Notify the thread that it's time to go */
 	if(session->media.pipefd[1] > 0) {
 		int code = 1;
@@ -1348,6 +1367,21 @@ static void *janus_nosip_handler(void *data) {
 					json_object_set_new(info, "type", json_string(offer ? "offer" : "answer"));
 					json_object_set_new(info, "sdp", json_string(sdp));
 					gateway->notify_event(&janus_nosip_plugin, session->handle, info);
+				}
+				/* If the user negotiated simulcasting, just stick with the base substream */
+				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+				if(msg_simulcast) {
+					JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
+					size_t i = 0;
+					for(i=0; i<json_array_size(msg_simulcast); i++) {
+						json_t *sobj = json_array_get(msg_simulcast, i);
+						json_t *s = json_object_get(sobj, "ssrcs");
+						if(s && json_array_size(s) > 0)
+							session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+						session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+						/* FIXME We're stopping at the first item, there may be more */
+						break;
+					}
 				}
 				/* Send the barebone SDP back */
 				result = json_object();
@@ -1739,6 +1773,10 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 		return NULL;
 	/* Start replacing stuff */
 	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	if(sdp->c_addr) {
+		g_free(sdp->c_addr);
+		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+	}
 	GList *temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -1768,7 +1806,7 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 			}
 		}
 		g_free(m->c_addr);
-		m->c_addr = g_strdup(local_ip);
+		m->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
 		if(answer && (m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO)) {
 			/* Check which codec was negotiated eventually */
 			int pt = -1;
@@ -2024,6 +2062,7 @@ static void janus_nosip_media_cleanup(janus_nosip_session *session) {
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
+	session->media.simulcast_ssrc = 0;
 	if(session->media.pipefd[0] > 0) {
 		close(session->media.pipefd[0]);
 		session->media.pipefd[0] = -1;
@@ -2077,8 +2116,6 @@ static void *janus_nosip_relay_thread(void *data) {
 	/* Loop */
 	int num = 0;
 	gboolean goon = TRUE;
-	int astep = 0, vstep = 0;
-	guint32 ats = 0, vts = 0;
 	while(goon && session != NULL &&
 			!g_atomic_int_get(&session->destroyed) && !g_atomic_int_get(&session->hangingup)) {
 		if(session->media.updated) {
@@ -2198,6 +2235,10 @@ static void *janus_nosip_relay_thread(void *data) {
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				if(!rtcp) {
 					/* Audio or Video RTP */
+					if(!janus_is_rtp(buffer, bytes)) {
+						/* Not an RTP packet? */
+						continue;
+					}
 					pollerrs = 0;
 					rtp_header *header = (rtp_header *)buffer;
 					if((video && session->media.video_ssrc_peer != ntohl(header->ssrc)) ||
@@ -2228,25 +2269,6 @@ static void *janus_nosip_relay_thread(void *data) {
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					guint32 timestamp = ntohl(header->timestamp);
 					janus_rtp_header_update(header, video ? &session->media.vcontext : &session->media.acontext, video);
-					if(video) {
-						if(vts == 0) {
-							vts = timestamp;
-						} else if(vstep == 0) {
-							vstep = timestamp-vts;
-							if(vstep < 0) {
-								vstep = 0;
-							}
-						}
-					} else {
-						if(ats == 0) {
-							ats = timestamp;
-						} else if(astep == 0) {
-							astep = timestamp-ats;
-							if(astep < 0) {
-								astep = 0;
-							}
-						}
-					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
@@ -2254,6 +2276,10 @@ static void *janus_nosip_relay_thread(void *data) {
 					continue;
 				} else {
 					/* Audio or Video RTCP */
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Not an RTCP packet? */
+						continue;
+					}
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
 						srtp_err_status_t res = srtp_unprotect_rtcp(

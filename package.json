@@ -1,13 +1,8 @@
 {
   "name": "janus-gateway",
-  "version": "0.1.0",
+  "version": "0.7.3",
   "description": "A javascript library for interacting with the C based Janus WebRTC Server",
   "main": "html/janus.js",
-  "files": [
-    "html/janus.js",
-    "html/janus.nojquery.js",
-    "html/adapter.js"
-  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/meetecho/janus-gateway.git"
@@ -17,5 +12,8 @@
   "bugs": {
     "url": "https://github.com/meetecho/janus-gateway/issues"
   },
-  "homepage": "https://github.com/meetecho/janus-gateway#readme"
+  "homepage": "https://github.com/meetecho/janus-gateway#readme",
+  "dependencies": {
+    "webrtc-adapter": "6.4.0"
+  }
 }

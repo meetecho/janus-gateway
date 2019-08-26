@@ -1484,7 +1484,7 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || !res)
 			break;
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
@@ -1737,7 +1737,7 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || !res)
 			break;
 	}
 	janus_mutex_unlock(&msg->wait_mutex);

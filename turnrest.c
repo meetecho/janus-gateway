@@ -13,7 +13,7 @@
  * \ref core
  */
 
-#ifdef HAVE_LIBCURL
+#ifdef HAVE_TURNRESTAPI
 
 #include <netdb.h>
 #include <stdlib.h>

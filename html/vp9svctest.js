@@ -127,8 +127,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
@@ -151,9 +151,9 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost, mid) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -329,7 +329,7 @@ $(document).ready(function() {
 										stream.addTrack(track.clone());
 										localTracks[trackId] = stream;
 										Janus.log("Created local stream:", stream);
-										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
 									}
 									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -493,9 +493,9 @@ function newRemoteFeed(id, display) {
 			webrtcState: function(on) {
 				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
 			},
-			slowLink: function(uplink, nacks) {
+			slowLink: function(uplink, lost, mid) {
 				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-					" packets on this PeerConnection (feed #" + remoteFeed.rfindex + ", " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::");
@@ -631,12 +631,14 @@ function newRemoteFeed(id, display) {
 					stream.addTrack(track.clone());
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
 					if(!bitrateTimer) {
 						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+							if(!$("#remotevideo"+remoteFeed.rfindex).get(0))
+								return;
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate();
 							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
@@ -681,8 +683,9 @@ function addSvcButtons(feed) {
 		'<div id="layers'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
 		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 50%">SL 1</button>' +
-		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 50%">SL 0</button>' +
+		'			<button id="sl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to high resolution" style="width: 34%">SL 2</button>' +
+		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 33%">SL 1</button>' +
+		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 33%">SL 0</button>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div class"row">' +
@@ -698,6 +701,8 @@ function addSvcButtons(feed) {
 	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});
+			if(!$('#sl' + index + '-2').hasClass('btn-success'))
+				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-1').hasClass('btn-success'))
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
@@ -706,7 +711,19 @@ function addSvcButtons(feed) {
 	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
 			toastr.info("Switching SVC spatial layer, wait for it... (normal resolution)", null, {timeOut: 2000});
+			if(!$('#sl' + index + '-2').hasClass('btn-success'))
+				$('#sl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl' + index + '-0').hasClass('btn-success'))
+				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
+		});
+	$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching SVC spatial layer, wait for it... (high resolution)", null, {timeOut: 2000});
+			$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl' + index + '-1').hasClass('btn-success'))
+				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
@@ -748,11 +765,18 @@ function updateSvcButtons(feed, spatial, temporal) {
 	var index = feed;
 	if(spatial === 0) {
 		toastr.success("Switched SVC spatial layer! (lower resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 	} else if(spatial === 1) {
 		toastr.success("Switched SVC spatial layer! (normal resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	} else if(spatial === 2) {
+		toastr.success("Switched SVC spatial layer! (high resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 	}
 	// Check the temporal layer

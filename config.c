@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    Configuration files parsing
  * \details  Implementation of a parser of INI and libconfig configuration files.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -387,13 +387,16 @@ static janus_config_container *janus_config_get_internal(janus_config *config,
 	if(create) {
 		if(type == janus_config_type_category) {
 			c = janus_config_category_create(name);
-		} else if(type == janus_config_type_category) {
+		} else if(type == janus_config_type_array) {
 			c = janus_config_array_create(name);
 		} else {
 			JANUS_LOG(LOG_WARN, "Not a category and not an array, not creating anything...\n");
 		}
-		if(c != NULL)
-			janus_config_add(config, parent, c);
+		if(c != NULL && janus_config_add(config, parent, c) < 0) {
+			janus_config_container_destroy(c);
+			JANUS_LOG(LOG_ERR, "Error adding item %s to %s\n", name, parent ? parent->name : "root");
+			return NULL;
+		}
 	}
 	return c;
 }
@@ -569,6 +572,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 		if(c->type == janus_config_type_item) {
 			if(config->is_jcfg) {
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_STRING);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving string '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 				config_setting_set_string(elem, c->value);
 			} else {
 				fwrite(c->name, sizeof(char), strlen(c->name), file);
@@ -589,6 +597,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 		} else if(c->type == janus_config_type_category) {
 			if(config->is_jcfg) {
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_GROUP);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving group '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 			} else {
 				if(level > 0) {
 					/* INI files don't support indented categories */
@@ -613,6 +626,11 @@ static void janus_config_save_list(janus_config *config, FILE *file, int level, 
 				/* FIXME We don't know in advance if all items will be of the
 				 * same kind, so we use list instead of array in libconfig */
 				elem = config_setting_add(lcfg, c->name, CONFIG_TYPE_LIST);
+				if(elem == NULL) {
+					JANUS_LOG(LOG_ERR, "Error saving list '%s' to the config file...\n", c->name);
+					l = l->next;
+					continue;
+				}
 				if(c->list != NULL) {
 					/* Non-empty array */
 					janus_config_save_list(config, file, level+1, FALSE, c->list, elem);

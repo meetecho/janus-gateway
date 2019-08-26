@@ -16,11 +16,20 @@
 #include "debug.h"
 #include "utils.h"
 
+gboolean janus_is_rtp(char *buf, guint len) {
+	if (len < 12)
+		return FALSE;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
+	return ((header->type < 64) || (header->type >= 96));
+}
+
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
-
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return NULL;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -31,6 +40,9 @@ char *janus_rtp_payload(char *buf, int len, int *plen) {
 		hlen += 4;
 		if(len > (hlen + extlen))
 			hlen += extlen;
+	}
+	if (len-hlen <= 0) {
+		return NULL;
 	}
 	if(plen)
 		*plen = len-hlen;
@@ -93,8 +105,12 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 						return JANUS_RTP_EXTMAP_ABS_SEND_TIME;
 					if(strstr(extension, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
 						return JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC;
-					if(strstr(extension, JANUS_RTP_EXTMAP_RTP_STREAM_ID))
-						return JANUS_RTP_EXTMAP_RTP_STREAM_ID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_MID))
+						return JANUS_RTP_EXTMAP_MID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_RID))
+						return JANUS_RTP_EXTMAP_RID;
+					if(strstr(extension, JANUS_RTP_EXTMAP_REPAIRED_RID))
+						return JANUS_RTP_EXTMAP_REPAIRED_RID;
 					JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 					return NULL;
 				}
@@ -112,6 +128,9 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 	if(!buf || len < 12)
 		return -1;
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return -1;
+	}
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -126,20 +145,22 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 				uint8_t extid = 0, idlen;
 				int i = 0;
 				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
+					extid = (uint8_t)buf[hlen+i] >> 4;
 					if(extid == reserved) {
 						break;
 					} else if(extid == padding) {
 						i++;
 						continue;
 					}
-					idlen = (buf[hlen+i] & 0xF)+1;
+					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
 					if(extid == id) {
 						/* Found! */
 						if(byte)
-							*byte = buf[hlen+i+1];
-						if(word)
-							*word = ntohl(*(uint32_t *)(buf+hlen+i));
+							*byte = (uint8_t)buf[hlen+i+1];
+						if(word && idlen >= 3 && (i+3) < extlen) {
+							memcpy(word, buf+hlen+i, sizeof(uint32_t));
+							*word = ntohl(*word);
+						}
 						if(ref)
 							*ref = &buf[hlen+i];
 						return 0;
@@ -204,12 +225,34 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	return 0;
 }
 
-int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+int janus_rtp_header_extension_parse_mid(char *buf, int len, int id,
 		char *sdes_item, int sdes_len) {
 	char *ext = NULL;
 	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
 		return -1;
-	/* a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+	/* a=extmap:3 urn:ietf:params:rtp-hdrext:sdes:mid */
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if(val_len > (sdes_len-1)) {
+		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), MID will be cut\n", val_len, sdes_len);
+		val_len = sdes_len-1;
+	}
+	if (val_len > len-(ext-buf)-1 ) {
+		return -3;
+	}
+	memcpy(sdes_item, ext+1, val_len);
+	*(sdes_item+val_len) = '\0';
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_rid(char *buf, int len, int id,
+		char *sdes_item, int sdes_len) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	/* a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+	/* a=extmap:5 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id */
 	if(ext == NULL)
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
@@ -217,14 +260,37 @@ int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
 		JANUS_LOG(LOG_WARN, "SDES buffer is too small (%d < %d), RTP stream ID will be cut\n", val_len, sdes_len);
 		val_len = sdes_len-1;
 	}
+	if (val_len > len-(ext-buf)-1 ) {
+		return -3;
+	}
 	memcpy(sdes_item, ext+1, val_len);
 	*(sdes_item+val_len) = '\0';
 	return 0;
 }
 
+int janus_rtp_header_extension_parse_framemarking(char *buf, int len, int id, janus_videocodec codec, uint8_t *tid) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	/*  0                   1                   2                   3
+	    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	   |  ID=? |  L=2  |S|E|I|D|B| TID |   LID         |    TL0PICIDX  |
+	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	*/
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
+		return -3;
+	if(tid)
+		*tid = (*(ext+1) & 0x07);
+	return 0;
+}
+
 int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum) {
-	uint32_t bytes = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes, NULL) < 0)
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
 		return -1;
 	/*  0                   1                   2                   3
 	    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -232,8 +298,58 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	   |  ID   | L=1   |transport-wide sequence number | zero padding  |
 	   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	*/
-	*transSeqNum = (bytes & 0x00FFFF00) >> 8;
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if (val_len < 2 || val_len > len-(ext-buf)-1) {
+		return -3;
+	}
+	memcpy(transSeqNum, ext+1, sizeof(uint16_t));
+	*transSeqNum = ntohs(*transSeqNum);
 	return 0;
+}
+
+int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id) {
+	if(!buf || len < 12)
+		return -1;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
+	if (rtp->version != 2) {
+		return -2;
+	}
+	int hlen = 12;
+	if(rtp->csrccount)	/* Skip CSRC if needed */
+		hlen += rtp->csrccount*4;
+	if(rtp->extension) {
+		janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buf+hlen);
+		int extlen = ntohs(ext->length)*4;
+		hlen += 4;
+		if(len > (hlen + extlen)) {
+			/* 1-Byte extension */
+			if(ntohs(ext->type) == 0xBEDE) {
+				const uint8_t padding = 0x00, reserved = 0xF;
+				uint8_t extid = 0, idlen = 0;
+				int i = 0;
+				while(i < extlen) {
+					extid = buf[hlen+i] >> 4;
+					if(extid == reserved) {
+						break;
+					} else if(extid == padding) {
+						i++;
+						continue;
+					}
+					idlen = (buf[hlen+i] & 0xF)+1;
+					if(extid == id) {
+						/* Found! */
+						buf[hlen+i] = (new_id << 4) + (idlen - 1);
+						return 0;
+					}
+					i += 1 + idlen;
+				}
+			}
+			hlen += extlen;
+		}
+	}
+	return -3;
 }
 
 /* RTP context related methods */
@@ -529,6 +645,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 /* SRTP stuff: we may need our own randomizer */
 #ifdef HAVE_SRTP_2
 int srtp_crypto_get_random(uint8_t *key, int len) {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
 	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
 	int rc = RAND_bytes(key, len);
@@ -536,6 +653,7 @@ int srtp_crypto_get_random(uint8_t *key, int len) {
 		/* Error generating */
 		return -1;
 	}
+#endif
 	return 0;
 }
 #endif
@@ -721,16 +839,73 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 		return;
 	/* Reset the context values */
 	memset(context, 0, sizeof(*context));
+	context->rid_ext_id = -1;
 	context->substream = -1;
 	context->templayer = -1;
 }
 
+void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *framemarking_ext_id, uint32_t *ssrcs, char **rids) {
+	if(simulcast == NULL)
+		return;
+	json_t *r = json_object_get(simulcast, "rids");
+	json_t *s = json_object_get(simulcast, "ssrcs");
+	if(r && json_array_size(r) > 0) {
+		JANUS_LOG(LOG_VERB, "  -- Simulcasting is rid based\n");
+		size_t i = 0;
+		for(i=0; i<json_array_size(r); i++) {
+			if(i == 3)
+				break;
+			json_t *rid = json_array_get(r, i);
+			if(rid && json_is_string(rid) && rids)
+				rids[i] = g_strdup(json_string_value(rid));
+		}
+		json_t *rid_ext = json_object_get(simulcast, "rid-ext");
+		if(rid_ext_id != NULL)
+			*rid_ext_id = json_integer_value(rid_ext);
+	} else if(s && json_array_size(s) > 0) {
+		JANUS_LOG(LOG_VERB, "  -- Simulcasting is SSRC based\n");
+		size_t i = 0;
+		for(i=0; i<json_array_size(s); i++) {
+			if(i == 3)
+				break;
+			json_t *ssrc = json_array_get(s, i);
+			if(ssrc && json_is_integer(ssrc) && ssrcs)
+				ssrcs[i] = json_integer_value(ssrc);
+		}
+	}
+	json_t *fm_ext = json_object_get(simulcast, "framemarking-ext");
+	if(framemarking_ext_id != NULL)
+		*framemarking_ext_id = json_integer_value(fm_ext);
+}
+
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-		char *buf, int len, uint32_t *ssrcs, janus_videocodec vcodec, janus_rtp_switching_context *sc) {
+		char *buf, int len, uint32_t *ssrcs, char **rids,
+		janus_videocodec vcodec, janus_rtp_switching_context *sc) {
 	if(!context || !buf || len < 1)
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	uint32_t ssrc = ntohl(header->ssrc);
+	if(ssrc != ssrcs[0] && ssrc != ssrcs[1] && ssrc != ssrcs[2]) {
+		/* We don't recognize this SSRC, check if rid can help us */
+		if(context->rid_ext_id < 1 || rids == NULL)
+			return FALSE;
+		char sdes_item[16];
+		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
+			return FALSE;
+		if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs) = ssrc;
+		} else if(rids[1] != NULL && !strcmp(rids[1], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs+1) = ssrc;
+		} else if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
+			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+			*(ssrcs+2) = ssrc;
+		} else {
+			JANUS_LOG(LOG_WARN, "Simulcasting: unknown rid '%s'...\n", sdes_item);
+			return FALSE;
+		}
+	}
 	/* Reset the flags */
 	context->changed_substream = FALSE;
 	context->changed_temporal = FALSE;
@@ -788,7 +963,7 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		return FALSE;
 	}
 	context->last_relayed = janus_get_monotonic_time();
-	/* Temporal layers are only available for VP8, so don't do anything else for other codecs */
+	/* Temporal layers are only available for VP8 and (partially) H.264, so don't do anything else for other codecs */
 	if(vcodec == JANUS_VIDEOCODEC_VP8) {
 		/* Check if there's any temporal scalability to take into account */
 		uint16_t picid = 0;
@@ -804,7 +979,28 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 				/* Notify the caller that the temporal layer changed */
 				context->changed_temporal = TRUE;
 			}
-			if(tid > context->templayer) {
+			if(context->templayer != -1 && tid > context->templayer) {
+				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+					tid, context->templayer);
+				/* We increase the base sequence number, or there will be gaps when delivering later */
+				if(sc)
+					sc->base_seq++;
+				return FALSE;
+			}
+		}
+	} else if(vcodec == JANUS_VIDEOCODEC_H264) {
+		/* Use the frame-marking extension to account for temporal scalability */
+		uint8_t tid = 0;
+		if(janus_rtp_header_extension_parse_framemarking(buf, len,
+				context->framemarking_ext_id, JANUS_VIDEOCODEC_H264, &tid) == 0) {
+			JANUS_LOG(LOG_HUGE, "Frame marking extension found: tid=%d\n", tid);
+			if(context->templayer != context->templayer_target && tid == context->templayer_target) {
+				/* FIXME We should be smarter in deciding when to switch */
+				context->templayer = context->templayer_target;
+				/* Notify the caller that the temporal layer changed */
+				context->changed_temporal = TRUE;
+			}
+			if(context->templayer != -1 && tid > context->templayer) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
 					tid, context->templayer);
 				/* We increase the base sequence number, or there will be gaps when delivering later */

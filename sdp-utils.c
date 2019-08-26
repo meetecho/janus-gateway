@@ -15,10 +15,11 @@
 #include <string.h>
 
 #include "sdp-utils.h"
+#include "rtp.h"
 #include "utils.h"
 #include "debug.h"
 
-#define JANUS_BUFSIZE	8192
+#define JANUS_BUFSIZE	16384
 
 /* Preferred codecs when negotiating audio/video, and number of supported codecs */
 const char *janus_preferred_audio_codecs[] = {
@@ -270,6 +271,8 @@ const char *janus_sdp_oa_type_str(janus_sdp_oa_type type) {
 			return "JANUS_SDP_OA_PT";
 		case JANUS_SDP_OA_AUDIO_DTMF:
 			return "JANUS_SDP_OA_AUDIO_DTMF";
+		case JANUS_SDP_OA_FMTP:
+			return "JANUS_SDP_OA_FMTP";
 		case JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS:
 			return "JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS";
 		case JANUS_SDP_OA_VIDEO_H264_FMTP:
@@ -302,7 +305,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	janus_sdp_mline *mline = NULL;
 	int mlines = 0;
 
-	gchar **parts = g_strsplit(sdp, "\r\n", -1);
+	gchar **parts = g_strsplit(sdp, strstr(sdp, "\r\n") ? "\r\n" : "\n", -1);
 	if(parts) {
 		int index = 0;
 		char *line = NULL;
@@ -337,6 +340,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'o': {
+						if(imported->o_name || imported->o_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple o= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char name[256], addrtype[6], addr[256];
 						if(sscanf(line, "o=%255s %"SCNu64" %"SCNu64" IN %5s %255s",
 								name, &imported->o_sessid, &imported->o_version, addrtype, addr) != 5) {
@@ -360,6 +369,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 's': {
+						if(imported->s_name) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple s= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						imported->s_name = g_strdup(line+2);
 						break;
 					}
@@ -373,6 +388,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'c': {
+						if(imported->c_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple global c= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char addrtype[6], addr[256];
 						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
 							if(error)
@@ -395,7 +416,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
-						g_atomic_int_set(&a->destroyed, 0);
 						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
@@ -404,6 +424,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
+								janus_sdp_attribute_destroy(a);
 								if(error)
 									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
@@ -431,7 +452,15 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						/* Start with media type, port and protocol */
 						char type[32];
 						char proto[64];
+						if(strlen(line) > 200) {
+							janus_sdp_mline_destroy(m);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line (too long): %zu", strlen(line));
+							success = FALSE;
+							break;
+						}
 						if(sscanf(line, "m=%31s %"SCNu16" %63s %*s", type, &m->port, proto) != 3) {
+							janus_sdp_mline_destroy(m);
 							if(error)
 								g_snprintf(error, errlen, "Invalid m= line: %s", line);
 							success = FALSE;
@@ -448,6 +477,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							/* Now let's check the payload types/formats */
 							gchar **mline_parts = g_strsplit(line+2, " ", -1);
 							if(!mline_parts) {
+								janus_sdp_mline_destroy(m);
 								if(error)
 									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
 								success = FALSE;
@@ -469,6 +499,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							}
 							g_strfreev(mline_parts);
 							if(m->fmts == NULL || m->ptypes == NULL) {
+								janus_sdp_mline_destroy(m);
 								if(error)
 									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
 								success = FALSE;
@@ -489,6 +520,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 				/* m-line stuff */
 				switch(c) {
 					case 'c': {
+						if(mline->c_addr) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple m-line c= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						char addrtype[6], addr[256];
 						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
 							if(error)
@@ -510,6 +547,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 					}
 					case 'b': {
+						if(mline->b_name) {
+							if(error)
+								g_snprintf(error, errlen, "Multiple m-line b= lines: %s", line);
+							success = FALSE;
+							break;
+						}
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL || (*(semicolon+1) == '\0')) {
@@ -519,6 +562,10 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
+						if(strcmp(line, "AS")) {
+							/* We only support b=AS, skip */
+							break;
+						}
 						mline->b_name = g_strdup(line);
 						mline->b_value = atol(semicolon+1);
 						*semicolon = ':';
@@ -526,7 +573,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 					}
 					case 'a': {
 						janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
-						g_atomic_int_set(&a->destroyed, 0);
 						janus_refcount_init(&a->ref, janus_sdp_attribute_free);
 						line += 2;
 						char *semicolon = strchr(line, ':');
@@ -542,6 +588,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
+								janus_sdp_attribute_destroy(a);
 								if(error)
 									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
@@ -577,7 +624,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 		g_strfreev(parts);
 	}
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
-	if(imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL) {
+	if(success && (imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL)) {
 		success = FALSE;
 		if(error)
 			g_snprintf(error, errlen, "Missing mandatory lines (o=, s= or m=)");
@@ -1010,7 +1057,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL, *mid = NULL;
+	const char *codec = NULL, *mid = NULL, *fmtp = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	while(property != JANUS_SDP_OA_DONE) {
 		property = va_arg(args, int);
@@ -1033,6 +1080,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_FMTP, fmtp,
 						JANUS_SDP_OA_AUDIO_DTMF, audio_dtmf,
 						JANUS_SDP_OA_DONE
 					) < 0) {
@@ -1047,6 +1095,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 						JANUS_SDP_OA_PT, pt,
 						JANUS_SDP_OA_CODEC, codec,
 						JANUS_SDP_OA_DIRECTION, mdir,
+						JANUS_SDP_OA_FMTP, fmtp,
 						JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS, video_rtcpfb,
 						JANUS_SDP_OA_VIDEO_H264_FMTP, h264_fmtp,
 						JANUS_SDP_OA_DONE
@@ -1078,6 +1127,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			pt = -1;
 			codec = NULL;
 			mid = NULL;
+			fmtp = NULL;
 			mdir = JANUS_SDP_DEFAULT;
 			/* The value of JANUS_SDP_OA_MLINE MUST be the media we want to add */
 			type = va_arg(args, int);
@@ -1109,6 +1159,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1140,7 +1192,7 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE, data_legacy = FALSE;
 	int pt = -1;
-	const char *codec = NULL, *mid = NULL, *rtpmap = NULL;
+	const char *codec = NULL, *mid = NULL, *rtpmap = NULL, *fmtp = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1183,6 +1235,8 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			mid = va_arg(args, char *);
 		} else if(property == JANUS_SDP_OA_PT) {
 			pt = va_arg(args, int);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
@@ -1244,8 +1298,17 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
 				m->attributes = g_list_append(m->attributes, a);
 			}
+			/* Check if there's a custom fmtp line to add for audio */
+			if(fmtp) {
+				janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+				m->attributes = g_list_append(m->attributes, a);
+			}
 		} else {
-			if(!strcasecmp(codec, "h264") && h264_fmtp) {
+			/* Check if there's a custom fmtp line to add for video */
+			if(fmtp) {
+				janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+				m->attributes = g_list_append(m->attributes, a);
+			} else if(!strcasecmp(codec, "h264") && h264_fmtp) {
 				/* If it's H.264 and we were asked to, add the default fmtp profile as well */
 				a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
 				m->attributes = g_list_append(m->attributes, a);
@@ -1343,7 +1406,8 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 	gboolean mline_enabled = TRUE;
 	janus_sdp_mtype type = JANUS_SDP_OTHER;
 	gboolean audio_dtmf = FALSE, video_rtcpfb = TRUE, h264_fmtp = TRUE;
-	const char *codec = NULL;
+	const char *codec = NULL, *fmtp = NULL;
+	GList *extmaps = NULL;
 	janus_sdp_mdirection mdir = JANUS_SDP_DEFAULT;
 	int property = va_arg(args, int);
 	if(property != JANUS_SDP_OA_MLINE) {
@@ -1369,12 +1433,18 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 			mdir = va_arg(args, janus_sdp_mdirection);
 		} else if(property == JANUS_SDP_OA_CODEC) {
 			codec = va_arg(args, char *);
+		} else if(property == JANUS_SDP_OA_FMTP) {
+			fmtp = va_arg(args, char *);
 		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
 		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_H264_FMTP) {
 			h264_fmtp = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_ACCEPT_EXTMAP) {
+			const char *extension = va_arg(args, char *);
+			if(extension != NULL)
+				extmaps = g_list_append(extmaps, (char *)extension);
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1488,7 +1558,6 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 				/* Reject */
 				JANUS_LOG(LOG_WARN, "Couldn't find codec we needed (%s) in the offer, rejecting %s\n",
 					codec, am->type == JANUS_SDP_AUDIO ? "audio" : "video");
-				am->port = 0;
 				am->direction = JANUS_SDP_INACTIVE;
 				am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(0));
 				break;
@@ -1509,11 +1578,22 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 						am->attributes = g_list_append(am->attributes, a);
 					}
 				}
+				/* Check if there's a custom fmtp line to add for audio
+				 * FIXME We should actually check if it matches the offer */
+				if(fmtp) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+					am->attributes = g_list_append(am->attributes, a);
+				}
 			} else {
 				/* Add rtpmap attribute */
 				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
 				am->attributes = g_list_append(am->attributes, a);
-				if(!strcasecmp(codec, "h264") && h264_fmtp) {
+				/* Check if there's a custom fmtp line to add for video
+				 * FIXME We should actually check if it matches the offer */
+				if(fmtp) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, fmtp);
+					am->attributes = g_list_append(am->attributes, a);
+				} else if(!strcasecmp(codec, "h264") && h264_fmtp) {
 					/* If it's H.264 and we were asked to, add the default fmtp profile as well */
 					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
 					am->attributes = g_list_append(am->attributes, a);
@@ -1533,6 +1613,42 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 					am->attributes = g_list_append(am->attributes, a);
 				}
 			}
+			/* Add the extmap attributes, if needed */
+			if(extmaps != NULL) {
+				GList *ma = offered->attributes;
+				while(ma) {
+					/* Iterate on all attributes, to see if there's an extension to accept */
+					janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+					if(a->name && strstr(a->name, "extmap") && a->value) {
+						GList *temp = extmaps;
+						while(temp != NULL) {
+							char *extension = (char *)temp->data;
+							if(strstr(a->value, extension)) {
+								/* Accept the extension */
+								int id = atoi(a->value);
+								const char *direction = NULL;
+								switch(a->direction) {
+									case JANUS_SDP_SENDONLY:
+										direction = "/recvonly";
+										break;
+									case JANUS_SDP_RECVONLY:
+									case JANUS_SDP_INACTIVE:
+										direction = "/inactive";
+										break;
+									default:
+										direction = "";
+										break;
+								}
+								a = janus_sdp_attribute_create("extmap",
+									"%d%s %s", id, direction, extension);
+								janus_sdp_attribute_add_to_mline(am, a);
+							}
+							temp = temp->next;
+						}
+					}
+					ma = ma->next;
+				}
+			}
 		} else {
 			/* This is for data, add formats and an sctpmap attribute */
 			am->direction = JANUS_SDP_DEFAULT;
@@ -1547,6 +1663,10 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 		/* Nothing else we need to do */
 		break;
 	}
+
+	/* Done */
+	g_list_free(extmaps);
+	va_end(args);
 
 	return 0;
 }

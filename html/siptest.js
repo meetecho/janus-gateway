@@ -147,16 +147,16 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost, mid) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
@@ -277,6 +277,12 @@ $(document).ready(function() {
 																		// also specify the SRTP profile to negotiate by setting the
 																		// "srtp_profile" property accordingly (the default if not
 																		// set in the request is "AES_CM_128_HMAC_SHA1_80")
+																		// Note 2: by default, the SIP plugin auto-answers incoming
+																		// re-INVITEs, without involving the browser/client: this is
+																		// for backwards compatibility with older Janus clients that
+																		// may not be able to handle them. If you want to receive
+																		// re-INVITES to handle them yourself, specify it here, e.g.:
+																		//		body["autoaccept_reinvites"] = false;
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -321,6 +327,28 @@ $(document).ready(function() {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
 											toastr.success("Call accepted!");
+										} else if(event === 'updatingcall') {
+											// We got a re-INVITE: while we may prompt the user (e.g.,
+											// to notify about media changes), to keep things simple
+											// we just accept the update and send an answer right away
+											Janus.log("Got re-INVITE");
+											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+											sipcall.createAnswer(
+												{
+													jsep: jsep,
+													media: { audio: doAudio, video: doVideo },
+													success: function(jsep) {
+														Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
+														Janus.debug(jsep);
+														var body = { request: "update" };
+														sipcall.send({"message": body, "jsep": jsep});
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
@@ -741,6 +769,12 @@ function doCall() {
 				// Just beware that some endpoints will NOT accept an INVITE
 				// with a crypto line in it if the protocol is not RTP/SAVP,
 				// so if you want SDES use "sdes_optional" with care.
+				// Note 2: by default, the SIP plugin auto-answers incoming
+				// re-INVITEs, without involving the browser/client: this is
+				// for backwards compatibility with older Janus clients that
+				// may not be able to handle them. If you want to receive
+				// re-INVITES to handle them yourself, specify it here, e.g.:
+				//		body["autoaccept_reinvites"] = false;
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {

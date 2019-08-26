@@ -96,6 +96,9 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
 
+gboolean janus_is_dtls(char *buf) {
+	return ((*buf >= 20) && (*buf <= 64));
+}
 
 /* DTLS stuff */
 #define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
@@ -317,6 +320,10 @@ error:
 	return -1;
 }
 
+/* Versioning info ( */
+const char *janus_get_ssl_version(void) {
+	return OPENSSL_VERSION_TEXT;
+}
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint timeout) {
@@ -348,7 +355,11 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 
 	/* Go on and create the DTLS context */
 #if JANUS_USE_OPENSSL_PRE_1_1_API
+#if defined(LIBRESSL_VERSION_NUMBER)
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
+#else
+	ssl_ctx = SSL_CTX_new(DTLSv1_2_method());
+#endif
 #else
 	ssl_ctx = SSL_CTX_new(DTLS_method());
 #endif
@@ -713,7 +724,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
-				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				const SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
 				if(srtp_profile == NULL) {
 					/* Should never happen, but just in case... */
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No SRTP profile selected...\n", handle->handle_id);
@@ -884,6 +895,8 @@ done:
 }
 
 void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
+	if(!dtls)
+		return;
 	/* Send alert */
 	janus_refcount_increase(&dtls->ref);
 	if(dtls != NULL && dtls->ssl != NULL) {
@@ -939,10 +952,10 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 }
 
 #ifdef HAVE_SCTP
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
-	janus_sctp_send_data(dtls->sctp, buf, len);
+	janus_sctp_send_data(dtls->sctp, label, buf, len);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
@@ -969,7 +982,7 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	return res;
 }
 
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
+void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
 	if(dtls == NULL || buf == NULL || len < 1)
 		return;
 	janus_handle_webrtc *pc = (janus_handle_webrtc *)dtls->pc;
@@ -982,7 +995,7 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
 		JANUS_LOG(LOG_ERR, "No handle...\n");
 		return;
 	}
-	janus_ice_incoming_data(handle, buf, len);
+	janus_ice_incoming_data(handle, label, buf, len);
 }
 #endif
 

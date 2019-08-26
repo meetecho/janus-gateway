@@ -64,6 +64,7 @@ var feeds = [], feedStreams = {};
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -128,8 +129,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, on, mid) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
@@ -152,9 +153,9 @@ $(document).ready(function() {
 										return false;
 									});
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost, mid) {
 									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -374,7 +375,7 @@ $(document).ready(function() {
 										Janus.log("Created local stream:", stream);
 										Janus.log(stream.getTracks());
 										Janus.log(stream.getVideoTracks());
-										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
 										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
 									}
 									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -473,6 +474,7 @@ function publishOwnFeed(useAudio) {
 			// pass a ?simulcast=true when opening this demo page: it will turn
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
+			simulcast2: doSimulcast2,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
@@ -575,9 +577,9 @@ function newRemoteFeed(id, display, streams) {
 			webrtcState: function(on) {
 				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
 			},
-			slowLink: function(uplink, nacks) {
+			slowLink: function(uplink, lost, mid) {
 				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
-					" packets on this PeerConnection (feed #" + remoteFeed.rfindex + ", " + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (subscriber) :::");
@@ -612,7 +614,7 @@ function newRemoteFeed(id, display, streams) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
+								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8" || remoteFeed.videoCodec === "h264");
 							}
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
@@ -685,6 +687,8 @@ function newRemoteFeed(id, display, streams) {
 					remoteFeed.spinner.stop();
 					remoteFeed.spinner = null;
 				}
+				if($('#remotevideo' + remoteFeed.rfindex + '-' + mid).length > 0)
+					return;
 				if(track.kind === "audio") {
 					// New audio track: create a stream out of it, and use a hidden <audio> element
 					stream = new MediaStream();
@@ -711,18 +715,23 @@ function newRemoteFeed(id, display, streams) {
 					stream.addTrack(track.clone());
 					remoteFeed.remoteTracks[mid] = stream;
 					Janus.log("Created remote video stream:", stream);
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=320 height=240 autoplay playsinline/>');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
+					$('#videoremote'+remoteFeed.rfindex).append(
+						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
 					// Note: we'll need this for additional videos too
-					if(!bitrateTimer) {
+					if(!bitrateTimer[remoteFeed.rfindex]) {
 						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
+								return;
 							// Display updated bitrate, if supported
 							var bitrate = remoteFeed.getBitrate();
 							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
 							// Check if the resolution changed too
-							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+							var width = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoWidth;
+							var height = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoHeight;
 							if(width > 0 && height > 0)
 								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
 						}, 1000);

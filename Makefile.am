@@ -28,9 +28,6 @@ eventsheader_HEADERS = events/eventhandler.h
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.jcfg.sample
 
-certdir = $(datadir)/janus/certs
-dist_cert_DATA = certs/mycert.key certs/mycert.pem
-
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
 
@@ -65,7 +62,6 @@ jsmodules_DATA = html/janus.js
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
 	    s|[@]confdir[@]|$(confdir)|;\
-	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]eventdir[@]|$(eventdir)|;\
@@ -199,12 +195,23 @@ version.c: FORCE | $(dir_target)
 	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION)" | awk 'BEGIN {} {print "int janus_version = "$$0";"} END {} ' >> version.c
 	echo "$(JANUS_VERSION_STRING)" | awk 'BEGIN {} {print "const char *janus_version_string = \""$$0"\";"} END {} ' >> version.c
+	pkg-config --modversion nice | awk 'BEGIN {} {print "const char *libnice_version_string = \""$$0"\";"} END {} ' >> version.c
 
 $(dir_present):
 	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
 
 $(dir_absent):
 	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+##
+# Fuzzers checking
+##
+
+check-fuzzers: FORCE
+	CC=$(CC) SKIP_JANUS_BUILD=1 LIB_FUZZING_ENGINE=fuzzers/standalone.o ./fuzzers/build.sh
+	./fuzzers/run.sh rtcp_fuzzer out/rtcp_fuzzer_seed_corpus
+	./fuzzers/run.sh rtp_fuzzer out/rtp_fuzzer_seed_corpus
+	./fuzzers/run.sh sdp_fuzzer out/sdp_fuzzer_seed_corpus
 
 .PHONY: FORCE
 FORCE:
@@ -232,8 +239,7 @@ transports_libjanus_http_la_CFLAGS = $(transports_cflags) $(MHD_CFLAGS)
 transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) $(MHD_LDFLAGS) $(MHD_LIBS)
 transports_libjanus_http_la_LIBADD = $(transports_libadd) $(MHD_LDFLAGS)
 conf_DATA += conf/janus.transport.http.jcfg.sample
-EXTRA_DIST += conf/janus.transport.http.jcfg.sample.in
-CLEANFILES += conf/janus.transport.http.jcfg.sample
+EXTRA_DIST += conf/janus.transport.http.jcfg.sample
 endif
 
 if ENABLE_WEBSOCKETS
@@ -243,8 +249,7 @@ transports_libjanus_websockets_la_CFLAGS = $(transports_cflags)
 transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
 transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.websockets.jcfg.sample
-EXTRA_DIST += conf/janus.transport.websockets.jcfg.sample.in
-CLEANFILES += conf/janus.transport.websockets.jcfg.sample
+EXTRA_DIST += conf/janus.transport.websockets.jcfg.sample
 endif
 
 if ENABLE_RABBITMQ
@@ -304,7 +309,7 @@ if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
 events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
-events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
@@ -413,9 +418,9 @@ endif
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
-plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
+plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
+plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \
@@ -512,6 +517,8 @@ if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
 
 janus_pp_rec_SOURCES = \
+	postprocessing/pp-cmdline.c \
+	postprocessing/pp-cmdline.h \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
 	postprocessing/pp-g722.c \
@@ -539,8 +546,20 @@ janus_pp_rec_CFLAGS = \
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(NULL)
-endif
+
+BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
+postprocessing/pp-cmdline.h: postprocessing/pp-cmdline.c
+
+postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
+	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < postprocessing/janus-pp-rec.ggo
+
+EXTRA_DIST += postprocessing/janus-pp-rec.ggo
+CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
+
+endif
 
 ##
 # Docs

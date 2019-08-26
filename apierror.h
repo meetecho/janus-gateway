@@ -5,11 +5,11 @@
  * \details  Definition of all the API errors that may occur when invoking
  * the Janus web-based JSON API.
  * \todo     This code still needs proper hooks in the JavaScript libraries that use the interface.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #ifndef _JANUS_API_ERROR_H
 #define _JANUS_API_ERROR_H
 
@@ -64,6 +64,8 @@
 #define JANUS_ERROR_TOKEN_NOT_FOUND				470
 /*! \brief The current request cannot be handled because of not compatible WebRTC state */
 #define JANUS_ERROR_WEBRTC_STATE				471
+/*! \brief The server is currently configured not to accept new sessions */
+#define JANUS_ERROR_NOT_ACCEPTING_SESSIONS		472
 
 
 /*! \brief Helper method to get a string representation of an API error code

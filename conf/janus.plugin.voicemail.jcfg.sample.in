@@ -2,7 +2,7 @@
 #	properly configured web server, if you want the demo to work)
 # base = base path to use when returning the recording URI (use this
 #	to make sure the file in the path you chose is reachable via HTTP)
-# events = yes|no, whether events should be sent to event handlers
+# events = true|false, whether events should be sent to event handlers
 
 general: {
 	path = "@demosdir@/voicemail/"

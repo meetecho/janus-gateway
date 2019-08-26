@@ -7,15 +7,16 @@
  * file just saves RTP frames in a structured way, so that they can be
  * post-processed later on to get a valid container file (e.g., a .opus
  * file for Opus audio or a .webm file for VP8 video) and keep things
- * simpler on the plugin and core side.
+ * simpler on the plugin and core side. Check the \ref recordings
+ * documentation for more details.
  * \note If you want to record both audio and video, you'll have to use
  * two different recorders. Any muxing in the same container will have
  * to be done in the post-processing phase.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -48,10 +49,10 @@ void janus_recorder_init(gboolean tempnames, const char *extension) {
 		rec_tempname = TRUE;
 		if(extension == NULL) {
 			rec_tempext = g_strdup("tmp");
-			JANUS_LOG(LOG_INFO, "  -- No extension provided, using default one (tmp)");
+			JANUS_LOG(LOG_INFO, "  -- No extension provided, using default one (tmp)\n");
 		} else {
 			rec_tempext = g_strdup(extension);
-			JANUS_LOG(LOG_INFO, "  -- Using temporary extension .%s", rec_tempext);
+			JANUS_LOG(LOG_INFO, "  -- Using temporary extension .%s\n", rec_tempext);
 		}
 	}
 }

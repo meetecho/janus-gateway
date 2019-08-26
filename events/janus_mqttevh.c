@@ -440,6 +440,7 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	int rc;
 
 	MQTTAsync_responseOptions options;
+	memset(&options, 0, sizeof(MQTTAsync_responseOptions));
 	MQTTAsync_message msg = MQTTAsync_message_initializer;
 
 	msg.payload = payload;
@@ -697,7 +698,7 @@ static int janus_mqttevh_init(const char *config_path) {
 			ctx->will.qos = atoi(will_qos_item->value);
 		}
 
-		/* Using the topic for LWT as configured for publish and prefixed with JANUS_MQTTEVH_STATUS_TOPIC. */
+		/* Using the topic for LWT as configured for publish and suffixed with JANUS_MQTTEVH_STATUS_TOPIC. */
 		char will_topic_buf[512];
 		snprintf(will_topic_buf, sizeof(will_topic_buf), "%s/%s", ctx->publish.topic, JANUS_MQTTEVH_STATUS_TOPIC);
 		ctx->will.topic = g_strdup(will_topic_buf);

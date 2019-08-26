@@ -30,6 +30,7 @@
 #include "rtcp.h"
 #include "text2pcap.h"
 #include "utils.h"
+#include "ip-utils.h"
 #include "refcount.h"
 #include "plugins/plugin.h"
 
@@ -44,6 +45,12 @@
 void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
+/*! \brief Method to check whether a STUN server is reachable
+ * @param[in] addr Address of the STUN server as a janus_network_address instance
+ * @param[in] port Port of the STUN server
+ * @param[out] public_addr Public address returned by the STUN server as a janus_network_address instance
+ * @returns 0 in case of success, a negative integer on errors */
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
  * @param[in] stun_server STUN server address to use
  * @param[in] stun_port STUN port to use
@@ -129,6 +136,18 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to modify the slowlink-threshold property (i.e., the number of lost packets per seconds that should trigger a slow-link event)
+ * @param[in] packets The new value, in lost packets per seconds */
+void janus_set_slowlink_threshold(uint packets);
+/*! \brief Method to get the current slowlink-threshold value (see above)
+ * @returns The current slowlink-threshold value */
+uint janus_get_slowlink_threshold(void);
+/*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
+ * @param[in] timer The new period value, in milliseconds */
+void janus_set_twcc_period(uint period);
+/*! \brief Method to get the current TWCC period (see above)
+ * @returns The current TWCC period */
+uint janus_get_twcc_period(void);
 /*! \brief Method to enable or disable the RFC4588 support negotiation
  * @param[in] enabled The new timer value, in seconds */
 void janus_set_rfc4588_enabled(gboolean enabled);
@@ -148,6 +167,11 @@ gboolean janus_ice_is_ice_debugging_enabled(void);
 void janus_ice_debugging_enable(void);
 /*! \brief Method to disable libnice debugging (the default) */
 void janus_ice_debugging_disable(void);
+/*! \brief Method to enable opaque ID in Janus API responses/events */
+void janus_enable_opaqueid_in_api(void);
+/*! \brief Method to check whether opaque ID have to be added to Janus API responses/events
+ * @returns TRUE if they need to be present, FALSE otherwise */
+gboolean janus_is_opaqueid_in_api_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -170,6 +194,7 @@ typedef struct janus_trickle janus_trickle;
 #define JANUS_HANDLE_WEBRTC_READY				(1 << 2)
 #define JANUS_HANDLE_WEBRTC_STOP				(1 << 3)
 #define JANUS_HANDLE_WEBRTC_ALERT				(1 << 4)
+#define JANUS_HANDLE_WEBRTC_NEGOTIATED			(1 << 5)
 #define JANUS_HANDLE_WEBRTC_TRICKLE				(1 << 7)
 #define JANUS_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
@@ -214,12 +239,8 @@ typedef struct janus_media_stats_info {
 typedef struct janus_media_stats {
 	/*! \brief Media stats info (considering we may be simulcasting) */
 	janus_media_stats_info info[3];
-	/*! \brief Last time the slow_link callback (of the plugin) was called */
-	gint64 last_slowlink_time;
-	/*! \brief Start time of recent NACKs (for slow_link) */
-	gint64 sl_nack_period_ts;
-	/*! \brief Count of recent NACKs (for slow_link) */
-	guint sl_nack_recent_cnt;
+	/*! \brief Last known count of lost packets (for slow_link) */
+	guint sl_lost_count;
 } janus_media_stats;
 
 /*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
@@ -275,8 +296,8 @@ struct janus_handle {
 	GMainLoop *mainloop;
 	/*! \brief GLib thread for the handle and libnice */
 	GThread *thread;
-	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats */
-	GSource *rtp_source, *rtcp_source, *stats_source;
+	/*! \brief GLib sources for outgoing traffic, recurring RTCP, and stats (and optionally TWCC) */
+	GSource *rtp_source, *rtcp_source, *stats_source, *twcc_source;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief Monotonic time of when the ICE agent has been created */
@@ -313,6 +334,8 @@ struct janus_handle {
 	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Whether a close_pc was requested recently on the PeerConnection */
+	volatile gint closepc;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
@@ -351,7 +374,13 @@ struct janus_handle_webrtc {
 	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
-	/*! \brief Wether we do transport wide cc */
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
+	/*! \brief RTP Stream extension ID, and the related rtx one */
+	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Frame marking extension ID */
+	gint framemarking_ext_id;
+	/*! \brief Whether we do transport wide cc */
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;
@@ -381,6 +410,8 @@ struct janus_handle_webrtc {
 	GHashTable *media;
 	/*! \brief GLib hash table of media (SSRCs are the keys) */
 	GHashTable *media_byssrc;
+	/*! \brief GLib hash table of media (mids are the keys) */
+	GHashTable *media_bymid;
 	/*! \brief GLib hash table of media (media types are the keys)
 	 * @note Temporary! Will go away very soon*/
 	GHashTable *media_bytype;
@@ -410,11 +441,13 @@ struct janus_handle_webrtc_medium {
 	/*! \brief Retransmission SSRC of the server for this medium */
 	guint32 ssrc_rtx;
 	/*! \brief SSRC(s) of the peer for this medium (may be simulcasting) */
-	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3];
+	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3], ssrc_peer_temp;
 	/*! \brief Retransmissions SSRC(s) of the peer for this medium (may be simulcasting) */
 	guint32 ssrc_peer_rtx[3], ssrc_peer_rtx_new[3], ssrc_peer_rtx_orig[3];
 	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
 	char *rid[3];
+	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
+	gboolean legacy_rid;
 	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
 	janus_rtp_switching_context rtp_ctx[3];
 	/*! \brief List of payload types we can expect */
@@ -558,14 +591,16 @@ void janus_ice_relay_rtp(janus_handle *handle, int mindex, gboolean video, char 
 void janus_ice_relay_rtcp(janus_handle *handle, int mindex, gboolean video, char *buf, int len);
 /*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus handle associated with the peer
+ * @param[in] label The label of the data channel to use
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_data(janus_handle *handle, char *buf, int len);
+void janus_ice_relay_data(janus_handle *handle, char *label, char *buf, int len);
 /*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
  * @param[in] handle The Janus handle associated with the peer
+ * @param[in] label The label of the data channel the message is from
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
-void janus_ice_incoming_data(janus_handle *handle, char *buffer, int length);
+void janus_ice_incoming_data(janus_handle *handle, char *label, char *buffer, int length);
 /*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus handle associated with the peer
  * @param[in] buffer The message data (buffer)
@@ -608,7 +643,7 @@ void janus_handle_resend_trickles(janus_handle *handle);
 
 
 /*! \brief Method to configure the static event loops mechanism at startup
- * @note Check the \c event_loops property in the \c janus.cfg configuration
+ * @note Check the \c event_loops property in the \c janus.jcfg configuration
  * for an explanation of this feature, and the possible impact on Janus and users
  * @param[in] loops The number of static event loops to start (0 to disable the feature) */
 void janus_ice_set_static_event_loops(int loops);
