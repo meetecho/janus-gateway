@@ -2566,37 +2566,39 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
 			}
 
-			/* Send options request, in order to create a proper Contact using
-			   rport,received in response via headers. */
-			if(session->stack->s_nh_o != NULL) {
-				nua_handle_destroy(session->stack->s_nh_o);
-			}
-			session->stack->s_nh_o = nua_handle(session->stack->s_nua, session, TAG_END());
-			session->options_request_pending = TRUE;
-			session->contact = NULL;
-			janus_condition_init(&session->options_condition);
-
-			nua_options(session->stack->s_nh_o,
-					NUTAG_URL(session->account.outbound_proxy),
-					TAG_END());
-
-			janus_mutex_lock(&session->mutex);
-
-			gint64 end_time = g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
-
-			while(session->options_request_pending) {
-				if(!janus_condition_wait_until(&session->options_condition, &session->mutex, end_time)) {
-					janus_mutex_unlock(&session->mutex);
-					g_free(sdp);
-					session->sdp = NULL;
-					JANUS_LOG(LOG_WARN, "Timed out while waiting for warmup options response\n");
-					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
-					g_snprintf(error_cause, 512, "Timed out while waiting for warmup options response");
-
-					goto error;
+			if(secure_getenv("K8S_WORKAROUND") != NULL) {
+				/* Send options request, in order to create a proper Contact using
+				   rport,received in response via headers. */
+				if(session->stack->s_nh_o != NULL) {
+					nua_handle_destroy(session->stack->s_nh_o);
 				}
+				session->stack->s_nh_o = nua_handle(session->stack->s_nua, session, TAG_END());
+				session->options_request_pending = TRUE;
+				session->contact = NULL;
+				janus_condition_init(&session->options_condition);
+
+				nua_options(session->stack->s_nh_o,
+						NUTAG_URL(session->account.outbound_proxy),
+						TAG_END());
+
+				janus_mutex_lock(&session->mutex);
+
+				gint64 end_time = g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
+
+				while(session->options_request_pending) {
+					if(!janus_condition_wait_until(&session->options_condition, &session->mutex, end_time)) {
+						janus_mutex_unlock(&session->mutex);
+						g_free(sdp);
+						session->sdp = NULL;
+						JANUS_LOG(LOG_WARN, "Timed out while waiting for warmup options response\n");
+						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+						g_snprintf(error_cause, 512, "Timed out while waiting for warmup options response");
+
+						goto error;
+					}
+				}
+				janus_mutex_unlock(&session->mutex);
 			}
-			janus_mutex_unlock(&session->mutex);
 
 			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
@@ -4139,14 +4141,21 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			const char* via_port = sip->sip_via->v_rport;
 			const char* via_proto = "tcp";
 			char contact[128];
-			g_snprintf(contact, sizeof(contact), "<sip:%s@%s:%s;transport=%s>", username, via_ip, via_port, via_proto);
-			JANUS_LOG(LOG_VERB, "Contact derived from warmup options response via header: %s\n", contact);
+			if (via_port != NULL && strnlen(via_port, 100) > 1) {
+				g_snprintf(contact, sizeof(contact), "<sip:%s@%s:%s;transport=%s>", username, via_ip, via_port, via_proto);
+				JANUS_LOG(LOG_VERB, "Contact derived from warmup options response via header: %s\n", contact);
 
-			janus_mutex_lock(&session->mutex);
-			session->contact = sip_contact_make(session->stack->s_home, contact);
-			session->options_request_pending = FALSE;
-			janus_condition_signal(&session->options_condition);
-			janus_mutex_unlock(&session->mutex);
+				janus_mutex_lock(&session->mutex);
+				session->contact = sip_contact_make(session->stack->s_home, contact);
+				session->options_request_pending = FALSE;
+				janus_condition_signal(&session->options_condition);
+				janus_mutex_unlock(&session->mutex);
+			} else {
+				janus_mutex_lock(&session->mutex);
+				session->options_request_pending = FALSE;
+				janus_condition_signal(&session->options_condition);
+				janus_mutex_unlock(&session->mutex);
+			}
 			break;
 		}
 		default:
@@ -4937,8 +4946,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
-				//TPTAG_PUBLIC(tport_type_client), /* Genesys doesn't like is.invalid urls in via headers
-				NTATAG_TCP_RPORT(1),
+				TAG_IF(secure_getenv("K8S_WORKAROUND"), TPTAG_PUBLIC(tport_type_client)),
+				TAG_IF(secure_getenv("K8S_WORKAROUND"), NTATAG_TCP_RPORT(1)),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
