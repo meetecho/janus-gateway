@@ -2640,6 +2640,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		}
 		return;
 	} else if(janus_is_rtcp(buf, len)) {
+		/* Record the time when we first get the RTCP packet, so it's as accurate as possible */
+		gint64 received_time_us = g_get_monotonic_time();
+
 		/* This is RTCP */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTCP packet\n", handle->handle_id);
 		if(janus_is_webrtc_encryption_enabled() && (!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in)) {
@@ -2836,7 +2839,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(plugin && plugin->incoming_rtcp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
-					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
+					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen, received_time_us);
 			}
 		}
 		return;

@@ -670,7 +670,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 json_t *janus_audiobridge_handle_admin_message(json_t *message);
 void janus_audiobridge_setup_media(janus_plugin_session *handle);
 void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_audiobridge_query_session(janus_plugin_session *handle);
@@ -3145,7 +3145,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 	}
 }
 
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME Should we care? */

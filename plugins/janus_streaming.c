@@ -706,7 +706,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 json_t *janus_streaming_handle_admin_message(json_t *message);
 void janus_streaming_setup_media(janus_plugin_session *handle);
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
@@ -3741,7 +3741,7 @@ void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char 
 	/* FIXME We don't care about what the browser sends us, we're sendonly */
 }
 
-void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;

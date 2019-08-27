@@ -215,7 +215,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 json_t *janus_lua_handle_admin_message(json_t *message);
 void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_lua_hangup_media(janus_plugin_session *handle);
@@ -1795,7 +1795,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 	}
 }
 
-void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;

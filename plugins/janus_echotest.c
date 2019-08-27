@@ -143,7 +143,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 json_t *janus_echotest_handle_admin_message(json_t *message);
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
@@ -610,7 +610,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 	}
 }
 
-void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */

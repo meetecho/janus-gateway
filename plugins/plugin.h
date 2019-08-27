@@ -296,8 +296,9 @@ struct janus_plugin {
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] video Whether this is related to an audio or a video stream
 	 * @param[in] buf The message data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	 * @param[in] len The buffer length
+	 * @param[in] received_time_us is the monotonic system time in microseconds when the packet was received. */
+	void (* const incoming_rtcp)(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 	/*! \brief Method to handle incoming SCTP/DataChannel data from a peer (text only, for the moment)
 	 * \note We currently only support text data, binary data will follow... please also notice that
 	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to

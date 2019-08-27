@@ -214,7 +214,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 json_t *janus_duktape_handle_admin_message(json_t *message);
 void janus_duktape_setup_media(janus_plugin_session *handle);
 void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us);
 void janus_duktape_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_duktape_hangup_media(janus_plugin_session *handle);
@@ -2097,7 +2097,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, int video, char *b
 	}
 }
 
-void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_duktape_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len, uint64_t received_time_us) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
 	janus_duktape_session *session = (janus_duktape_session *)handle->plugin_handle;
