@@ -2109,6 +2109,12 @@ static void *janus_sip_handler(void *data) {
 			if(do_tcp != NULL) {
 				force_tcp = json_is_true(do_tcp);
 			}
+
+			if(secure_getenv("USE_OPTIONS_AND_RPORT_FOR_CONTACT")) {
+				force_tcp = TRUE;
+				force_udp = FALSE;
+			}
+
 			if(force_udp && force_tcp) {
 				JANUS_LOG(LOG_ERR, "Conflicting elements: force_udp and force_tcp cannot both be true\n");
 				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
@@ -2566,7 +2572,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
 			}
 
-			if(secure_getenv("K8S_WORKAROUND") != NULL) {
+			if(secure_getenv("USE_OPTIONS_AND_RPORT_FOR_CONTACT") != NULL) {
 				/* Send options request, in order to create a proper Contact using
 				   rport,received in response via headers. */
 				if(session->stack->s_nh_o != NULL) {
@@ -4946,8 +4952,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
-				TAG_IF(secure_getenv("K8S_WORKAROUND") && secure_getenv("K8S_WORKAROUND_NO_LISTEN"), TPTAG_PUBLIC(tport_type_client)),
-				TAG_IF(secure_getenv("K8S_WORKAROUND"), NTATAG_TCP_RPORT(1)),
+				TAG_IF(secure_getenv("SIP_STACK_NO_LISTEN"), TPTAG_PUBLIC(tport_type_client)),
+				TAG_IF(secure_getenv("USE_OPTIONS_AND_RPORT_FOR_CONTACT"), NTATAG_TCP_RPORT(1)),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
