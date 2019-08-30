@@ -39,6 +39,8 @@ declare namespace JanusJS {
 
 	enum MessageType {
 		Recording = 'recording',
+		Starting = 'starting',
+		Started = 'started',
 		Stopped = 'stopped',
 		SlowLink = 'slow_link',
 		Preparing = 'preparing',
@@ -51,6 +53,7 @@ declare namespace JanusJS {
 			id?: string;
 			uplink?: number;
 		};
+		error?: Error;
 	}
 
 	interface PluginOptions {
@@ -116,6 +119,9 @@ declare namespace JanusJS {
 		handleRemoteJsep(params: { jsep: JSEP }): void;
 		dtmf(params: any): void;
 		data(params: any): void;
+		isVideoMuted(): boolean;
+		muteVideo(): void;
+		unmuteVideo(): void;
 		getBitrate(): number;
 		hangup(sendRequest?: boolean): void;
 		detach(params: any): void;
