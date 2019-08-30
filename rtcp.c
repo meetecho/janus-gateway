@@ -1441,7 +1441,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Got it  */
 				first_received = TRUE;
 				/* Set it */
-				reference_time = (int32_t)((stat->timestamp & 0x1FFFFFC0) / 64);
+				reference_time = (int32_t)(((stat->timestamp / 1000) & 0x1FFFFFC0) / 64);
 				/* Get initial time */
 				timestamp = reference_time * 64000;
 				/* also in bufffer */
