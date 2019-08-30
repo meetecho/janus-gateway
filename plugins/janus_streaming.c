@@ -4803,8 +4803,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				id = 0;
 			}
 		}
+		g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	}
-	g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	janus_mutex_unlock(&mountpoints_mutex);
 	char tempname[255];
 	if(name == NULL) {
@@ -5212,8 +5212,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 				id = 0;
 			}
 		}
+		g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	}
-	g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	janus_mutex_unlock(&mountpoints_mutex);
 	if(!doaudio && !dovideo) {
 		JANUS_LOG(LOG_ERR, "Can't add 'file' stream, no audio or video have to be streamed...\n");
@@ -5735,8 +5735,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 				id = 0;
 			}
 		}
+		g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	}
-	g_hash_table_insert(mountpoints_temp, &id, GUINT_TO_POINTER(TRUE));
 	janus_mutex_unlock(&mountpoints_mutex);
 	char tempname[255];
 	if(name == NULL) {
