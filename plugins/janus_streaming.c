@@ -385,13 +385,29 @@ rtspiface = network interface IP address or device name to listen on when receiv
  *
 \verbatim
 {
-	"request" : "enable|disable",
-	"id" : <unique ID of the mountpoint to enable/disable; mandatory>,
-	"secret" : "<secret to enable/disable the mountpoint; mandatory if configured>"
+	"request" : "enable",
+	"id" : <unique ID of the mountpoint to enable; mandatory>,
+	"secret" : "<secret to enable the mountpoint; mandatory if configured>"
 }
 \endverbatim
  *
- * In both cases, a generic \c ok is returned if successful:
+ * If successful, a generic \c ok is returned:
+ *
+\verbatim
+{
+	"streaming" : "ok"
+}
+\endverbatim
+\verbatim
+{
+	"request" : "disable",
+	"id" : <unique ID of the mountpoint to disable; mandatory>,
+	"stop_recording" : <true|false, whether the recording should also be stopped or not; true by default>
+	"secret" : "<secret to disable the mountpoint; mandatory if configured>"
+}
+\endverbatim
+ *
+ * If successful, a generic \c ok is returned:
  *
 \verbatim
 {
@@ -893,6 +909,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter disable_parameters[] = {
+	{"stop_recording", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */
@@ -3474,10 +3493,20 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			/* FIXME: Should we notify the viewers, or is this up to the controller application? */
 		} else {
 			/* Disable a previously enabled mountpoint */
-			JANUS_LOG(LOG_INFO, "[%s] Stream disabled\n", mp->name);
+			JANUS_VALIDATE_JSON_OBJECT(root, disable_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
 			mp->enabled = FALSE;
+			gboolean stop_recording = TRUE;
+			json_t *stop_rec = json_object_get(root, "stop_recording");
+			if (stop_rec) {
+				stop_recording = json_is_true(stop_rec);
+			}
+			JANUS_LOG(LOG_INFO, "[%s] Stream disabled (stop_recording=%s)\n", mp->name, stop_recording ? "yes" : "no");
 			/* Any recording to close? */
-			if(mp->streaming_source == janus_streaming_source_rtp) {
+			if(mp->streaming_source == janus_streaming_source_rtp && stop_recording) {
 				janus_streaming_rtp_source *source = mp->source;
 				janus_mutex_lock(&source->rec_mutex);
 				if(source->arc) {
@@ -6250,6 +6279,29 @@ static void *janus_streaming_relay_thread(void *data) {
 			}
 			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, strerror(errno));
 			mountpoint->enabled = FALSE;
+			janus_mutex_lock(&source->rec_mutex);
+			if(source->arc) {
+				janus_recorder_close(source->arc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mountpoint->name, source->arc->filename ? source->arc->filename : "??");
+				janus_recorder *tmp = source->arc;
+				source->arc = NULL;
+				janus_recorder_destroy(tmp);
+			}
+			if(source->vrc) {
+				janus_recorder_close(source->vrc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mountpoint->name, source->vrc->filename ? source->vrc->filename : "??");
+				janus_recorder *tmp = source->vrc;
+				source->vrc = NULL;
+				janus_recorder_destroy(tmp);
+			}
+			if(source->drc) {
+				janus_recorder_close(source->drc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mountpoint->name, source->drc->filename ? source->drc->filename : "??");
+				janus_recorder *tmp = source->drc;
+				source->drc = NULL;
+				janus_recorder_destroy(tmp);
+			}
+			janus_mutex_unlock(&source->rec_mutex);
 			break;
 		} else if(resfd == 0) {
 			/* No data, keep going */
@@ -6262,6 +6314,29 @@ static void *janus_streaming_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", name,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
 				mountpoint->enabled = FALSE;
+				janus_mutex_lock(&source->rec_mutex);
+				if(source->arc) {
+					janus_recorder_close(source->arc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mountpoint->name, source->arc->filename ? source->arc->filename : "??");
+					janus_recorder *tmp = source->arc;
+					source->arc = NULL;
+					janus_recorder_destroy(tmp);
+				}
+				if(source->vrc) {
+					janus_recorder_close(source->vrc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mountpoint->name, source->vrc->filename ? source->vrc->filename : "??");
+					janus_recorder *tmp = source->vrc;
+					source->vrc = NULL;
+					janus_recorder_destroy(tmp);
+				}
+				if(source->drc) {
+					janus_recorder_close(source->drc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mountpoint->name, source->drc->filename ? source->drc->filename : "??");
+					janus_recorder *tmp = source->drc;
+					source->drc = NULL;
+					janus_recorder_destroy(tmp);
+				}
+				janus_mutex_unlock(&source->rec_mutex);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP or data packet */
@@ -6295,7 +6370,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					source->last_received_audio = now;
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
 					/* If paused, ignore this packet */
-					if(!mountpoint->enabled)
+					if(!mountpoint->enabled && !source->arc)
 						continue;
 					/* Is this SRTP? */
 					if(source->is_srtp) {
@@ -6338,18 +6413,23 @@ static void *janus_streaming_relay_thread(void *data) {
 								name, ret, a_last_ssrc);
 						}
 					}
-					packet.data->ssrc = htonl((uint32_t)mountpoint->id);
-					janus_recorder_save_frame(source->arc, buffer, bytes);
-					packet.data->ssrc = htonl(ssrc);
-					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
-					packet.timestamp = ntohl(packet.data->timestamp);
-					packet.seq_number = ntohs(packet.data->seq_number);
-					/* Go! */
-					janus_mutex_lock(&mountpoint->mutex);
-					g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
-						mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
-						&packet);
-					janus_mutex_unlock(&mountpoint->mutex);
+					if(source->arc) {
+						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
+						janus_recorder_save_frame(source->arc, buffer, bytes);
+					}
+					if(mountpoint->enabled) {
+						packet.data->ssrc = htonl(ssrc);
+						/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
+						packet.timestamp = ntohl(packet.data->timestamp);
+						packet.seq_number = ntohs(packet.data->seq_number);
+						/* Go! */
+
+						janus_mutex_lock(&mountpoint->mutex);
+						g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
+							mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
+							&packet);
+						janus_mutex_unlock(&mountpoint->mutex);
+					}
 					continue;
 				} else if((video_fd[0] != -1 && fds[i].fd == video_fd[0]) ||
 						(video_fd[1] != -1 && fds[i].fd == video_fd[1]) ||
@@ -6475,7 +6555,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						}
 					}
 					/* If paused, ignore this packet */
-					if(!mountpoint->enabled)
+					if(!mountpoint->enabled && !source->vrc)
 						continue;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
@@ -6532,26 +6612,28 @@ static void *janus_streaming_relay_thread(void *data) {
 								name, ret, v_last_ssrc[index], index);
 						}
 					}
-					if(index == 0) {
+					if(index == 0 && source->vrc) {
 						packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 						janus_recorder_save_frame(source->vrc, buffer, bytes);
+					}
+					if (mountpoint->enabled) {
 						packet.data->ssrc = htonl(ssrc);
+						/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
+						packet.timestamp = ntohl(packet.data->timestamp);
+						packet.seq_number = ntohs(packet.data->seq_number);
+						/* Take note of the simulcast SSRCs */
+						if(source->simulcast) {
+							packet.ssrc[0] = v_last_ssrc[0];
+							packet.ssrc[1] = v_last_ssrc[1];
+							packet.ssrc[2] = v_last_ssrc[2];
+						}
+						/* Go! */
+						janus_mutex_lock(&mountpoint->mutex);
+						g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
+							mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
+							&packet);
+						janus_mutex_unlock(&mountpoint->mutex);
 					}
-					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
-					packet.timestamp = ntohl(packet.data->timestamp);
-					packet.seq_number = ntohs(packet.data->seq_number);
-					/* Take note of the simulcast SSRCs */
-					if(source->simulcast) {
-						packet.ssrc[0] = v_last_ssrc[0];
-						packet.ssrc[1] = v_last_ssrc[1];
-						packet.ssrc[2] = v_last_ssrc[2];
-					}
-					/* Go! */
-					janus_mutex_lock(&mountpoint->mutex);
-					g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
-						mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
-						&packet);
-					janus_mutex_unlock(&mountpoint->mutex);
 					continue;
 				} else if(data_fd != -1 && fds[i].fd == data_fd) {
 					/* Got something data (text) */
@@ -6567,6 +6649,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
+					if(!mountpoint->enabled && !source->drc)
+						continue;
 					/* Get a string out of the data */
 					char *text = g_malloc(bytes+1);
 					memcpy(text, buffer, bytes);
@@ -6577,22 +6661,24 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.is_rtp = FALSE;
 					/* Is there a recorder? */
 					janus_recorder_save_frame(source->drc, text, strlen(text));
-					/* Are we keeping track of the last message being relayed? */
-					if(source->buffermsg) {
-						janus_mutex_lock(&source->buffermsg_mutex);
-						janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-						pkt->data = g_malloc(bytes+1);
-						memcpy(pkt->data, text, bytes+1);
-						packet.is_rtp = FALSE;
-						pkt->length = bytes+1;
-						janus_mutex_unlock(&source->buffermsg_mutex);
+					if(mountpoint->enabled) {
+						/* Are we keeping track of the last message being relayed? */
+						if(source->buffermsg) {
+							janus_mutex_lock(&source->buffermsg_mutex);
+							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
+							pkt->data = g_malloc(bytes+1);
+							memcpy(pkt->data, text, bytes+1);
+							packet.is_rtp = FALSE;
+							pkt->length = bytes+1;
+							janus_mutex_unlock(&source->buffermsg_mutex);
+						}
+						/* Go! */
+						janus_mutex_lock(&mountpoint->mutex);
+						g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
+							mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
+							&packet);
+						janus_mutex_unlock(&mountpoint->mutex);
 					}
-					/* Go! */
-					janus_mutex_lock(&mountpoint->mutex);
-					g_list_foreach(mountpoint->helper_threads == 0 ? mountpoint->viewers : mountpoint->threads,
-						mountpoint->helper_threads == 0 ? janus_streaming_relay_rtp_packet : janus_streaming_helper_rtprtcp_packet,
-						&packet);
-					janus_mutex_unlock(&mountpoint->mutex);
 					packet.data = NULL;
 					g_free(text);
 					continue;
@@ -6603,6 +6689,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
+					if(!mountpoint->enabled)
+						continue;
 					memcpy(&source->audio_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
@@ -6627,6 +6715,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
+					if(!mountpoint->enabled)
+						continue;
 					memcpy(&source->video_rtcp_addr, &remote, addrlen);
 					if(!janus_is_rtcp(buffer, bytes)) {
 						/* Failed to read or not an RTCP packet? */
