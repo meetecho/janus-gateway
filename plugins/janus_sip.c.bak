@@ -749,8 +749,10 @@ static GHashTable *callids;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
-static void update_session_status(janus_sip_session *session, janus_sip_call_status new_status);
+
 static void janus_sip_media_reset(janus_sip_session *session);
+
+static void update_session_status(janus_sip_session *session, janus_sip_call_status new_status);
 
 static void janus_sip_session_destroy(janus_sip_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -2888,12 +2890,6 @@ static void *janus_sip_handler(void *data) {
 			}
 			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 			gboolean offer = !strcasecmp(msg_sdp_type, "offer");
-			if(!offer && session->status == janus_sip_call_status_incall) {
-				JANUS_LOG(LOG_ERR, "[SIP-%s] SDP type %s is incompatible with session status %s\n", session->account.username, msg_sdp_type, janus_sip_call_status_string(session->status));
-				error_code = JANUS_SIP_ERROR_MISSING_SDP;
-				g_snprintf(error_cause, 512, "[SIP-%s] SDP type %s is incompatible with session status %s\n", session->account.username, msg_sdp_type, janus_sip_call_status_string(session->status));
-				goto error;
-			}
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
 			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
@@ -2904,9 +2900,10 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 
+			JANUS_LOG(LOG_VERB, "[%s]: Update request, current session status [%s]\n", session->account.username, janus_sip_call_status_string(session->status));
 			if (session->status == janus_sip_call_status_incall_reinvited && offer) {
 				/* We have re-INVITE in progress */
-				JANUS_LOG(LOG_VERB, "[SIP-%s] We have incoming offereless re-INVITE in progress\n", session->account.username);
+				JANUS_LOG(LOG_VERBOSE, "We have incoming offereless re-INVITE in progress\n");
 			} 
 
 			if(offer)
@@ -2924,7 +2921,7 @@ static void *janus_sip_handler(void *data) {
 			session->sdp = parsed_sdp;
 			session->media.update = offer;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for update:\n%s", sdp);
-			if(session->status == janus_sip_call_status_incall) {
+			if(session->status != janus_sip_call_status_incall_reinvited) {
 				/* We're sending a re-INVITE ourselves */
 				nua_invite(session->stack->s_nh_i,
 					SOATAG_USER_SDP_STR(sdp),
@@ -3101,7 +3098,7 @@ static void *janus_sip_handler(void *data) {
 			/* Start or stop recording */
 			if(!(session->status == janus_sip_call_status_inviting || /* Presume it makes sense to start recording with early media? */
 				session->status == janus_sip_call_status_incall_reinviting ||
-				session->status == janus_sip_call_status_incall_reinvited || 
+				session->status == janus_sip_call_status_incall_reinviting || 
 				session->status == janus_sip_call_status_incall)) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
@@ -3457,7 +3454,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_state:;
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
-			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s, call state [%s]\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??", nua_callstate_name(callstate));
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s call state [%s]\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??", nua_callstate_name(callstate));
 			/* There are several call states, but we care about the terminated state in order to send the 'hangup' event
 			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for
 			 * the user since we don't send early media. (assuming this is the right session, of course).
