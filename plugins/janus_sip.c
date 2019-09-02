@@ -723,6 +723,7 @@ typedef struct janus_sip_session {
 	char *transaction;
 	char *callee;
 	char *callid;
+	char *sip_dump_filename;
 	janus_sdp *sdp;				/* The SDP this user sent */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
@@ -799,6 +800,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_hash_table_remove(callids, session->callid);
 		g_free(session->callid);
 		session->callid = NULL;
+	}
+	if (session->sip_dump_filename) {
+		g_free(session->sip_dump_filename);
+		session->sip_dump_filename = NULL;
 	}
 	if(session->sdp) {
 		janus_sdp_destroy(session->sdp);
@@ -1519,6 +1524,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->transaction = NULL;
 	session->callee = NULL;
 	session->callid = NULL;
+	session->sip_dump_filename = NULL;
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
 	session->media.earlymedia = FALSE;
@@ -2122,6 +2128,14 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 
+			/* Parse callid (optional). */
+			json_t *sip_dump_filename = json_object_get(root, "sip_dump_filename");
+			const char *sip_dump_filename_text = NULL;
+
+			if (sip_dump_filename && !json_is_null(sip_dump_filename)) {
+				sip_dump_filename_text = json_string_value(sip_dump_filename);
+			}
+
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
 			const char *proxy_text = NULL;
@@ -2277,6 +2291,8 @@ static void *janus_sip_handler(void *data) {
 					g_free(session->account.user_agent);
 				session->account.user_agent = NULL;
 				session->account.registration_status = janus_sip_registration_status_unregistered;
+			} else {
+				session->sip_dump_filename = g_strdup(sip_dump_filename_text);
 			}
 			session->account.identity = g_strdup(username_text);
 			janus_mutex_lock(&sessions_mutex);
@@ -4941,6 +4957,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
 		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
+
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
@@ -4952,6 +4969,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
+				TAG_IF(session->sip_dump_filename, TPTAG_DUMP(session->sip_dump_filename)),
 				TAG_IF(secure_getenv("SIP_STACK_NO_LISTEN"), TPTAG_PUBLIC(tport_type_client)),
 				TAG_IF(secure_getenv("USE_OPTIONS_AND_RPORT_FOR_CONTACT"), NTATAG_TCP_RPORT(1)),
 				TAG_NULL());
