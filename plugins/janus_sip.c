@@ -758,10 +758,10 @@ static void update_session_status(janus_sip_session *session, janus_sip_call_sta
 	}
 }
 
-static int janus_sip_call_is_established(janus_sip_session *session) {
+static gboolean janus_sip_call_is_established(janus_sip_session *session) {
 	return (session->status == janus_sip_call_status_incall ||
 		session->status == janus_sip_call_status_incall_reinviting ||
-		session->status == janus_sip_call_status_incall_reinvited) ? 1 : 0;
+		session->status == janus_sip_call_status_incall_reinvited) ? TRUE : FALSE;
 }
 
 static void janus_sip_session_destroy(janus_sip_session *session) {
