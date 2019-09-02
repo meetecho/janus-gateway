@@ -1646,6 +1646,11 @@ recdone:
 				gateway->notify_event(&janus_recordplay_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "play")) {
+			// CLUEY CUSTOM CODE START
+			// read possible new nfo files
+			janus_recordplay_update_recordings_list();
+			// CLUEY CUSTOM CODE END
+
 			if(msg_sdp) {
 				JANUS_LOG(LOG_ERR, "A play request can't contain an SDP\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
