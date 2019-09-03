@@ -15,8 +15,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_CORE_H
-#define _JANUS_CORE_H
+#ifndef JANUS_CORE_H
+#define JANUS_CORE_H
 
 #include <inttypes.h>
 #include <stdlib.h>

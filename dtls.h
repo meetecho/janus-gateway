@@ -12,8 +12,8 @@
  * \ref protocols
  */
 
-#ifndef _JANUS_DTLS_H
-#define _JANUS_DTLS_H
+#ifndef JANUS_DTLS_H
+#define JANUS_DTLS_H
 
 #include <inttypes.h>
 #include <glib.h>

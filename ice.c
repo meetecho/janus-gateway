@@ -3384,7 +3384,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		janus_refcount_decrease(&handle->ref);
+		janus_ice_webrtc_hangup(handle, "Gathering error");
 		return -1;
 	}
 	nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop),
@@ -3401,7 +3401,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating DTLS-SRTP stack...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		janus_refcount_decrease(&handle->ref);
+		janus_ice_webrtc_hangup(handle, "DTLS-SRTP stack error");
 		return -1;
 	}
 	janus_refcount_increase(&component->dtls->ref);

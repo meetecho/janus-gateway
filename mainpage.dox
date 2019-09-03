@@ -89,7 +89,7 @@
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
- * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
@@ -3478,7 +3478,7 @@ ldd janus | grep asan
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
- * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
@@ -3618,7 +3618,8 @@ ldd janus | grep asan
  *    - Presentation at <a href="https://vimeo.com/303014581">Voip2day 2018</a> (here for the <a href="https://vimeo.com/302814764">Spanish version</a>);
  *    - Presentation on Janus and SIP at <a href="https://www.youtube.com/watch?v=beHHL0Ew5xY">OpenSIPS 2019</a>;
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
- *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>. \n\n
+ *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
+ *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>. \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n

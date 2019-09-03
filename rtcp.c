@@ -1441,11 +1441,12 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Got it  */
 				first_received = TRUE;
 				/* Set it */
-				reference_time = (stat->timestamp/64000);
+				reference_time = stat->timestamp / 64000;
 				/* Get initial time */
 				timestamp = reference_time * 64000;
-				/* also in bufffer */
-				janus_set3(data, reference_time_pos, reference_time);
+				/* also in buffer */
+				/* (use only 23 bits of reference_time) */
+				janus_set3(data, reference_time_pos, (reference_time & 0x007FFFFF));
 			}
 
 			/* Get delta */

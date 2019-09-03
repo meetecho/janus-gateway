@@ -21,8 +21,8 @@
  * \ref jspapi
  */
 
-#ifndef _JANUS_DUKTAPE_EXTRA_H
-#define _JANUS_DUKTAPE_EXTRA_H
+#ifndef JANUS_DUKTAPE_EXTRA_H
+#define JANUS_DUKTAPE_EXTRA_H
 
 #include "duktape-deps/duktape.h"
 
