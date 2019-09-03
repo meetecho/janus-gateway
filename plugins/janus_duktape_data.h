@@ -20,8 +20,8 @@
  * \ref jspapi
  */
 
-#ifndef _JANUS_DUKTAPE_DATA_H
-#define _JANUS_DUKTAPE_DATA_H
+#ifndef JANUS_DUKTAPE_DATA_H
+#define JANUS_DUKTAPE_DATA_H
 
 #include "duktape-deps/duktape.h"
 #include "duktape-deps/duk_console.h"
