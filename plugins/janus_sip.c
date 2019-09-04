@@ -1137,6 +1137,15 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 	return 0;
 }
 
+/* Helper to strip quotes from a SIP Reason Header */
+static void janus_sip_remove_quotes(char *str) {
+	size_t len = strlen(str);
+	if(len > 2 && str[0] == '"' && str[len-1] == '"') {
+		memmove(str, str+1, len-2);
+		str[len-2] = 0;
+	}
+}
+
 /* Error codes */
 #define JANUS_SIP_ERROR_UNKNOWN_ERROR		499
 #define JANUS_SIP_ERROR_NO_MESSAGE			440
@@ -4977,12 +4986,4 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
 	return NULL;
-}
-
-void janus_sip_remove_quotes(char *str) {
-	size_t len = strlen(str);
-	if(len > 2 && str[0] == '"' && str[len-1] == '"') {
-		memmove(str, str+1, len-2);
-		str[len-2] = 0;
-	}
 }
