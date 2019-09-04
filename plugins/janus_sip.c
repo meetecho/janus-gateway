@@ -1807,7 +1807,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						if(session->media.remote_audio_pt >= 0) {
+						if(session->media.remote_audio_pt >= 0 && (header->type != 0 || header->type != 8)) {
 							header->type = session->media.remote_audio_pt;
 						}
 						/* Forward the frame to the peer */
@@ -1820,7 +1820,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)buf;
-					if(session->media.remote_audio_pt >= 0) {
+					if(session->media.remote_audio_pt >= 0 && (header->type != 0 || header->type != 8)) {
 						header->type = session->media.remote_audio_pt;
 					}
 					/* Forward the frame to the peer */
@@ -4775,7 +4775,9 @@ static void *janus_sip_relay_thread(void *data) {
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					// override source pt
-					header->type = session->media.audio_pt;
+					if (header->type != 0 || header->type != 8) {
+						header->type = session->media.audio_pt;
+					}
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
@@ -4958,6 +4960,13 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	if(!behind_nat)
 		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
 
+	char *session_timer_env = secure_getenv("SESSION_TIMER");
+	int session_timer = 0;
+
+	if (session_timer_env != NULL) {
+		session_timer = atoi(session_timer_env);
+	}
+
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
@@ -4968,7 +4977,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_USER_AGENT_STR(session->account.user_agent ? session->account.user_agent : user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
-				SIPTAG_SUPPORTED(NULL),
+				TAG_IF(session_timer > 0, NUTAG_SESSION_TIMER(session_timer)),
+				//SIPTAG_SUPPORTED(NULL),
 				TAG_IF(session->sip_dump_filename, TPTAG_DUMP(session->sip_dump_filename)),
 				TAG_IF(secure_getenv("SIP_STACK_NO_LISTEN"), TPTAG_PUBLIC(tport_type_client)),
 				TAG_IF(secure_getenv("USE_OPTIONS_AND_RPORT_FOR_CONTACT"), NTATAG_TCP_RPORT(1)),
