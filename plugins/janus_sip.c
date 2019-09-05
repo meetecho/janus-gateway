@@ -1807,7 +1807,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						janus_rtp_header *header = (janus_rtp_header *)&sbuf;
-						if(session->media.remote_audio_pt >= 0 && (header->type != 0 || header->type != 8)) {
+						if(session->media.remote_audio_pt >= 0 && header->type != 0 && header->type != 8) {
 							header->type = session->media.remote_audio_pt;
 						}
 						/* Forward the frame to the peer */
@@ -1820,7 +1820,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					}
 				} else {
 					janus_rtp_header *header = (janus_rtp_header *)buf;
-					if(session->media.remote_audio_pt >= 0 && (header->type != 0 || header->type != 8)) {
+					if(session->media.remote_audio_pt >= 0 && header->type != 0 && header->type != 8) {
 						header->type = session->media.remote_audio_pt;
 					}
 					/* Forward the frame to the peer */
@@ -4775,7 +4775,7 @@ static void *janus_sip_relay_thread(void *data) {
 					pollerrs = 0;
 					janus_rtp_header *header = (janus_rtp_header *)buffer;
 					// override source pt
-					if (header->type != 0 || header->type != 8) {
+					if (header->type != 0 && header->type != 8) {
 						header->type = session->media.audio_pt;
 					}
 					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
