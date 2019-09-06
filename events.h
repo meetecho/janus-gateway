@@ -10,8 +10,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_EVENTS_H
-#define _JANUS_EVENTS_H
+#ifndef JANUS_EVENTS_H
+#define JANUS_EVENTS_H
 
 #include "debug.h"
 #include "events/eventhandler.h"

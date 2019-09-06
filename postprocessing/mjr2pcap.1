@@ -1,0 +1,30 @@
+.TH MJR2PCAP 1
+.SH NAME
+mjr2pcap \- Helper tool to convert a Janus recordings to pcap format.
+.SH SYNOPSIS
+.B mjr2pcap
+.IR source.mjr
+.IR destination.pcap
+.SH DESCRIPTION
+.B mjr2pcap
+is a simple utility that allows you remove extract RTP packets from Janus recordings and save them to a .pcap file instead. Notice that network levels are simulated, and so are timestamps for when the packets have really been received, since that info is not stored in .mjr files. As such, its main purpose is helping analyze RTP packets, rather than investigate network issues.
+.TP
+The tool requires two parameters: the path to the .mjr file to read, and a path to the target .pcap file. Notice that an attempt to process a non-RTP recording will result in an error.
+.SH EXAMPLES
+\fBmjr2pcap rec1234.mjr rec1234.pcap\fR \- Convert the recording to pcap
+.SH BUGS
+.TP
+If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
+.TP
+Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+.SH SEE ALSO
+.TP
+https://github.com/meetecho/janus-gateway \- Official repository
+.TP
+http://janus.conf.meetecho.com \- Demos and documentation
+.TP
+https://groups.google.com/forum/#!forum/meetecho-janus \- Community
+.TP
+http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+.SH AUTHORS
+Lorenzo Miniero (lorenzo@meetecho.com)

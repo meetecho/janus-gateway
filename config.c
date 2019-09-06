@@ -449,6 +449,10 @@ int janus_config_add(janus_config *config, janus_config_container *container, ja
 		return -1;
 	if(container != NULL && container->type != janus_config_type_category && container->type != janus_config_type_array)
 		return -2;
+	if(item->name) {
+		/* Remove any existing property with the same name in that container first, if any */
+		janus_config_remove(config, container, item->name);
+	}
 	if(container) {
 		/* Add to parent */
 		container->list = g_list_append(container->list, item);

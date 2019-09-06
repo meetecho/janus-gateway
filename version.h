@@ -10,8 +10,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_VERSION_H
-#define _JANUS_VERSION_H
+#ifndef JANUS_VERSION_H
+#define JANUS_VERSION_H
 
 extern int janus_version;
 extern const char *janus_version_string;

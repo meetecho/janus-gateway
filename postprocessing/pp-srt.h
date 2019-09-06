@@ -9,8 +9,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_SRT
-#define _JANUS_PP_SRT
+#ifndef JANUS_PP_SRT
+#define JANUS_PP_SRT
 
 #include <stdio.h>
 

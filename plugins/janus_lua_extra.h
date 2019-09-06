@@ -21,8 +21,8 @@
  * \ref luapapi
  */
 
-#ifndef _JANUS_LUA_EXTRA_H
-#define _JANUS_LUA_EXTRA_H
+#ifndef JANUS_LUA_EXTRA_H
+#define JANUS_LUA_EXTRA_H
 
 #include <lua.h>
 #include <lualib.h>

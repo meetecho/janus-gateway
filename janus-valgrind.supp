@@ -644,3 +644,18 @@
 	fun:g_object_new_valist
 }
 
+# False positive
+{
+	ignore_libcrypto_conditional_jump_errors
+	Memcheck:Cond
+	...
+	obj:*/libcrypto.so.*
+}
+
+# False positive
+{
+	ignore_libcrypto_conditional_jump_errors
+	Memcheck:Value8
+	...
+	obj:*/libcrypto.so.*
+}
