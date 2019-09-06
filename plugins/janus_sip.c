@@ -755,7 +755,7 @@ static void janus_sip_media_reset(janus_sip_session *session);
 
 static void janus_sip_call_update_status(janus_sip_session *session, janus_sip_call_status new_status) {
 	if(session->status != new_status) {
-		JANUS_LOG(LOG_VERB, "[%s], session status change [%s]-->[%s]\n", session->account.username == NULL ? "null" : session->account.username, janus_sip_call_status_string(session->status), janus_sip_call_status_string(new_status));
+		JANUS_LOG(LOG_VERB, "[%s] Call status change: [%s]-->[%s]\n", session->account.username == NULL ? "null" : session->account.username, janus_sip_call_status_string(session->status), janus_sip_call_status_string(new_status));
 		session->status = new_status;
 	}
 }
@@ -2931,7 +2931,7 @@ static void *janus_sip_handler(void *data) {
 			if(session->status == janus_sip_call_status_incall_reinvited && offer) {
 				/* We have re-INVITE in progress */
 				JANUS_LOG(LOG_VERB, "[SIP-%s] We have incoming offereless re-INVITE in progress\n", session->account.username);
-			} 
+			}
 
 			if(offer)
 				session->sdp->o_version++;
@@ -3324,7 +3324,7 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("infosent"));
 		} else if(!strcasecmp(request_text, "message")) {
 			/* Send a SIP MESSAGE request: we'll only need the content */
-			if(!(session->status == janus_sip_call_status_inviting || 
+			if(!(session->status == janus_sip_call_status_inviting ||
 					janus_sip_call_is_established(session))) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
@@ -3550,7 +3550,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
 				/* Have just sent re-INVITE */
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinviting);
-			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_ready && 
+			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_ready &&
 					(session->status == janus_sip_call_status_incall_reinviting || session->status == janus_sip_call_status_incall_reinvited)) {
 				/* Clear re-INVITE progress status */
 				janus_sip_call_update_status(session, janus_sip_call_status_incall);
@@ -3703,7 +3703,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(reinvite) {
 				session->media.update = TRUE;
 				/* Mark status as janus_sip_call_status_incall_reinvited only when handling reinvites ourselves*/
-				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinvited); 
+				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinvited);
 			}
 
 			/* Notify the browser about the new incoming call or re-INVITE */
