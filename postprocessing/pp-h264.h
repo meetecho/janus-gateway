@@ -9,8 +9,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_H264
-#define _JANUS_PP_H264
+#ifndef JANUS_PP_H264
+#define JANUS_PP_H264
 
 #include <stdio.h>
 

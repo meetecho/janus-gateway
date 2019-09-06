@@ -4159,9 +4159,11 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			json_object_set_new(pub, "videoroom", json_string("event"));
 			json_object_set_new(pub, "room", json_integer(participant->room_id));
 			json_object_set_new(pub, "publishers", list);
-			janus_mutex_lock(&participant->room->mutex);
-			janus_videoroom_notify_participants(participant, pub);
-			janus_mutex_unlock(&participant->room->mutex);
+			if (participant->room) {
+				janus_mutex_lock(&participant->room->mutex);
+				janus_videoroom_notify_participants(participant, pub);
+				janus_mutex_unlock(&participant->room->mutex);
+			}
 			json_decref(pub);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -5034,8 +5036,8 @@ static void *janus_videoroom_handler(void *data) {
 						/* Private ID already taken, try another one */
 						publisher->pvt_id = 0;
 					}
-					g_hash_table_insert(publisher->room->private_ids, GUINT_TO_POINTER(publisher->pvt_id), publisher);
 				}
+				g_hash_table_insert(publisher->room->private_ids, GUINT_TO_POINTER(publisher->pvt_id), publisher);
 				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 				/* In case we also wanted to configure */

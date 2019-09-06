@@ -14,8 +14,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_IP_UTILS_H
-#define _JANUS_IP_UTILS_H
+#ifndef JANUS_IP_UTILS_H
+#define JANUS_IP_UTILS_H
 
 #include <ifaddrs.h>
 #include <netinet/in.h>

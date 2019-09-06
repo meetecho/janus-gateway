@@ -17,8 +17,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_RECORD_H
-#define _JANUS_RECORD_H
+#ifndef JANUS_RECORD_H
+#define JANUS_RECORD_H
 
 #include <inttypes.h>
 #include <string.h>
@@ -46,8 +46,8 @@ typedef struct janus_recorder {
 	FILE *file;
 	/*! \brief Codec the packets to record are encoded in ("vp8", "vp9", "h264", "opus", "pcma", "pcmu", "g722") */
 	char *codec;
-	/*! \brief When the recording file has been created */
-	gint64 created;
+	/*! \brief When the recording file has been created and started */
+	gint64 created, started;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */

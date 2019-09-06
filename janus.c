@@ -2958,30 +2958,28 @@ static void *janus_transport_requests(void *data) {
 			break;
 		/* Should we process the request synchronously or with a task from the thread pool? */
 		destroy = TRUE;
-		if(!request->admin) {
-			/* Process the request synchronously only it's not a message for a plugin */
-			json_t *message = json_object_get(request->message, "janus");
-			const gchar *message_text = json_string_value(message);
-			if(message_text && !strcasecmp(message_text, "message")) {
-				/* Spawn a task thread */
-				GError *tperror = NULL;
-				g_thread_pool_push(tasks, request, &tperror);
-				if(tperror != NULL) {
-					/* Something went wrong... */
-					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
-					json_t *transaction = json_object_get(message, "transaction");
-					const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
-					janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
-				} else {
-					/* Don't destroy the request now, the task will take care of that */
-					destroy = FALSE;
-				}
+		/* Process the request synchronously only it's not a message for a plugin */
+		json_t *message = json_object_get(request->message, "janus");
+		const gchar *message_text = json_string_value(message);
+		if(message_text && !strcasecmp(message_text, request->admin ? "message_plugin" : "message")) {
+			/* Spawn a task thread */
+			GError *tperror = NULL;
+			g_thread_pool_push(tasks, request, &tperror);
+			if(tperror != NULL) {
+				/* Something went wrong... */
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				json_t *transaction = json_object_get(message, "transaction");
+				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+				janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
 			} else {
-				janus_process_incoming_request(request);
+				/* Don't destroy the request now, the task will take care of that */
+				destroy = FALSE;
 			}
 		} else {
-			/* Admin requests are always handled synchronously */
-			janus_process_incoming_admin_request(request);
+			if(!request->admin)
+				janus_process_incoming_request(request);
+			else
+				janus_process_incoming_admin_request(request);
 		}
 		/* Done */
 		if(destroy)
@@ -3194,11 +3192,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			}
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
+			janus_mutex_lock(&ice_handle->mutex);
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
 				janus_sdp_destroy(parsed_sdp);
+				janus_mutex_unlock(&ice_handle->mutex);
 				return NULL;
 			}
+			janus_mutex_unlock(&ice_handle->mutex);
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
@@ -3275,9 +3276,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 			temp = temp->next;
 		}
-		if(!do_mid)
+		if(!do_mid && ice_handle->stream)
 			ice_handle->stream->mid_ext_id = 0;
-		if(!do_rid) {
+		if(!do_rid && ice_handle->stream) {
 			ice_handle->stream->rid_ext_id = 0;
 			ice_handle->stream->ridrtx_ext_id = 0;
 			g_free(ice_handle->stream->rid[0]);
@@ -3291,7 +3292,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				ice_handle->stream->video_ssrc_peer_temp = 0;
 			}
 		}
-		if(!do_repaired_rid)
+		if(!do_repaired_rid && ice_handle->stream)
 			ice_handle->stream->ridrtx_ext_id = 0;
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
