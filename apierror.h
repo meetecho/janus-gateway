@@ -10,8 +10,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_API_ERROR_H
-#define _JANUS_API_ERROR_H
+#ifndef JANUS_API_ERROR_H
+#define JANUS_API_ERROR_H
 
 /*! \brief Success (no error) */
 #define JANUS_OK								0

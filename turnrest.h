@@ -13,8 +13,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_TURNREST_H
-#define _JANUS_TURNREST_H
+#ifndef JANUS_TURNREST_H
+#define JANUS_TURNREST_H
 
 #ifdef HAVE_TURNRESTAPI
 

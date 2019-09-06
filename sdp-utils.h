@@ -12,8 +12,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_SDP_UTILS_H
-#define _JANUS_SDP_UTILS_H
+#ifndef JANUS_SDP_UTILS_H
+#define JANUS_SDP_UTILS_H
 
 
 #include <inttypes.h>

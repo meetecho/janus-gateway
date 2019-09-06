@@ -285,6 +285,7 @@ int main(int argc, char *argv[])
 	/* Pre-parse */
 	if(!jsonheader_only)
 		JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
+	gboolean has_timestamps = FALSE;
 	gboolean parsed_header = FALSE;
 	gboolean video = FALSE, data = FALSE;
 	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
@@ -375,14 +376,18 @@ int main(int argc, char *argv[])
 			}
 		} else if(prebuffer[1] == 'J') {
 			/* New .mjr format, the header may contain useful info */
+			if(prebuffer[2] == 'R' && prebuffer[3] == '0' && prebuffer[4] == '0' &&
+					prebuffer[5] == '0' && prebuffer[6] == '0' && prebuffer[7] == '2') {
+				/* Main header is MJR00002: this means we have timestamps too */
+				has_timestamps = TRUE;
+				JANUS_LOG(LOG_VERB, "New .mjr format, will parse timestamps too\n");
+			}
 			offset += 8;
 			bytes = fread(&len, sizeof(uint16_t), 1, file);
 			len = ntohs(len);
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				if(!jsonheader_only)
-					JANUS_LOG(LOG_WARN, "New .mjr header format\n");
 				bytes = fread(prebuffer, sizeof(char), len, file);
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
@@ -535,7 +540,7 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 	/* Now let's parse the frames and order them */
-	uint32_t last_ts = 0, reset = 0;
+	uint32_t pkt_ts = 0, last_ts = 0, reset = 0;
 	int times_resetted = 0;
 	int post_reset_pkts = 0;
 	int ignored = 0;
@@ -558,7 +563,12 @@ int main(int argc, char *argv[])
 			/* Broken packet? Stop here */
 			break;
 		}
-		prebuffer[8] = '\0';
+		if(has_timestamps) {
+			/* Read the packet timestamp */
+			memcpy(&pkt_ts, prebuffer+4, sizeof(uint32_t));
+			pkt_ts = ntohl(pkt_ts);
+		}
+		prebuffer[(has_timestamps && prebuffer[1] != 'J') ? 4 : 8] = '\0';
 		JANUS_LOG(LOG_VERB, "Header: %s\n", prebuffer);
 		offset += 8;
 		bytes = fread(&len, sizeof(uint16_t), 1, file);
@@ -570,6 +580,9 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "  -- Not RTP, skipping\n");
 			offset += len;
 			continue;
+		}
+		if(has_timestamps) {
+			JANUS_LOG(LOG_VERB, "  -- Time: %"SCNu32"ms\n", pkt_ts);
 		}
 		if(!data && len > 2000) {
 			/* Way too large, very likely not RTP, skip */
@@ -592,6 +605,8 @@ int main(int argc, char *argv[])
 			len -= sizeof(gint64);
 			/* Generate frame packet and insert in the ordered list */
 			janus_pp_frame_packet *p = g_malloc(sizeof(janus_pp_frame_packet));
+			p->version = has_timestamps ? 2 : 1;
+			p->p_ts = pkt_ts;
 			p->seq = 0;
 			/* We "abuse" the timestamp field for the timing info */
 			p->ts = when-c_time;
@@ -654,6 +669,8 @@ int main(int argc, char *argv[])
 		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
+		p->version = has_timestamps ? 2 : 1;
+		p->p_ts = pkt_ts;
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
 		/* Due to resets, we need to mess a bit with the original timestamps */
@@ -808,10 +825,13 @@ int main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
+	int rate = video ? 90000 : 48000;
+	if(g711 || g722)
+		rate = 8000;
 	while(tmp) {
 		count++;
 		if(!data)
-			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (tmp->ts-list->ts)/90000);
+			JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (tmp->ts-list->ts)/rate);
 		else
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;

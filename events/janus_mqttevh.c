@@ -273,6 +273,8 @@ static int janus_mqttevh_send_message(void *context, const char *topic, json_t *
 		JANUS_LOG(LOG_WARN, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
 	}
 
+	free(payload);
+
 	JANUS_LOG(LOG_HUGE, "Done with message to JSON for %s\n", topic);
 
 	return 0;

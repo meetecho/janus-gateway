@@ -478,13 +478,29 @@ multistream-test: {
  *
 \verbatim
 {
-	"request" : "enable|disable",
-	"id" : <unique ID of the mountpoint to enable/disable; mandatory>,
-	"secret" : "<secret to enable/disable the mountpoint; mandatory if configured>"
+	"request" : "enable",
+	"id" : <unique ID of the mountpoint to enable; mandatory>,
+	"secret" : "<secret to enable the mountpoint; mandatory if configured>"
 }
 \endverbatim
  *
- * In both cases, a generic \c ok is returned if successful:
+ * If successful, a generic \c ok is returned:
+ *
+\verbatim
+{
+	"streaming" : "ok"
+}
+\endverbatim
+\verbatim
+{
+	"request" : "disable",
+	"id" : <unique ID of the mountpoint to disable; mandatory>,
+	"stop_recording" : <true|false, whether the recording should also be stopped or not; true by default>
+	"secret" : "<secret to disable the mountpoint; mandatory if configured>"
+}
+\endverbatim
+ *
+ * If successful, a generic \c ok is returned:
  *
 \verbatim
 {
@@ -1051,6 +1067,9 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"spatial_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter disable_parameters[] = {
+	{"stop_recording", JANUS_JSON_BOOL, 0}
+};
 
 /* Static configuration instance */
 static janus_config *config = NULL;
@@ -1070,6 +1089,7 @@ static void *janus_streaming_handler(void *data);
 static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
 static uint16_t rtp_range_max = DEFAULT_RTP_RANGE_MAX;
 static uint16_t rtp_range_slider = DEFAULT_RTP_RANGE_MIN;
+static janus_mutex fd_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
@@ -3138,7 +3158,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
 			json_t *iface = json_object_get(root, "rtspiface");
-			json_t *failerr = json_object_get(root, "rtsp_check");
+			json_t *failerr = json_object_get(root, "rtsp_failcheck");
+			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
+				failerr = json_object_get(root, "rtsp_check");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			gboolean error_on_failure = failerr ? json_is_true(failerr) : TRUE;
@@ -4134,10 +4156,20 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			/* FIXME: Should we notify the viewers, or is this up to the controller application? */
 		} else {
 			/* Disable a previously enabled mountpoint */
-			JANUS_LOG(LOG_INFO, "[%s] Stream disabled\n", mp->name);
+			JANUS_VALIDATE_JSON_OBJECT(root, disable_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
 			mp->enabled = FALSE;
+			gboolean stop_recording = TRUE;
+			json_t *stop_rec = json_object_get(root, "stop_recording");
+			if (stop_rec) {
+				stop_recording = json_is_true(stop_rec);
+			}
+			JANUS_LOG(LOG_INFO, "[%s] Stream disabled (stop_recording=%s)\n", mp->name, stop_recording ? "yes" : "no");
 			/* Any recording to close? */
-			if(mp->streaming_source == janus_streaming_source_rtp) {
+			if(mp->streaming_source == janus_streaming_source_rtp && stop_recording) {
 				janus_streaming_rtp_source *source = mp->source;
 				janus_mutex_lock(&source->rec_mutex);
 				GList *temp = source->media;
@@ -5291,6 +5323,7 @@ error:
 /* Helpers to create a listener filedescriptor */
 static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_network_address *iface,
 		const char *medianame, const char *mountpointname, gboolean quiet) {
+	janus_mutex_lock(&fd_mutex);
 	struct sockaddr_in address;
 	janus_network_address_string_buffer address_representation;
 
@@ -5319,6 +5352,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, medianame);
 					close(fd);
+					janus_mutex_unlock(&fd_mutex);
 					return -1;
 				}
 #endif
@@ -5333,6 +5367,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					} else {
 						JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, medianame);
 						close(fd);
+						janus_mutex_unlock(&fd_mutex);
 						return -1;
 					}
 				} else {
@@ -5341,6 +5376,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, medianame);
 					close(fd);
+					janus_mutex_unlock(&fd_mutex);
 					return -1;
 				}
 				JANUS_LOG(LOG_INFO, "[%s] %s listener IP_ADD_MEMBERSHIP ok\n", mountpointname, medianame);
@@ -5364,6 +5400,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, medianame);
 				close(fd);
+				janus_mutex_unlock(&fd_mutex);
 				return -1;
 			}
 			address.sin_addr.s_addr = mcast;
@@ -5377,6 +5414,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid address/restriction type (only IPv4 is currently supported by this plugin)\n", mountpointname, medianame);
 					close(fd);
 					fd = -1;
+					janus_mutex_unlock(&fd_mutex);
 					continue;
 				}
 			}
@@ -5395,6 +5433,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			break;
 		}
 	}
+	janus_mutex_unlock(&fd_mutex);
 	return fd;
 }
 /* Helper to bind RTP/RTCP port pair (for RTSP) */
@@ -5819,6 +5858,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			helper->id = i+1;
 			helper->mp = live_rtp;
 			helper->queued_packets = g_async_queue_new_full((GDestroyNotify)janus_streaming_rtp_relay_packet_free);
+			/* Add a reference because janus_streaming_relay_thread is going to push on these queues */
+			g_async_queue_ref(helper->queued_packets);
 			janus_mutex_init(&helper->mutex);
 			live_rtp->helper_threads++;
 			g_snprintf(tname, sizeof(tname), "help %u-%"SCNu64, helper->id, live_rtp->id);
@@ -6150,10 +6191,16 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
+		size_t attr_len = strlen(";timeout=");
+		/* Check also the attribute in the form "; timeout" */
+		if (timeout == NULL) {
+			timeout = strstr(curldata->buffer, "; timeout=");
+			attr_len = strlen("; timeout=");
+		}
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
 			 * value for sending OPTIONS keepalives later on */
-			ka_timeout = atoi(timeout+strlen(";timeout="));
+			ka_timeout = atoi(timeout+attr_len);
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
 		/* Get the RTP server port, which we'll need for the latching packet */
@@ -6211,10 +6258,16 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
+		size_t attr_len = strlen(";timeout=");
+		/* Check also the attribute in the form "; timeout" */
+		if (timeout == NULL) {
+			timeout = strstr(curldata->buffer, "; timeout=");
+			attr_len = strlen("; timeout=");
+		}
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
 			 * value for sending OPTIONS keepalives later on */
-			int temp_timeout = atoi(timeout+strlen(";timeout="));
+			int temp_timeout = atoi(timeout+attr_len);
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", temp_timeout);
 			if(temp_timeout > 0 && temp_timeout < ka_timeout)
 				ka_timeout = temp_timeout;
@@ -6882,10 +6935,13 @@ static void *janus_streaming_relay_thread(void *data) {
 				g_free(source->curldata);
 				source->curldata = NULL;
 				/* Now let's try to reconnect */
+				janus_mutex_lock(&mountpoints_mutex);
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
 					JANUS_LOG(LOG_WARN, "[%s] Reconnection of the RTSP stream failed, trying again in a few seconds...\n", name);
+					janus_mutex_unlock(&mountpoints_mutex);
 				} else {
+					janus_mutex_unlock(&mountpoints_mutex);
 					/* We're connected, let's send a PLAY */
 					if(janus_streaming_rtsp_play(source) < 0) {
 						/* Error trying to play? Let's try again later */
@@ -6987,6 +7043,20 @@ static void *janus_streaming_relay_thread(void *data) {
 			}
 			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, strerror(errno));
 			mountpoint->enabled = FALSE;
+			janus_mutex_lock(&source->rec_mutex);
+			GList *temp = source->media;
+			while(temp) {
+				janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+				janus_recorder_close(stream->rc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed %s recording %s (%s)\n",
+					name, janus_streaming_media_str(stream->type),
+					stream->rc->filename ? stream->rc->filename : "??", stream->mid);
+				janus_recorder *tmp = stream->rc;
+				stream->rc = NULL;
+				janus_recorder_destroy(tmp);
+				break;
+			}
+			janus_mutex_unlock(&source->rec_mutex);
 			break;
 		} else if(resfd == 0) {
 			/* No data, keep going */
@@ -6999,6 +7069,20 @@ static void *janus_streaming_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", name,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
 				mountpoint->enabled = FALSE;
+				janus_mutex_lock(&source->rec_mutex);
+				GList *temp = source->media;
+				while(temp) {
+					janus_streaming_rtp_source_stream *stream = (janus_streaming_rtp_source_stream *)temp->data;
+					janus_recorder_close(stream->rc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed %s recording %s (%s)\n",
+						name, janus_streaming_media_str(stream->type),
+						stream->rc->filename ? stream->rc->filename : "??", stream->mid);
+					janus_recorder *tmp = stream->rc;
+					stream->rc = NULL;
+					janus_recorder_destroy(tmp);
+					break;
+				}
+				janus_mutex_unlock(&source->rec_mutex);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP or data packet */
@@ -7042,7 +7126,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					stream->last_received = now;
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
 					/* If paused, ignore this packet */
-					if(!mountpoint->enabled)
+					if(!mountpoint->enabled && !stream->rc)
 						continue;
 					/* Is this SRTP? */
 					if(source->is_srtp) {
@@ -7088,6 +7172,8 @@ static void *janus_streaming_relay_thread(void *data) {
 					}
 					packet.data->ssrc = htonl((uint32_t)mountpoint->id);
 					janus_recorder_save_frame(stream->rc, buffer, bytes);
+					if(!mountpoint->enabled)
+						continue;
 					packet.data->ssrc = htonl(ssrc);
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
@@ -7226,7 +7312,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						}
 					}
 					/* If paused, ignore this packet */
-					if(!mountpoint->enabled)
+					if(!mountpoint->enabled && !stream->rc)
 						continue;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
@@ -7289,6 +7375,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						janus_recorder_save_frame(stream->rc, buffer, bytes);
 						packet.data->ssrc = htonl(ssrc);
 					}
+					if(!mountpoint->enabled)
+						continue;
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
@@ -7319,6 +7407,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* Failed to read? */
 						continue;
 					}
+					if(!mountpoint->enabled && !stream->rc)
+						continue;
 					/* Get a string out of the data */
 					char *text = g_malloc(bytes+1);
 					memcpy(text, buffer, bytes);
@@ -7330,6 +7420,8 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.is_rtp = FALSE;
 					/* Is there a recorder? */
 					janus_recorder_save_frame(stream->rc, text, strlen(text));
+					if(!mountpoint->enabled)
+						continue;
 					/* Are we keeping track of the last message being relayed? */
 					if(stream->buffermsg) {
 						janus_mutex_lock(&stream->buffermsg_mutex);
@@ -7356,7 +7448,13 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
+					if(!mountpoint->enabled)
+						continue;
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
+						continue;
+					}
 					JANUS_LOG(LOG_HUGE, "[%s] Got audio RTCP feedback: #%d, SSRC %"SCNu32"\n",
 						name, stream->mindex, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
@@ -7377,7 +7475,13 @@ static void *janus_streaming_relay_thread(void *data) {
 						/* For latching we need an RTP or RTCP packet */
 						continue;
 					}
+					if(!mountpoint->enabled)
+						continue;
 					memcpy(&stream->rtcp_addr, &remote, addrlen);
+					if(!janus_is_rtcp(buffer, bytes)) {
+						/* Failed to read or not an RTCP packet? */
+						continue;
+					}
 					JANUS_LOG(LOG_HUGE, "[%s] Got video RTCP feedback: #%d, SSRC %"SCNu32"\n",
 						name, stream->mindex, janus_rtcp_get_sender_ssrc(buffer, bytes));
 					/* Relay on all sessions */
@@ -7423,6 +7527,16 @@ static void *janus_streaming_relay_thread(void *data) {
 	}
 	json_decref(event);
 	janus_mutex_unlock(&mountpoint->mutex);
+
+	/* Unref the helper threads queues */
+	if(mountpoint->helper_threads > 0) {
+		GList *l = mountpoint->threads;
+		while(l) {
+			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+			g_async_queue_unref(ht->queued_packets);
+			l = l->next;
+		}
+	}
 
 	JANUS_LOG(LOG_VERB, "[%s] Leaving streaming relay thread\n", name);
 	g_free(name);

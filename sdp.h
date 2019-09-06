@@ -21,8 +21,8 @@
  * \ref protocols
  */
 
-#ifndef _JANUS_SDP_H
-#define _JANUS_SDP_H
+#ifndef JANUS_SDP_H
+#define JANUS_SDP_H
 
 
 #include <inttypes.h>

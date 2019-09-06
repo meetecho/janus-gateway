@@ -79,8 +79,8 @@ janus_transport *create(void) {
  * \ref transportapi
  */
 
-#ifndef _JANUS_TRANSPORT_H
-#define _JANUS_TRANSPORT_H
+#ifndef JANUS_TRANSPORT_H
+#define JANUS_TRANSPORT_H
 
 #include <stdlib.h>
 #include <stdint.h>
