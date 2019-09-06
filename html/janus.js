@@ -390,7 +390,7 @@ Janus.init = function(options) {
 				Janus.webRTCAdapter.browserDetails.version < 72) {
 			// Chrome does, but it's only usable from version 72 on
 			Janus.unifiedPlan = false;
-		} else if(!('currentDirection' in RTCRtpTransceiver.prototype)) {
+		} else if(!RTCRtpTransceiver || !('currentDirection' in RTCRtpTransceiver.prototype)) {
 			// Safari supports addTransceiver() but not Unified Plan when
 			// currentDirection is not defined (see codepen above)
 			Janus.unifiedPlan = false;
