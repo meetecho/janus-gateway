@@ -390,9 +390,14 @@ Janus.init = function(options) {
 				Janus.webRTCAdapter.browserDetails.version < 72) {
 			// Chrome does, but it's only usable from version 72 on
 			Janus.unifiedPlan = false;
-		} else if(!RTCRtpTransceiver || !('currentDirection' in RTCRtpTransceiver.prototype)) {
+		} else if(RTCRtpTransceiver === undefined || RTCRtpTransceiver === null  ||
+				RTCRtpTransceiver.prototype === undefined || RTCRtpTransceiver.prototype === null) {
+			// Some browsers, like "old" Edge, don't have RTCRtpTransceiver at all
+			Janus.unifiedPlan = false;
+		} else if(Janus.webRTCAdapter.browserDetails.browser === 'safari' &&
+				!('currentDirection' in RTCRtpTransceiver.prototype)) {
 			// Safari supports addTransceiver() but not Unified Plan when
-			// currentDirection is not defined (see codepen above)
+			// currentDirection is not defined (see codepen above).
 			Janus.unifiedPlan = false;
 		} else {
 			// Check if addTransceiver() throws an exception
