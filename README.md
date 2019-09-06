@@ -234,7 +234,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.4
+	janus 0.7.5
 
 	Usage: janus [OPTIONS]...
 
