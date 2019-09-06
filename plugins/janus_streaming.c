@@ -5445,10 +5445,16 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
+		size_t attr_len = strlen(";timeout=");
+		/* Check also the attribute in the form "; timeout" */
+		if (timeout == NULL) {
+			timeout = strstr(curldata->buffer, "; timeout=");
+			attr_len = strlen("; timeout=");
+		}
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
 			 * value for sending OPTIONS keepalives later on */
-			ka_timeout = atoi(timeout+strlen(";timeout="));
+			ka_timeout = atoi(timeout+attr_len);
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
 		/* Get the RTP server port, which we'll need for the latching packet */
@@ -5507,10 +5513,16 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
 		const char *timeout = strstr(curldata->buffer, ";timeout=");
+		size_t attr_len = strlen(";timeout=");
+		/* Check also the attribute in the form "; timeout" */
+		if (timeout == NULL) {
+			timeout = strstr(curldata->buffer, "; timeout=");
+			attr_len = strlen("; timeout=");
+		}
 		if(timeout != NULL) {
 			/* There's a timeout to take into account: take note of the
 			 * value for sending OPTIONS keepalives later on */
-			int temp_timeout = atoi(timeout+strlen(";timeout="));
+			int temp_timeout = atoi(timeout+attr_len);
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", temp_timeout);
 			if(temp_timeout > 0 && temp_timeout < ka_timeout)
 				ka_timeout = temp_timeout;
