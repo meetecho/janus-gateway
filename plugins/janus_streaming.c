@@ -932,6 +932,7 @@ static void *janus_streaming_handler(void *data);
 static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
 static uint16_t rtp_range_max = DEFAULT_RTP_RANGE_MAX;
 static uint16_t rtp_range_slider = DEFAULT_RTP_RANGE_MIN;
+static janus_mutex fd_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
@@ -4602,6 +4603,7 @@ error:
 /* Helpers to create a listener filedescriptor */
 static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_network_address *iface,
 		const char *listenername, const char *medianame, const char *mountpointname, gboolean quiet) {
+	janus_mutex_lock(&fd_mutex);
 	struct sockaddr_in address;
 	janus_network_address_string_buffer address_representation;
 
@@ -4630,6 +4632,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
 					close(fd);
+					janus_mutex_unlock(&fd_mutex);
 					return -1;
 				}
 #endif
@@ -4644,6 +4647,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					} else {
 						JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
 						close(fd);
+						janus_mutex_unlock(&fd_mutex);
 						return -1;
 					}
 				} else {
@@ -4652,6 +4656,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
 					close(fd);
+					janus_mutex_unlock(&fd_mutex);
 					return -1;
 				}
 				JANUS_LOG(LOG_INFO, "[%s] %s listener IP_ADD_MEMBERSHIP ok\n", mountpointname, listenername);
@@ -4675,6 +4680,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, listenername);
 				close(fd);
+				janus_mutex_unlock(&fd_mutex);
 				return -1;
 			}
 			address.sin_addr.s_addr = mcast;
@@ -4706,6 +4712,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			break;
 		}
 	}
+	janus_mutex_unlock(&fd_mutex);
 	return fd;
 }
 /* Helper to bind RTP/RTCP port pair (for RTSP) */
