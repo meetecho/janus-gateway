@@ -59,7 +59,7 @@ On Ubuntu or Debian, it would require something like this:
 
 While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice. Installation of libnice master is quite straightforward:
 
-	git clone https://gitlab.freedesktop.org/libnice/libnice
+	git clone https://gitlab.freedesktop.org/libnice/libnice.git
 	cd libnice
 	./autogen.sh
 	./configure --prefix=/usr
