@@ -105,7 +105,7 @@ room-<unique room ID>: {
  * video room and destroys it, kicking all the users out as part of the
  * process; \c exists allows you to check whether a specific video room
  * exists; finally, \c list lists all the available rooms, while \c
- * listparticipants lists all the active (as in currentòy publishing
+ * listparticipants lists all the active (as in currently publishing
  * something) participants of a specific room and their details.
  *
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
@@ -492,7 +492,7 @@ room-<unique room ID>: {
  * to the room configuration (e.g., to make sure the codecs you negotiated
  * are allowed in the room), and will reply with a JSEP SDP answer to
  * close the circle and complete the setup of the PeerConnection. As soon
- * as the PeerConnection has been establisher, the publisher will become
+ * as the PeerConnection has been established, the publisher will become
  * active, and a new active feed other participants can subscribe to.
  *
  * The syntax of a \c publish request is the following:
@@ -639,7 +639,7 @@ room-<unique room ID>: {
  * getting media from WebRTC sources (publishers) and relaying it to
  * WebRTC destinations (subscribers), there are actually several use
  * cases and scenarios for making this media available to external,
- * notnecessarily WebRTC-compliant, components. These components may
+ * not necessarily WebRTC-compliant, components. These components may
  * benefit from having access to the RTP media sent by a publisher, e.g.,
  * for media processing, external recording, transcoding to other
  * technologies via other applications, scalability purposes or
@@ -822,13 +822,13 @@ room-<unique room ID>: {
  * right info out of band.
  *
  * To specify a handle will be associated with a subscriber, you must use
- * the \c join request with \c ptype set to \c subscriber and specify which
+ * the \c join request with \c ptype set to \c subscriber (or \c listener) and specify which
  * feed to subscribe to. The exact syntax of the request is the following:
  *
 \verbatim
 {
 	"request" : "join",
-	"ptype" : "subscriber",
+	"ptype" : <"subscriber"|"listener">,
 	"room" : <unique ID of the room to subscribe in>,
 	"feed" : <unique ID of the publisher to subscribe to; mandatory>,
 	"private_id" : <unique ID of the publisher that originated this request; optional, unless mandated by the room configuration>,
