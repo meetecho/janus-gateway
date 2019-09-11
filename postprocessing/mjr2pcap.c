@@ -315,7 +315,7 @@ int main(int argc, char *argv[])
 			offset += len;
 			continue;
 		}
-		if(len > 2000) {
+		if(len > 1500) {
 			/* Way too large, very likely not RTP, skip */
 			JANUS_LOG(LOG_VERB, "  -- Too large packet (%d bytes), skipping\n", len);
 			offset += len;
@@ -323,6 +323,11 @@ int main(int argc, char *argv[])
 		}
 		/* Get the whole packet */
 		bytes = fread(prebuffer, sizeof(char), len, file);
+		if(bytes != len) {
+			JANUS_LOG(LOG_WARN, "  -- Failed to read packet (%d != %d bytes), skipping\n", bytes, len);
+			offset += len;
+			continue;
+		}
 		/* Save the packet to PCAP */
 		int hsize = sizeof(mjr2pcap_ethernet_header) + sizeof(mjr2pcap_ip_header) +
 			sizeof(mjr2pcap_udp_header) + len;
