@@ -291,7 +291,7 @@ struct janus_plugin {
 	 * @param[in] video Whether this is an audio or a video frame
 	 * @param[in] buf The packet data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
+	void (* incoming_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
 	/*! \brief Method to handle an incoming RTCP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] video Whether this is related to an audio or a video stream
