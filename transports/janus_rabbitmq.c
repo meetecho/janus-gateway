@@ -46,8 +46,8 @@
 
 
 /* Transport plugin information */
-#define JANUS_RABBITMQ_VERSION			1
-#define JANUS_RABBITMQ_VERSION_STRING	"0.0.1"
+#define JANUS_RABBITMQ_VERSION			2
+#define JANUS_RABBITMQ_VERSION_STRING	"0.0.2"
 #define JANUS_RABBITMQ_DESCRIPTION		"This transport plugin adds RabbitMQ support to the Janus API via rabbitmq-c."
 #define JANUS_RABBITMQ_NAME				"JANUS RabbitMQ transport plugin"
 #define JANUS_RABBITMQ_AUTHOR			"Meetecho s.r.l."
@@ -134,11 +134,18 @@ typedef struct janus_rabbitmq_client {
 	gint destroy:1;							/* Flag to trigger a lazy session destruction */
 } janus_rabbitmq_client;
 
+/* Opaque structure to be used as request_id */
+typedef struct janus_rabbitmq_opaque_id {
+  gchar *correlation_id; /* Correlation ID, if any */
+  gchar *reply_to;       /* AMQP incoming messages explicit queue name */
+} janus_rabbitmq_opaque_id;
+
 /* RabbitMQ response */
 typedef struct janus_rabbitmq_response {
 	gboolean admin;			/* Whether this is a Janus or Admin API response */
-	char *correlation_id;	/* Correlation ID, if any */
-	char *payload;			/* Payload to send to the client */
+  char  *correlation_id;  /* Correlation ID, if any */
+  gchar *reply_to;        /* AMQP incoming messages explicit queue name */
+  char  *payload;         /* Payload to send to the client */
 } janus_rabbitmq_response;
 static janus_rabbitmq_response exit_message;
 
@@ -618,13 +625,18 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 		json_decref(message);
 		return -1;
 	}
-	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
+	JANUS_LOG(LOG_VERB, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
-	janus_rabbitmq_response *response = g_malloc(sizeof(janus_rabbitmq_response));
+	janus_rabbitmq_response *response = g_malloc0(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
 	response->payload = json_dumps(message, json_format);
 	json_decref(message);
-	response->correlation_id = (char *)request_id;
+  if (request_id) {
+    janus_rabbitmq_opaque_id *opaque_id = (janus_rabbitmq_opaque_id*)request_id;
+    response->correlation_id = opaque_id->correlation_id;
+    response->reply_to = opaque_id->reply_to;
+    g_free(opaque_id);
+  }
 	g_async_queue_push(rmq_client->messages, response);
 	return 0;
 }
@@ -698,14 +710,19 @@ void *janus_rmq_in_thread(void *data) {
 		if(frame.frame_type != AMQP_FRAME_HEADER)
 			continue;
 		amqp_basic_properties_t *p = (amqp_basic_properties_t *)frame.payload.properties.decoded;
+    janus_rabbitmq_opaque_id *request_id = NULL;
 		if(p->_flags & AMQP_BASIC_REPLY_TO_FLAG) {
-			JANUS_LOG(LOG_VERB, "  -- Reply-to: %.*s\n", (int) p->reply_to.len, (char *) p->reply_to.bytes);
+      request_id = g_malloc0(sizeof(janus_rabbitmq_opaque_id));
+      request_id->reply_to = g_malloc0(p->reply_to.len+1);
+      sprintf(request_id->reply_to, "%.*s", (int) p->reply_to.len, (char *) p->reply_to.bytes);
+      JANUS_LOG(LOG_VERB, "  -- Reply-to: %s\n", request_id->reply_to);
 		}
 		char *correlation = NULL;
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-			correlation = g_malloc0(p->correlation_id.len+1);
-			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
-			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
+      if (!request_id) request_id = g_malloc0(sizeof(janus_rabbitmq_opaque_id));
+      request_id->correlation_id = g_malloc0(p->correlation_id.len+1);
+      sprintf(request_id->correlation_id, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
+      JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", request_id->correlation_id);
 		}
 		if(p->_flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
 			JANUS_LOG(LOG_VERB, "  -- Content-type: %.*s\n", (int) p->content_type.len, (char *) p->content_type.bytes);
@@ -731,7 +748,7 @@ void *janus_rmq_in_thread(void *data) {
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
-		gateway->incoming_request(&janus_rabbitmq_transport, rmq_session, correlation, admin, root, &error);
+		gateway->incoming_request(&janus_rabbitmq_transport, rmq_session, request_id, admin, root, &error);
 	}
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
 	return NULL;
@@ -767,10 +784,12 @@ void *janus_rmq_out_thread(void *data) {
 			props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(payload_text);
-			int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange,
-				response->admin ? rmq_client->from_janus_admin_queue : rmq_client->from_janus_queue,
-				0, 0, &props, message);
-			if(status != AMQP_STATUS_OK) {
+		  int status = amqp_basic_publish(rmq_client->rmq_conn, rmq_client->rmq_channel, amqp_empty_bytes,
+                                      response->reply_to ? amqp_cstring_bytes(response->reply_to)
+                                      : (response->admin ? rmq_client->from_janus_admin_queue
+                                      : rmq_client->from_janus_queue),
+                                      0, 0, &props, message);
+      if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
 			janus_mutex_unlock(&rmq_client->mutex);
