@@ -484,7 +484,7 @@
  * using the so-called \c helper sessions. Specifically, \c helper sessions
  * work under the assumption that there's a \c master session that is
  * registered normally (the "regular" SIP plugin handle, that is), and
- * that this \c helper sessions can simply be associated to that: any time
+ * that these \c helper sessions can simply be associated to that: any time
  * another concurrent call is needed, if the \c master session is busy
  * one of the \c helpers can be used; the more \c helper sessions are
  * available, the more simultaneous calls can be established.
@@ -495,7 +495,7 @@
  * there; this will be the \c master session, and will return a \c master_id
  * when successfully registered;
  * 2. for each \c helper you want to add, you attach a new Janus handle
- * to the SIP plugin, and send a \c register with \c type: \c helper and
+ * to the SIP plugin, and send a \c register with \c type: \c "helper" and
  * providing the same \c username as the master, plus a \c master_id attribute
  * referencing the main session;
  * 3. at this point, the new \c helper is associated to the \c master ,
