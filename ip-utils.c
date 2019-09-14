@@ -19,6 +19,9 @@
 #include <net/if.h>
 #include <string.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include <glib.h>
 
@@ -320,4 +323,36 @@ char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_t
 	if(res != 0)
 		return NULL;
 	return g_strdup(janus_network_address_string_from_buffer(&buf));
+}
+
+char *janus_network_dns_lookup_host(const char *host, const char *type)
+{
+	struct addrinfo hints, *res;
+	int errcode;
+	char addrstr[100] = NULL;
+	void *ptr;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = PF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags |= AI_CANONNAME;
+
+	errcode = getaddrinfo(host, NULL, &hints, &res);
+	if (errcode != 0) {
+		return errcode;
+	}
+
+	while (res) {
+		if (!strcasecmp(type, "ipv4") && res->ai_family == AF_INET) {
+			ptr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
+			inet_ntop(res->ai_family, ptr, addrstr, 100);
+		}
+		else if (!strcasecmp(type, "ipv6") && res->ai_family == AF_INET6) {
+			ptr = &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
+			inet_ntop(res->ai_family, ptr, addrstr, 100);
+		}
+		res = res->ai_next;
+	}
+
+	return addrstr;
 }

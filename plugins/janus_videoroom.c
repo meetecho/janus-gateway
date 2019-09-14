@@ -705,6 +705,7 @@ room-<unique room ID>: {
 	"publisher_id" : <unique numeric ID, same as request>,
 	"rtp_stream" : {
 		"host" : "<host this forwarder is streaming to, same as request>",
+		"ip_family": "<type of IP family, ipv4 or ipv6>",
 		"audio" : <audio RTP port, same as request if configured>,
 		"audio_rtcp" : <audio RTCP port, same as request if configured>,
 		"audio_stream_id" : <unique numeric ID assigned to the audio RTP forwarder, if any>,
@@ -1236,11 +1237,11 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"audio_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"ip_family", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"simulcast", JANUS_JSON_BOOL, 0},
 	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"srtp_crypto", JSON_STRING, 0}
-};
+	{"srtp_crypto", JSON_STRING, 0}};
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -3368,6 +3369,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			data_port = json_integer_value(d_port);
 		}
 		json_t *json_host = json_object_get(root, "host");
+		json_t *json_ip_family = json_object_get(root, "ip_family");
 		/* Do we need to forward multiple simulcast streams to a single endpoint? */
 		gboolean simulcast = FALSE;
 		if(json_object_get(root, "simulcast") != NULL)
@@ -3392,7 +3394,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
-		const char *host = json_string_value(json_host);
+		const char *fwd_host = json_string_value(json_host);
+		const char *fwd_ip_family = json_string_value(json_ip_family);
+		const char *host = janus_network_dns_lookup_host(fwd_host, fwd_ip_family);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
