@@ -670,6 +670,7 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room the publisher is in>,
 	"publisher_id" : <unique numeric ID of the publisher to relay externally>,
 	"host" : "<host address to forward the RTP and data packets to>",
+	"ip_family": "<type of IP family, ipv4 or ipv6>",
 	"audio_port" : <port to forward the audio RTP packets to>,
 	"audio_ssrc" : <audio SSRC to use to use when streaming; optional>,
 	"audio_pt" : <audio payload type to use when streaming; optional>,
@@ -1058,6 +1059,7 @@ room-<unique room ID>: {
 #include "../rtcp.h"
 #include "../record.h"
 #include "../sdp-utils.h"
+#include "../ip-utils.h"
 #include "../utils.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -3394,9 +3396,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
-		const char *fwd_host = json_string_value(json_host);
-		const char *fwd_ip_family = json_string_value(json_ip_family);
-		const char *host = janus_network_dns_lookup_host(fwd_host, fwd_ip_family);
+		const char *host = janus_network_dns_lookup_host(json_string_value(json_host), json_string_value(json_ip_family));
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
