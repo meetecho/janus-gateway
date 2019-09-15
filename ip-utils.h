@@ -249,7 +249,7 @@ char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_t
 /*!
  * \brief convert DNS realm to human readable IP address IPv4 or IPv6
  */
-char *janus_network_dns_lookup_host(const char *host, const char *type)
+char *janus_network_dns_lookup_host(const char *host, const char *type);
 ///@}
 
 #endif

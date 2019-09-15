@@ -325,11 +325,9 @@ char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_t
 	return g_strdup(janus_network_address_string_from_buffer(&buf));
 }
 
-char *janus_network_dns_lookup_host(const char *host, const char *type)
-{
+char *janus_network_dns_lookup_host(const char *domain_name, const char *type) {
 	struct addrinfo hints, *res;
-	int errcode;
-	char addrstr[100] = NULL;
+	static char addrstr[100] = "127.0.0.1";
 	void *ptr;
 
 	memset(&hints, 0, sizeof(hints));
@@ -337,11 +335,12 @@ char *janus_network_dns_lookup_host(const char *host, const char *type)
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags |= AI_CANONNAME;
 
-	errcode = getaddrinfo(host, NULL, &hints, &res);
+	int errcode = getaddrinfo(domain_name, NULL, &hints, &res);
+	/* If there is an error return the localhost */
 	if (errcode != 0) {
-		return errcode;
+		return addrstr;
 	}
-
+	/* res will contain linked list of host typse, we need to try and see which one we need*/
 	while (res) {
 		if (!strcasecmp(type, "ipv4") && res->ai_family == AF_INET) {
 			ptr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
