@@ -392,7 +392,7 @@ room-<unique room ID>: {
 	"audiobridge" : "success",
 	"room" : <unique numeric ID, same as request>,
 	"stream_id" : <unique numeric ID assigned to the new RTP forwarder>,
-	"host" : "<host this forwarder is streaming to, same as request>",
+	"host" : "<host this forwarder is streaming to, same as request if not resolved>",
 	"port" : <audio port this forwarder is streaming to, same as request>
 }
 \endverbatim
@@ -629,6 +629,7 @@ room-<unique room ID>: {
 
 #include <jansson.h>
 #include <opus/opus.h>
+#include <netdb.h>
 #include <sys/time.h>
 
 #include "../debug.h"
@@ -641,6 +642,7 @@ room-<unique room ID>: {
 #include "../record.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+#include "../ip-utils.h"
 
 
 /* Plugin information */
@@ -1029,6 +1031,7 @@ static void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
 /* RTP forwarder instance: address to send to, and current RTP header info */
 typedef struct janus_audiobridge_rtp_forwarder {
 	struct sockaddr_in serv_addr;
+	struct sockaddr_in6 serv_addr6;
 	uint32_t ssrc;
 	int payload_type;
 	uint16_t seq_number;
@@ -1080,10 +1083,16 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 		}
 		rf->is_srtp = TRUE;
 	}
-	/* Resolve address */
-	rf->serv_addr.sin_family = AF_INET;
-	inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
-	rf->serv_addr.sin_port = htons(port);
+	/* Check if the host address is IPv4 or IPv6 */
+	if(strstr(host, ":") != NULL) {
+		rf->serv_addr6.sin6_family = AF_INET6;
+		inet_pton(AF_INET6, host, &(rf->serv_addr6.sin6_addr));
+		rf->serv_addr6.sin6_port = htons(port);
+	} else {
+		rf->serv_addr.sin_family = AF_INET;
+		inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
+		rf->serv_addr.sin_port = htons(port);
+	}
 	/* Setup RTP info (we'll use the stream ID as SSRC) */
 	rf->ssrc = ssrc;
 	rf->payload_type = pt;
@@ -1250,7 +1259,20 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	if(host_item == NULL || host_item->value == NULL || strlen(host_item->value) == 0) {
 		return 0;
 	}
-	const gchar *host = g_strdup(host_item->value);
+	/* Check if we need to resolve this host address */
+	struct addrinfo *res = NULL;
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	if(getaddrinfo(host_item->value, NULL, NULL, &res) != 0 ||
+			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+		if(res)
+			freeaddrinfo(res);
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host_item->value);
+		return 0;
+	}
+	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
+	freeaddrinfo(res);
 
 	/* We may need to SRTP-encrypt this stream */
 	int srtp_suite = 0;
@@ -2496,6 +2518,22 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		json_t *json_host = json_object_get(root, "host");
 		const char *host = json_string_value(json_host);
+		/* Check if we need to resolve this host address */
+		struct addrinfo *res = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(getaddrinfo(host, NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			if(res)
+				freeaddrinfo(res);
+			JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Could not resolve address (%s)...", host);
+			goto prepare_response;
+		}
+		host = janus_network_address_string_from_buffer(&addr_buf);
+		freeaddrinfo(res);
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
 		/* Besides, we may need to SRTP-encrypt this stream */
@@ -2670,7 +2708,14 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			janus_audiobridge_rtp_forwarder *rf = (janus_audiobridge_rtp_forwarder *)value;
 			json_t *fl = json_object();
 			json_object_set_new(fl, "stream_id", json_integer(stream_id));
-			json_object_set_new(fl, "ip", json_string(inet_ntoa(rf->serv_addr.sin_addr)));
+			char address[100];
+			if(rf->serv_addr.sin_family == AF_INET) {
+				json_object_set_new(fl, "ip", json_string(
+					inet_ntop(AF_INET, &rf->serv_addr.sin_addr, address, sizeof(address))));
+			} else {
+				json_object_set_new(fl, "ip", json_string(
+					inet_ntop(AF_INET6, &rf->serv_addr6.sin6_addr, address, sizeof(address))));
+			}
 			json_object_set_new(fl, "port", json_integer(ntohs(rf->serv_addr.sin_port)));
 			json_object_set_new(fl, "ssrc", json_integer(rf->ssrc ? rf->ssrc : stream_id));
 			json_object_set_new(fl, "ptype", json_integer(rf->payload_type));
@@ -4521,7 +4566,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						forwarder->timestamp += OPUS_SAMPLES;
 						rtph->timestamp = htonl(forwarder->timestamp);
 						/* Send RTP packet */
-						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr)) < 0) {
+						struct sockaddr *address = (forwarder->serv_addr.sin_family == AF_INET ?
+							(struct sockaddr *)&forwarder->serv_addr : (struct sockaddr *)&forwarder->serv_addr6);
+						size_t addrlen = (forwarder->serv_addr.sin_family == AF_INET ? sizeof(forwarder->serv_addr) : sizeof(forwarder->serv_addr6));
+						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, address, addrlen) < 0) {
 							JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %"SCNu64"... %s (len=%d)...\n",
 								audiobridge->room_id, strerror(errno), length+12);
 						}
