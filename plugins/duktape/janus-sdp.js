@@ -103,7 +103,7 @@ JANUSSDP.findCodec = function(sdp, pt) {
 JANUSSDP.removePayloadType = function(sdp, pt) {
 	if(!sdp || pt === null || pt === undefined)
 		return;
-	for(var index=0; i<sdp.length; i++) {
+	for(var index=0; index<sdp.length; index++) {
 		var a = sdp[index];
 		if(a.type === "m") {
 			var m = a.name.replace(" " + pt + " ", " ");
