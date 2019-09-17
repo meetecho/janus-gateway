@@ -20,6 +20,14 @@ function JANUSLOG.print(text)
 	end
 end
 
+function JANUSLOG.verbose(text)
+	if text ~= nil then
+		janusLog(5, logPrefix .. text)
+	else
+		janusLog(5, logPrefix .. "(nil)")
+	end
+end
+
 function JANUSLOG.warn(text)
 	if text ~= nil then
 		janusLog(3, logPrefix .. text)
