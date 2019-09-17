@@ -383,6 +383,23 @@ static void *janus_lua_async_event_helper(void *data) {
 
 
 /* Methods that we expose to the Lua script */
+static int janus_lua_method_januslog(lua_State *s) {
+	/* This method allows the Lua script to use the Janus internal logger */
+	int n = lua_gettop(s);
+	if(n != 2) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+		return 0;
+	}
+	int level = lua_tonumber(s, 1);
+	const char *text = lua_tostring(s, 2);
+	if(text == NULL) {
+		/* Ignore */
+		return 0;
+	}
+	JANUS_LOG(level, "%s\n", text);
+	return 0;
+}
+
 static int janus_lua_method_pokescheduler(lua_State *s) {
 	/* This method allows the Lua script to poke the scheduler and have it wake up ASAP */
 	g_async_queue_push(events, GUINT_TO_POINTER(janus_lua_event_resume));
@@ -1143,6 +1160,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	}
 
 	/* Register our functions */
+	lua_register(lua_state, "janusLog", janus_lua_method_januslog);
 	lua_register(lua_state, "pokeScheduler", janus_lua_method_pokescheduler);
 	lua_register(lua_state, "timeCallback", janus_lua_method_timecallback);
 	lua_register(lua_state, "pushEvent", janus_lua_method_pushevent);
