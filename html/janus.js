@@ -198,6 +198,10 @@ Janus.noop = function() {};
 
 Janus.dataChanDefaultLabel = "JanusDataChannel";
 
+// Note: in the future we may want to change this, e.g., as was
+// attempted in https://github.com/meetecho/janus-gateway/issues/1670
+Janus.endOfCandidates = null;
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
@@ -386,9 +390,9 @@ Janus.init = function(options) {
 				Janus.webRTCAdapter.browserDetails.version < 72) {
 			// Chrome does, but it's only usable from version 72 on
 			Janus.unifiedPlan = false;
-		} else if(!('currentDirection' in RTCRtpTransceiver.prototype)) {
+		} else if(!window.RTCRtpTransceiver || !('currentDirection' in RTCRtpTransceiver.prototype)) {
 			// Safari supports addTransceiver() but not Unified Plan when
-			// currentDirection is not defined (see codepen above)
+			// currentDirection is not defined (see codepen above).
 			Janus.unifiedPlan = false;
 		} else {
 			// Check if addTransceiver() throws an exception
@@ -507,6 +511,26 @@ function Janus(gatewayCallbacks) {
 		longPollTimeout = gatewayCallbacks.longPollTimeout;
 	if(isNaN(longPollTimeout))
 		longPollTimeout = 60000;
+
+	// overrides for default maxBitrate values for simulcasting
+	function getMaxBitrates(simulcastMaxBitrates) {
+		var maxBitrates = {
+			high: 900000,
+			medium: 300000,
+			low: 100000,
+		};
+
+		if (simulcastMaxBitrates !== undefined && simulcastMaxBitrates !== null) {
+			if (simulcastMaxBitrates.high)
+				maxBitrates.high = simulcastMaxBitrates.high;
+			if (simulcastMaxBitrates.medium)
+				maxBitrates.medium = simulcastMaxBitrates.medium;
+			if (simulcastMaxBitrates.low)
+				maxBitrates.low = simulcastMaxBitrates.low;
+		}
+
+		return maxBitrates;
+	}
 
 	var connected = false;
 	var sessionId = null;
@@ -627,7 +651,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("Adding remote candidate:", candidate);
 				if(!candidate || candidate.completed === true) {
 					// end-of-candidates
-					config.pc.addIceCandidate({candidate:''});
+					config.pc.addIceCandidate(Janus.endOfCandidates);
 				} else {
 					// New candidate
 					config.pc.addIceCandidate(candidate);
@@ -1794,13 +1818,14 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(track, stream);
 					} else {
 						Janus.log('Enabling rid-based simulcasting:', track);
+						const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 						config.pc.addTransceiver(track, {
 							direction: "sendrecv",
 							streams: [stream],
 							sendEncodings: [
-								{ rid: "h", active: true, maxBitrate: 900000 },
-								{ rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
-								{ rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+								{ rid: "h", active: true, maxBitrate: maxBitrates.high },
+								{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+								{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 							]
 						});
 					}
@@ -1829,12 +1854,12 @@ function Janus(gatewayCallbacks) {
 					config.remoteSdp = jsep.sdp;
 					// Any trickle candidate we cached?
 					if(config.candidates && config.candidates.length > 0) {
-						for(var i in config.candidates) {
+						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
@@ -2511,12 +2536,12 @@ function Janus(gatewayCallbacks) {
 					config.remoteSdp = jsep.sdp;
 					// Any trickle candidate we cached?
 					if(config.candidates && config.candidates.length > 0) {
-						for(var i in config.candidates) {
+						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
 							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
-								config.pc.addIceCandidate({candidate:''});
+								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
 								// New candidate
 								config.pc.addIceCandidate(candidate);
@@ -2689,10 +2714,13 @@ function Janus(gatewayCallbacks) {
 				var parameters = sender.getParameters();
 				if(!parameters)
 					parameters = {};
+
+
+				const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 				parameters.encodings = [
-					{ rid: "h", active: true, maxBitrate: 900000 },
-					{ rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
-					{ rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
+					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+					{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
 				];
 				sender.setParameters(parameters);
 			}
@@ -2929,10 +2957,12 @@ function Janus(gatewayCallbacks) {
 			Janus.log(sender);
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
+
+			const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
-				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
+				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
+				{ rid: "low", active: true, priority: "low", maxBitrate: maxBitrates.low }
 			]});
 		}
 		config.pc.createAnswer(mediaConstraints)

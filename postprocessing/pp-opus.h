@@ -9,8 +9,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_OPUS
-#define _JANUS_PP_OPUS
+#ifndef JANUS_PP_OPUS
+#define JANUS_PP_OPUS
 
 #include <stdio.h>
 

@@ -16,8 +16,8 @@
  * \ref protocols
  */
 
-#ifndef _JANUS_SCTP_H
-#define _JANUS_SCTP_H
+#ifndef JANUS_SCTP_H
+#define JANUS_SCTP_H
 
 #ifdef HAVE_SCTP
 

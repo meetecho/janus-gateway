@@ -3,13 +3,13 @@
  * \copyright GNU General Public License v3
  * \brief    OpenSSL BIO agent writer
  * \details  OpenSSL BIO that writes packets to a libnice agent.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
-#ifndef _JANUS_DTLS_BIO_H
-#define _JANUS_DTLS_BIO_H
+
+#ifndef JANUS_DTLS_BIO_H
+#define JANUS_DTLS_BIO_H
 
 #include <openssl/opensslv.h>
 #include <openssl/err.h>

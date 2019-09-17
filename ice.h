@@ -14,8 +14,8 @@
  * \ref protocols
  */
 
-#ifndef _JANUS_ICE_H
-#define _JANUS_ICE_H
+#ifndef JANUS_ICE_H
+#define JANUS_ICE_H
 
 #include <glib.h>
 #include <agent.h>

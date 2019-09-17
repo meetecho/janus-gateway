@@ -10,8 +10,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_RTP
-#define _JANUS_PP_RTP
+#ifndef JANUS_PP_RTP
+#define JANUS_PP_RTP
 
 #ifdef __MACH__
 #include <machine/endian.h>
@@ -53,6 +53,8 @@ typedef struct janus_pp_rtp_header_extension {
 } janus_pp_rtp_header_extension;
 
 typedef struct janus_pp_frame_packet {
+	int version;	/* Version of the .mjr file (2=has timestamps) */
+	uint32_t p_ts;	/* Packet timestamp as saved by Janus (if available) */
 	uint16_t seq;	/* RTP Sequence number */
 	uint64_t ts;	/* RTP Timestamp */
 	uint16_t len;	/* Length of the data */

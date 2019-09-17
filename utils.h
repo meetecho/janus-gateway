@@ -9,8 +9,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_UTILS_H
-#define _JANUS_UTILS_H
+#ifndef JANUS_UTILS_H
+#define JANUS_UTILS_H
 
 #include <stdint.h>
 #include <glib.h>

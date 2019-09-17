@@ -6,6 +6,7 @@ docs/html/
 /janus
 /janus-cfgconv
 /janus-pp-rec
+/mjr2pcap
 /plugins/*.so
 /transports/*.so
 /events/*.so

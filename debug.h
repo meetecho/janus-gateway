@@ -8,8 +8,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_DEBUG_H
-#define _JANUS_DEBUG_H
+#ifndef JANUS_DEBUG_H
+#define JANUS_DEBUG_H
 
 #include <glib.h>
 #include <glib/gprintf.h>

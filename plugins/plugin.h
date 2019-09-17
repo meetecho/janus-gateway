@@ -145,8 +145,8 @@ janus_plugin *create(void) {
  * \ref pluginapi
  */
 
-#ifndef _JANUS_PLUGIN_H
-#define _JANUS_PLUGIN_H
+#ifndef JANUS_PLUGIN_H
+#define JANUS_PLUGIN_H
 
 #include <stdlib.h>
 #include <stdint.h>

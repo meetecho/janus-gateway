@@ -328,8 +328,7 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore addr, void *data, size_t datalen, struct sctp_rcvinfo rcv, int flags, void *ulp_info) {
 	janus_sctp_association *sctp = (janus_sctp_association *)ulp_info;
 	if(sctp == NULL || sctp->dtls == NULL) {
-		if(data)
-			free(data);
+		free(data);
 		return 0;
 	}
 	if(data) {
@@ -819,26 +818,22 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	channel->stream = stream;
 	channel->flags = 0;
 	sctp->stream_channel[stream] = channel;
-	if(stream == 0) {
-		janus_sctp_request_more_streams(sctp);
+	if(janus_sctp_send_open_ack_message(sctp->sock, stream)) {
+		sctp->stream_channel[stream] = channel;
 	} else {
-		if(janus_sctp_send_open_ack_message(sctp->sock, stream)) {
+		if(errno == EAGAIN) {
+			channel->flags |= DATA_CHANNEL_FLAGS_SEND_ACK;
 			sctp->stream_channel[stream] = channel;
 		} else {
-			if(errno == EAGAIN) {
-				channel->flags |= DATA_CHANNEL_FLAGS_SEND_ACK;
-				sctp->stream_channel[stream] = channel;
-			} else {
-				/* XXX: Signal error to the other end */
-				sctp->stream_channel[stream] = NULL;
-				channel->label[0] = '\0';
-				channel->state = DATA_CHANNEL_CLOSED;
-				channel->unordered = 0;
-				channel->pr_policy = 0;
-				channel->pr_value = 0;
-				channel->stream = 0;
-				channel->flags = 0;
-			}
+			/* XXX: Signal error to the other end */
+			sctp->stream_channel[stream] = NULL;
+			channel->label[0] = '\0';
+			channel->state = DATA_CHANNEL_CLOSED;
+			channel->unordered = 0;
+			channel->pr_policy = 0;
+			channel->pr_value = 0;
+			channel->stream = 0;
+			channel->flags = 0;
 		}
 	}
 	/* Read label, if available */
