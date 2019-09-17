@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include "duktape.h"
 #include "duk_console.h"
+#include "../../debug.h"
 
 /* XXX: Add some form of log level filtering. */
 
@@ -53,7 +54,7 @@ static duk_ret_t duk__console_log_helper(duk_context *ctx, const char *error_nam
 		duk_get_prop_string(ctx, -1, "stack");
 	}
 
-	fprintf(output, "%s\n", duk_to_string(ctx, -1));
+	JANUS_LOG(LOG_VERB, "%s\n", duk_to_string(ctx, -1));
 	if (flags & DUK_CONSOLE_FLUSH) {
 		fflush(output);
 	}
