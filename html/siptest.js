@@ -418,7 +418,7 @@ $(document).ready(function() {
 										}
 										$('.dtmf').click(function() {
 											// Send DTMF tone (inband)
-											sipcall.dtmf({dtmf: { tones: $(this).text()}});
+											sipcall.dtmf({dtmf: { digit: $(this).text()}});
 											// Notice you can also send DTMF tones using SIP INFO
 											// 		sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
 										});
