@@ -661,7 +661,7 @@ void *janus_rmq_in_thread(void *data) {
 		int res = amqp_simple_wait_frame_noblock(rmq_client->rmq_conn, &frame, &timeout);
 		if(res != AMQP_STATUS_OK) {
 			/* No data */
-			if(res == AMQP_STATUS_TIMEOUT)
+			if(res == AMQP_STATUS_TIMEOUT || res == AMQP_STATUS_SSL_ERROR)
 				continue;
 			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 			break;
