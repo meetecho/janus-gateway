@@ -67,10 +67,10 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   7=maximum debug level; default=4)
   -D, --debug-timestamps        Enable debug/logging timestamps  (default=off)
   -o, --disable-colors          Disable color in the logging  (default=off)
-	-f, --format=STRING           Specifies the output format (overrides the
-																	format from the destination)  (possible
-																	values="opus", "wav", "webm", "mp4",
-																	"srt")
+  -f, --format=STRING           Specifies the output format (overrides the
+                                  format from the destination)  (possible
+                                  values="opus", "wav", "webm", "mp4",
+                                  "srt")
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 			cmdline_parser_free(&args_info);
 			exit(1);
 		}
-		extension ++;
+		extension++;
 		if(strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
 				strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
 				strcasecmp(extension, "srt")) {
