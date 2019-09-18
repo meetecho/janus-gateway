@@ -2442,6 +2442,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			session->participant = NULL;
 			if(s->room) {
 				janus_refcount_decrease(&s->room->ref);
+				janus_refcount_decrease(&s->ref);
 			}
 			janus_videoroom_subscriber_destroy(s);
 		}
@@ -4766,12 +4767,15 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
 	/* TODO: are we sure this is okay as other handlers use feed directly without synchronization */
 	if(s->feed)
 		g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference_by_subscriber);
-	if(s->room)
-		g_clear_pointer(&s->room, janus_videoroom_room_dereference);
-	if(s->session && s->close_pc)
-		gateway->close_pc(s->session->handle);
-	/* Done with the subscriber and free its reference */
-	janus_refcount_decrease(&s->ref);
+	/* Only "leave" the room if we're closing the PeerConnection at this point */
+	if(s->close_pc) {
+		if(s->room)
+			g_clear_pointer(&s->room, janus_videoroom_room_dereference);
+		if(s->session)
+			gateway->close_pc(s->session->handle);
+		/* Remove the reference we added when "joining" the room */
+		janus_refcount_decrease(&s->ref);
+	}
 }
 
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
