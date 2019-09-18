@@ -373,6 +373,7 @@ room-<unique room ID>: {
 	"ssrc" : <SSRC to use to use when streaming (optional: stream_id used if missing)>,
 	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
+	"host_family" : "<ipv4|ipv6, if we need to resolve the host address to an IP; by default, whatever we get>",
 	"port" : <port to forward the RTP packets to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
 	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>",
@@ -783,6 +784,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"ptype", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host_family", JSON_STRING, 0},
 	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtp_crypto", JSON_STRING, 0},
 	{"always_on", JANUS_JSON_BOOL, 0}
@@ -2517,23 +2519,54 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		json_t *json_host = json_object_get(root, "host");
-		const char *host = json_string_value(json_host);
+		const char *host = json_string_value(json_host), *resolved_host = NULL;
+		json_t *json_host_family = json_object_get(root, "host_family");
+		const char *host_family = json_string_value(json_host_family);
+		int family = 0;
+		if(host_family) {
+			if(!strcasecmp(host_family, "ipv4")) {
+				family = AF_INET;
+			} else if(!strcasecmp(host_family, "ipv6")) {
+				family = AF_INET6;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", host_family);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", host_family);
+				goto prepare_response;
+			}
+		}
 		/* Check if we need to resolve this host address */
-		struct addrinfo *res = NULL;
+		struct addrinfo *res = NULL, *start = NULL;
 		janus_network_address addr;
 		janus_network_address_string_buffer addr_buf;
-		if(getaddrinfo(host, NULL, NULL, &res) != 0 ||
-				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			if(res)
-				freeaddrinfo(res);
+		if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+			start = res;
+			while(res != NULL) {
+				if(family != 0 && family != res->ai_family) {
+					/* We're looking for a specific family */
+					res = res->ai_next;
+					continue;
+				}
+				if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+					/* Resolved */
+					resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+					freeaddrinfo(start);
+					start = NULL;
+					break;
+				}
+				res = res->ai_next;
+			}
+		}
+		if(resolved_host == NULL) {
+			if(start)
+				freeaddrinfo(start);
 			JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Could not resolve address (%s)...", host);
 			goto prepare_response;
 		}
-		host = janus_network_address_string_from_buffer(&addr_buf);
-		freeaddrinfo(res);
+		host = resolved_host;
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
 		/* Besides, we may need to SRTP-encrypt this stream */

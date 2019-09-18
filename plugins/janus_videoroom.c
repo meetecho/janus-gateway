@@ -670,6 +670,7 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room the publisher is in>,
 	"publisher_id" : <unique numeric ID of the publisher to relay externally>,
 	"host" : "<host address to forward the RTP and data packets to>",
+	"host_family" : "<ipv4|ipv6, if we need to resolve the host address to an IP; by default, whatever we get>",
 	"audio_port" : <port to forward the audio RTP packets to>,
 	"audio_ssrc" : <audio SSRC to use to use when streaming; optional>,
 	"audio_pt" : <audio payload type to use when streaming; optional>,
@@ -1239,6 +1240,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host_family", JSON_STRING, 0},
 	{"simulcast", JANUS_JSON_BOOL, 0},
 	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtp_crypto", JSON_STRING, 0}
@@ -1735,6 +1737,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	if(!is_data && rtcp_port > -1) {
 		fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if(fd < 0) {
+			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
 			return 0;
@@ -1747,6 +1750,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 		address.sin6_addr = in6addr_any;
 		if(bind(fd, (struct sockaddr *)&address, sizeof(struct sockaddr)) < 0 ||
 				getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
+			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error binding RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
 			close(fd);
@@ -3389,6 +3393,21 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			data_port = json_integer_value(d_port);
 		}
 		json_t *json_host = json_object_get(root, "host");
+		json_t *json_host_family = json_object_get(root, "host_family");
+		const char *host_family = json_string_value(json_host_family);
+		int family = 0;
+		if(host_family) {
+			if(!strcasecmp(host_family, "ipv4")) {
+				family = AF_INET;
+			} else if(!strcasecmp(host_family, "ipv6")) {
+				family = AF_INET6;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", host_family);
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", host_family);
+				goto prepare_response;
+			}
+		}
 		/* Do we need to forward multiple simulcast streams to a single endpoint? */
 		gboolean simulcast = FALSE;
 		if(json_object_get(root, "simulcast") != NULL)
@@ -3413,23 +3432,39 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
-		const char *host = json_string_value(json_host);
+		const char *host = json_string_value(json_host), *resolved_host = NULL;
 		/* Check if we need to resolve this host address */
-		struct addrinfo *res = NULL;
+		struct addrinfo *res = NULL, *start = NULL;
 		janus_network_address addr;
 		janus_network_address_string_buffer addr_buf;
-		if(getaddrinfo(host, NULL, NULL, &res) != 0 ||
-				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-			if(res)
-				freeaddrinfo(res);
+		if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+			start = res;
+			while(res != NULL) {
+				if(family != 0 && family != res->ai_family) {
+					/* We're looking for a specific family */
+					res = res->ai_next;
+					continue;
+				}
+				if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+					/* Resolved */
+					resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+					freeaddrinfo(start);
+					start = NULL;
+					break;
+				}
+				res = res->ai_next;
+			}
+		}
+		if(resolved_host == NULL) {
+			if(start)
+				freeaddrinfo(start);
 			JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Could not resolve address (%s)...", host);
 			goto prepare_response;
 		}
-		host = janus_network_address_string_from_buffer(&addr_buf);
-		freeaddrinfo(res);
+		host = resolved_host;
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = NULL;
 		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
