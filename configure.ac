@@ -202,6 +202,8 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+               AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
                      [enable_rabbitmq_event_handler=no])
                AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
@@ -268,6 +270,13 @@ AC_ARG_ENABLE([sample-event-handler],
               [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
+
+AC_ARG_ENABLE([gelf-event-handler],
+              [AS_HELP_STRING([--disable-gelf-event-handler],
+                              [Disable gelf event handler ])],
+              [AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])],
+              [enable_gelf_event_handler=maybe])
 
 AC_ARG_ENABLE([rabbitmq-event-handler],
               [AS_HELP_STRING([--disable-rabbitmq-event-handler],
@@ -571,6 +580,7 @@ AC_CHECK_LIB([nanomsg],
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
@@ -1013,6 +1023,9 @@ echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_GELFEVH],
+	[echo "    Gelf event handler:    yes"],
+	[echo "    Gelf event handler:    no"])
 AM_COND_IF([ENABLE_RABBITMQEVH],
 	[echo "    RabbitMQ event handler:yes"],
 	[echo "    RabbitMQ event handler:no"])

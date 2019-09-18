@@ -315,6 +315,16 @@ conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
 
+if ENABLE_GELFEVH
+event_LTLIBRARIES += events/libjanus_gelfevh.la
+events_libjanus_gelfevh_la_SOURCES = events/janus_gelfevh.c
+events_libjanus_gelfevh_la_CFLAGS = $(events_cflags)
+events_libjanus_gelfevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
+events_libjanus_gelfevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.gelfevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.gelfevh.jcfg.sample
+endif
+
 if ENABLE_RABBITMQEVH
 event_LTLIBRARIES += events/libjanus_rabbitmqevh.la
 events_libjanus_rabbitmqevh_la_SOURCES = events/janus_rabbitmqevh.c
