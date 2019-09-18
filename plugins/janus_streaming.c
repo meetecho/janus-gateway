@@ -4619,10 +4619,11 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 		if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
 			close(fd);
 			fd = -1;
-			if(!use_range && !quiet) {
+			if(!quiet) {
 				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)...\n", mountpointname, medianame, port);
-				break;
 			}
+			if(!use_range)	/* Asked for a specific port but it's not available, give up */
+				break;
 		} else {
 			if(use_range)
 				rtp_range_slider = port;	/* Update global slider */
@@ -5405,6 +5406,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int aresult;
 	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
 		atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+
+	if(vresult == -1 && aresult == -1) {
+		/* Both audio and video failed? Give up... */
+		return -7;
+	}
 
 	if(vresult != -1) {
 		/* Send an RTSP SETUP for video */
