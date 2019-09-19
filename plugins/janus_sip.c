@@ -4543,7 +4543,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Video RTP listener bound to port %d\n", rtp_port);
+			JANUS_LOG(LOG_VERB, "Video RTP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtp_port, session->media.video_rtp_fd);
 			int rtcp_port = rtp_port+1;
 			video_rtcp_address.sin_family = AF_INET;
 			video_rtcp_address.sin_port = htons(rtcp_port);
@@ -4558,7 +4558,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Video RTCP listener bound to port %d\n", rtcp_port);
+			JANUS_LOG(LOG_VERB, "Video RTCP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtcp_port, session->media.video_rtcp_fd);
 			session->media.local_video_rtp_port = rtp_port;
 			session->media.local_video_rtcp_port = rtcp_port;
 		}
