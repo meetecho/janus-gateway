@@ -60,6 +60,7 @@ janus_plugin *create(void) {
  * - \c get_package(): this method should return a unique package identifier for your plugin (e.g., "janus.plugin.myplugin");
  * - \c create_session(): this method is called by the core to create a session between you and a peer;
  * - \c handle_message(): a callback to notify you the peer sent you a message/request;
+ * - \c handle_admin_message(): a callback to notify you a message/request came from the Admin API;
  * - \c setup_media(): a callback to notify you the peer PeerConnection is now ready to be used;
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
@@ -144,8 +145,8 @@ janus_plugin *create(void) {
  * \ref pluginapi
  */
 
-#ifndef _JANUS_PLUGIN_H
-#define _JANUS_PLUGIN_H
+#ifndef JANUS_PLUGIN_H
+#define JANUS_PLUGIN_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -169,7 +170,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	10
+#define JANUS_PLUGIN_API_VERSION	13
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -199,6 +200,7 @@ static janus_plugin janus_echotest_plugin =
 		.get_package = NULL,			\
 		.create_session = NULL,			\
 		.handle_message = NULL,			\
+		.handle_admin_message = NULL,	\
 		.setup_media = NULL,			\
 		.incoming_rtp = NULL,			\
 		.incoming_rtcp = NULL,			\
@@ -277,6 +279,10 @@ struct janus_plugin {
 	 * @returns A janus_plugin_result instance that may contain a response (for immediate/synchronous replies), an ack
 	 * (for asynchronously managed requests) or an error */
 	struct janus_plugin_result * (* const handle_message)(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+	/*! \brief Method to handle an incoming Admin API message/request
+	 * @param[in] message The json_t object containing the message/request JSON
+	 * @returns A json_t instance containing the response */
+	struct json_t * (* const handle_admin_message)(json_t *message);
 	/*! \brief Callback to be notified when the associated PeerConnection is up and ready to be used
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const setup_media)(janus_plugin_session *handle);
@@ -297,9 +303,10 @@ struct janus_plugin {
 	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to
 	 * use them.
 	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] label The label of the data channel to use
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const incoming_data)(janus_plugin_session *handle, char *buf, int len);
+	void (* const incoming_data)(janus_plugin_session *handle, char *label, char *buf, int len);
 	/*! \brief Method to be notified by the core when too many NACKs have
 	 * been received or sent by Janus, and so a slow or potentially
 	 * unreliable network is to be expected for this peer
@@ -360,9 +367,10 @@ struct janus_callbacks {
 	void (* const relay_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
 	/*! \brief Callback to relay SCTP/DataChannel messages to a peer
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
+	 * @param[in] label The label of the data channel to use
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
-	void (* const relay_data)(janus_plugin_session *handle, char *buf, int len);
+	void (* const relay_data)(janus_plugin_session *handle, char *label, char *buf, int len);
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media

@@ -66,7 +66,7 @@ static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
 
-int janus_pp_webm_create(char *destination, int vp8) {
+int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if(destination == NULL)
 		return -1;
 #if LIBAVCODEC_VERSION_MAJOR < 55
@@ -90,7 +90,9 @@ int janus_pp_webm_create(char *destination, int vp8) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
 		return -1;
 	}
-	//~ fctx->oformat = guess_format("webm", NULL, NULL);
+	/* We save the metadata part as a comment (see #1189) */
+	if(metadata)
+		av_dict_set(&fctx->metadata, "comment", metadata, 0);
 	fctx->oformat = av_guess_format("webm", NULL, NULL);
 	if(fctx->oformat == NULL) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
@@ -169,11 +171,12 @@ int janus_pp_webm_create(char *destination, int vp8) {
 	return 0;
 }
 
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
+	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	while(tmp) {
@@ -195,6 +198,10 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
 			tmp = tmp->next;
 			continue;
+		}
+		if(tmp->rotation != -1 && tmp->rotation != rotation) {
+			rotation = tmp->rotation;
+			JANUS_LOG(LOG_INFO, "Video rotation: %d degrees\n", rotation);
 		}
 		if(vp8) {
 			/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
@@ -359,7 +366,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 	return 0;
 }
 
-int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int *working) {
+int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -369,13 +376,13 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
-	uint32_t keyframe_ts = 0;
+	gboolean keyframe_found = FALSE;
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
 		frameLen = 0;
 		len = 0;
-		while(1) {
+		while(tmp != NULL) {
 			if(tmp->drop) {
 				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
@@ -388,12 +395,16 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			len = tmp->len-12-tmp->skip;
 			if(len < 1) {
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			}
 			bytes = fread(buffer, sizeof(char), len, file);
 			if(bytes != len) {
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
 				tmp = tmp->next;
 				continue;
 			}
@@ -469,8 +480,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
 							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
 							/* Is this the first keyframe we find? */
-							if(keyframe_ts == 0) {
-								keyframe_ts = tmp->ts;
+							if(!keyframe_found) {
+								keyframe_found = TRUE;
 								JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 							}
 						}
@@ -553,8 +564,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						}
 						/* Is this the first keyframe we find?
 						 * (FIXME assuming this really means "keyframe...) */
-						if(keyframe_ts == 0) {
-							keyframe_ts = tmp->ts;
+						if(!keyframe_found) {
+							keyframe_found = TRUE;
 							JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 						}
 					}

@@ -63,6 +63,7 @@ var feeds = [];
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
+var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -109,7 +110,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -130,6 +131,9 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									if(!on)
+										return;
+									$('#publish').remove();
 									// This controls allows us to override the global room bitrate cap
 									$('#bitrate').parent().parent().removeClass('hide').show();
 									$('#bitrate a').click(function() {
@@ -237,7 +241,7 @@ $(document).ready(function() {
 													// This is a "no such room" error: give a more meaningful description
 													bootbox.alert(
 														"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
-														"does not exist...</p><p>Do you have an updated <code>janus.plugin.videoroom.cfg</code> " +
+														"does not exist...</p><p>Do you have an updated <code>janus.plugin.videoroom.jcfg</code> " +
 														"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
 														"from that sample in your current configuration file, then restart Janus and try again."
 													);
@@ -398,6 +402,7 @@ function publishOwnFeed(useAudio) {
 			// pass a ?simulcast=true when opening this demo page: it will turn
 			// the following 'simulcast' property to pass to janus.js to true
 			simulcast: doSimulcast,
+			simulcast2: doSimulcast2,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
@@ -457,20 +462,21 @@ function newRemoteFeed(id, display, audio, video) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": myroom, "ptype": "subscriber", "feed": id, "private_id": mypvtid };
+				var subscribe = { "request": "join", "room": myroom, "ptype": "subscriber", "feed": id, "private_id": mypvtid };
 				// In case you don't want to receive audio, video or data, even if the
 				// publisher is sending them, set the 'offer_audio', 'offer_video' or
 				// 'offer_data' properties to false (they're true by default), e.g.:
-				// 		listen["offer_video"] = false;
+				// 		subscribe["offer_video"] = false;
 				// For example, if the publisher is VP8 and this is Safari, let's avoid video
-				if(video !== "h264" && Janus.webRTCAdapter.browserDetails.browser === "safari") {
+				if(Janus.webRTCAdapter.browserDetails.browser === "safari" &&
+						(video === "vp9" || (video === "vp8" && !Janus.safariVp8))) {
 					if(video)
 						video = video.toUpperCase()
 					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
-					listen["offer_video"] = false;
+					subscribe["offer_video"] = false;
 				}
 				remoteFeed.videoCodec = video;
-				remoteFeed.send({"message": listen});
+				remoteFeed.send({"message": subscribe});
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
@@ -511,7 +517,7 @@ function newRemoteFeed(id, display, audio, video) {
 							if(!remoteFeed.simulcastStarted) {
 								remoteFeed.simulcastStarted = true;
 								// Add some new buttons
-								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8");
+								addSimulcastButtons(remoteFeed.rfindex, remoteFeed.videoCodec === "vp8" || remoteFeed.videoCodec === "h264");
 							}
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
@@ -624,7 +630,7 @@ function newRemoteFeed(id, display, audio, video) {
 				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
+				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 				remoteFeed.simulcastStarted = false;

@@ -12,6 +12,7 @@ To discuss Janus with us and other users, there's a Google Group called [meetech
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
+* [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
@@ -41,9 +42,9 @@ Additionally, you'll need the following libraries and tools:
 All of those libraries are usually available on most of the most common distributions. Installing these libraries on a recent Fedora, for instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel \
-       openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libcurl-devel lua-devel \
-       pkgconfig gengetopt libtool autoconf automake
+       openssl-devel libsrtp-devel sofia-sip-devel glib2-devel \
+       opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
+       libconfig-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
@@ -52,11 +53,11 @@ On Ubuntu or Debian, it would require something like this:
 	aptitude install libmicrohttpd-dev libjansson-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
-		pkg-config gengetopt libtool automake
+		libconfig-dev pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
-While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice (or even the [experimental patch](https://groups.google.com/forum/#!topic/meetecho-janus/7vvkNxtyXX4) that optimize its performances). Installation of libnice master is quite straightforward:
+While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice. Installation of libnice master is quite straightforward:
 
 	git clone https://gitlab.freedesktop.org/libnice/libnice
 	cd libnice
@@ -76,11 +77,11 @@ If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
-The instructions for version 2.x are practically the same. Notice that the following steps are for version 2.0.0, but there may be more recent versions available:
+The instructions for version 2.x are practically the same. Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
 
-	wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
-	tar xfv v2.0.0.tar.gz
-	cd libsrtp-2.0.0
+	wget https://github.com/cisco/libsrtp/archive/v2.2.0.tar.gz
+	tar xfv v2.2.0.tar.gz
+	cd libsrtp-2.2.0
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
@@ -213,8 +214,8 @@ While most of the above instructions will work when compiling Janus on MacOS as 
 First of all, you can use `brew` to install most of the dependencies:
 
 	brew install jansson libnice openssl srtp libusrsctp libmicrohttpd \
-		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl \
-		glib pkg-config gengetopt autoconf automake libtool
+		libwebsockets cmake rabbitmq-c sofia-sip opus libogg curl glib \
+		libconfig pkg-config gengetopt autoconf automake libtool
 
 For what concerns libwebsockets, though, make sure that the installed version is higher than `2.4.1`, or you might encounter the problems described in [this post](https://groups.google.com/forum/#!topic/meetecho-janus/HsFaEXBz4Cg). If `brew` doesn't provide a more recent version, you'll have to install the library manually.
 
@@ -227,13 +228,13 @@ Everything else works exactly the same way as on Linux.
 ## Configure and start
 To start the server, you can use the `janus` executable. There are several things you can configure, either in a configuration file:
 
-	<installdir>/etc/janus/janus.cfg
+	<installdir>/etc/janus/janus.jcfg
 
 or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.4.5
+	janus 0.7.5
 
 	Usage: janus [OPTIONS]...
 
@@ -284,8 +285,13 @@ or on the command line:
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
+	-W, --slowlink-threshold=number
+                                  Number of lost packets (per s) that should
+                                  trigger a 'slowlink' Janus API event to users
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
+	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to
+                                  senders, if negotiated (default=1s)
 	-n, --server-name=name        Public name of this Janus instance
                                   (default=MyJanusInstance)
 	-s, --session-timeout=number  Session timeout value, in seconds (default=60)

@@ -105,6 +105,12 @@ static gboolean ws_janus_api_enabled = FALSE;
 static gboolean ws_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
+/* Clients maps */
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+static GHashTable *clients = NULL, *writable_clients = NULL;
+#endif
+static janus_mutex writable_mutex;
+
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
@@ -367,14 +373,23 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_WEBSOCKETS_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_WEBSOCKETS_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_WEBSOCKETS_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_WEBSOCKETS_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL) {
 		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
+		janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 
 		/* Handle configuration */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
 			/* Check how we need to format/serialize the JSON output */
 			if(!strcasecmp(item->value, "indented")) {
@@ -393,14 +408,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 
 		/* Check if we need to send events to handlers */
-		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_WEBSOCKETS_NAME);
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "ws_logging");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ws_logging");
 		if(item && item->value) {
 			/* libwebsockets uses a mask to set log levels, as documented here:
 			 * https://libwebsockets.org/lws-api-doc-master/html/group__log.html */
@@ -449,7 +464,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		lws_set_log_level(ws_log_level, janus_websockets_log_emit_function);
 
 		/* Any ACL for either the Janus or Admin API? */
-		item = janus_config_get_item_drilldown(config, "general", "ws_acl");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ws_acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -467,7 +482,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			g_strfreev(list);
 			list = NULL;
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_ws_acl");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_acl");
 		if(item && item->value) {
 			gchar **list = g_strsplit(item->value, ",", -1);
 			gchar *index = list[0];
@@ -488,7 +503,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 
 		/* Check if we need to enable the transport level ping/pong mechanism */
 		int pingpong_trigger = 0, pingpong_timeout = 0;
-		item = janus_config_get_item_drilldown(config, "general", "pingpong_trigger");
+		item = janus_config_get(config, config_general, janus_config_type_item, "pingpong_trigger");
 		if(item && item->value) {
 #if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_trigger = atoi(item->value);
@@ -500,7 +515,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			JANUS_LOG(LOG_WARN, "WebSockets ping/pong only supported in libwebsockets >= 2.1\n");
 #endif
 		}
-		item = janus_config_get_item_drilldown(config, "general", "pingpong_timeout");
+		item = janus_config_get(config, config_general, janus_config_type_item, "pingpong_timeout");
 		if(item && item->value) {
 #if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
 			pingpong_timeout = atoi(item->value);
@@ -533,20 +548,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 
 		/* Setup the Janus API WebSockets server(s) */
-		item = janus_config_get_item_drilldown(config, "general", "ws");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
 		} else {
 			int wsport = 8188;
-			item = janus_config_get_item_drilldown(config, "general", "ws_port");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "ws_interface");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_interface");
 			if(item && item->value)
 				interface = (char *)item->value;
 			char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "ws_ip");
+			item = janus_config_get(config, config_general, janus_config_type_item, "ws_ip");
 			if(item && item->value) {
 				ip = (char *)item->value;
 				char *iface = janus_websockets_get_interface_name(ip);
@@ -577,20 +592,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			}
 			g_free(ip);
 		}
-		item = janus_config_get_item_drilldown(config, "general", "wss");
+		item = janus_config_get(config, config_general, janus_config_type_item, "wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 		} else {
 			int wsport = 8989;
-			item = janus_config_get_item_drilldown(config, "general", "wss_port");
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "wss_interface");
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_interface");
 			if(item && item->value)
 				interface = (char *)item->value;
 			char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "general", "wss_ip");
+			item = janus_config_get(config, config_general, janus_config_type_item, "wss_ip");
 			if(item && item->value) {
 				ip = (char *)item->value;
 				char *iface = janus_websockets_get_interface_name(ip);
@@ -599,17 +614,17 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
-			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
 				char *password = NULL;
-				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
+				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
-				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 				if(item && item->value)
 					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
@@ -641,20 +656,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			g_free(ip);
 		}
 		/* Do the same for the Admin API, if enabled */
-		item = janus_config_get_item_drilldown(config, "admin", "admin_ws");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin WebSockets server disabled\n");
 		} else {
 			int wsport = 7188;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_port");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_interface");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_interface");
 			if(item && item->value)
 				interface = (char *)item->value;
 			char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_ip");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_ip");
 			if(item && item->value) {
 				ip = (char *)item->value;
 				char *iface = janus_websockets_get_interface_name(ip);
@@ -685,20 +700,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			}
 			g_free(ip);
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_wss");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure Admin WebSockets server disabled\n");
 		} else {
 			int wsport = 7989;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_port");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			char *interface = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_interface");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_interface");
 			if(item && item->value)
 				interface = (char *)item->value;
 			char *ip = NULL;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_ip");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_ip");
 			if(item && item->value) {
 				ip = (char *)item->value;
 				char *iface = janus_websockets_get_interface_name(ip);
@@ -707,17 +722,17 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 				ip = iface;
 			}
-			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+			item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
 				char *password = NULL;
-				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
+				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
-				item = janus_config_get_item_drilldown(config, "certificates", "cert_pwd");
+				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_pwd");
 				if(item && item->value)
 					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
@@ -759,6 +774,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	ws_janus_api_enabled = wss || swss;
 	ws_admin_api_enabled = admin_wss || admin_swss;
 
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	clients = g_hash_table_new(NULL, NULL);
+	writable_clients = g_hash_table_new(NULL, NULL);
+#endif
+	janus_mutex_init(&writable_mutex);
+
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
@@ -794,6 +815,15 @@ void janus_websockets_destroy(void) {
 		wsc = NULL;
 	}
 
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	janus_mutex_lock(&writable_mutex);
+	g_hash_table_destroy(clients);
+	clients = NULL;
+	g_hash_table_destroy(writable_clients);
+	writable_clients = NULL;
+	janus_mutex_unlock(&writable_mutex);
+#endif
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_WEBSOCKETS_NAME);
@@ -803,11 +833,21 @@ static void janus_websockets_destroy_client(
 		janus_websockets_client *ws_client,
 		struct lws *wsi,
 		const char *log_prefix) {
-	if(!ws_client || !g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1))
+	if(!ws_client || !ws_client->ts)
 		return;
-	/* Cleanup */
 	janus_mutex_lock(&ws_client->ts->mutex);
+	if(!g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1)) {
+		janus_mutex_unlock(&ws_client->ts->mutex);
+		return;
+	}
+	/* Cleanup */
 	JANUS_LOG(LOG_INFO, "[%s-%p] Destroying WebSocket client\n", log_prefix, wsi);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	janus_mutex_lock(&writable_mutex);
+	g_hash_table_remove(clients, ws_client);
+	g_hash_table_remove(writable_clients, ws_client);
+	janus_mutex_unlock(&writable_mutex);
+#endif
 	ws_client->wsi = NULL;
 	/* Notify handlers about this transport being gone */
 	if(notify_events && gateway->events_is_enabled()) {
@@ -884,7 +924,7 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	}
 	janus_mutex_lock(&transport->mutex);
 	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
-	if(!client) {
+	if(!client || !client->wsi || g_atomic_int_get(&client->destroyed)) {
 		json_decref(message);
 		janus_mutex_unlock(&transport->mutex);
 		return -1;
@@ -892,7 +932,19 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+	/* On libwebsockets >= 3.x we use lws_cancel_service */
+	janus_mutex_lock(&writable_mutex);
+	if(g_hash_table_lookup(clients, client) == client)
+		g_hash_table_insert(writable_clients, client, client);
+	janus_mutex_unlock(&writable_mutex);
+	lws_cancel_service(wsc);
+#else
+	/* On libwebsockets < 3.x we use lws_callback_on_writable */
+	janus_mutex_lock(&writable_mutex);
 	lws_callback_on_writable(client->wsi);
+	janus_mutex_unlock(&writable_mutex);
+#endif
 	janus_mutex_unlock(&transport->mutex);
 	json_decref(message);
 	return 0;
@@ -1011,6 +1063,11 @@ static int janus_websockets_common_callback(
 			ws_client->bufoffset = 0;
 			g_atomic_int_set(&ws_client->destroyed, 0);
 			ws_client->ts = janus_transport_session_create(ws_client, NULL);
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+			janus_mutex_lock(&writable_mutex);
+			g_hash_table_insert(clients, ws_client, ws_client);
+			janus_mutex_unlock(&writable_mutex);
+#endif
 			/* Let us know when the WebSocket channel becomes writeable */
 			lws_callback_on_writable(wsi);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- Ready to be used!\n", log_prefix, wsi);
@@ -1063,6 +1120,25 @@ static int janus_websockets_common_callback(
 			gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, admin, root, &error);
 			return 0;
 		}
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		/* On libwebsockets >= 3.x, we use this event to mark connections as writable in the event loop */
+		case LWS_CALLBACK_EVENT_WAIT_CANCELLED: {
+			janus_mutex_lock(&writable_mutex);
+			/* We iterate on all the clients we marked as writable and act on them */
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, writable_clients);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_websockets_client *client = value;
+				if(client == NULL || client->wsi == NULL)
+					continue;
+				lws_callback_on_writable(client->wsi);
+			}
+			g_hash_table_remove_all(writable_clients);
+			janus_mutex_unlock(&writable_mutex);
+			return 0;
+		}
+#endif
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
 			if(ws_client == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);

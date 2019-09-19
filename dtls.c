@@ -99,6 +99,9 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
 }
 
+gboolean janus_is_dtls(char *buf) {
+	return ((*buf >= 20) && (*buf <= 64));
+}
 
 /* DTLS stuff */
 #define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
@@ -146,7 +149,7 @@ gchar *janus_dtls_get_local_fingerprint(void) {
  * which does indeed implement the callbacks the OpenSSL docs suggest.
  *
  */
-static janus_mutex *janus_dtls_locks;
+static pthread_mutex_t *janus_dtls_locks;
 
 static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
 	/* FIXME Assuming pthread, which is fine as GLib wraps pthread and
@@ -162,9 +165,9 @@ static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
 
 static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int line) {
 	if((mode & CRYPTO_LOCK)) {
-		janus_mutex_lock(&janus_dtls_locks[type]);
+		pthread_mutex_lock(&janus_dtls_locks[type]);
 	} else {
-		janus_mutex_unlock(&janus_dtls_locks[type]);
+		pthread_mutex_unlock(&janus_dtls_locks[type]);
 	}
 }
 #endif
@@ -320,6 +323,10 @@ error:
 	return -1;
 }
 
+/* Versioning info ( */
+const char *janus_get_ssl_version(void) {
+	return OPENSSL_VERSION_TEXT;
+}
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint timeout) {
@@ -334,7 +341,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
 	int l=0;
 	for(l = 0; l < CRYPTO_num_locks(); l++) {
-		janus_mutex_init(&janus_dtls_locks[l]);
+		pthread_mutex_init(&janus_dtls_locks[l], NULL);
 	}
 	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
 	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
@@ -351,7 +358,11 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 
 	/* Go on and create the DTLS context */
 #if JANUS_USE_OPENSSL_PRE_1_1_API
+#if defined(LIBRESSL_VERSION_NUMBER)
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
+#else
+	ssl_ctx = SSL_CTX_new(DTLSv1_2_method());
+#endif
 #else
 	ssl_ctx = SSL_CTX_new(DTLS_method());
 #endif
@@ -721,7 +732,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 				/* Which SRTP profile is being negotiated? */
-				SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
+				const SRTP_PROTECTION_PROFILE *srtp_profile = SSL_get_selected_srtp_profile(dtls->ssl);
 				if(srtp_profile == NULL) {
 					/* Should never happen, but just in case... */
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No SRTP profile selected...\n", handle->handle_id);
@@ -892,6 +903,8 @@ done:
 }
 
 void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
+	if(!dtls)
+		return;
 	/* Send alert */
 	janus_refcount_increase(&dtls->ref);
 	if(dtls != NULL && dtls->ssl != NULL) {
@@ -941,7 +954,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		JANUS_LOG(LOG_ERR, "No ICE handle related to this alert...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %u (component %u), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
 	janus_ice_webrtc_hangup(handle, "DTLS alert");
 }
 
@@ -952,10 +965,10 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 }
 
 #ifdef HAVE_SCTP
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
-	janus_sctp_send_data(dtls->sctp, buf, len);
+	janus_sctp_send_data(dtls->sctp, label, buf, len);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
@@ -969,7 +982,7 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	return res;
 }
 
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
+void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
 	if(dtls == NULL || buf == NULL || len < 1)
 		return;
 	janus_ice_component *component = (janus_ice_component *)dtls->component;
@@ -987,7 +1000,7 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
 		JANUS_LOG(LOG_ERR, "No handle...\n");
 		return;
 	}
-	janus_ice_incoming_data(handle, buf, len);
+	janus_ice_incoming_data(handle, label, buf, len);
 }
 #endif
 

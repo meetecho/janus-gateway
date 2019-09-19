@@ -30,7 +30,7 @@
  *
  * Every Lua script that wants to implement a Janus plugin must provide
  * the following functions as callbacks:
- * 
+ *
  * - \c init(): called when janus_lua.c is initialized;
  * - \c destroy(): called when janus_lua.c is deinitialized (Janus shutting down);
  * - \c createSession(): called when a new user attaches to the Janus Lua plugin;
@@ -212,10 +212,11 @@ const char *janus_lua_get_author(void);
 const char *janus_lua_get_package(void);
 void janus_lua_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_lua_handle_admin_message(json_t *message);
 void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
 void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_lua_hangup_media(janus_plugin_session *handle);
 void janus_lua_destroy_session(janus_plugin_session *handle, int *error);
@@ -234,9 +235,10 @@ static janus_plugin janus_lua_plugin =
 		.get_name = janus_lua_get_name,
 		.get_author = janus_lua_get_author,
 		.get_package = janus_lua_get_package,
-		
+
 		.create_session = janus_lua_create_session,
 		.handle_message = janus_lua_handle_message,
+		.handle_admin_message = janus_lua_handle_admin_message,
 		.setup_media = janus_lua_setup_media,
 		.incoming_rtp = janus_lua_incoming_rtp,
 		.incoming_rtcp = janus_lua_incoming_rtcp,
@@ -280,6 +282,7 @@ static gboolean has_get_author = FALSE;
 static char *lua_script_author = NULL;
 static gboolean has_get_package = FALSE;
 static char *lua_script_package = NULL;
+static gboolean has_handle_admin_message = FALSE;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
@@ -918,7 +921,7 @@ static int janus_lua_method_relaydata(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTP packet */
-	janus_core->relay_data(session->handle, (char *)payload, len);
+	janus_core->relay_data(session->handle, NULL, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1087,20 +1090,27 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_LUA_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_LUA_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_LUA_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_LUA_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config == NULL) {
 		/* No config means no Lua script */
 		JANUS_LOG(LOG_ERR, "Failed to load configuration file for Lua plugin...\n");
 		return -1;
 	}
 	janus_config_print(config);
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 	char *lua_folder = NULL;
-	janus_config_item *folder = janus_config_get_item_drilldown(config, "general", "path");
+	janus_config_item *folder = janus_config_get(config, config_general, janus_config_type_item, "path");
 	if(folder && folder->value)
 		lua_folder = g_strdup(folder->value);
-	janus_config_item *script = janus_config_get_item_drilldown(config, "general", "script");
+	janus_config_item *script = janus_config_get(config, config_general, janus_config_type_item, "script");
 	if(script == NULL || script->value == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing script path in Lua plugin configuration...\n");
 		janus_config_destroy(config);
@@ -1109,7 +1119,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	}
 	char *lua_file = g_strdup(script->value);
 	char *lua_config = NULL;
-	janus_config_item *conf = janus_config_get_item_drilldown(config, "general", "config");
+	janus_config_item *conf = janus_config_get(config, config_general, janus_config_type_item, "config");
 	if(conf && conf->value)
 		lua_config = g_strdup(conf->value);
 	janus_config_destroy(config);
@@ -1196,6 +1206,9 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "getPackage");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_get_package = TRUE;
+	lua_getglobal(lua_state, "handleAdminMessage");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
+		has_handle_admin_message = TRUE;
 	lua_getglobal(lua_state, "incomingRtp");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtp = TRUE;
@@ -1472,7 +1485,7 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	guint32 id = 0;
 	while(id == 0) {
@@ -1511,7 +1524,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
@@ -1559,7 +1572,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 json_t *janus_lua_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		return NULL;
-	}	
+	}
 	janus_mutex_lock(&lua_sessions_mutex);
 	janus_lua_session *session = janus_lua_lookup_session(handle);
 	if(!session) {
@@ -1661,6 +1674,37 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
+json_t *janus_lua_handle_admin_message(json_t *message) {
+	if(!has_handle_admin_message || message == NULL)
+		return NULL;
+	char *message_text = json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER);
+	/* Invoke the script function */
+	janus_mutex_lock(&lua_mutex);
+	lua_State *t = lua_newthread(lua_state);
+	lua_getglobal(t, "handleAdminMessage");
+	lua_pushstring(t, message_text);
+	lua_call(t, 1, 1);
+	lua_pop(lua_state, 1);
+	if(message_text != NULL)
+		free(message_text);
+	int n = lua_gettop(t);
+	if(n != 1) {
+		janus_mutex_unlock(&lua_mutex);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)\n", n);
+		return NULL;
+	}
+	/* Get the response */
+	const char *response = lua_tostring(t, 1);
+	json_error_t error;
+	json_t *json = json_loads(response, 0, &error);
+	janus_mutex_unlock(&lua_mutex);
+	if(!json) {
+		JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+		return NULL;
+	}
+	return json;
+}
+
 void janus_lua_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
@@ -1696,7 +1740,7 @@ void janus_lua_setup_media(janus_plugin_session *handle) {
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
-	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;	
+	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1802,7 +1846,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	}
 }
 
-void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
@@ -1945,7 +1989,7 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 	if(!session || !session->handle || !g_atomic_int_get(&session->started)) {
 		return;
 	}
-	
+
 	/* Check if this recipient is willing/allowed to receive this medium */
 	if((packet->is_video && !session->accept_video) || (!packet->is_video && !session->accept_audio)) {
 		/* Nope, don't relay */
@@ -1972,7 +2016,7 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to session %"SCNu32": %s\n",
 			strlen(text), session->id, text);
-		janus_core->relay_data(session->handle, text, strlen(text));
+		janus_core->relay_data(session->handle, NULL, text, strlen(text));
 	}
 	return;
 }

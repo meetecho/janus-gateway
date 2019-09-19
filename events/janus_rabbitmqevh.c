@@ -129,11 +129,18 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	}
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RABBITMQEVH_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_RABBITMQEVH_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_RABBITMQEVH_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_RABBITMQEVH_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
 	if(config != NULL)
 		janus_config_print(config);
+	janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 
 	char *rmqhost = NULL;
 	const char *vhost = NULL, *username = NULL, *password = NULL;
@@ -146,13 +153,13 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	const char *route_key = NULL, *exchange = NULL;
 
 	/* Setup the event handler, if required */
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
+	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ event handler disabled\n");
 		goto error;
 	}
 
-	item = janus_config_get_item_drilldown(config, "general", "json");
+	item = janus_config_get(config, config_general, janus_config_type_item, "json");
 	if(item && item->value) {
 		/* Check how we need to format/serialize the JSON output */
 		if(!strcasecmp(item->value, "indented")) {
@@ -171,74 +178,74 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	}
 
 	/* Which events should we subscribe to? */
-	item = janus_config_get_item_drilldown(config, "general", "events");
+	item = janus_config_get(config, config_general, janus_config_type_item, "events");
 	if(item && item->value)
 		janus_events_edit_events_mask(item->value, &janus_rabbitmqevh.events_mask);
 
 	/* Is grouping of events ok? */
-	item = janus_config_get_item_drilldown(config, "general", "grouping");
+	item = janus_config_get(config, config_general, janus_config_type_item, "grouping");
 	if(item && item->value)
 		group_events = janus_is_true(item->value);
 
 	/* Handle configuration, starting from the server details */
-	item = janus_config_get_item_drilldown(config, "general", "host");
+	item = janus_config_get(config, config_general, janus_config_type_item, "host");
 	if(item && item->value)
 		rmqhost = g_strdup(item->value);
 	else
 		rmqhost = g_strdup("localhost");
 	int rmqport = AMQP_PROTOCOL_PORT;
-	item = janus_config_get_item_drilldown(config, "general", "port");
+	item = janus_config_get(config, config_general, janus_config_type_item, "port");
 	if(item && item->value)
 		rmqport = atoi(item->value);
 
 	/* Credentials and Virtual Host */
-	item = janus_config_get_item_drilldown(config, "general", "vhost");
+	item = janus_config_get(config, config_general, janus_config_type_item, "vhost");
 	if(item && item->value)
 		vhost = g_strdup(item->value);
 	else
 		vhost = g_strdup("/");
-	item = janus_config_get_item_drilldown(config, "general", "username");
+	item = janus_config_get(config, config_general, janus_config_type_item, "username");
 	if(item && item->value)
 		username = g_strdup(item->value);
 	else
 		username = g_strdup("guest");
-	item = janus_config_get_item_drilldown(config, "general", "password");
+	item = janus_config_get(config, config_general, janus_config_type_item, "password");
 	if(item && item->value)
 		password = g_strdup(item->value);
 	else
 		password = g_strdup("guest");
 
 	/* SSL config*/
-	item = janus_config_get_item_drilldown(config, "general", "ssl_enable");
+	item = janus_config_get(config, config_general, janus_config_type_item, "ssl_enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: RabbitMQ SSL support disabled\n");
 	} else {
 		ssl_enable = TRUE;
-		item = janus_config_get_item_drilldown(config, "general", "ssl_cacert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cacert");
 		if(item && item->value)
 			ssl_cacert_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_cert");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_cert");
 		if(item && item->value)
 			ssl_cert_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_key");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_key");
 		if(item && item->value)
 			ssl_key_file = g_strdup(item->value);
-		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_peer");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_peer");
 		if(item && item->value && janus_is_true(item->value))
 			ssl_verify_peer = TRUE;
-		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_hostname");
+		item = janus_config_get(config, config_general, janus_config_type_item, "ssl_verify_hostname");
 		if(item && item->value && janus_is_true(item->value))
 			ssl_verify_hostname = TRUE;
 	}
 
 	/* Parse configuration */
-	item = janus_config_get_item_drilldown(config, "general", "route_key");
+	item = janus_config_get(config, config_general, janus_config_type_item, "route_key");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Missing name of outgoing route_key for RabbitMQ...\n");
 		goto error;
 	}
 	route_key = g_strdup(item->value);
-	item = janus_config_get_item_drilldown(config, "general", "exchange");
+	item = janus_config_get(config, config_general, janus_config_type_item, "exchange");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Missing name of outgoing exchange for RabbitMQ, using default\n");
 	} else {
@@ -253,7 +260,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	/* Connect */
 	rmq_conn = amqp_new_connection();
 	amqp_socket_t *socket = NULL;
-	int status;
+	int status = AMQP_STATUS_OK;
 	JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Creating RabbitMQ socket...\n");
 	if (ssl_enable) {
 		socket = amqp_ssl_socket_new(rmq_conn);

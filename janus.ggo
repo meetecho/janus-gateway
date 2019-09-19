@@ -1,4 +1,4 @@
-#Janus 0.4.5 gengetopt file
+#Janus 0.7.5 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -22,7 +22,9 @@ option "ice-tcp" T "Whether to enable ICE-TCP or not (warning: only works with I
 option "rfc-4588" R "Whether to enable RFC4588 retransmissions support or not" flag off
 option "max-nack-queue" q "Maximum size of the NACK queue (in ms) per user for retransmissions" int typestr="number" optional
 option "no-media-timer" t "Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this" int typestr="number" optional
+option "slowlink-threshold" W "Number of lost packets (per s) that should trigger a 'slowlink' Janus API event to users" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
+option "twcc-period" B "How often (in ms) to send TWCC feedback back to senders, if negotiated (default=1s)" int typestr="number" optional
 option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
 option "session-timeout" s "Session timeout value, in seconds (default=60)" int typestr="number" optional
 option "reclaim-session-timeout" m "Reclaim session timeout value, in seconds (default=0)" int typestr="number" optional
@@ -34,3 +36,4 @@ option "apisecret" a "API secret all requests need to pass in order to be accept
 option "token-auth" A "Enable token-based authentication for all requests" flag off
 option "token-auth-secret" - "Secret to verify HMAC-signed tokens with, to be used with -A" string typestr="randomstring" optional
 option "event-handlers" e "Enable event handlers" flag off
+option "no-webrtc-encryption" w "Disable WebRTC encryption, so no DTLS or SRTP (only for debugging!)" flag off

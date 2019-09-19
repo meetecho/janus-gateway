@@ -29,7 +29,8 @@ static struct janus_event_types {
 	{ JANUS_EVENT_TYPE_MEDIA, "media", "Media"},
 	{ JANUS_EVENT_TYPE_PLUGIN, "plugins", "Plugins"},
 	{ JANUS_EVENT_TYPE_TRANSPORT, "transports", "Transports"},
-	{ JANUS_EVENT_TYPE_CORE, "core", "Core"}
+	{ JANUS_EVENT_TYPE_CORE, "core", "Core"},
+	{ -1, NULL, NULL},
 };
 
 static gboolean eventsenabled = FALSE;
@@ -60,24 +61,6 @@ int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers)
 			return -1;
 		}
 	}
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_SESSION));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_HANDLE));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_EXTERNAL));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_JSEP));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_WEBRTC));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_MEDIA));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_PLUGIN));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_TRANSPORT));
-	JANUS_LOG(LOG_INFO, "%s, %s\n", janus_events_type_to_label(JANUS_EVENT_TYPE_CORE),
-		janus_events_type_to_label(JANUS_EVENT_TYPE_CORE));
 	return 0;
 }
 
@@ -293,6 +276,7 @@ void *janus_events_thread(void *data) {
 
 		/* Notify all interested handlers, increasing the event reference to make sure it's not lost because of errors */
 		int type = json_integer_value(json_object_get(event, "type"));
+		guint count = g_hash_table_size(eventhandlers);
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, eventhandlers);
@@ -303,7 +287,15 @@ void *janus_events_thread(void *data) {
 				continue;
 			if(!janus_flags_is_set(&e->events_mask, type))
 				continue;
-			e->incoming_event(event);
+			if(count == 1) {
+				/* Single event handler: pass this instance directly */
+				e->incoming_event(event);
+			} else {
+				/* Multiple event handlers, that may modify the event: pass a copy */
+				json_t *copy = json_deep_copy(event);
+				e->incoming_event(copy);
+				json_decref(copy);
+			}
 		}
 		json_decref(event);
 
@@ -346,7 +338,7 @@ void janus_events_edit_events_mask(const char *list, janus_flags *target) {
 						index++;
 					if(strlen(index)) {
 						struct janus_event_types *ev = event_types_string;
-						while(ev) {
+						while(ev->label) {
 							if(!strcasecmp(index, ev->label)) {
 								janus_flags_set(&mask, ev->type);
 								break;
@@ -368,7 +360,7 @@ void janus_events_edit_events_mask(const char *list, janus_flags *target) {
 /* Helpers to convert an event type to a string label or a more verbose name */
 const char *janus_events_type_to_label(int type) {
 	struct janus_event_types *ev = event_types_string;
-	while(ev) {
+	while(ev->label) {
 		if(type == ev->type)
 			return ev->label;
 		ev++;
@@ -378,7 +370,7 @@ const char *janus_events_type_to_label(int type) {
 
 const char *janus_events_type_to_name(int type) {
 	struct janus_event_types *ev = event_types_string;
-	while(ev) {
+	while(ev->label) {
 		if(type == ev->type)
 			return ev->name;
 		ev++;

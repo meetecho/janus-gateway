@@ -7,15 +7,16 @@
  * file just saves RTP frames in a structured way, so that they can be
  * post-processed later on to get a valid container file (e.g., a .opus
  * file for Opus audio or a .webm file for VP8 video) and keep things
- * simpler on the plugin and core side.
+ * simpler on the plugin and core side. Check the \ref recordings
+ * documentation for more details.
  * \note If you want to record both audio and video, you'll have to use
  * two different recorders. Any muxing in the same container will have
  * to be done in the post-processing phase.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -33,9 +34,9 @@
 
 
 /* Info header in the structured recording */
-static const char *header = "MJR00001";
+static const char *header = "MJR00002";
 /* Frame header in the structured recording */
-static const char *frame_header = "MEETECHO";
+static const char *frame_header = "MEET";
 
 /* Whether the filenames should have a temporary extension, while saving, or not (default=false) */
 static gboolean rec_tempname = FALSE;
@@ -48,10 +49,10 @@ void janus_recorder_init(gboolean tempnames, const char *extension) {
 		rec_tempname = TRUE;
 		if(extension == NULL) {
 			rec_tempext = g_strdup("tmp");
-			JANUS_LOG(LOG_INFO, "  -- No extension provided, using default one (tmp)");
+			JANUS_LOG(LOG_INFO, "  -- No extension provided, using default one (tmp)\n");
 		} else {
 			rec_tempext = g_strdup(extension);
-			JANUS_LOG(LOG_INFO, "  -- Using temporary extension .%s", rec_tempext);
+			JANUS_LOG(LOG_INFO, "  -- Using temporary extension .%s\n", rec_tempext);
 		}
 	}
 }
@@ -223,6 +224,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
+	gint64 now = janus_get_monotonic_time();
 	if(!g_atomic_int_get(&recorder->header)) {
 		/* Write info header as a JSON formatted info */
 		json_t *info = json_object();
@@ -245,10 +247,14 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		free(info_text);
 		/* Done */
+		recorder->started = now;
 		g_atomic_int_set(&recorder->header, 1);
 	}
-	/* Write frame header */
+	/* Write frame header (fixed part[4], timestamp[4], length[2]) */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
+	uint32_t timestamp = (uint32_t)(now > recorder->started ? ((now - recorder->started)/1000) : 0);
+	timestamp = htonl(timestamp);
+	fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
 	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
 	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	if(recorder->type == JANUS_RECORDER_DATA) {
