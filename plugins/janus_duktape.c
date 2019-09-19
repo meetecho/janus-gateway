@@ -410,6 +410,11 @@ static duk_ret_t janus_duktape_method_getmodulesfolder(duk_context *ctx) {
 	return 1;
 }
 
+static duk_ret_t janus_duktape_method_getversion(duk_context *ctx) {
+    duk_push_int(ctx, DUK_VERSION);
+    return 1;
+}
+
 static duk_ret_t janus_duktape_method_readfile(duk_context *ctx) {
 	/* Helper method to read a text file and return its content as a string */
 	if(duk_get_type(ctx, 0) != DUK_TYPE_STRING) {
@@ -1309,6 +1314,8 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_put_global_string(duktape_ctx, "startRecording");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_stoprecording, 4);
 	duk_put_global_string(duktape_ctx, "stopRecording");
+	duk_push_c_function(duktape_ctx, janus_duktape_method_getversion, 0);
+	duk_put_global_string(duktape_ctx, "getDuktapeVersion");
 	/* Register all extra functions, if any were added */
 	janus_duktape_register_extra_functions(duktape_ctx);
 
