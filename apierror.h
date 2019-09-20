@@ -5,13 +5,13 @@
  * \details  Definition of all the API errors that may occur when invoking
  * the Janus web-based JSON API.
  * \todo     This code still needs proper hooks in the JavaScript libraries that use the interface.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
-#ifndef _JANUS_API_ERROR_H
-#define _JANUS_API_ERROR_H
+
+#ifndef JANUS_API_ERROR_H
+#define JANUS_API_ERROR_H
 
 /*! \brief Success (no error) */
 #define JANUS_OK								0
@@ -26,7 +26,7 @@
 #define JANUS_ERROR_TRANSPORT_SPECIFIC			450
 /*! \brief The request is missing in the message */
 #define JANUS_ERROR_MISSING_REQUEST				452
-/*! \brief The gateway does not suppurt this request */
+/*! \brief The Janus core does not suppurt this request */
 #define JANUS_ERROR_UNKNOWN_REQUEST				453
 /*! \brief The payload is not a valid JSON message */
 #define JANUS_ERROR_INVALID_JSON				454
@@ -48,8 +48,7 @@
 #define JANUS_ERROR_PLUGIN_MESSAGE				462
 /*! \brief An error occurring when trying to detach from a plugin and destroy the related handle  */
 #define JANUS_ERROR_PLUGIN_DETACH				463
-/*! \brief The gateway doesn't support this SDP type
- * \todo The gateway currently only supports OFFER and ANSWER. */
+/*! \brief The Janus core doesn't support this SDP type */
 #define JANUS_ERROR_JSEP_UNKNOWN_TYPE			464
 /*! \brief The Session Description provided by the peer is invalid */
 #define JANUS_ERROR_JSEP_INVALID_SDP			465
@@ -65,6 +64,8 @@
 #define JANUS_ERROR_TOKEN_NOT_FOUND				470
 /*! \brief The current request cannot be handled because of not compatible WebRTC state */
 #define JANUS_ERROR_WEBRTC_STATE				471
+/*! \brief The server is currently configured not to accept new sessions */
+#define JANUS_ERROR_NOT_ACCEPTING_SESSIONS		472
 
 
 /*! \brief Helper method to get a string representation of an API error code

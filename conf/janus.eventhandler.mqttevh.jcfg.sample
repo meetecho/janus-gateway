@@ -1,0 +1,49 @@
+# This configures the MQTT event handler. Events are sent either on
+# one topic or on a topic per event type.
+#
+# By default, configuration topics for handle and webrtc event types
+# with the base topic are configured to /janus/events, e.g.:
+#	/janus/events/handle
+#	/janus/events/webrtc
+
+general: {
+	enabled = false			# By default the module is not enabled
+	events = "all"			# Comma separated list of the events mask you're interested
+							# in. Valid values are none, sessions, handles, jsep, webrtc,
+							# media, plugins, transports, core, external and all. By
+							# default we subscribe to everything (all)
+	json = "indented"		# Whether the JSON messages should be indented (default),
+							# plain (no indentation) or compact (no indentation and no spaces)
+
+	url = "tcp://localhost:1883"	# The URL of the MQTT server. Only tcp supported at this time.
+	client_id = "janus.example.com"	# Janus client id. You have to configure a unique ID (default: guest).
+	#keep_alive_interval = 20		# Keep connection for N seconds (default: 30)
+	#cleansession = 0				# Clean session flag (default: off)
+	#retain = 0						# Default MQTT retain flag for published events
+	#qos = 1						# Default MQTT QoS for published events
+	#disconnect_timeout = 100		# Seconds to wait before destroying client
+	#username = "guest"				# Username for authentication (default: no authentication)
+	#password = "guest"				# Password for authentication (default: no authentication)
+	#topic = "/janus/events"		# Base topic (default: /janus/events)
+	#addevent = true				# Whether we should add the event type to the base topic
+
+	# Initial message sent to status topic
+	#connect_status = "{\"event\": \"connected\", \"eventhandler\": \"janus.eventhandler.mqttevh\"}"
+	# Message sent after disconnect or as LWT
+	#disconnect_status = "{\"event\": \"disconnected\"}"
+
+	#will_enabled = false							# Whether to enable LWT (default: false)
+	#will_retain = 1								# Whether LWT should be retained (default: 1)
+	#will_qos = 0									# QoS for LWT (default: 0)
+
+	# Additional parameters if "mqtts://" schema is used
+	#tls_verify_peer = true			# Whether peer verification must be enabled
+	#tls_verify_hostname = true		# Whether hostname verification must be enabled
+
+	# Certificates to use when SSL support is enabled, if needed
+	#tls_cacert = "/path/to/cacert.pem"
+	#tls_client_cert = "/path/to/cert.pem"
+	#tls_client_key = "/path/to/key.pem"
+	#tls_ciphers
+	#tls_version
+}

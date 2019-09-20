@@ -1,7 +1,7 @@
 /*! \file   plugin.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief  Plugin-Gateway communication (implementation)
+ * \brief  Plugin-Core communication (implementation)
  * \details  Implementation of the janus_plugin_result stuff: all the
  * important things related to the actual plugin API is in plugin.h.
  *

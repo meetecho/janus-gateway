@@ -23,12 +23,12 @@
 // 		var server = "ws://" + window.location.hostname + ":8188";
 //
 // Of course this assumes that support for WebSockets has been built in
-// when compiling the gateway. WebSockets support has not been tested
+// when compiling the server. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
 //
 // If you have multiple options available, and want to let the library
-// autodetect the best way to contact your gateway (or pool of gateways),
+// autodetect the best way to contact your server (or pool of servers),
 // you can also pass an array of servers, e.g., to provide alternative
 // means of access (e.g., try WebSockets first and, if that fails, fall
 // back to plain HTTP) or just have failover servers:
@@ -127,7 +127,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -268,6 +268,12 @@ $(document).ready(function() {
 																		// also specify the SRTP profile to negotiate by setting the
 																		// "srtp_profile" property accordingly (the default if not
 																		// set in the request is "AES_CM_128_HMAC_SHA1_80")
+																		// Note 2: by default, the SIP plugin auto-answers incoming
+																		// re-INVITEs, without involving the browser/client: this is
+																		// for backwards compatibility with older Janus clients that
+																		// may not be able to handle them. If you want to receive
+																		// re-INVITES to handle them yourself, specify it here, e.g.:
+																		//		body["autoaccept_reinvites"] = false;
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -293,7 +299,7 @@ $(document).ready(function() {
 														}
 													}
 												}
-											});											
+											});
 										} else if(event === 'accepting') {
 											// Response to an offerless INVITE, let's wait for an 'accepted'
 										} else if(event === 'progress') {
@@ -312,6 +318,28 @@ $(document).ready(function() {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
 											toastr.success("Call accepted!");
+										} else if(event === 'updatingcall') {
+											// We got a re-INVITE: while we may prompt the user (e.g.,
+											// to notify about media changes), to keep things simple
+											// we just accept the update and send an answer right away
+											Janus.log("Got re-INVITE");
+											var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+											sipcall.createAnswer(
+												{
+													jsep: jsep,
+													media: { audio: doAudio, video: doVideo },
+													success: function(jsep) {
+														Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
+														Janus.debug(jsep);
+														var body = { request: "update" };
+														sipcall.send({"message": body, "jsep": jsep});
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
@@ -334,7 +362,7 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									if(sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -379,7 +407,7 @@ $(document).ready(function() {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -389,13 +417,10 @@ $(document).ready(function() {
 												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
 										}
 										$('.dtmf').click(function() {
-											if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-												// Send DTMF tone (inband)
-												sipcall.dtmf({dtmf: { tones: $(this).text()}});
-											} else {
-												// Try sending the DTMF tone using SIP INFO
-												sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
-											}
+											// Send DTMF tone (inband)
+											sipcall.dtmf({dtmf: { tones: $(this).text()}});
+											// Notice you can also send DTMF tones using SIP INFO
+											// 		sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
 										});
 										// Show the peer and hide the spinner when we get a playing event
 										$("#remotevideo").bind("playing", function () {
@@ -448,7 +473,7 @@ $(document).ready(function() {
 		});
 	}});
 });
-	
+
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
@@ -534,7 +559,7 @@ function registerUsername() {
 						$('#register').removeAttr('disabled').click(registerUsername);
 						$('#registerset').removeAttr('disabled');
 					}
-				}); 
+				});
 		} else {
 			sipcall.send({"message": register});
 		}
@@ -601,7 +626,7 @@ function registerUsername() {
 					$('#register').removeAttr('disabled').click(registerUsername);
 					$('#registerset').removeAttr('disabled');
 				}
-			}); 
+			});
 	} else {
 		register["proxy"] = sipserver;
 		// Uncomment this if you want to see an outbound proxy too
@@ -632,7 +657,7 @@ function doCall() {
 	}
 	// Call this URI
 	doVideo = $('#dovideo').is(':checked');
-	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
+	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
 	sipcall.createOffer(
 		{
 			media: {
@@ -663,6 +688,12 @@ function doCall() {
 				// Just beware that some endpoints will NOT accept an INVITE
 				// with a crypto line in it if the protocol is not RTP/SAVP,
 				// so if you want SDES use "sdes_optional" with care.
+				// Note 2: by default, the SIP plugin auto-answers incoming
+				// re-INVITEs, without involving the browser/client: this is
+				// for backwards compatibility with older Janus clients that
+				// may not be able to handle them. If you want to receive
+				// re-INVITES to handle them yourself, specify it here, e.g.:
+				//		body["autoaccept_reinvites"] = false;
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
