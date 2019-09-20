@@ -46,6 +46,7 @@ room-<unique room ID>: {
 		By default plain RTP is used, SRTP must be configured if needed]
 	rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 	rtp_forward_host = host address to forward RTP packets of mixed audio to
+	rtp_forward_host_family = ipv4|ipv6; by default, first family returned by DNS request
 	rtp_forward_port = port to forward RTP packets of mixed audio to
 	rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 	rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
@@ -1266,20 +1267,52 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	if(host_item == NULL || host_item->value == NULL || strlen(host_item->value) == 0) {
 		return 0;
 	}
+	const char *host = host_item->value, *resolved_host = NULL;
+	int family = 0;
+	janus_config_item *host_family_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_host_family");
+	if(host_family_item != NULL && host_family_item->value != NULL) {
+		const char *host_family = host_family_item->value;
+		if(host_family) {
+			if(!strcasecmp(host_family, "ipv4")) {
+				family = AF_INET;
+			} else if(!strcasecmp(host_family, "ipv6")) {
+				family = AF_INET6;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", host_family);
+				return 0;
+			}
+		}
+	}
 	/* Check if we need to resolve this host address */
-	struct addrinfo *res = NULL;
+	struct addrinfo *res = NULL, *start = NULL;
 	janus_network_address addr;
 	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(host_item->value, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
-		if(res)
-			freeaddrinfo(res);
-		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host_item->value);
+	if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+		start = res;
+		while(res != NULL) {
+			if(family != 0 && family != res->ai_family) {
+				/* We're looking for a specific family */
+				res = res->ai_next;
+				continue;
+			}
+			if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+					janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+				/* Resolved */
+				resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+				freeaddrinfo(start);
+				start = NULL;
+				break;
+			}
+			res = res->ai_next;
+		}
+	}
+	if(resolved_host == NULL) {
+		if(start)
+			freeaddrinfo(start);
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
 		return 0;
 	}
-	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
-	freeaddrinfo(res);
+	host = resolved_host;
 
 	/* We may need to SRTP-encrypt this stream */
 	int srtp_suite = 0;
@@ -1290,7 +1323,6 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		srtp_suite = atoi(s_suite->value);
 		if(srtp_suite != 32 && srtp_suite != 80) {
 			JANUS_LOG(LOG_ERR, "Can't add static RTP forwarder for room %"SCNu64", invalid SRTP suite...\n", audiobridge->room_id);
-			g_free((char *)host);
 			return 0;
 		}
 		if(s_crypto && s_crypto->value)
@@ -1308,14 +1340,12 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	janus_mutex_lock(&audiobridge->mutex);
 
 	if(janus_audiobridge_create_udp_socket_if_needed(audiobridge)) {
-		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
 	}
 
 	if(janus_audiobridge_create_opus_encoder_if_needed(audiobridge)) {
-		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
@@ -1325,7 +1355,6 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		host, port, ssrc_value, ptype, srtp_suite, srtp_crypto,
 		always_on, forwarder_id);
 
-	g_free((char *)host);
 	janus_mutex_unlock(&audiobridge->mutex);
 	janus_mutex_unlock(&rooms_mutex);
 
