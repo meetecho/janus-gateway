@@ -1,0 +1,41 @@
+# This configures the sample event handler. Since this plugin simply
+# forwards each event it receives via HTTP POST, you simply need to
+# configure (i) which events to subscribe to, and (ii) the address of
+# the web server which will receive the requests.
+
+general: {
+	enabled = false		# By default the module is not enabled
+	events = "all"		# Comma separated list of the events mask you're interested
+						# in. Valid values are none, sessions, handles, jsep, webrtc,
+						# media, plugins, transports, core, external and all. By
+						# default we subscribe to everything (all)
+	grouping = true		# Whether events should be sent individually (one per
+						# HTTP POST, JSON object), or if it's ok to group them
+						# (one or more per HTTP POST, JSON array with objects)
+						# The default is 'yes' to limit the number of connections.
+
+						# Address the plugin will send all events to as HTTP POST
+						# requests with an application/json payload. In case
+						# authentication is required to contact the backend, set
+						# the credentials as well (basic authentication only).
+	json = "indented"	# Whether the JSON messages should be indented (default),
+						# plain (no indentation) or compact (no indentation and no spaces)
+
+	backend = "http://your.webserver.here/and/a/path"
+	#backend_user = "myuser"
+	#backend_pwd = "mypwd"
+
+						# You can also configure how retransmissions should
+						# happen, after a failed attempt to deliver an event.
+						# Specifically, you can specify how many times a
+						# retransmission should be attempted (default=5) and
+						# which step is used, in milliseconds, for the exponential
+						# backoff before retrying (e.g, if step=100ms, then the
+						# the first retry will happen after 100ms, the second
+						# after 200ms, then 400ms, and so on). If the event cannot
+						# be retransmitted after the maximum number of attemps
+						# is reached, then it's lost. Beware that retransmissions
+						# will also delay pending events and increase the queue.
+	#max_retransmissions = 5
+	#retransmissions_backoff = 100
+}

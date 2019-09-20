@@ -8,12 +8,12 @@
  * rfc5766-turn-server and coturn, and so should be generic enough to
  * be usable here.
  * \note This implementation depends on \c libcurl and is optional.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
-#ifdef HAVE_LIBCURL
+
+#ifdef HAVE_TURNRESTAPI
 
 #include <netdb.h>
 #include <stdlib.h>
@@ -38,7 +38,7 @@ typedef struct janus_turnrest_buffer {
 	char *buffer;
 	size_t size;
 } janus_turnrest_buffer;
- 
+
 /* Callback we use to progressively receive the whole response via libcurl in the buffer */
 static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data) {
 	size_t realsize = size * nmemb;
@@ -63,22 +63,18 @@ void janus_turnrest_deinit(void) {
 	/* Cleanup the libcurl initialization */
 	curl_global_cleanup();
 	janus_mutex_lock(&api_mutex);
-	if(api_server != NULL)
-		g_free((char *)api_server);
-	if(api_key != NULL)
-		g_free((char *)api_key);
+	g_free((char *)api_server);
+	g_free((char *)api_key);
 	janus_mutex_unlock(&api_mutex);
 }
 
 void janus_turnrest_set_backend(const char *server, const char *key, const char *method) {
 	janus_mutex_lock(&api_mutex);
-	
+
 	/* Get rid of the old values first */
-	if(api_server != NULL)
-		g_free((char *)api_server);
+	g_free((char *)api_server);
 	api_server = NULL;
-	if(api_key != NULL)
-		g_free((char *)api_key);
+	g_free((char *)api_key);
 	api_key = NULL;
 
 	if(server != NULL) {
@@ -130,8 +126,14 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	char query_string[512];
 	g_snprintf(query_string, 512, "service=turn");
 	if(api_key != NULL) {
+		/* Note: we've been using 'api' as a query string parameter for
+		 * a while, but the expired draft this implementation follows
+		 * suggested 'key' instead: as such, we send them both
+		 * See https://github.com/meetecho/janus-gateway/issues/1416*/
 		char buffer[256];
 		g_snprintf(buffer, 256, "&api=%s", api_key);
+		g_strlcat(query_string, buffer, 512);
+		g_snprintf(buffer, 256, "&key=%s", api_key);
 		g_strlcat(query_string, buffer, 512);
 	}
 	char request_uri[1024];
@@ -232,9 +234,9 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		janus_turnrest_instance *instance = g_malloc(sizeof(janus_turnrest_instance));
 		instance->transport = NICE_RELAY_TYPE_TURN_UDP;
-		if(strstr(turn_uri, "turns:") == turn_uri)
+		if(strstr(turn_uri, "turns:") == turn_uri || strstr(turn_uri, "transport=tls") != NULL)
 			instance->transport = NICE_RELAY_TYPE_TURN_TLS;
-		else if(strstr(turn_uri, "transport=tcp") == turn_uri)
+		else if(strstr(turn_uri, "transport=tcp") != NULL)
 			instance->transport = NICE_RELAY_TYPE_TURN_TCP;
 		gchar **parts = NULL;
 		if(strstr(turn_uri, "?") != NULL) {
@@ -243,22 +245,22 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		gchar **uri_parts = g_strsplit(turn_uri, ":", -1);
 		/* Resolve the TURN URI address */
+		struct addrinfo *res = NULL;
 		janus_network_address addr;
 		janus_network_address_string_buffer addr_buf;
-		if(janus_network_string_to_address(janus_network_query_options_any_ip, uri_parts[1], &addr) != 0 ||
+		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0 ||
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
+			if(res != NULL)
+				freeaddrinfo(res);
 			g_strfreev(uri_parts);
 			continue;
 		}
+		freeaddrinfo(res);
 		instance->server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
-		if(instance->server == NULL) {
-			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
-			g_strfreev(uri_parts);
-			continue;
-		}
 		if(uri_parts[2] == NULL) {
-			/* No port? USe 3478 by default */
+			/* No port? Use 3478 by default */
 			instance->port = 3478;
 		} else {
 			instance->port = atoi(uri_parts[2]);
@@ -271,7 +273,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	if(response->servers == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any valid TURN URI in the response...\n");
 		janus_turnrest_response_destroy(response);
-		return NULL; 
+		return NULL;
 	}
 	/* Done */
 	return response;

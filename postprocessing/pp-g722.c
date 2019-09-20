@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .wav files out of G.722 (headers)
  * \details  Implementation of the post-processing code needed to
  * generate raw .wav files out of G.722 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -60,7 +60,7 @@ static FILE *wav_file = NULL;
 
 
 /* Processing methods */
-int janus_pp_g722_create(char *destination) {
+int janus_pp_g722_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -118,6 +118,8 @@ int janus_pp_g722_create(char *destination) {
 		{'d', 'a', 't', 'a'},
 		0
 	};
+	/* Note: .wav files don't seem to support arbitrary comments
+	 * so there's nothing we can do with the provided metadata*/
 	if(fwrite(&header, 1, sizeof(header), wav_file) != sizeof(header)) {
 		JANUS_LOG(LOG_ERR, "Couldn't write WAV header, expect problems...\n");
 	}
@@ -142,7 +144,7 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			int i=0;
 			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
 				/* FIXME We should actually also look at the timestamp differences */
-				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%d, index=%d)\n",
 					tmp->prev->seq+i+1, i+1);
 				/* Add silence */
 				uint num_samples = 320;
@@ -161,15 +163,25 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 			continue;
 		}
+		if(tmp->audiolevel != -1) {
+			JANUS_LOG(LOG_VERB, "Audio level: %d dB\n", tmp->audiolevel);
+		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
 		fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
+		if(len < 1) {
+			tmp = tmp->next;
+			continue;
+		}
 		bytes = fread(buffer, sizeof(char), len, file);
-		if(bytes != len)
+		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp = tmp->next;
+			continue;
+		}
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
@@ -232,6 +244,14 @@ void janus_pp_g722_close(void) {
 	dec_ctx = NULL;
 	/* Flush and close file */
 	if(wav_file != NULL) {
+		/* Update the header */
+		fseek(wav_file, 0, SEEK_END);
+		uint32_t size = ftell(wav_file) - 8;
+		fseek(wav_file, 4, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, wav_file);
+		size += 8;
+		fseek(wav_file, 40, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, wav_file);
 		fflush(wav_file);
 		fclose(wav_file);
 	}

@@ -15,7 +15,7 @@ var secret = "";
 var session = null;		// Selected session
 var handle = null;		// Selected handle
 
-var plugins = [];
+var plugins = [], pluginsIndex = [];
 var settings = {};
 
 var currentHandle = null;
@@ -79,6 +79,8 @@ function randomString(len) {
 
 // Server info
 function updateServerInfo() {
+	plugins = [];
+	pluginsIndex = [];
 	$.ajax({
 		type: 'GET',
 		url: server + "/info",
@@ -100,11 +102,31 @@ function updateServerInfo() {
 			console.log(json);
 			var pluginsJson = json.plugins;
 			var transportsJson = json.transports;
+			var eventsJson = json.events;
 			delete json.janus;
 			delete json.transaction;
 			delete json.plugins;
 			delete json.transports;
+			delete json.events;
+			$('#server-details').empty();
 			for(var k in json) {
+				if(k === "dependencies") {
+					$('#server-deps').html(
+						'<tr>' +
+						'	<th>Library</th>' +
+						'	<th>Version</th>' +
+						'</tr>'
+					);
+					for(var ln in json[k]) {
+						$('#server-deps').append(
+							'<tr>' +
+							'	<td>' + ln + '</td>' +
+							'	<td>' + json[k][ln] + '</td>' +
+							'</tr>'
+						);
+					}
+					continue;
+				}
 				var v = json[k];
 				$('#server-details').append(
 					'<tr>' +
@@ -112,6 +134,15 @@ function updateServerInfo() {
 					'	<td>' + v + '</td>' +
 					'</tr>');
 			}
+			$('#server-plugins').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
+			$('#plugins-list').empty();
 			for(var p in pluginsJson) {
 				plugins.push(p);
 				var v = pluginsJson[p];
@@ -122,11 +153,49 @@ function updateServerInfo() {
 					'	<td>' + v.description + '</td>' +
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
+				pluginsIndex.push(p);
+				$('#plugins-list').append(
+					'<a id="plugin-'+(pluginsIndex.length-1)+'" href="#" class="list-group-item">'+p+'</a>'
+				);
+				$('#plugin-'+(pluginsIndex.length-1)).click(function(event) {
+					event.preventDefault();
+					var pi = parseInt($(this).attr('id').split('plugin-')[1]);
+					var plugin = pluginsIndex[pi];
+					console.log("Selected plugin:", plugin);
+					$('#plugins-list a').removeClass('active');
+					$('#plugin-'+pi).addClass('active');
+					resetPluginRequest();
+				});
 			}
-			console.log(plugins);
+			$('#server-transports').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
 			for(var t in transportsJson) {
 				var v = transportsJson[t];
 				$('#server-transports').append(
+					'<tr>' +
+					'	<td>' + v.name + '</td>' +
+					'	<td>' + v.author + '</td>' +
+					'	<td>' + v.description + '</td>' +
+					'	<td>' + v.version_string + '</td>' +
+					'</tr>');
+			}
+			$('#server-handlers').html(
+				'<tr>' +
+				'	<th>Name</th>' +
+				'	<th>Author</th>' +
+				'	<th>Description</th>' +
+				'	<th>Version</th>' +
+				'</tr>'
+			);
+			for(var e in eventsJson) {
+				var v = eventsJson[e];
+				$('#server-handlers').append(
 					'<tr>' +
 					'	<td>' + v.name + '</td>' +
 					'	<td>' + v.author + '</td>' +
@@ -155,6 +224,17 @@ function updateServerInfo() {
 					prettyHandleInfo();
 				} else {
 					rawHandleInfo();
+				}
+			});
+			$("#capture").change(function() {
+				if(this.checked) {
+					// We're trying to start a new capture, show a dialog
+					$('#capturetext').html('Stop capture');
+					captureTrafficPrompt();
+				} else {
+					// We're trying to stop a capture
+					$('#capturetext').html('Start capture');
+					captureTrafficRequest(false, handleInfo["dump-to-text2pcap"] === true);
 				}
 			});
 			// Only check tokens if the mechanism is enabled
@@ -291,6 +371,22 @@ function updateSettings() {
 							setNoMediaTimer(result);
 						});
 					});
+				} else if(k === 'slowlink_threshold') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit slowlink-threshold value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new desired slowlink-threshold value (in lost packets per seconds, currently " + settings["slowlink_threshold"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid slowlink-threshold timer (should be a positive integer)");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								bootbox.alert("Invalid slowlink-threshold timer (should be a positive integer)");
+								return;
+							}
+							setSlowlinkThreshold(result);
+						});
+					});
 				} else if(k === 'locking_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
@@ -303,6 +399,20 @@ function updateSettings() {
 						bootbox.confirm(text, function(result) {
 							if(result)
 								setLockingDebug(!settings["locking_debug"]);
+						});
+					});
+				} else if(k === 'refcount_debug') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
+					$('#'+k + "_button")
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable reference counters debug" : "Disable reference counters debug");
+					$('#'+k + "_button").click(function() {
+						var text = (!settings["refcount_debug"] ?
+							"Are you sure you want to enable the reference counters debug?<br/>This will print a line on the console any time a reference counter is increased/decreased"
+								: "Are you sure you want to disable the reference counters debug?");
+						bootbox.confirm(text, function(result) {
+							if(result)
+								setRefcountDebug(!settings["refcount_debug"]);
 						});
 					});
 				} else if(k === 'log_timestamps') {
@@ -380,6 +490,11 @@ function setLockingDebug(enable) {
 	sendSettingsRequest(request);
 }
 
+function setRefcountDebug(enable) {
+	var request = { "janus": "set_refcount_debug", "debug": enable, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
 function setLogTimestamps(enable) {
 	var request = { "janus": "set_log_timestamps", "timestamps": enable, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
@@ -402,6 +517,11 @@ function setMaxNackQueue(queue) {
 
 function setNoMediaTimer(timer) {
 	var request = { "janus": "set_no_media_timer", "no_media_timer": timer, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
+function setSlowlinkThreshold(packets) {
+	var request = { "janus": "set_slowlink_threshold", "slowlink_threshold": packets, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 
@@ -444,6 +564,130 @@ function sendSettingsRequest(request) {
 		dataType: "json"
 	});
 }
+
+// Plugins
+function resetPluginRequest() {
+	$('#plugin-request').empty().append(
+		'<tr style="background: #f9f9f9;">' +
+		'	<th width="25%">Name</th>' +
+		'	<th width="25%">Value</th>' +
+		'	<th width="25%">Type</th>' +
+		'	<th></th>' +
+		'</tr>' +
+		'<tr>' +
+		'	<td><i id="addattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td></td>' +
+		'	<td></td>' +
+		'	<td><button id="sendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
+		'</tr>');
+	$('#addattr').click(addPluginMessageAttribute).click();
+	$('#sendmsg').click(function() {
+		var message = {};
+		var num = $('.pm-property').length;
+		for(var i=0; i<num; i++) {
+			var name = $('#attrname'+i).val();
+			if(name === '') {
+				bootbox.alert("Missing name in attribute #" + (i+1));
+				return;
+			}
+			if(message[name] !== null && message[name] !== undefined) {
+				bootbox.alert("Duplicate attribute '" + name + "'");
+				return;
+			}
+			var value = $('#attrvalue'+i).val();
+			if(value === '') {
+				bootbox.alert("Missing value in attribute #" + (i+1));
+				return;
+			}
+			var type = $('#attrtype'+i).val();
+			if(type === "number") {
+				value = parseInt(value);
+				if(isNaN(value)) {
+					bootbox.alert("Invalid value in attribute #" + (i+1) + " (expecting a number)");
+					return;
+				}
+			} else if(type === "boolean") {
+				if(value.toLowerCase() === "true") {
+					value = true;
+				} else if(value.toLowerCase() === "false") {
+					value = false;
+				} else {
+					bootbox.alert("Invalid value in attribute #" + (i+1) + " (expecting a boolean)");
+					return;
+				}
+			}
+			console.log("Type:", type);
+			message[name] = value;
+		}
+		sendPluginMessage($('#plugins-list .active').text(), message);
+	});
+	$('#plugin-message').removeClass('hide');
+}
+
+function addPluginMessageAttribute() {
+	var num = $('.pm-property').length;
+	$('#addattr').parent().parent().before(
+		'<tr>' +
+		'	<td><input type="text" id="attrname' + num + '" placeholder="Attribute name" onkeypress="return checkEnter(this, event);" style="width: 100%;" class="pm-property form-control input-sm"></td>' +
+		'	<td><input type="text" id="attrvalue' + num + '" placeholder="Attribute value" onkeypress="return checkEnter(this, event);" style="width: 100%;" class="form-control input-sm"></td>' +
+		'	<td>' +
+		'		<select id="attrtype' + num + '" class="form-control input-sm">' +
+		'			<option>string</option>' +
+		'			<option>number</option>' +
+		'			<option>boolean</option>' +
+		'		</select>' +
+		'	</td>' +
+		'	<td></td>' +
+		'</tr>'
+	);
+}
+
+function sendPluginMessage(plugin, message) {
+	console.log("Sending message to " + plugin + ":", message);
+	var request = {
+		janus: "message_plugin",
+		transaction: randomString(12),
+		admin_secret: secret,
+		plugin: plugin,
+		request: message
+	};
+	$.ajax({
+		type: 'POST',
+		url: server,
+		cache: false,
+		contentType: "application/json",
+		data: JSON.stringify(request),
+		success: function(json) {
+			if(json["janus"] !== "success") {
+				console.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+				var authenticate = (json["error"].code === 403);
+				if(!authenticate || (authenticate && !prompting && !alerted)) {
+					if(authenticate)
+						alerted = true;
+					bootbox.alert(json["error"].reason, function() {
+						if(authenticate) {
+							promptAccessDetails();
+							alerted = false;
+						}
+					});
+				}
+			}
+			$('#plugin-response').text(JSON.stringify(json, null, 4));
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus + ": " + errorThrown);	// FIXME
+			if(!prompting && !alerted) {
+				alerted = true;
+				bootbox.alert("Couldn't contact the backend: is Janus down, or is the Admin/Monitor interface disabled?", function() {
+					promptAccessDetails();
+					alerted = false;
+				});
+			}
+		},
+		dataType: "json"
+	});
+}
+
 
 // Handles
 function updateSessions() {
@@ -665,6 +909,8 @@ function updateHandleInfo(refresh) {
 	$('#update-sessions').unbind('click');
 	$('#update-handles').unbind('click');
 	$('#update-handle').unbind('click').addClass('fa-spin');
+	$('#capture').removeAttr('checked');
+	$('#capturetext').html('Start capture');
 	var request = { "janus": "handle_info", "transaction": randomString(12), "admin_secret": secret };
 	$.ajax({
 		type: 'POST',
@@ -702,6 +948,10 @@ function updateHandleInfo(refresh) {
 				prettyHandleInfo();
 			} else {
 				rawHandleInfo();
+			}
+			if(handleInfo["dump-to-pcap"] || handleInfo["dump-to-text2pcap"]) {
+				$('#capture').attr('checked', true);
+				$('#capturetext').html('Stop capture');
 			}
 			setTimeout(function() {
 				$('#update-sessions').click(updateSessions);
@@ -1078,11 +1328,107 @@ function sendTokenRequest(request) {
 	});
 }
 
+// text2pcap and pcap requests
+function captureTrafficPrompt() {
+	bootbox.dialog({
+		title: "Start capturing traffic",
+		message:
+			'<div class="form-content">' +
+			'	<form class="form" role="form">' +
+			'		<div class="form-group">' +
+			'			<label for="type">Capture Type</label>' +
+			'			<select class="form-control" id="type" name="type" value="pcal">' +
+			'				<option value="pcap">pcap</option>' +
+			'				<option value="text2pcap">text2pcap</option>' +
+			'			</select>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Folder to save in</label>' +
+			'			<input type="text" class="form-control" id="folder" name="folder" placeholder="Insert a path to the target folder" value=""></input>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Filename</label>' +
+			'			<input type="text" class="form-control" id="filename" name="filename" placeholder="Insert the target filename" value=""></input>' +
+			'		</div>' +
+			'		<div class="form-group">' +
+			'			<label for="extra">Truncate</label>' +
+			'			<input type="text" class="form-control" id="truncate" name="truncate" placeholder="Bytes to truncate at (0 or omit to save the whole packet)" value=""></input>' +
+			'		</div>' +
+			'	</form>' +
+			'</div>',
+		buttons: [
+			{
+				label: "Start",
+				className: "btn btn-primary pull-left",
+				callback: function() {
+					var text = $('#type').val() === "text2pcap";
+					var folder = $('#folder').val() !== '' ? $('#folder').val() : undefined;
+					var filename = $('#filename').val() !== '' ? $('#filename').val() : undefined;
+					var truncate = parseInt($('#truncate').val());
+					if(!truncate || isNaN(truncate))
+						truncate = 0;
+					captureTrafficRequest(true, text, folder, filename, truncate);
+				}
+			},
+			{
+				label: "Close",
+				className: "btn btn-default pull-left",
+				callback: function() {
+					$('#capture').removeAttr('checked');
+					$('#capturetext').html('Start capture');
+				}
+			}
+		]
+	});
+}
+
+function captureTrafficRequest(start, text, folder, filename, truncate) {
+	var req = start ? ( text ? "start_text2pcap" : "start_pcap" ) :
+		( text ? "stop_text2pcap" : "stop_pcap" )
+	var request = { "janus": req, "transaction": randomString(12), "admin_secret": secret };
+	if(start) {
+		request["folder"] = folder;
+		request["filename"] = filename;
+		request["truncate"] = truncate;
+	}
+	$.ajax({
+		type: 'POST',
+		url: server + "/" + session + "/" + handle,
+		cache: false,
+		contentType: "application/json",
+		data: JSON.stringify(request),
+		success: function(json) {
+			if(json["janus"] !== "success") {
+				console.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+				bootbox.alert(json["error"].reason);
+				if(start && json["error"].reason.indexOf('already') === -1) {
+					$('#capture').removeAttr('checked');
+					$('#capturetext').html('Start capture');
+				}
+				return;
+			}
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus + ": " + errorThrown);	// FIXME
+			if(!prompting && !alerted) {
+				alerted = true;
+				bootbox.alert("Couldn't contact the backend: is Janus down, or is the Admin/Monitor interface disabled?", function() {
+					promptAccessDetails();
+					alerted = false;
+				});
+			}
+		},
+		dataType: "json"
+	});
+}
+
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
 		if(field.id == 'token')
 			$('#addtoken').click();
+		else if(field.id.indexOf('attr') !== -1)
+			$('#sendmsg').click();
 		return false;
 	} else {
 		return true;

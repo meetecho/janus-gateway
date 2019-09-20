@@ -10,13 +10,13 @@
  * completely up to the controlling application: these tokens are
  * completely opaque to Janus, and treated as strings, which means
  * Janus will only check if the token exists or not when asked.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
-#ifndef _JANUS_AUTH_H
-#define _JANUS_AUTH_H
+
+#ifndef JANUS_AUTH_H
+#define JANUS_AUTH_H
 
 #include <glib.h>
 
