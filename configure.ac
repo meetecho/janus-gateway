@@ -65,8 +65,10 @@ clang*)
 	CFLAGS="$CFLAGS \
 		-Wcast-align \
 		-Wno-override-init \
-		-Wunsafe-loop-optimizations \
-		-Wunused-but-set-variable"
+		-Wunsafe-loop-optimizations"
+
+	AX_CHECK_COMPILE_FLAG([-Wunused-but-set-variable],
+		[CFLAGS="$CFLAGS -Wunused-but-set-variable"])
 esac
 
 JANUS_VERSION=75
