@@ -120,7 +120,7 @@
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
 	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
-	"master_id" : <ID of an already registered account, if ths is an helper for multiple calls (more on that later); optional>
+	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
 \endverbatim
  *
@@ -295,7 +295,7 @@
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
-        "autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -488,7 +488,7 @@
  * using the so-called \c helper sessions. Specifically, \c helper sessions
  * work under the assumption that there's a \c master session that is
  * registered normally (the "regular" SIP plugin handle, that is), and
- * that this \c helper sessions can simply be associated to that: any time
+ * that these \c helper sessions can simply be associated to that: any time
  * another concurrent call is needed, if the \c master session is busy
  * one of the \c helpers can be used; the more \c helper sessions are
  * available, the more simultaneous calls can be established.
@@ -499,7 +499,7 @@
  * there; this will be the \c master session, and will return a \c master_id
  * when successfully registered;
  * 2. for each \c helper you want to add, you attach a new Janus handle
- * to the SIP plugin, and send a \c register with \c type: \c helper and
+ * to the SIP plugin, and send a \c register with \c type: \c "helper" and
  * providing the same \c username as the master, plus a \c master_id attribute
  * referencing the main session;
  * 3. at this point, the new \c helper is associated to the \c master ,
@@ -4117,8 +4117,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "event", json_string("hangup"));
 				json_object_set_new(calling, "code", json_integer(status));
 				json_object_set_new(calling, "reason", json_string(phrase ? phrase : ""));
-                		if(session->hangup_reason_header)
-                    			json_object_set_new(calling, "reason_header", json_string(session->hangup_reason_header));
+				if(session->hangup_reason_header)
+					json_object_set_new(calling, "reason_header", json_string(session->hangup_reason_header));
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
@@ -4133,8 +4133,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "code", json_integer(status));
 					if(phrase)
 						json_object_set_new(info, "reason", json_string(phrase));
-                    			if(session->hangup_reason_header)
-                        			json_object_set_new(info, "reason_header", json_string(session->hangup_reason_header));
+					if(session->hangup_reason_header)
+						json_object_set_new(info, "reason_header", json_string(session->hangup_reason_header));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
@@ -4147,8 +4147,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callid = NULL;
 				g_free(session->transaction);
 				session->transaction = NULL;
-                		g_free(session->hangup_reason_header);
-                		session->hangup_reason_header = NULL;
+				g_free(session->hangup_reason_header);
+				session->hangup_reason_header = NULL;
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
 					gateway->close_pc(session->handle);
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
@@ -4178,18 +4178,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_bye: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-            		if(sip->sip_reason && sip->sip_reason->re_text) {
-                		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-                		janus_sip_remove_quotes(session->hangup_reason_header);
-            		}
+			if(sip->sip_reason && sip->sip_reason->re_text) {
+				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
+				janus_sip_remove_quotes(session->hangup_reason_header);
+			}
 			break;
 		}
 		case nua_i_cancel: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-            		if(sip->sip_reason && sip->sip_reason->re_text) {
-                		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-                		janus_sip_remove_quotes(session->hangup_reason_header);
-            		}
+			if(sip->sip_reason && sip->sip_reason->re_text) {
+				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
+				janus_sip_remove_quotes(session->hangup_reason_header);
+			}
 			break;
 		}
 		case nua_i_invite: {
@@ -4467,7 +4467,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				nua_respond(nh, 488, sip_status_phrase(488),
+					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
 			const char *type = sip->sip_content_type->c_type;
@@ -4490,14 +4491,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(info);
 			/* Send a 200 back */
-			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+			nua_respond(nh, 200, sip_status_phrase(200),
+				NUTAG_WITH_CURRENT(nua), TAG_END());
 			break;
 		}
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
 			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				nua_respond(nh, 488, sip_status_phrase(488),
+					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
 			char *payload = sip->sip_payload->pl_data;
@@ -4518,7 +4521,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(message);
 			/* Send a 200 back */
-			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+			nua_respond(nh, 200, sip_status_phrase(200),
+				NUTAG_WITH_CURRENT(nua), TAG_END());
 			break;
 		}
 		case nua_i_notify: {
