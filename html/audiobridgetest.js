@@ -128,25 +128,27 @@ $(document).ready(function() {
 									if(event != undefined && event != null) {
 										if(event === "joined") {
 											// Successfully joined, negotiate WebRTC now
-											myid = msg["id"];
-											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											if(!webrtcUp) {
-												webrtcUp = true;
-												// Publish our stream
-												mixertest.createOffer(
-													{
-														media: { video: false},	// This is an audio only room
-														success: function(jsep) {
-															Janus.debug("Got SDP!");
-															Janus.debug(jsep);
-															var publish = { "request": "configure", "muted": false };
-															mixertest.send({"message": publish, "jsep": jsep});
-														},
-														error: function(error) {
-															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + JSON.stringify(error));
-														}
-													});
+											if(msg["id"]) {
+												myid = msg["id"];
+												Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
+												if(!webrtcUp) {
+													webrtcUp = true;
+													// Publish our stream
+													mixertest.createOffer(
+														{
+															media: { video: false},	// This is an audio only room
+															success: function(jsep) {
+																Janus.debug("Got SDP!");
+																Janus.debug(jsep);
+																var publish = { "request": "configure", "muted": false };
+																mixertest.send({"message": publish, "jsep": jsep});
+															},
+															error: function(error) {
+																Janus.error("WebRTC error:", error);
+																bootbox.alert("WebRTC error... " + JSON.stringify(error));
+															}
+														});
+												}
 											}
 											// Any room participant?
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
