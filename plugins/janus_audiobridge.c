@@ -2399,7 +2399,21 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
 			goto prepare_response;
 		}
-		
+
+		if(participant->muted == muted) {
+			/* If someone trying to mute an already muted user, or trying to unmute a user that is not mute), 
+			then we should do nothing */
+
+			/* Nothing to do, just prepare response */
+			response = json_object();
+			json_object_set_new(response, "audiobridge", json_string("success"));
+
+			/* Done */
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+
 		participant->muted = muted;
 		if(participant->muted) {
 			JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %"SCNu64", user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
