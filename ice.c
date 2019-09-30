@@ -3241,6 +3241,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces...", handle->handle_id);
+    return(-1);
 	} else {
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
@@ -3287,7 +3288,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				continue;
 			}
 			nice_agent_add_local_address (handle->agent, &addr_local);
-		}
+    }
 		freeifaddrs(ifaddr);
 	}
 
