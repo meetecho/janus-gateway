@@ -2569,7 +2569,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 			g_snprintf(error_cause, error_cause_size, "No such room (%"SCNu64")", room_id);
 		return error_code;
 	}
-	if((*videoroom)->destroyed) {
+	if(g_atomic_int_get(&((*videoroom)->destroyed))) {
 		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 		if(error_cause)
@@ -5535,7 +5535,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(display_event, "videoroom", json_string("event"));
 					json_object_set_new(display_event, "id", json_integer(participant->user_id));
 					json_object_set_new(display_event, "display", json_string(participant->display));
-					if(participant->room && !participant->room->destroyed) {
+					if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
 						janus_videoroom_notify_participants(participant, display_event);
 					}
 					janus_mutex_unlock(&participant->room->mutex);
