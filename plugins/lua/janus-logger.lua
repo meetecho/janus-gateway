@@ -14,9 +14,33 @@ end
 
 function JANUSLOG.print(text)
 	if text ~= nil then
-		print(logPrefix .. text)
+		janusLog(4, logPrefix .. text)
 	else
-		print(logPrefix .. "(nil)")
+		janusLog(4, logPrefix .. "(nil)")
+	end
+end
+
+function JANUSLOG.verbose(text)
+	if text ~= nil then
+		janusLog(5, logPrefix .. text)
+	else
+		janusLog(5, logPrefix .. "(nil)")
+	end
+end
+
+function JANUSLOG.warn(text)
+	if text ~= nil then
+		janusLog(3, logPrefix .. text)
+	else
+		janusLog(3, logPrefix .. "(nil)")
+	end
+end
+
+function JANUSLOG.error(text)
+	if text ~= nil then
+		janusLog(2, logPrefix .. text)
+	else
+		janusLog(2, logPrefix .. "(nil)")
 	end
 end
 
