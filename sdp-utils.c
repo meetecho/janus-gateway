@@ -1351,46 +1351,52 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			/* Add the related attributes */
 			if(m->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
-				am->attributes = g_list_append(am->attributes, a);
-				/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
-				if(audio_dtmf) {
-					int dtmf_pt = janus_sdp_get_codec_pt(offer, "dtmf");
-					if(dtmf_pt >= 0) {
-						/* We do */
-						am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));
-						janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+				const char *codec_rtpmap = janus_sdp_get_codec_rtpmap(codec);
+				if(codec_rtpmap) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
+					am->attributes = g_list_append(am->attributes, a);
+					/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
+					if(audio_dtmf) {
+						int dtmf_pt = janus_sdp_get_codec_pt(offer, "dtmf");
+						if(dtmf_pt >= 0) {
+							/* We do */
+							am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));
+							janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+							am->attributes = g_list_append(am->attributes, a);
+						}
+					}
+					/* Check if there's a custom fmtp line to add for audio
+					 * FIXME We should actually check if it matches the offer */
+					if(audio_fmtp) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
 						am->attributes = g_list_append(am->attributes, a);
 					}
 				}
-				/* Check if there's a custom fmtp line to add for audio
-				 * FIXME We should actually check if it matches the offer */
-				if(audio_fmtp) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
-					am->attributes = g_list_append(am->attributes, a);
-				}
 			} else {
 				/* Add rtpmap attribute */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
-				am->attributes = g_list_append(am->attributes, a);
-				if(!strcasecmp(codec, "h264") && h264_fmtp) {
-					/* If it's H.264 and we were asked to, add the default fmtp profile as well */
-					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+				const char *codec_rtpmap = janus_sdp_get_codec_rtpmap(codec);
+				if(codec_rtpmap) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
 					am->attributes = g_list_append(am->attributes, a);
-				}
-				if(video_rtcpfb) {
-					/* Add rtcp-fb attributes */
-					a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d nack", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
-					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-					am->attributes = g_list_append(am->attributes, a);
+					if(!strcasecmp(codec, "h264") && h264_fmtp) {
+						/* If it's H.264 and we were asked to, add the default fmtp profile as well */
+						a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
+					if(video_rtcpfb) {
+						/* Add rtcp-fb attributes */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d nack", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 			}
 			/* Add the extmap attributes, if needed */
