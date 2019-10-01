@@ -1376,6 +1376,9 @@ int janus_process_incoming_request(janus_request *request) {
 					if(simulcast == NULL)
 						simulcast = json_array();
 					json_t *msc = json_object();
+					json_object_set_new(msc, "mindex", json_integer(medium->mindex));
+					if(medium->mid != NULL)
+						json_object_set_new(msc, "rid", json_string(medium->mid));
 					/* If we have rids, pass those, otherwise pass the SSRCs */
 					if(medium->rid[0] && medium->pc->rid_ext_id > 0) {
 						json_t *rids = json_array();
@@ -1396,7 +1399,7 @@ int janus_process_incoming_request(janus_request *request) {
 						json_object_set_new(msc, "ssrcs", ssrcs);
 					}
 					if(handle->pc->framemarking_ext_id > 0)
-						json_object_set_new(simulcast, "framemarking-ext", json_integer(handle->pc->framemarking_ext_id));
+						json_object_set_new(msc, "framemarking-ext", json_integer(handle->pc->framemarking_ext_id));
 					json_array_append_new(simulcast, msc);
 				}
 			}

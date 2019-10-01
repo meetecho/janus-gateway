@@ -7992,7 +7992,7 @@ static void *janus_videoroom_handler(void *data) {
 									continue;
 								JANUS_LOG(LOG_WARN, "Publisher stream is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
 								ps->simulcast = TRUE;
-								janus_rtp_simulcasting_prepare(msg_simulcast,
+								janus_rtp_simulcasting_prepare(s,
 									&ps->rid_extmap_id,
 									&ps->framemarking_ext_id,
 									ps->vssrc, ps->rid);
