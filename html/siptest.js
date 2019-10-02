@@ -224,6 +224,11 @@ $(document).ready(function() {
 												// In case you want to offer video when reacting to an offerless call, set this to true
 												doVideo = false;
 											}
+											// Is this the result of a transfer?
+											var transfer = "";
+											var referredBy = result["referred_by"];
+											if(referredBy)
+												transfer = " (referred by " + referredBy + ")";
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
 											var srtp = result["srtp"];
@@ -237,7 +242,7 @@ $(document).ready(function() {
 											if(offerlessInvite)
 												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
+												message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -771,7 +776,6 @@ function doHangup(ev) {
 		helperId = null;
 	else
 		helperId = parseInt(helperId);
-	console.warn(helperId);
 	if(!helperId) {
 		$('#call').attr('disabled', true).unbind('click');
 		var hangup = { "request": "hangup" };
@@ -926,6 +930,16 @@ function addHelper(helperCreated) {
 							// In case you want to offer video when reacting to an offerless call, set this to true
 							doVideo = false;
 						}
+						// Is this the result of a transfer?
+						var transfer = "";
+						var referredBy = result["referred_by"];
+						var replaces = result["replaces"];
+						if(referredBy && replaces)
+							transfer = " (referred by " + referredBy + ", replaces call-ID " + replaces + ")";
+						else if(referredBy && !replaces)
+							transfer = " (referred by " + referredBy + ")";
+						else if(!referredBy && replaces)
+							transfer = " (replaces call-ID " + replaces + ")";
 						// Any security offered? A missing "srtp" attribute means plain RTP
 						var rtpType = "";
 						var srtp = result["srtp"];
@@ -939,7 +953,7 @@ function addHelper(helperCreated) {
 						if(offerlessInvite)
 							extra = " (no SDP offer provided)"
 						incoming = bootbox.dialog({
-							message: "Incoming call from " + result["username"] + "!" + rtpType + extra + " (on helper #" + helperId + ")",
+							message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra + " (on helper #" + helperId + ")",
 							title: "Incoming call (helper " + helperId + ")",
 							closeButton: false,
 							buttons: {

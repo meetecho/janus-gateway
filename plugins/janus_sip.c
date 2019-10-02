@@ -281,6 +281,7 @@
 		"username" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>",
 		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
+		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>"
 	}
 }
@@ -535,11 +536,12 @@
 {
 	"request" : "transfer",
 	"uri" : "<SIP URI to send the transferee too>",
-	"attended" : <whether this is an attended or blind transfer; default is false>
+	"replace" : "<call-ID of the call this attended transfer is supposed to replace; default is none, which means blind/unattended transfer>"
 }
 \endverbatim
  *
- * A \c transferring event will be sent back, as this is an asynchronous
+ * Whether this is a blind (no call to replace) or attended transfer,
+ * a \c transferring event will be sent back, as this is an asynchronous
  * request. Further updates will come in the form of NOTIFY-related events,
  * as a REFER implicitly creates a subscription.
  *
@@ -557,7 +559,7 @@
 		"refer_id" : <unique ID, internal to Janus, of this referral>,
 		"refer_to" : "<SIP URI to call>",
 		"referred_by" : "<SIP URI of the transferor; optional>",
-		"replaces" : "<content of the SIP Replaces header; optional, and only present for attended transfers>"
+		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>"
 	}
 }
 \endverbatim
@@ -579,6 +581,11 @@
  * already in a call, it's up to the application to create a helper to
  * setup a new Janus handle to accept the transfer.
  *
+ * Notice that the plugin will NOT put the involved calls on-hold, or
+ * automatically close calls that are meant to be replaced by a transfer.
+ * All this is the application responsibility, and as such it's up to
+ * the developer to react to events accordingly.
+ *
  */
 
 #include "plugin.h"
@@ -592,6 +599,7 @@
 #include <sofia-sip/nua.h>
 #include <sofia-sip/nua_tag.h>
 #include <sofia-sip/sdp.h>
+#include <sofia-sip/sip_header.h>
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
@@ -611,8 +619,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			7
-#define JANUS_SIP_VERSION_STRING	"0.0.7"
+#define JANUS_SIP_VERSION			8
+#define JANUS_SIP_VERSION_STRING	"0.0.8"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through a Janus instance."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -721,7 +729,7 @@ static struct janus_json_parameter decline_parameters[] = {
 };
 static struct janus_json_parameter transfer_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"attended", JANUS_JSON_BOOL, 0}
+	{"call_id", JANUS_JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -856,7 +864,9 @@ struct ssip_s {
 typedef struct janus_sip_transfer {
 	struct janus_sip_session *session;
 	char *referred_by;
+	char *custom_headers;
 	nua_handle_t *nh_s;
+	nua_saved_event_t saved[1];
 } janus_sip_transfer;
 
 typedef enum {
@@ -1089,6 +1099,7 @@ static void janus_sip_transfer_destroy(janus_sip_transfer *t) {
 	if(t == NULL)
 		return;
 	g_free(t->referred_by);
+	g_free(t->custom_headers);
 	if(t->session != NULL)
 		janus_refcount_decrease(&t->session->ref);
 	g_free(t);
@@ -1387,6 +1398,7 @@ static void janus_sip_remove_quotes(char *str) {
 #define JANUS_SIP_ERROR_RECORDING_ERROR		451
 #define JANUS_SIP_ERROR_TOO_STRICT			452
 #define JANUS_SIP_ERROR_HELPER_ERROR		453
+#define JANUS_SIP_ERROR_NO_SUCH_CALLID		454
 
 
 /* Random string helper (for call-ids) */
@@ -1403,7 +1415,7 @@ static void janus_sip_random_string(int length, char *buffer) {
 	}
 }
 
-static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers) {
+static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, size_t size) {
 	custom_headers[0] = '\0';
 	json_t *headers = json_object_get(root, "headers");
 	if(headers) {
@@ -1423,7 +1435,7 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers) {
 				char h[255];
 				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
 				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
-				g_strlcat(custom_headers, h, 2048);
+				g_strlcat(custom_headers, h, size);
 				iter = json_object_iter_next(headers, iter);
 			}
 		}
@@ -2746,7 +2758,7 @@ static void *janus_sip_handler(void *data) {
 			if(send_register) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
-				janus_sip_parse_custom_headers(root, (char *)&custom_headers);
+				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -2957,7 +2969,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
-			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
@@ -3145,10 +3157,14 @@ static void *janus_sip_handler(void *data) {
 				if(transfer != NULL && transfer->nh_s != NULL) {
 					/* Send a 202 */
 					nua_respond(transfer->nh_s, 202, sip_status_phrase(202),
-						NUTAG_WITH_CURRENT(session->stack->s_nua), TAG_END());
+						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
 					JANUS_LOG(LOG_WARN, "[%p] 202\n", transfer->nh_s);
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
+				}
+				/* Any custom headers we should include? (e.g., Replaces) */
+				if(transfer->custom_headers != NULL) {
+					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
 			/* If the user negotiated simulcasting, just stick with the base substream */
@@ -3350,7 +3366,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Check if the OK needs to be enriched with custom headers */
 			char custom_headers[2048];
-			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			/* Send 200 OK */
 			if(!answer) {
 				if(session->transaction)
@@ -3500,7 +3516,7 @@ static void *janus_sip_handler(void *data) {
 						response_code = 486;
 					}
 					nua_respond(transfer->nh_s, response_code, sip_status_phrase(response_code),
-						NUTAG_WITH_CURRENT(session->stack->s_nua), TAG_END());
+						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -3606,12 +3622,32 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Is this a blind (unattended) or warm (attended) transfer? (default=blind) */
-			gboolean attended = json_is_true(json_object_get(root, "attended"));
-			/* TODO Send the REFER */
+			const char *callid = json_string_value(json_object_get(root, "replace"));
+			sip_refer_to_t *refer_to = NULL;
+			if(callid != NULL) {
+				/* This is an attended transfer, make sure this call exists */
+				janus_mutex_lock(&sessions_mutex);
+				janus_sip_session *replaced = g_hash_table_lookup(callids, callid);
+				janus_mutex_unlock(&sessions_mutex);
+				if(replaced == NULL || replaced->stack == NULL || replaced->stack->s_nh_i == NULL) {
+					JANUS_LOG(LOG_ERR, "No such call-ID %s\n", callid);
+					error_code = JANUS_SIP_ERROR_NO_SUCH_CALLID;
+					g_snprintf(error_cause, 512, "No such call-ID %s", callid);
+					goto error;
+				}
+				/* Craft the Replaces header field */
+				sip_replaces_t *r = nua_handle_make_replaces(replaced->stack->s_nh_i, session->stack->s_home, 0);
+				char *replaces = sip_headers_as_url_query(session->stack->s_home, SIPTAG_REPLACES(r), TAG_END());
+				refer_to = sip_refer_to_format(session->stack->s_home, "<%s?%s>", uri_text, replaces);
+				JANUS_LOG(LOG_WARN, "Attended transfer: <%s?%s>\n", uri_text, replaces);
+				su_free(session->stack->s_home, r);
+				su_free(session->stack->s_home, replaces);
+			}
+			if(refer_to == NULL)
+				refer_to = sip_refer_to_format(session->stack->s_home, "<%s>", uri_text);
+			/* Send the REFER */
 			nua_refer(session->stack->s_nh_i,
-				SIPTAG_REFER_TO_STR(uri_text),
-				/* TODO Do we only need the Replaces header for attended transfers? */
-				//~ SIPTAG_REPLACES_STR(??),
+				SIPTAG_REFER_TO(refer_to),
 				TAG_END());
 
 			/* Notify the operation */
@@ -4052,6 +4088,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(info, "event", json_string("sip-in"));
 			json_object_set_new(info, "sip", json_string(msg_str));
 			gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			su_free(ssip->s_home, msg_str);
 		}
 	}
 
@@ -4368,6 +4405,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				su_free(session->stack->s_home, rby_text);
 				json_object_set_new(calling, "referred_by", json_string(referred_by));
 			}
+			if(sip->sip_replaces && sip->sip_replaces->rp_call_id) {
+				json_object_set_new(calling, "replaces", json_string(sip->sip_replaces->rp_call_id));
+			}
 			if(is_focus)
 				json_object_set_new(calling, "isfocus", json_true());
 			if(sdp && (session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video)) {
@@ -4408,21 +4448,25 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* We're being asked to transfer a call */
 			if(sip == NULL || sip->sip_refer_to == NULL) {
 				JANUS_LOG(LOG_ERR, "Missing Refer-To header\n");
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
 				break;
 			}
-			/* TODO Get the SIP event header from the NUTAG_REFER_EVENT tag */
-			char *refer_to = url_as_string(session->stack->s_home, sip->sip_refer_to->r_url);
-			char *referred_by = NULL;
+			/* Access the headers we need */
+			char *refer_to = NULL, *referred_by = NULL, *custom_headers = NULL;
+			const char *url_headers = sip->sip_refer_to->r_url->url_headers;
+			if(url_headers != NULL) {
+				/* Convert to SIP headers */
+				sip->sip_refer_to->r_url->url_headers = NULL;
+				custom_headers = url_query_as_header_string(session->stack->s_home, url_headers);
+			}
+			refer_to = url_as_string(session->stack->s_home, sip->sip_refer_to->r_url);
+			sip->sip_refer_to->r_url->url_headers = url_headers;
 			if(sip->sip_referred_by != NULL)
 				referred_by = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
 			else if(sip->sip_from != NULL)
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-			const char *replaces = NULL;
-			if(sip->sip_replaces != NULL && sip->sip_replaces->rp_call_id != NULL)
-				replaces = sip->sip_replaces->rp_call_id;
-			JANUS_LOG(LOG_WARN, "Incoming REFER: %s (by %s, replaces: %s)\n",
-				refer_to, referred_by ? referred_by : "unknown", replaces ? replaces : "unknown");
+			JANUS_LOG(LOG_WARN, "Incoming REFER: %s (by %s, headers: %s)\n",
+				refer_to, referred_by ? referred_by : "unknown", custom_headers ? custom_headers : "unknown");
 			/* Send a 100 back */
 			nua_respond(nh, 100, sip_status_phrase(100), NUTAG_WITH_CURRENT(nua), TAG_END());
 			JANUS_LOG(LOG_WARN, "[%p] 100\n", nh);
@@ -4439,7 +4483,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_refcount_increase(&session->ref);
 				t->session = session;
 				t->referred_by = referred_by ? g_strdup(referred_by) : NULL;
+				t->custom_headers = custom_headers ? g_strdup(custom_headers) : NULL;
 				t->nh_s = nh;
+				nua_save_event(nua, t->saved);
 				g_hash_table_insert(transfers, GUINT_TO_POINTER(refer_id), t);
 			}
 			janus_mutex_unlock(&sessions_mutex);
@@ -4450,13 +4496,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(result, "event", json_string("transfer"));
 			json_object_set_new(result, "refer_id", json_integer(refer_id));
 			json_object_set_new(result, "refer_to", json_string(refer_to));
-			su_free(session->stack->s_home, refer_to);
 			if(referred_by != NULL) {
 				json_object_set_new(result, "referred_by", json_string(referred_by));
 				su_free(session->stack->s_home, referred_by);
 			}
-			if(replaces != NULL)
-				json_object_set_new(result, "replaces", json_string(replaces));
+			su_free(session->stack->s_home, refer_to);
+			if(custom_headers != NULL)
+				su_free(session->stack->s_home, custom_headers);
 			json_object_set_new(info, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, info, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4741,6 +4787,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_ack(nh,
 					TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
 					TAG_END());
+				if(route != NULL)
+					su_free(session->stack->s_home, route);
 			}
 			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
