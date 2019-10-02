@@ -976,11 +976,6 @@ function Janus(gatewayCallbacks) {
 		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
 			cleanupHandles = (callbacks.cleanupHandles === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
-		if(!connected) {
-			Janus.warn("Is the server down? (connected=false)");
-			callbacks.success();
-			return;
-		}
 		if(sessionId === undefined || sessionId === null) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
@@ -991,6 +986,11 @@ function Janus(gatewayCallbacks) {
 		if(cleanupHandles) {
 			for(var handleId in pluginHandles)
 				destroyHandle(handleId, { noRequest: true });
+		}
+		if(!connected) {
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.success();
+			return;
 		}
 		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
@@ -2207,7 +2207,7 @@ function Janus(gatewayCallbacks) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						navigator.mediaDevices.getDisplayMedia({ video: true })
+						navigator.mediaDevices.getDisplayMedia({ video: true, audio: media.captureDesktopAudio })
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media) && !media.keepAudio) {

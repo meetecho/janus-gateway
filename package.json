@@ -1,6 +1,6 @@
 {
   "name": "janus-gateway",
-  "version": "0.7.3",
+  "version": "0.7.5",
   "description": "A javascript library for interacting with the C based Janus WebRTC Server",
   "main": "html/janus.js",
   "repository": {
