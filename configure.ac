@@ -20,7 +20,6 @@ LT_INIT
 # Common CFLAGS
 CFLAGS="$CFLAGS \
 	-fPIC \
-	-fstack-protector-all \
 	-fstrict-aliasing \
 	-ggdb3 \
 	-pthread \
@@ -95,6 +94,14 @@ jansson_version=2.5
 ##
 # Janus
 ##
+
+AC_ARG_ENABLE([stack-protector],
+              [AS_HELP_STRING([--disable-stack-protector],
+                              [Disable stack protector])],
+              [],
+              [enable_stack_protector=yes])
+AS_IF([test "x$enable_stack_protector" = "xyes"],
+      [CFLAGS="$CFLAGS -fstack-protector-all"])
 
 AC_ARG_ENABLE([docs],
               [AS_HELP_STRING([--enable-docs],
