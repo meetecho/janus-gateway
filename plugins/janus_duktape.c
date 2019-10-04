@@ -2371,8 +2371,8 @@ static void *janus_duktape_scheduler(void *data) {
 			int res = duk_pcall(duktape_ctx, 0);
 			if(res != DUK_EXEC_SUCCESS) {
 				JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(duktape_ctx, -1));
-				duk_pop(duktape_ctx);
 			}
+			duk_pop(duktape_ctx);
 			/* Print the count of elements into Duktape stack */
 			janus_duktape_stackdump(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
