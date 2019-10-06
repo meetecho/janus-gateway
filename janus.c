@@ -4772,6 +4772,15 @@ gint main(int argc, char *argv[])
 		exit(1);	/* FIXME Should we really give up? */
 	}
 
+	/* Make sure libnice is recent enough, otherwise print a warning */
+	int libnice_version = 0;
+	if(sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
+		if(libnice_version < 15) {
+			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
+				libnice_version_string);
+		}
+	}
+
 	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */
 	if(daemonize) {
 		int code = 0;
