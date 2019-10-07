@@ -331,7 +331,8 @@
  *
 \verbatim
 {
-	"request" : "hangup"
+	"request" : "hangup",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP BYE; optional>"
 }
 \endverbatim
  *
