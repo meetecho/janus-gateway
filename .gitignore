@@ -3,7 +3,6 @@ cmdline.h
 version.c
 docs/html/
 
-.idea
 /janus
 /janus-cfgconv
 /janus-pp-rec
@@ -73,3 +72,6 @@ Makefile.in
 
 # OS X
 .DS_Store
+
+# CLion
+.idea

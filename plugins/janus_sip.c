@@ -3243,7 +3243,9 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_call_update_status(session, janus_sip_call_status_closing);
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
-			nua_bye(session->stack->s_nh_i, TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)), TAG_END());
+			nua_bye(session->stack->s_nh_i,
+			    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+			    TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
