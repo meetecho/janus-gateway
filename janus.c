@@ -3729,7 +3729,8 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		/* Change the current working directory */
-		if((chdir("/")) < 0) {
+		const char *cwd = (args_info.cwd_path_given) ? args_info.cwd_path_arg : "/";
+		if((chdir(cwd)) < 0) {
 			g_print("Error changing the current working directory!\n");
 			exit(1);
 		}
