@@ -345,6 +345,16 @@ conf_DATA += conf/janus.eventhandler.mqttevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.mqttevh.jcfg.sample
 endif
 
+if ENABLE_NANOMSGEVH
+event_LTLIBRARIES += events/libjanus_nanomsgevh.la
+events_libjanus_nanomsgevh_la_SOURCES = events/janus_nanomsgevh.c
+events_libjanus_nanomsgevh_la_CFLAGS = $(events_cflags)
+events_libjanus_nanomsgevh_la_LDFLAGS = $(events_ldflags) -lnanomsg
+events_libjanus_nanomsgevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.nanomsgevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
+endif
+
 ##
 # Plugins
 ##
