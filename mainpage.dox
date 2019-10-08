@@ -3620,6 +3620,10 @@ ldd janus | grep asan
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>. \n\n
+ *    Apart from these presentations, make sure you also check the slides
+ *    and presentations from <a href="https://januscon.it">JanusCon</a>,
+ *    the Janus conference we hosted here in Napoli.
+ *    \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
