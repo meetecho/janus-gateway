@@ -315,6 +315,16 @@ conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
 
+if ENABLE_WSEVH
+event_LTLIBRARIES += events/libjanus_wsevh.la
+events_libjanus_wsevh_la_SOURCES = events/janus_wsevh.c
+events_libjanus_wsevh_la_CFLAGS = $(events_cflags)
+events_libjanus_wsevh_la_LDFLAGS = $(events_ldflags) $(WS_MANUAL_LIBS)
+events_libjanus_wsevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.wsevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.wsevh.jcfg.sample
+endif
+
 if ENABLE_RABBITMQEVH
 event_LTLIBRARIES += events/libjanus_rabbitmqevh.la
 events_libjanus_rabbitmqevh_la_SOURCES = events/janus_rabbitmqevh.c
