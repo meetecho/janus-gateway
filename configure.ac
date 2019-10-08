@@ -202,6 +202,8 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+               AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
+                     [enable_websockets_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
                      [enable_rabbitmq_event_handler=no])
                AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
@@ -268,6 +270,13 @@ AC_ARG_ENABLE([sample-event-handler],
               [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
+
+AC_ARG_ENABLE([websockets-event-handler],
+              [AS_HELP_STRING([--disable-websockets-event-handler],
+                              [Disable WebSockets event handler ])],
+              [AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
+                     [enable_websockets_event_handler=no])],
+              [enable_websockets_event_handler=maybe])
 
 AC_ARG_ENABLE([rabbitmq-event-handler],
               [AS_HELP_STRING([--disable-rabbitmq-event-handler],
@@ -508,12 +517,18 @@ AC_CHECK_LIB([websockets],
 							   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
 							  )
 			   ])
+               AS_IF([test "x$enable_websockets_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_WSEVH)
+                 enable_websockets_event_handler=yes
+               ])
 			 ],
 			 [
 			   AS_IF([test "x$enable_websockets" = "xyes"],
 					 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
 			 ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
+AM_CONDITIONAL([ENABLE_WSEVH], [test "x$enable_websockets_event_handler" = "xyes"])
 AC_SUBST(WS_MANUAL_LIBS)
 
 AC_CHECK_LIB([rabbitmq],
@@ -1013,6 +1028,9 @@ echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_WSEVH],
+	[echo "    WebSocket ev. handler: yes"],
+	[echo "    WebSocket ev. handler: no"])
 AM_COND_IF([ENABLE_RABBITMQEVH],
 	[echo "    RabbitMQ event handler:yes"],
 	[echo "    RabbitMQ event handler:no"])
