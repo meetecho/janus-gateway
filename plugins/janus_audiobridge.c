@@ -1287,14 +1287,13 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	struct addrinfo *res = NULL, *start = NULL;
 	janus_network_address addr;
 	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	if(family != 0)
+		hints.ai_family = family;
+	if(getaddrinfo(host, NULL, family != 0 ? &hints : NULL, &res) == 0) {
 		start = res;
 		while(res != NULL) {
-			if(family != 0 && family != res->ai_family) {
-				/* We're looking for a specific family */
-				res = res->ai_next;
-				continue;
-			}
 			if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
 					janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
 				/* Resolved */
@@ -2573,14 +2572,13 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		struct addrinfo *res = NULL, *start = NULL;
 		janus_network_address addr;
 		janus_network_address_string_buffer addr_buf;
-		if(getaddrinfo(host, NULL, NULL, &res) == 0) {
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		if(family != 0)
+			hints.ai_family = family;
+		if(getaddrinfo(host, NULL, family != 0 ? &hints : NULL, &res) == 0) {
 			start = res;
 			while(res != NULL) {
-				if(family != 0 && family != res->ai_family) {
-					/* We're looking for a specific family */
-					res = res->ai_next;
-					continue;
-				}
 				if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
 						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
 					/* Resolved */
