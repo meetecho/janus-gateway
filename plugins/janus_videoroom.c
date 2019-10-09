@@ -2373,14 +2373,21 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 		return;
 	}
 	janus_mutex_unlock(&rooms_mutex);
-	if(!participant->room || g_atomic_int_get(&participant->room->destroyed))
+	janus_videoroom *room = participant->room;
+	if(!room || g_atomic_int_get(&room->destroyed))
 		return;
+	janus_refcount_increase(&room->ref);
+	janus_mutex_lock(&room->mutex);
+	if (!participant->room) {
+		janus_mutex_unlock(&room->mutex);
+		janus_refcount_decrease(&room->ref);
+		return;
+	}
 	json_t *event = json_object();
 	json_object_set_new(event, "videoroom", json_string("event"));
 	json_object_set_new(event, "room", json_integer(participant->room_id));
 	json_object_set_new(event, is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished",
 		json_integer(participant->user_id));
-	janus_mutex_lock(&participant->room->mutex);
 	janus_videoroom_notify_participants(participant, event);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
@@ -2393,8 +2400,10 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants, &participant->user_id);
 		g_hash_table_remove(participant->room->private_ids, GUINT_TO_POINTER(participant->pvt_id));
+		g_clear_pointer(&participant->room, janus_videoroom_room_dereference);
 	}
-	janus_mutex_unlock(&participant->room->mutex);
+	janus_mutex_unlock(&room->mutex);
+	janus_refcount_decrease(&room->ref);
 	json_decref(event);
 }
 
@@ -2430,9 +2439,6 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_mutex_unlock(&session->mutex);
 			if(p && p->room) {
 				janus_videoroom_leave_or_unpublish(p, TRUE, FALSE);
-				/* Don't clear p->room.  Another thread calls janus_videoroom_leave_or_unpublish,
-					 too, and there is no mutex to protect this change. */
-				g_clear_pointer(&p->room, janus_videoroom_room_dereference);
 			}
 			janus_videoroom_publisher_destroy(p);
 			if(p)
