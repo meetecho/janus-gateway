@@ -109,7 +109,7 @@ janus_eventhandler *create(void) {
  * their event handler plugin structure, e.g.:
  *
 \verbatim
-static janus_eventhandler janus_fake_eventhandler handler plugin =
+static janus_eventhandler janus_fake_eventhandler_plugin =
 	{
 		JANUS_EVENTHANDLER_INIT,
 
@@ -225,7 +225,7 @@ struct janus_eventhandler {
 	 * returned as a response, which will be sent in response to the Admin API call.
 	 * This can be useful to tweak settings in real-time, or to probe the internals
 	 * of the handler plugin for monitoring purposes.
-	 * @param[in] event Jansson object containing the request
+	 * @param[in] request Jansson object containing the request
 	 * @returns A Jansson object containing the response for the client */
 	json_t *(* const handle_request)(json_t *request);
 
