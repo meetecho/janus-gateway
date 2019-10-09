@@ -4025,7 +4025,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(busy) {
 				/* This session is busy, any helper that can take it? */
-				JANUS_LOG(LOG_WARN, "Busy... maybe a helper can help?\n");
+				JANUS_LOG(LOG_VERB, "Busy... maybe a helper can help?\n");
 				janus_sip_session *helper = NULL;
 				janus_mutex_lock(&session->mutex);
 				/* TODO Find a free helper */
@@ -4037,14 +4037,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						/* Found! */
 						break;
 					}
-					JANUS_LOG(LOG_WARN, "  -- Helper %p is busy too...\n", helper);
+					JANUS_LOG(LOG_VERB, "  -- Helper %p is busy too...\n", helper);
 					helper = NULL;
 					temp = temp->next;
 				}
 				janus_mutex_unlock(&session->mutex);
 				if(helper != NULL) {
 					/* Bind the call to the helper and handle it there */
-					JANUS_LOG(LOG_WARN, "Passing INVITE to helper %p\n", helper);
+					JANUS_LOG(LOG_VERB, "Passing INVITE to helper %p\n", helper);
 					nua_handle_bind(nh, helper);
 					janus_sip_sofia_callback(event, status, phrase, nua, magic, nh, helper, sip, tags);
 					break;
