@@ -72,10 +72,10 @@ janus_eventhandler *create(void) {
  * handlers never need to contact the Janus core themselves. This path can be used to read and
  * parse a configuration file for the event handler plugin: the event handler
  * plugins we made available out of the box use the package name as a
- * name for the file (e.g., \c janus.eventhandler.fake.cfg for the sample
+ * name for the file (e.g., \c janus.eventhandler.fake.jcfg for the sample
  * event handler plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing eventhandler
- * plugins use the same INI format for configuration files the core
+ * plugins use the same libconfig format for configuration files the core
  * uses (relying on the \c janus_config helpers for the purpose) but
  * again, if you prefer a different format (XML, JSON, etc.) that's up to you.
  *
