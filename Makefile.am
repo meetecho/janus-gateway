@@ -25,6 +25,9 @@ transportsheader_HEADERS = transports/transport.h
 eventsheaderdir = $(includedir)/janus/events
 eventsheader_HEADERS = events/eventhandler.h
 
+loggersheaderdir = $(includedir)/janus/loggers
+loggersheader_HEADERS = loggers/logger.h
+
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.jcfg.sample
 
@@ -36,6 +39,9 @@ transport_LTLIBRARIES = $(NULL)
 
 eventdir = $(libdir)/janus/events
 event_LTLIBRARIES = $(NULL)
+
+loggerdir = $(libdir)/janus/loggers
+logger_LTLIBRARIES = $(NULL)
 
 SUBDIRS = html
 dist_html_DATA = README.md
@@ -65,6 +71,7 @@ jsmodules_DATA = html/janus.js
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]eventdir[@]|$(eventdir)|;\
+	    s|[@]loggerdir[@]|$(loggerdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|; \
@@ -131,6 +138,7 @@ janus_SOURCES = \
 	transports/transport.h \
 	transports/transport.c \
 	events/eventhandler.h \
+	loggers/logger.h \
 	$(NULL)
 
 janus_CFLAGS = \
@@ -139,6 +147,7 @@ janus_CFLAGS = \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DEVENTDIR=\"$(eventdir)\" \
+	-DLOGGERDIR=\"$(loggerdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -353,6 +362,29 @@ events_libjanus_nanomsgevh_la_LDFLAGS = $(events_ldflags) -lnanomsg
 events_libjanus_nanomsgevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.nanomsgevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
+endif
+
+##
+# Loggers
+##
+
+loggers_cflags = \
+	$(AM_CFLAGS) \
+	$(LOGGERS_CFLAGS) \
+	$(NULL)
+
+loggers_libadd = \
+	$(LOGGERS_LIBS) \
+	$(NULL)
+
+if ENABLE_JSONLOGGER
+logger_LTLIBRARIES += loggers/libjanus_jsonlog.la
+loggers_libjanus_jsonlog_la_SOURCES = loggers/janus_jsonlog.c
+loggers_libjanus_jsonlog_la_CFLAGS = $(loggers_cflags)
+loggers_libjanus_jsonlog_la_LDFLAGS = $(loggers_ldflags)
+loggers_libjanus_jsonlog_la_LIBADD = $(loggers_libadd)
+conf_DATA += conf/janus.logger.jsonlog.jcfg.sample
+EXTRA_DIST += conf/janus.logger.jsonlog.jcfg.sample
 endif
 
 ##

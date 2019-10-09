@@ -8,6 +8,7 @@ general: {
 	plugins_folder = "@plugindir@"			# Plugins folder
 	transports_folder = "@transportdir@"	# Transports folder
 	events_folder = "@eventdir@"			# Event handlers folder
+	loggers_folder = "@loggerdir@"			# External loggers folder
 
 		# The next settings configure logging
 	#log_to_stdout = false					# Whether the Janus output should be written
@@ -262,6 +263,16 @@ plugins: {
 # transports are enabled and loaded at startup.
 transports: {
 	#disable = "libjanus_rabbitmq.so"
+}
+
+# As a core feature, Janus can log either on the standard output, or to
+# a local file. Should you need more advanced logging functionality, you
+# can make use of one of the custom loggers, or write one yourself. Use the
+# 'disable' directive to prevent Janus from loading one or more loggers:
+# use a comma separated list of logger file names to identify the loggers
+# to disable. By default all available loggers are enabled and loaded at startup.
+loggers: {
+	#disable = "libjanus_jsonlog.so"
 }
 
 # Event handlers allow you to receive live events from Janus happening
