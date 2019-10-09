@@ -146,7 +146,9 @@ static const char *janus_wsevh_reason_string(enum lws_callback_reasons reason) {
 		CASE_STR(LWS_CALLBACK_CLIENT_CONNECTION_ERROR);
 		CASE_STR(LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH);
 		CASE_STR(LWS_CALLBACK_CLIENT_ESTABLISHED);
+#if (LWS_LIBRARY_VERSION_MAJOR > 3 || (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2))
 		CASE_STR(LWS_CALLBACK_CLIENT_CLOSED);
+#endif
 		CASE_STR(LWS_CALLBACK_CLOSED);
 		CASE_STR(LWS_CALLBACK_CLOSED_HTTP);
 		CASE_STR(LWS_CALLBACK_RECEIVE);
@@ -691,7 +693,11 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 			}
 			return 0;
 		}
+#if (LWS_LIBRARY_VERSION_MAJOR > 3 || (LWS_LIBRARY_VERSION_MAJOR == 3 && LWS_LIBRARY_VERSION_MINOR >= 2))
 		case LWS_CALLBACK_CLIENT_CLOSED: {
+#else
+		case LWS_CALLBACK_CLOSED: {
+#endif
 			JANUS_LOG(LOG_INFO, "WebSockets event handler connection closed\n");
 			if(ws_client != NULL) {
 				/* Cleanup */
