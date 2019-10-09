@@ -1366,6 +1366,10 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		return;
 	janus_mutex_lock(&handle->mutex);
 	if(!handle->agent_created) {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
