@@ -555,6 +555,26 @@ room-<unique room ID>: {
  * which will only include the \c room and the updated participant as the
  * only object in a \c participants array.
  *
+ * If you're the administrator of a room (that is, you created it and have access to the secret) 
+ * you can mute or unmute participants using the \c mute or \c unmute request
+ * 
+ \verbatim
+{
+	"request" : "<mute|unmute, whether to mute or unmute >",
+	"secret" : "<room secret, mandatory if configured>",
+	"room" : <unique numeric ID of the room>,
+	"id" : <unique numeric ID of the participant to kick>
+}
+\endverbatim
+ *
+ * A successful request will result in a success response:
+ * 
+ \verbatim
+{
+	"audiobridge" : "success",
+}
+\endverbatim
+ * 
  * As anticipated, you can leave an audio room using the \c leave request,
  * which has to be formatted as follows:
  *
@@ -753,6 +773,11 @@ static struct janus_json_parameter kick_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter mute_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0},
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter room_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
@@ -2328,6 +2353,134 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		JANUS_LOG(LOG_VERB, "Audiobridge room allowed list updated\n");
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "mute") || !strcasecmp(request_text, "unmute")) {
+		JANUS_LOG(LOG_VERB, "Attempt to mute a participant from an existing audiobridge room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, mute_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		gboolean muted = (!strcasecmp(request_text, "mute")) ? TRUE : FALSE;
+		guint64 room_id = json_integer_value(room);
+
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms, &room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto prepare_response;
+		}
+
+		janus_refcount_increase(&audiobridge->ref);
+		janus_mutex_lock(&audiobridge->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+
+		guint64 user_id = json_integer_value(id);
+		janus_audiobridge_participant *participant = g_hash_table_lookup(audiobridge->participants, &user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			JANUS_LOG(LOG_ERR, "No such user %"SCNu64" in room %"SCNu64"\n", user_id, room_id);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_USER;
+			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
+			goto prepare_response;
+		}
+
+		if(participant->muted == muted) {
+			/* If someone trying to mute an already muted user, or trying to unmute a user that is not mute), 
+			then we should do nothing */
+
+			/* Nothing to do, just prepare response */
+			response = json_object();
+			json_object_set_new(response, "audiobridge", json_string("success"));
+
+			/* Done */
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_refcount_decrease(&audiobridge->ref);
+			goto prepare_response;
+		}
+
+		participant->muted = muted;
+		if(participant->muted) {
+			JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %"SCNu64", user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
+			/* Clear the queued packets waiting to be handled */
+			janus_mutex_lock(&participant->qmutex);
+			while(participant->inbuf) {
+				GList *first = g_list_first(participant->inbuf);
+				janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
+				participant->inbuf = g_list_remove_link(participant->inbuf, first);
+				first = NULL;
+				if(pkt == NULL)
+					continue;
+				if(pkt->data)
+					g_free(pkt->data);
+				pkt->data = NULL;
+				g_free(pkt);
+				pkt = NULL;
+			}
+			janus_mutex_unlock(&participant->qmutex);
+		}
+
+		if(audiobridge != NULL) {
+			json_t *list = json_array();
+			json_t *pl = json_object();
+			json_object_set_new(pl, "id", json_integer(participant->user_id));
+			if(participant->display)
+				json_object_set_new(pl, "display", json_string(participant->display));
+			json_object_set_new(pl, "setup", g_atomic_int_get(&participant->session->started) ? json_true() : json_false());
+			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
+			json_array_append_new(list, pl);
+			json_t *pub = json_object();
+			json_object_set_new(pub, "audiobridge", json_string("event"));
+			json_object_set_new(pub, "room", json_integer(participant->room->room_id));
+			json_object_set_new(pub, "participants", list);
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, audiobridge->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_audiobridge_participant *p = value;
+				if(p == participant) {
+					continue;	/* Skip the new participant itself */
+				}
+				JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			}
+			json_decref(pub);
+		}
+
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("muted"));
+			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "id", json_integer(user_id));
+			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);
+		}
+
+		JANUS_LOG(LOG_VERB, "Muted user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
+
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+
+		/* Done */
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_refcount_decrease(&audiobridge->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
 		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing audiobridge room\n");

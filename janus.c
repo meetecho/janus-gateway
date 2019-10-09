@@ -165,7 +165,8 @@ static struct janus_json_parameter resaddr_parameters[] = {
 };
 static struct janus_json_parameter teststun_parameters[] = {
 	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"localport", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */
@@ -2236,6 +2237,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			const char *address = json_string_value(json_object_get(root, "address"));
 			uint16_t port = json_integer_value(json_object_get(root, "port"));
+			uint16_t local_port = json_integer_value(json_object_get(root, "localport"));
 			/* Resolve the address */
 			gint64 start = janus_get_monotonic_time();
 			struct addrinfo *res = NULL;
@@ -2253,8 +2255,9 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			freeaddrinfo(res);
 			/* Test the STUN server */
-			janus_network_address public_addr;
-			if(janus_ice_test_stun_server(&addr, port, &public_addr) < 0) {
+			janus_network_address public_addr = { 0 };
+			uint16_t public_port = 0;
+			if(janus_ice_test_stun_server(&addr, port, local_port, &public_addr, &public_port) < 0) {
 				ret = janus_process_error_string(request, session_id, transaction_text,
 					JANUS_ERROR_UNKNOWN, (char *)"STUN request failed");
 				goto jsondone;
@@ -2269,6 +2272,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "public_ip", json_string(public_ip));
+			json_object_set_new(reply, "public_port", json_integer(public_port));
 			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -3725,7 +3729,8 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		/* Change the current working directory */
-		if((chdir("/")) < 0) {
+		const char *cwd = (args_info.cwd_path_given) ? args_info.cwd_path_arg : "/";
+		if((chdir(cwd)) < 0) {
 			g_print("Error changing the current working directory!\n");
 			exit(1);
 		}
@@ -4765,6 +4770,15 @@ gint main(int argc, char *argv[])
 	if(!admin_api_enabled && janus_auth_is_stored_mode()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the stored token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API or set the token auth secret.\n");
 		exit(1);	/* FIXME Should we really give up? */
+	}
+
+	/* Make sure libnice is recent enough, otherwise print a warning */
+	int libnice_version = 0;
+	if(sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
+		if(libnice_version < 15) {
+			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
+				libnice_version_string);
+		}
 	}
 
 	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */

@@ -847,7 +847,8 @@ void janus_ice_deinit(void) {
 #endif
 }
 
-int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr) {
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
+		uint16_t local_port, janus_network_address *public_addr, uint16_t *public_port) {
 	if(!addr || !public_addr)
 		return -1;
 	/* Test the STUN server */
@@ -870,7 +871,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	if(addr->family == AF_INET) {
 		memset(&address4, 0, sizeof(address4));
 		address4.sin_family = AF_INET;
-		address4.sin_port = 0;
+		address4.sin_port = htons(local_port);
 		address4.sin_addr.s_addr = INADDR_ANY;
 		memset(&remote4, 0, sizeof(remote4));
 		remote4.sin_family = AF_INET;
@@ -882,7 +883,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	} else if(addr->family == AF_INET6) {
 		memset(&address6, 0, sizeof(address6));
 		address6.sin6_family = AF_INET6;
-		address6.sin6_port = 0;
+		address6.sin6_port = htons(local_port);
 		address6.sin6_addr = in6addr_any;
 		memset(&remote6, 0, sizeof(remote6));
 		remote6.sin6_family = AF_INET6;
@@ -942,18 +943,36 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+		if(janus_network_address_from_sockaddr(address, public_addr) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
 			return -1;
+		}
+		if(public_port != NULL) {
+			if(address->sa_family == AF_INET) {
+				struct sockaddr_in *addr = (struct sockaddr_in *)address;
+				*public_port = ntohs(addr->sin_port);
+			} else if(address->sa_family == AF_INET6) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)address;
+				*public_port = ntohs(addr->sin6_port);
+			}
 		}
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+		if(janus_network_address_from_sockaddr(address, public_addr) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
 			return -1;
+		}
+		if(public_port != NULL) {
+			if(address->sa_family == AF_INET) {
+				struct sockaddr_in *addr = (struct sockaddr_in *)address;
+				*public_port = ntohs(addr->sin_port);
+			} else if(address->sa_family == AF_INET6) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)address;
+				*public_port = ntohs(addr->sin6_port);
+			}
 		}
 		return 0;
 	}
@@ -990,8 +1009,8 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
 
 	/* Test the STUN server */
-	janus_network_address public_addr;
-	if(janus_ice_test_stun_server(&addr, janus_stun_port, &public_addr) < 0)
+	janus_network_address public_addr = { 0 };
+	if(janus_ice_test_stun_server(&addr, janus_stun_port, 0, &public_addr, NULL) < 0)
 		return -1;
 	if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve public address...\n");

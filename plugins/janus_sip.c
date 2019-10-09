@@ -36,7 +36,8 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \c accept, \c info , \c message , \c dtmf_info , \c recording ,
+ * \c accept, \c info , \c message , \c dtmf_info , \c subscribe ,
+ * \c unsubscribe , \c recording ,
  * \c hold , \c unhold , \c update and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
@@ -46,7 +47,9 @@
  * call on-hold and to resume it; \c info allows you to send a generic
  * SIP INFO request, while \c dtmf_info is focused on using INFO for DTMF
  * instead; \c message is the method you use to send a SIP message
- * to the other peer; \c recording is used, instead, to record the
+ * to the other peer; \c subscribe and \c unsubscribe are used to deal
+ * with SIP events, i.e., to send SUBSCRIBE requests that will result in
+ * NOTIFY asynchronous events; \c recording is used, instead, to record the
  * conversation to one or more .mjr files (depending on the direction you
  * want to record); \c update allows you to update an existing session
  * (e.g., to do a renegotiation or force an ICE restart); finally, \c hangup
@@ -166,7 +169,7 @@
 	"secret" : "<password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
 	"ha1_secret" : "<prehashed password to use to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
 	"authuser" : "<username to use to authenticate as to call, only needed in case authentication is needed and no REGISTER was sent; optional>",
-	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the application; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -273,7 +276,7 @@
 	"request" : "accept",
 	"srtp" : "<whether to mandate (sdes_mandatory) or offer (sdes_optional) SRTP support; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP OK; optional>"
-        "autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
+	"autoaccept_reinvites" : <true|false, whether we should blindly accept re-INVITEs with a 200 OK instead of relaying the SDP to the browser; optional, TRUE by default>
 }
 \endverbatim
  *
@@ -328,7 +331,8 @@
  *
 \verbatim
 {
-	"request" : "hangup"
+	"request" : "hangup",
+	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP BYE; optional>"
 }
 \endverbatim
  *
@@ -395,6 +399,36 @@
 }
 \endverbatim
  *
+ * As anticipated, SIP events are supported as well, using the SUBSCRIBE
+ * and NOTIFY mechanism. To do that, you need to use the \c subscribe
+ * request, which has to be formatted like this:
+ *
+\verbatim
+{
+	"request" : "subscribe",
+	"event" : "<the event to subscribe to, e.g., 'message-summary'; mandatory>",
+	"accept" : "<what should be put in the Accept header; optional>",
+	"to" : "<who should be the SUBSCRIBE addressed to; optional, will use the user's identity if missing>"
+}
+\endverbatim
+ *
+ * A \c subscribing event will be sent back, followed by a \c subscribe_succeeded if
+ * the SUBSCRIBE request was accepted, and a \c subscribe_failed if the transaction
+ * failed instead. Incoming SIP NOTIFY events, instead, are notified in \c notify events:
+ *
+\verbatim
+{
+	"sip" : "event",
+	"result" : {
+		"event" : "notify",
+		"notify" : "<name of the event that the user is subscribed to, e.g., 'message-summary'>",
+		"substate" : "<substate of the subscription, e.g., 'active'>",
+		"content-type" : "<content-type of the message>"
+		"content" : "<content of the message>"
+	}
+}
+\endverbatim
+ *
  * You can also record a SIP call, and it works pretty much the same the
  * VideoCall plugin does. Specifically, you make use of the \c recording
  * request to either start or stop a recording, using the following syntax:
@@ -429,6 +463,7 @@
 
 #include <sofia-sip/msg_header.h>
 #include <sofia-sip/nua.h>
+#include <sofia-sip/nua_tag.h>
 #include <sofia-sip/sdp.h>
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
@@ -525,6 +560,11 @@ static struct janus_json_parameter register_parameters[] = {
 	{"headers", JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
+static struct janus_json_parameter subscribe_parameters[] = {
+	{"to", JSON_STRING, 0},
+	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"accept", JSON_STRING, 0}
+};
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0},
 	{"outbound_proxy", JSON_STRING, 0}
@@ -571,7 +611,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL, *sdp_ip = NULL;
+static char *local_ip = NULL, *sdp_ip = NULL, *local_media_ip = NULL;
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
@@ -885,6 +925,8 @@ struct ssip_s {
 	su_root_t *s_root;
 	nua_t *s_nua;
 	nua_handle_t *s_nh_r, *s_nh_i;
+	GHashTable *subscriptions;
+	janus_mutex smutex;
 	janus_sip_session *session;
 };
 
@@ -921,8 +963,8 @@ static int janus_sip_srtp_set_local(janus_sip_session *session, gboolean video, 
 		JANUS_LOG(LOG_ERR, "[SIP-%s] Unsupported SRTP profile\n", session->account.username);
 		return -2;
 	}
-	JANUS_LOG(LOG_WARN, "[SIP-%s] %s\n", session->account.username, *profile);
-	JANUS_LOG(LOG_WARN, "[SIP-%s] Key/Salt/Master: %d/%d/%d\n",
+	JANUS_LOG(LOG_VERB, "[SIP-%s] %s\n", session->account.username, *profile);
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Key/Salt/Master: %d/%d/%d\n",
 		session->account.username, master_length, key_length, salt_length);
 	/* Generate key/salt */
 	uint8_t *key = g_malloc0(master_length);
@@ -978,7 +1020,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 	if(session == NULL || profile == NULL || crypto == NULL)
 		return -1;
 	/* Which SRTP profile is being negotiated? */
-	JANUS_LOG(LOG_WARN, "[SIP-%s] %s\n", session->account.username, profile);
+	JANUS_LOG(LOG_VERB, "[SIP-%s] %s\n", session->account.username, profile);
 	gsize key_length = 0, salt_length = 0, master_length = 0;
 	if(!strcasecmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
 		session->media.srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
@@ -1006,7 +1048,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 		JANUS_LOG(LOG_ERR, "[SIP-%s] Unsupported SRTP profile %s\n", session->account.username, profile);
 		return -2;
 	}
-	JANUS_LOG(LOG_WARN, "[SIP-%s] Key/Salt/Master: %zu/%zu/%zu\n",
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Key/Salt/Master: %zu/%zu/%zu\n",
 		session->account.username, master_length, key_length, salt_length);
 	/* Base64 decode the crypto string and set it as the remote SRTP context */
 	gsize len = 0;
@@ -1384,6 +1426,10 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
+		item = janus_config_get(config, config_general, janus_config_type_item, "local_media_ip");
+		if(item && item->value)
+			local_media_ip = g_strdup(item->value);
+
 		item = janus_config_get(config, config_general, janus_config_type_item, "sdp_ip");
 		if(item && item->value) {
 			sdp_ip = g_strdup(item->value);
@@ -1515,6 +1561,7 @@ void janus_sip_destroy(void) {
 	su_deinit();
 
 	g_free(local_ip);
+	g_free(local_media_ip);
 	g_free(sdp_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
@@ -2223,13 +2270,13 @@ static void *janus_sip_handler(void *data) {
 				ttl = JANUS_DEFAULT_REGISTER_TTL;
 
 			/* Parse display name */
-			const char* display_name_text = NULL;
+			const char *display_name_text = NULL;
 			json_t *display_name = json_object_get(root, "display_name");
 			if(display_name && json_is_string(display_name))
 				display_name_text = json_string_value(display_name);
 
 			/* Parse user agent */
-			const char* user_agent_text = NULL;
+			const char *user_agent_text = NULL;
 			json_t *user_agent = json_object_get(root, "user_agent");
 			if(user_agent && json_is_string(user_agent))
 				user_agent_text = json_string_value(user_agent);
@@ -2463,6 +2510,82 @@ static void *janus_sip_handler(void *data) {
 			nua_unregister(session->stack->s_nh_r, TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("unregistering"));
+		} else if(!strcasecmp(request_text, "subscribe")) {
+			/* Subscribe to some SIP events */
+			JANUS_VALIDATE_JSON_OBJECT(root, subscribe_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			if(session->account.registration_status < janus_sip_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
+				goto error;
+			}
+			const char *to = json_string_value(json_object_get(root, "to"));
+			if(to == NULL)
+				to = session->account.identity;
+			const char *event_type = json_string_value(json_object_get(root, "event"));
+			const char *accept = json_string_value(json_object_get(root, "accept"));
+			/* Do we have a handle for this subscription already? */
+			janus_mutex_lock(&session->stack->smutex);
+			nua_handle_t *nh = NULL;
+			if(session->stack->subscriptions != NULL)
+				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
+			if(nh == NULL) {
+				/* We don't, create one now */
+				nh = nua_handle(session->stack->s_nua, session, TAG_END());
+				if(session->stack->subscriptions == NULL) {
+					/* We still need a table for mapping these subscriptions as well */
+					session->stack->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+						(GDestroyNotify)g_free, (GDestroyNotify)nua_handle_destroy);
+				}
+				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
+			}
+			janus_mutex_unlock(&session->stack->smutex);
+			/* Send the SUBSCRIBE */
+			nua_subscribe(nh,
+				SIPTAG_TO_STR(to),
+				SIPTAG_EVENT_STR(event_type),
+				SIPTAG_ACCEPT_STR(accept),
+				TAG_END());
+			result = json_object();
+			json_object_set_new(result, "event", json_string("subscribing"));
+		} else if(!strcasecmp(request_text, "unsubscribe")) {
+			/* Unsubscribe from some SIP events */
+			JANUS_VALIDATE_JSON_OBJECT(root, subscribe_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			if(session->account.registration_status < janus_sip_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
+				goto error;
+			}
+			const char *to = json_string_value(json_object_get(root, "to"));
+			if(to == NULL)
+				to = session->account.identity;
+			const char *event_type = json_string_value(json_object_get(root, "event"));
+			/* Get the handle we used for this subscription */
+			janus_mutex_lock(&session->stack->smutex);
+			nua_handle_t *nh = NULL;
+			if(session->stack->subscriptions != NULL)
+				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
+			janus_mutex_unlock(&session->stack->smutex);
+			if(nh == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not subscribed to this event)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not subscribed to this event)");
+				goto error;
+			}
+			/* Send the SUBSCRIBE with Expires set to 0 */
+			nua_subscribe(nh, SIPTAG_TO_STR(to), SIPTAG_EVENT_STR(event_type),
+				SIPTAG_EXPIRES_STR("0"), TAG_END());
+			result = json_object();
+			json_object_set_new(result, "event", json_string("unsubscribing"));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->stack == NULL) {
@@ -2746,7 +2869,12 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 			}
-			if(session->media.require_srtp && (!session->media.has_srtp_remote_audio || !session->media.has_srtp_remote_video)) {
+			gboolean has_srtp = TRUE;
+			if(session->media.has_audio)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_audio);
+			if(session->media.has_video)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
+			if(session->media.require_srtp && !has_srtp) {
 				JANUS_LOG(LOG_ERR, "Can't accept the call: SDES-SRTP required, but caller didn't offer it\n");
 				error_code = JANUS_SIP_ERROR_TOO_STRICT;
 				g_snprintf(error_cause, 512, "Can't accept the call: SDES-SRTP required, but caller didn't offer it");
@@ -3113,7 +3241,11 @@ static void *janus_sip_handler(void *data) {
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			janus_sip_call_update_status(session, janus_sip_call_status_closing);
-			nua_bye(session->stack->s_nh_i, TAG_END());
+			char custom_headers[2048];
+			janus_sip_parse_custom_headers(root, (char *)&custom_headers);
+			nua_bye(session->stack->s_nh_i,
+			    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+			    TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
@@ -3513,8 +3645,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "event", json_string("hangup"));
 				json_object_set_new(calling, "code", json_integer(status));
 				json_object_set_new(calling, "reason", json_string(phrase ? phrase : ""));
-                		if(session->hangup_reason_header)
-                    			json_object_set_new(calling, "reason_header", json_string(session->hangup_reason_header));
+				if(session->hangup_reason_header)
+					json_object_set_new(calling, "reason_header", json_string(session->hangup_reason_header));
 				json_object_set_new(call, "result", calling);
 				json_object_set_new(call, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
@@ -3529,8 +3661,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "code", json_integer(status));
 					if(phrase)
 						json_object_set_new(info, "reason", json_string(phrase));
-                    			if(session->hangup_reason_header)
-                        			json_object_set_new(info, "reason_header", json_string(session->hangup_reason_header));
+					if(session->hangup_reason_header)
+						json_object_set_new(info, "reason_header", json_string(session->hangup_reason_header));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
@@ -3543,8 +3675,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->callid = NULL;
 				g_free(session->transaction);
 				session->transaction = NULL;
-                		g_free(session->hangup_reason_header);
-                		session->hangup_reason_header = NULL;
+				g_free(session->hangup_reason_header);
+				session->hangup_reason_header = NULL;
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established))
 					gateway->close_pc(session->handle);
 			} else if(session->stack->s_nh_i == nh && callstate == nua_callstate_calling && session->status == janus_sip_call_status_incall) {
@@ -3574,18 +3706,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_bye: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-            		if(sip->sip_reason && sip->sip_reason->re_text) {
-                		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-                		janus_sip_remove_quotes(session->hangup_reason_header);
-            		}
+			if(sip->sip_reason && sip->sip_reason->re_text) {
+				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
+				janus_sip_remove_quotes(session->hangup_reason_header);
+			}
 			break;
 		}
 		case nua_i_cancel: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-            		if(sip->sip_reason && sip->sip_reason->re_text) {
-                		session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
-                		janus_sip_remove_quotes(session->hangup_reason_header);
-            		}
+			if(sip->sip_reason && sip->sip_reason->re_text) {
+				session->hangup_reason_header = g_strdup(sip->sip_reason->re_text);
+				janus_sip_remove_quotes(session->hangup_reason_header);
+			}
 			break;
 		}
 		case nua_i_invite: {
@@ -3694,10 +3826,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 			}
 			if(reinvite && session->media.autoaccept_reinvites) {
-				/* No need to involve the browser: we reply ourselves */
+				/* No need to involve the application: we reply ourselves */
 				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 				janus_sdp_destroy(sdp);
 				break;
+			}
+			/* Check if there's an isfocus feature parameter in the Contact header */
+			gboolean is_focus = FALSE;
+			if(sip->sip_contact && sip->sip_contact->m_params) {
+				int i=0;
+				for(i=0; sip->sip_contact->m_params[i]; i++) {
+					if(!strcasecmp(sip->sip_contact->m_params[i], "isfocus")) {
+						/* The peer is a conference bridge */
+						is_focus = TRUE;
+						break;
+					}
+				}
 			}
 			/* If this is a re-INVITE, take note of that */
 			if(reinvite) {
@@ -3706,7 +3850,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinvited);
 			}
 
-			/* Notify the browser about the new incoming call or re-INVITE */
+			/* Notify the application about the new incoming call or re-INVITE */
 			json_t *jsep = NULL;
 			if(sdp)
 				jsep = json_pack("{ssss}", "type", "offer", "sdp", sip->sip_payload->pl_data);
@@ -3718,6 +3862,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip->sip_from && sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}
+			if(is_focus)
+				json_object_set_new(calling, "isfocus", json_true());
 			if(sdp && (session->media.has_srtp_remote_audio || session->media.has_srtp_remote_video)) {
 				/* FIXME Maybe a true/false instead? */
 				json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
@@ -3752,7 +3898,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
 			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				nua_respond(nh, 488, sip_status_phrase(488),
+					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
 			const char *type = sip->sip_content_type->c_type;
@@ -3775,14 +3922,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(info);
 			/* Send a 200 back */
-			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+			nua_respond(nh, 200, sip_status_phrase(200),
+				NUTAG_WITH_CURRENT(nua), TAG_END());
 			break;
 		}
 		case nua_i_message: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* We expect a payload */
 			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
-				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				nua_respond(nh, 488, sip_status_phrase(488),
+					NUTAG_WITH_CURRENT(nua), TAG_END());
 				return;
 			}
 			char *payload = sip->sip_payload->pl_data;
@@ -3802,6 +3951,42 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(message);
+			/* Send a 200 back */
+			nua_respond(nh, 200, sip_status_phrase(200),
+				NUTAG_WITH_CURRENT(nua), TAG_END());
+			break;
+		}
+		case nua_i_notify: {
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* We expect a payload */
+			if(!sip) {
+				/* No SIP message? Maybe an internal message? */
+				return;
+			}
+			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
+				/* Send a 200 back and ignore the message */
+				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+				return;
+			}
+			/* Notify the application */
+			json_t *notify = json_object();
+			json_object_set_new(notify, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("notify"));
+			if(sip->sip_event != NULL)
+				json_object_set_new(result, "notify", json_string(sip->sip_event->o_type));
+			const tagi_t *t = tl_find(tags, nutag_substate);
+			if(t != NULL) {
+				enum nua_substate substate = (enum nua_substate)(t ? t->t_value : 0);
+				json_object_set_new(result, "substate", json_string(nua_substate_name(substate)));
+			}
+			if(sip->sip_content_type != NULL)
+				json_object_set_new(result, "content-type", json_string(sip->sip_content_type->c_type));
+			json_object_set_new(result, "content", json_string(sip->sip_payload->pl_data));
+			json_object_set_new(notify, "result", result);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, notify, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(notify);
 			/* Send a 200 back */
 			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 			break;
@@ -3878,15 +4063,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				}
 			} else if(status == 401 || status == 407) {
-				const char* scheme;
-				const char* realm;
+				const char *scheme = NULL;
+				const char *realm = NULL;
 				if(status == 401) {
- 					/* Get scheme/realm from 401 error */
+					/* Get scheme/realm from 401 error */
 					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
 					scheme = www_auth->au_scheme;
 					realm = msg_params_find(www_auth->au_params, "realm=");
 				} else {
- 					/* Get scheme/realm from 407 error, proxy-auth */
+					/* Get scheme/realm from 407 error, proxy-auth */
 					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
 					scheme = proxy_auth->au_scheme;
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
@@ -3965,8 +4150,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gboolean update = session->media.ready;
 			janus_sip_sdp_process(session, sdp, TRUE, update, &changed);
 			/* If we asked for SRTP and are not getting it, fail */
-			if(session->media.require_srtp && (!session->media.has_srtp_remote_audio || !session->media.has_srtp_remote_video)) {
-				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
+			gboolean has_srtp = TRUE;
+			if(session->media.has_audio)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_audio);
+			if(session->media.has_video)
+				has_srtp = (has_srtp && session->media.has_srtp_remote_video);
+			if(session->media.require_srtp && !has_srtp) {
+				JANUS_LOG(LOG_ERR, "We asked for mandatory SRTP but didn't get any in the reply!\n");
 				janus_sdp_destroy(sdp);
 				/* Hangup immediately */
 				session->media.earlymedia = FALSE;
@@ -4006,7 +4196,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			if(update && !session->media.earlymedia && !session->media.update) {
-				/* Don't push to the browser if this is in response to a hold/unhold we sent ourselves */
+				/* Don't push to the application if this is in response to a hold/unhold we sent ourselves */
 				JANUS_LOG(LOG_VERB, "This is an update to an existing call (possibly in response to hold/unhold)\n");
 				break;
 			}
@@ -4023,7 +4213,19 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
-			/* Send event back to the browser */
+			/* Check if there's an isfocus feature parameter in the Contact header */
+			gboolean is_focus = FALSE;
+			if(sip->sip_contact && sip->sip_contact->m_params) {
+				int i=0;
+				for(i=0; sip->sip_contact->m_params[i]; i++) {
+					if(!strcasecmp(sip->sip_contact->m_params[i], "isfocus")) {
+						/* The peer is a conference bridge */
+						is_focus = TRUE;
+						break;
+					}
+				}
+			}
+			/* Send event back to the application */
 			json_t *jsep = NULL;
 			if(!session->media.earlymedia) {
 				jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
@@ -4040,6 +4242,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string(in_progress ? "progress" : "accepted"));
 			json_object_set_new(calling, "username", json_string(session->callee));
+			if(is_focus)
+				json_object_set_new(calling, "isfocus", json_true());
 			json_object_set_new(call, "result", calling);
 			json_object_set_new(call, "call_id", json_string(session->callid));
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, jsep);
@@ -4074,7 +4278,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 				const char *event_name = (event == nua_r_register ? "registered" : "unregistered");
 				JANUS_LOG(LOG_VERB, "Successfully %s\n", event_name);
-				/* Notify the browser */
+				/* Notify the application */
 				json_t *reg = json_object();
 				json_object_set_new(reg, "sip", json_string("event"));
 				json_t *reging = json_object();
@@ -4096,15 +4300,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			} else if(status == 401 || status == 407) {
-				const char* scheme;
-				const char* realm;
+				const char *scheme = NULL;
+				const char *realm = NULL;
 				if(status == 401) {
- 					/* Get scheme/realm from 401 error */
+					/* Get scheme/realm from 401 error */
 					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
 					scheme = www_auth->au_scheme;
 					realm = msg_params_find(www_auth->au_params, "realm=");
 				} else {
- 					/* Get scheme/realm from 407 error, proxy-auth */
+					/* Get scheme/realm from 407 error, proxy-auth */
 					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
 					scheme = proxy_auth->au_scheme;
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
@@ -4175,7 +4379,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					g_free(session->account.user_agent);
 				session->account.user_agent = NULL;
 				session->account.registration_status = janus_sip_registration_status_unregistered;
-				/* Tell the browser... */
+				/* Tell the application... */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
 				json_t *result = json_object();
@@ -4194,6 +4398,80 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "reason", json_string(phrase ? phrase : ""));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
+			}
+			break;
+		}
+		case nua_r_subscribe: {
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			if(status == 200 || status == 202) {
+				/* Success */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("subscribe_succeeded"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
+			} else if(status == 401 || status == 407) {
+				const char *scheme = NULL;
+				const char *realm = NULL;
+				if(status == 401) {
+					/* Get scheme/realm from 401 error */
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+					/* Get scheme/realm from 407 error, proxy-auth */
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					/* The authuser contains a colon: wrap it in quotes */
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					/* The secret contains a colon: wrap it in quotes */
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
+				char auth[256];
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
+					authuser,
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					secret);
+				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
+				/* Authenticate */
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+				break;
+			} else if(status >= 400) {
+				/* Something went wrong */
+				JANUS_LOG(LOG_WARN, "[%s] SUBSCRIBE failed: %d %s\n", session->account.username, status, phrase ? phrase : "");
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("subscribe_failed"));
+				json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
 			}
 			break;
 		}
@@ -4356,7 +4634,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 	if(sdp->c_addr) {
 		g_free(sdp->c_addr);
-		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+		sdp->c_addr = g_strdup(sdp_ip ? sdp_ip : (local_media_ip ? local_media_ip : local_ip));
 	}
 	GList *temp = sdp->m_lines;
 	while(temp) {
@@ -4387,7 +4665,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 			}
 		}
 		g_free(m->c_addr);
-		m->c_addr = g_strdup(sdp_ip ? sdp_ip : local_ip);
+		m->c_addr = g_strdup(sdp_ip ? sdp_ip : (local_media_ip ? local_media_ip : local_ip));
 		if(answer && (m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO)) {
 			/* Check which codec was negotiated eventually */
 			int pt = -1;
@@ -4467,7 +4745,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				rtp_port++;	/* Pick an even port for RTP */
 			audio_rtp_address.sin_family = AF_INET;
 			audio_rtp_address.sin_port = htons(rtp_port);
-			inet_pton(AF_INET, local_ip, &audio_rtp_address.sin_addr.s_addr);
+			inet_pton(AF_INET, (local_media_ip ? local_media_ip : local_ip), &audio_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.audio_rtp_fd, (struct sockaddr *)(&audio_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTP (port %d), trying a different one...\n", rtp_port);
 				close(session->media.audio_rtp_fd);
@@ -4475,11 +4753,11 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Audio RTP listener bound to port %d\n", rtp_port);
+			JANUS_LOG(LOG_VERB, "Audio RTP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtp_port, session->media.audio_rtp_fd);
 			int rtcp_port = rtp_port+1;
 			audio_rtcp_address.sin_family = AF_INET;
 			audio_rtcp_address.sin_port = htons(rtcp_port);
-			inet_pton(AF_INET, local_ip, &audio_rtcp_address.sin_addr.s_addr);
+			inet_pton(AF_INET, (local_media_ip ? local_media_ip : local_ip), &audio_rtcp_address.sin_addr.s_addr);
 			if(bind(session->media.audio_rtcp_fd, (struct sockaddr *)(&audio_rtcp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
@@ -4490,7 +4768,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Audio RTCP listener bound to port %d\n", rtcp_port);
+			JANUS_LOG(LOG_VERB, "Audio RTCP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtcp_port, session->media.audio_rtcp_fd);
 			session->media.local_audio_rtp_port = rtp_port;
 			session->media.local_audio_rtcp_port = rtcp_port;
 		}
@@ -4516,7 +4794,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				rtp_port++;	/* Pick an even port for RTP */
 			video_rtp_address.sin_family = AF_INET;
 			video_rtp_address.sin_port = htons(rtp_port);
-			inet_pton(AF_INET, local_ip, &video_rtp_address.sin_addr.s_addr);
+			inet_pton(AF_INET, (local_media_ip ? local_media_ip : local_ip), &video_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.video_rtp_fd, (struct sockaddr *)(&video_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTP (port %d), trying a different one...\n", rtp_port);
 				close(session->media.video_rtp_fd);
@@ -4524,11 +4802,11 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Video RTP listener bound to port %d\n", rtp_port);
+			JANUS_LOG(LOG_VERB, "Video RTP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtp_port, session->media.video_rtp_fd);
 			int rtcp_port = rtp_port+1;
 			video_rtcp_address.sin_family = AF_INET;
 			video_rtcp_address.sin_port = htons(rtcp_port);
-			inet_pton(AF_INET, local_ip, &video_rtcp_address.sin_addr.s_addr);
+			inet_pton(AF_INET, (local_media_ip ? local_media_ip : local_ip), &video_rtcp_address.sin_addr.s_addr);
 			if(bind(session->media.video_rtcp_fd, (struct sockaddr *)(&video_rtcp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
@@ -4539,7 +4817,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Video RTCP listener bound to port %d\n", rtcp_port);
+			JANUS_LOG(LOG_VERB, "Video RTCP listener bound to %s:%d(%d)\n", (local_media_ip ? local_media_ip : local_ip), rtcp_port, session->media.video_rtcp_fd);
 			session->media.local_video_rtp_port = rtp_port;
 			session->media.local_video_rtcp_port = rtcp_port;
 		}
@@ -4815,7 +5093,7 @@ static void *janus_sip_relay_thread(void *data) {
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
-				/* FIXME Simulate a "hangup" coming from the browser */
+				/* FIXME Simulate a "hangup" coming from the application */
 				janus_sip_hangup_media(session->handle);
 				break;
 			} else if(fds[i].revents & POLLIN) {
@@ -4865,7 +5143,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
-					/* Relay to browser */
+					/* Relay to application */
 					gateway->relay_rtp(session->handle, 0, buffer, bytes);
 					continue;
 				} else if(session->media.audio_rtcp_fd != -1 && fds[i].fd == session->media.audio_rtcp_fd) {
@@ -4888,7 +5166,7 @@ static void *janus_sip_relay_thread(void *data) {
 						}
 						bytes = buflen;
 					}
-					/* Relay to browser */
+					/* Relay to application */
 					gateway->relay_rtcp(session->handle, 0, buffer, bytes);
 					continue;
 				} else if(session->media.video_rtp_fd != -1 && fds[i].fd == session->media.video_rtp_fd) {
@@ -4930,7 +5208,7 @@ static void *janus_sip_relay_thread(void *data) {
 					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
-					/* Relay to browser */
+					/* Relay to application */
 					gateway->relay_rtp(session->handle, 1, buffer, bytes);
 					continue;
 				} else if(session->media.video_rtcp_fd != -1 && fds[i].fd == session->media.video_rtcp_fd) {
@@ -4953,7 +5231,7 @@ static void *janus_sip_relay_thread(void *data) {
 						}
 						bytes = buflen;
 					}
-					/* Relay to browser */
+					/* Relay to application */
 					gateway->relay_rtcp(session->handle, 1, buffer, bytes);
 					continue;
 				}
@@ -4990,6 +5268,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nh_r = NULL;
 	session->stack->s_nh_i = NULL;
 	session->stack->s_root = su_root_create(session->stack);
+	session->stack->subscriptions = NULL;
+	janus_mutex_init(&session->stack->smutex);
 	su_home_init(session->stack->s_home);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
@@ -5011,7 +5291,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS, UPDATE, MESSAGE, INFO"),
+				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS, UPDATE, MESSAGE, INFO, NOTIFY"),
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
@@ -5027,6 +5307,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_root = NULL;
 	su_home_deinit(session->stack->s_home);
 	su_home_unref(session->stack->s_home);
+	janus_mutex_lock(&session->stack->smutex);
+	if(session->stack->subscriptions != NULL)
+		g_hash_table_unref(session->stack->subscriptions);
+	session->stack->subscriptions = NULL;
+	janus_mutex_unlock(&session->stack->smutex);
 	g_free(session->stack);
 	session->stack = NULL;
 	janus_refcount_decrease(&session->ref);

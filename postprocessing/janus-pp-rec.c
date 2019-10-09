@@ -67,6 +67,10 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   7=maximum debug level; default=4)
   -D, --debug-timestamps        Enable debug/logging timestamps  (default=off)
   -o, --disable-colors          Disable color in the logging  (default=off)
+  -f, --format=STRING           Specifies the output format (overrides the
+                                  format from the destination)  (possible
+                                  values="opus", "wav", "webm", "mp4",
+                                  "srt")
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -110,6 +114,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
+gboolean janus_faststart = FALSE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 static char *metadata = NULL;
@@ -176,6 +181,7 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			ignore_first_packets = val;
 	}
+
 	if(args_info.audiolevel_ext_given || (g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL)) {
 		int val = args_info.audiolevel_ext_given ? args_info.audiolevel_ext_arg : atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT"));
 		if(val >= 0)
@@ -186,6 +192,13 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			video_orient_extmap_id = val;
 	}
+	char *extension = NULL;
+	if(args_info.format_given || (g_getenv("JANUS_PPREC_FORMAT") != NULL)) {
+		extension = g_strdup(args_info.format_given ? args_info.format_arg : g_getenv("JANUS_PPREC_FORMAT"));
+	}
+	if(args_info.faststart_given)
+		janus_faststart = TRUE;
+
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -205,7 +218,8 @@ int main(int argc, char *argv[])
 				(strcmp(setting, "-i")) && (strcmp(setting, "--ignore-first")) &&
 				(strcmp(setting, "-a")) && (strcmp(setting, "--audiolevel-ext")) &&
 				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
-				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level"))
+				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
+				(strcmp(setting, "-f")) && (strcmp(setting, "--format"))
 		)) {
 			if(source == NULL)
 				source = argv[i];
@@ -247,8 +261,7 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "\n");
 	}
 
-	char *extension = NULL;
-	if(destination != NULL) {
+	if((destination != NULL) && (extension == NULL)) {
 		/* Check the extension of the target file */
 		extension = strrchr(destination, '.');
 		if(extension == NULL) {
@@ -257,15 +270,23 @@ int main(int argc, char *argv[])
 			cmdline_parser_free(&args_info);
 			exit(1);
 		}
-		if(strcasecmp(extension, ".opus") && strcasecmp(extension, ".wav") &&
-				strcasecmp(extension, ".webm") && strcasecmp(extension, ".mp4") &&
-				strcasecmp(extension, ".srt")) {
+		extension++;
+		if(strcasecmp(extension, "opus") && strcasecmp(extension, "wav") &&
+				strcasecmp(extension, "webm") && strcasecmp(extension, "mp4") &&
+				strcasecmp(extension, "srt")) {
 			/* Unsupported extension? */
 			JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
 			cmdline_parser_free(&args_info);
 			exit(1);
 		}
 	}
+
+	if (janus_faststart && strcasecmp(extension, "mp4")) {
+		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
+		cmdline_parser_free(&args_info);
+		exit(1);
+	}
+
 	FILE *file = fopen(source, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not open file %s\n", source);
@@ -336,7 +357,7 @@ int main(int argc, char *argv[])
 					video = TRUE;
 					data = FALSE;
 					vp8 = TRUE;
-					if(extension && strcasecmp(extension, ".webm")) {
+					if(extension && strcasecmp(extension, "webm")) {
 						JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -346,7 +367,7 @@ int main(int argc, char *argv[])
 					video = FALSE;
 					data = FALSE;
 					opus = TRUE;
-					if(extension && strcasecmp(extension, ".opus")) {
+					if(extension && strcasecmp(extension, "opus")) {
 						JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -355,7 +376,7 @@ int main(int argc, char *argv[])
 					JANUS_LOG(LOG_INFO, "This is a text data recording, assuming SRT\n");
 					video = FALSE;
 					data = TRUE;
-					if(extension && strcasecmp(extension, ".srt")) {
+					if(extension && strcasecmp(extension, "srt")) {
 						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -438,21 +459,21 @@ int main(int argc, char *argv[])
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
 						vp8 = TRUE;
-						if(extension && strcasecmp(extension, ".webm")) {
+						if(extension && strcasecmp(extension, "webm")) {
 							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "vp9")) {
 						vp9 = TRUE;
-						if(extension && strcasecmp(extension, ".webm")) {
+						if(extension && strcasecmp(extension, "webm")) {
 							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "h264")) {
 						h264 = TRUE;
-						if(extension && strcasecmp(extension, ".mp4")) {
+						if(extension && strcasecmp(extension, "mp4")) {
 							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -465,21 +486,21 @@ int main(int argc, char *argv[])
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
 						opus = TRUE;
-						if(extension && strcasecmp(extension, ".opus")) {
+						if(extension && strcasecmp(extension, "opus")) {
 							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
-						if(extension && strcasecmp(extension, ".wav")) {
+						if(extension && strcasecmp(extension, "wav")) {
 							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
 					} else if(!strcasecmp(c, "g722")) {
 						g722 = TRUE;
-						if(extension && strcasecmp(extension, ".wav")) {
+						if(extension && strcasecmp(extension, "wav")) {
 							JANUS_LOG(LOG_ERR, "G.722 RTP packets can only be converted to a .wav file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
@@ -495,7 +516,7 @@ int main(int argc, char *argv[])
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
-					if(extension && strcasecmp(extension, ".srt")) {
+					if(extension && strcasecmp(extension, "srt")) {
 						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
 						cmdline_parser_free(&args_info);
 						exit(1);
@@ -903,7 +924,7 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination, metadata) < 0) {
+			if(janus_pp_h264_create(destination, metadata, janus_faststart) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);

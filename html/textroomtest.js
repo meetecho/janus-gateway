@@ -285,7 +285,7 @@ function registerUsername() {
 					// This is a "no such room" error: give a more meaningful description
 					bootbox.alert(
 						"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
-						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.cfg</code> " +
+						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.jcfg</code> " +
 						"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
 						"from that sample in your current configuration file, then restart Janus and try again."
 					);

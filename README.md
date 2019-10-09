@@ -246,6 +246,8 @@ or on the command line:
                                   (default=none)
 	-N, --disable-stdout          Disable stdout based logging  (default=off)
 	-L, --log-file=path           Log to the specified file (default=stdout only)
+	-H  --cwd-path                Working directory for Janus daemon process
+	                              (default=/)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use

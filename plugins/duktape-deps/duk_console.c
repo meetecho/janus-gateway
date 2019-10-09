@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include "duktape.h"
 #include "duk_console.h"
+#include "../../debug.h"
 
 /* XXX: Add some form of log level filtering. */
 
@@ -20,9 +21,8 @@
 
 /* XXX: Init console object using duk_def_prop() when that call is available. */
 
-static duk_ret_t duk__console_log_helper(duk_context *ctx, const char *error_name) {
-	duk_uint_t flags = (duk_uint_t) duk_get_current_magic(ctx);
-	FILE *output = (flags & DUK_CONSOLE_STDOUT_ONLY) ? stdout : stderr;
+static duk_ret_t duk__console_log_helper(duk_context *ctx, int level, const char *error_name) {
+
 	duk_idx_t n = duk_get_top(ctx);
 	duk_idx_t i;
 
@@ -53,10 +53,8 @@ static duk_ret_t duk__console_log_helper(duk_context *ctx, const char *error_nam
 		duk_get_prop_string(ctx, -1, "stack");
 	}
 
-	fprintf(output, "%s\n", duk_to_string(ctx, -1));
-	if (flags & DUK_CONSOLE_FLUSH) {
-		fflush(output);
-	}
+	JANUS_LOG(level, "%s\n", duk_to_string(ctx, -1));
+
 	return 0;
 }
 
@@ -66,32 +64,32 @@ static duk_ret_t duk__console_assert(duk_context *ctx) {
 	}
 	duk_remove(ctx, 0);
 
-	return duk__console_log_helper(ctx, "AssertionError");
+	return duk__console_log_helper(ctx, LOG_ERR, "AssertionError");
 }
 
 static duk_ret_t duk__console_log(duk_context *ctx) {
-	return duk__console_log_helper(ctx, NULL);
+	return duk__console_log_helper(ctx, LOG_INFO, NULL);
 }
 
 static duk_ret_t duk__console_trace(duk_context *ctx) {
-	return duk__console_log_helper(ctx, "Trace");
+	return duk__console_log_helper(ctx, LOG_INFO, "Trace");
 }
 
 static duk_ret_t duk__console_info(duk_context *ctx) {
-	return duk__console_log_helper(ctx, NULL);
+	return duk__console_log_helper(ctx, LOG_INFO, NULL);
 }
 
 static duk_ret_t duk__console_warn(duk_context *ctx) {
-	return duk__console_log_helper(ctx, NULL);
+	return duk__console_log_helper(ctx, LOG_WARN, NULL);
 }
 
 static duk_ret_t duk__console_error(duk_context *ctx) {
-	return duk__console_log_helper(ctx, "Error");
+	return duk__console_log_helper(ctx, LOG_ERR, "Error");
 }
 
 static duk_ret_t duk__console_dir(duk_context *ctx) {
 	/* For now, just share the formatting of .log() */
-	return duk__console_log_helper(ctx, 0);
+	return duk__console_log_helper(ctx, LOG_INFO, 0);
 }
 
 static void duk__console_reg_vararg_func(duk_context *ctx, duk_c_function func, const char *name, duk_uint_t flags) {

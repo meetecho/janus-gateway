@@ -634,6 +634,19 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * When configuring the room to request the ssrc-audio-level RTP extension,
+ * ad-hoc events might be sent to all publishers if \c audiolevel_event is
+ * set to true. These events will have the following format:
+ *
+\verbatim
+{
+	"videoroom" : <"talking"|"stopped-talking", whether the publisher started or stopped talking>,
+	"room" : <unique numeric ID of the room the publisher is in>,
+	"id" : <unique numeric ID of the publisher>,
+	"audio-level-dBov-avg" : <average value of audio level, 127=muted, 0='too loud'>
+}
+\endverbatim
+ *
  * An interesting feature VideoRoom publisher can take advantage of is
  * RTP forwarding. In fact, while the main purpose of this plugin is
  * getting media from WebRTC sources (publishers) and relaying it to
@@ -2429,6 +2442,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			session->participant = NULL;
 			if(s->room) {
 				janus_refcount_decrease(&s->room->ref);
+				janus_refcount_decrease(&s->ref);
 			}
 			janus_videoroom_subscriber_destroy(s);
 		}
@@ -2555,7 +2569,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_modify, gboo
 			g_snprintf(error_cause, error_cause_size, "No such room (%"SCNu64")", room_id);
 		return error_code;
 	}
-	if((*videoroom)->destroyed) {
+	if(g_atomic_int_get(&((*videoroom)->destroyed))) {
 		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 		if(error_cause)
@@ -4219,7 +4233,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			participant->audio_dBov_level = level;
 			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
 				gboolean notify_talk_event = FALSE;
-				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
+				float audio_dBov_avg = (float)participant->audio_dBov_sum/(float)participant->audio_active_packets;
+				if(audio_dBov_avg < videoroom->audio_level_average) {
 					/* Participant talking, should we notify all participants? */
 					if(!participant->talking)
 						notify_talk_event = TRUE;
@@ -4239,6 +4254,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					json_object_set_new(event, "videoroom", json_string(participant->talking ? "talking" : "stopped-talking"));
 					json_object_set_new(event, "room", json_integer(videoroom->room_id));
 					json_object_set_new(event, "id", json_integer(participant->user_id));
+					json_object_set_new(event, "audio-level-dBov-avg", json_real(audio_dBov_avg));
 					janus_videoroom_notify_participants(participant, event);
 					json_decref(event);
 					janus_mutex_unlock(&videoroom->mutex);
@@ -4248,6 +4264,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 						json_object_set_new(info, "videoroom", json_string(participant->talking ? "talking" : "stopped-talking"));
 						json_object_set_new(info, "room", json_integer(videoroom->room_id));
 						json_object_set_new(info, "id", json_integer(participant->user_id));
+						json_object_set_new(event, "audio-level-dBov-avg", json_real(audio_dBov_avg));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
@@ -4750,12 +4767,15 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
 	/* TODO: are we sure this is okay as other handlers use feed directly without synchronization */
 	if(s->feed)
 		g_clear_pointer(&s->feed, janus_videoroom_publisher_dereference_by_subscriber);
-	if(s->room)
-		g_clear_pointer(&s->room, janus_videoroom_room_dereference);
-	if(s->session && s->close_pc)
-		gateway->close_pc(s->session->handle);
-	/* Done with the subscriber and free its reference */
-	janus_refcount_decrease(&s->ref);
+	/* Only "leave" the room if we're closing the PeerConnection at this point */
+	if(s->close_pc) {
+		if(s->room)
+			g_clear_pointer(&s->room, janus_videoroom_room_dereference);
+		if(s->session)
+			gateway->close_pc(s->session->handle);
+		/* Remove the reference we added when "joining" the room */
+		janus_refcount_decrease(&s->ref);
+	}
 }
 
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
@@ -5515,7 +5535,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(display_event, "videoroom", json_string("event"));
 					json_object_set_new(display_event, "id", json_integer(participant->user_id));
 					json_object_set_new(display_event, "display", json_string(participant->display));
-					if(participant->room && !participant->room->destroyed) {
+					if(participant->room && !g_atomic_int_get(&participant->room->destroyed)) {
 						janus_videoroom_notify_participants(participant, display_event);
 					}
 					janus_mutex_unlock(&participant->room->mutex);
