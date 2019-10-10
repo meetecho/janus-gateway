@@ -219,6 +219,8 @@ AC_ARG_ENABLE([all-loggers],
               [
                AS_IF([test "x$enable_json_logger" != "xyes"],
                      [enable_json_logger=no])
+               AS_IF([test "x$enable_homer_logger" != "xyes"],
+                     [enable_homer_logger=no])
               ],
               [])
 
@@ -316,6 +318,13 @@ AC_ARG_ENABLE([json-logger],
               [AS_IF([test "x$enable_json_logger" != "xyes"],
                      [enable_json_logger=no])],
               [enable_json_logger=no])
+
+AC_ARG_ENABLE([homer-logger],
+              [AS_HELP_STRING([--enable-homer-logger],
+                              [Enable external Homer logger via HEP ])],
+              [AS_IF([test "x$enable_homer_logger" != "xyes"],
+                     [enable_homer_logger=no])],
+              [enable_homer_logger=no])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -624,6 +633,7 @@ AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
+AM_CONDITIONAL([ENABLE_HOMERLOGGER], [test "x$enable_homer_logger" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -1090,6 +1100,9 @@ echo "External loggers:"
 AM_COND_IF([ENABLE_JSONLOGGER],
 	[echo "    JSON file logger:      yes"],
 	[echo "    JSON file logger:      no"])
+AM_COND_IF([ENABLE_HOMERLOGGER],
+	[echo "    Homer logger via HEP:  yes"],
+	[echo "    Homer logger via HEP:  no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"

@@ -387,6 +387,16 @@ conf_DATA += conf/janus.logger.jsonlog.jcfg.sample
 EXTRA_DIST += conf/janus.logger.jsonlog.jcfg.sample
 endif
 
+if ENABLE_HOMERLOGGER
+logger_LTLIBRARIES += loggers/libjanus_homerlog.la
+loggers_libjanus_homerlog_la_SOURCES = loggers/janus_homerlog.c
+loggers_libjanus_homerlog_la_CFLAGS = $(loggers_cflags)
+loggers_libjanus_homerlog_la_LDFLAGS = $(loggers_ldflags)
+loggers_libjanus_homerlog_la_LIBADD = $(loggers_libadd)
+conf_DATA += conf/janus.logger.homerlog.jcfg.sample
+EXTRA_DIST += conf/janus.logger.homerlog.jcfg.sample
+endif
+
 ##
 # Plugins
 ##
