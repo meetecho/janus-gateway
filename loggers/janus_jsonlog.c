@@ -101,7 +101,7 @@ static char *logfilename = NULL;
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
-/* Error codes (for the tweaking via Admin API */
+/* Error codes for the Admin API interaction */
 #define JANUS_JSONLOG_ERROR_INVALID_REQUEST		411
 #define JANUS_JSONLOG_ERROR_MISSING_ELEMENT		412
 #define JANUS_JSONLOG_ERROR_INVALID_ELEMENT		413
