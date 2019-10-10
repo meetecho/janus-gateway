@@ -177,7 +177,7 @@ void janus_vprintf(const char *format, ...) {
 	int len;
 	va_list ap, ap2;
 	janus_log_buffer *b = janus_log_getbuf();
-	b->timestamp = janus_get_monotonic_time();
+	b->timestamp = janus_get_real_time();
 
 	va_start(ap, format);
 	va_copy(ap2, ap);
