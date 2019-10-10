@@ -350,7 +350,7 @@ static void *janus_jsonlog_thread(void *data) {
 		}
 		fwrite("\n", sizeof(char), sizeof("\n"), logfile);
 		fflush(logfile);
-		g_free(json_text);
+		free(json_text);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving JSON logger thread\n");
 	return NULL;
