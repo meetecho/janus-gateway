@@ -2313,6 +2313,11 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * easily correlated to events originated by Janus, or to push information
  * Janus doesn't have available (e.g., a script polling CPU usage regularly).
  *
+ * \subsection adminreql Custom logging-related requests
+ * - \c custom_logline: push a custom "external" string to print on the logs;
+ * this can be useful whenever info from a third-party application needs to be
+ * injected in the Janus logs for whatever reason. The log level can be chosen.
+ *
  * \subsection adminreqz Helper requests
  * - \c resolve_address: helper request to evaluate whether this Janus instance
  * can resolve an address via DNS, and how long it takes;
@@ -3620,6 +3625,10 @@ ldd janus | grep asan
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>. \n\n
+ *    Apart from these presentations, make sure you also check the slides
+ *    and presentations from <a href="https://januscon.it">JanusCon</a>,
+ *    the Janus conference we hosted here in Napoli.
+ *    \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n

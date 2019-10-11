@@ -722,6 +722,14 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
+			if(peer->sim_context.need_pli) {
+				/* Send a PLI */
+				JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+				char rtcpbuf[12];
+				memset(rtcpbuf, 0, 12);
+				janus_rtcp_pli((char *)&rtcpbuf, 12);
+				gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+			}
 			/* Any event we should notify? */
 			if(peer->sim_context.changed_substream) {
 				/* Notify the user about the substream change */
@@ -734,14 +742,6 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 				json_object_set_new(event, "result", result);
 				gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, event, NULL);
 				json_decref(event);
-			}
-			if(peer->sim_context.need_pli) {
-				/* Send a PLI */
-				JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-				char rtcpbuf[12];
-				memset(rtcpbuf, 0, 12);
-				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
 			}
 			if(peer->sim_context.changed_temporal) {
 				/* Notify the user about the temporal layer change */

@@ -789,8 +789,20 @@ function doHangup(ev) {
 	}
 }
 
+// The following code is only needed if you're interested in supporting multiple
+// calls at the same time. As explained in the Janus documentation, each Janus
+// handle can only do one PeerConnection at a time, which means you normally
+// cannot do multiple calls. If that's something you need (e.g., because you
+// need to do a SIP transfer, or want to be in two calls), then the SIP plugin
+// provides the so-called "helpers": basically additional handles attached to
+// the SIP plugin, and associated to your SIP identity. They can be used to
+// originate and receive calls exactly as the main handle: notice that incoming
+// calls will be rejected with a "486 Busy" if you're in a call already and there
+// are no available "helpers", which means you should add one in advance for that.
+// In this demo, creating a "helper" adds a new row for calls that looks and
+// works exactly as the default one: you can add more than one "helper", and
+// obviously the more you have, the more concurrent calls you can have.
 function addHelper(helperCreated) {
-	helperCreated = (typeof helperCreated == "function") ? helperCreated : Janus.noop;
 	helpersCount++;
 	var helperId = helpersCount;
 	helpers[helperId] = { id: helperId };
