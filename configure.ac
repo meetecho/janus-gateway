@@ -202,10 +202,14 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+               AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
+                     [enable_websockets_event_handler=no])
                AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
                      [enable_rabbitmq_event_handler=no])
                AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
                      [enable_mqtt_event_handler=no])
+               AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
+                     [enable_nanomsg_event_handler=no])
               ],
               [])
 
@@ -269,6 +273,13 @@ AC_ARG_ENABLE([sample-event-handler],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
 
+AC_ARG_ENABLE([websockets-event-handler],
+              [AS_HELP_STRING([--disable-websockets-event-handler],
+                              [Disable WebSockets event handler ])],
+              [AS_IF([test "x$enable_websockets_event_handler" != "xyes"],
+                     [enable_websockets_event_handler=no])],
+              [enable_websockets_event_handler=maybe])
+
 AC_ARG_ENABLE([rabbitmq-event-handler],
               [AS_HELP_STRING([--disable-rabbitmq-event-handler],
                               [Disable RabbitMQ event handler ])],
@@ -282,6 +293,13 @@ AC_ARG_ENABLE([mqtt-event-handler],
               [AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
                      [enable_mqtt_event_handler=no])],
               [enable_mqtt_event_handler=maybe])
+
+AC_ARG_ENABLE([nanomsg-event-handler],
+              [AS_HELP_STRING([--disable-nanomsg-event-handler],
+                              [Disable Nanomsg event handler ])],
+              [AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
+                     [enable_nanomsg_event_handler=no])],
+              [enable_nanomsg_event_handler=maybe])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -508,12 +526,18 @@ AC_CHECK_LIB([websockets],
 							   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
 							  )
 			   ])
+               AS_IF([test "x$enable_websockets_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_WSEVH)
+                 enable_websockets_event_handler=yes
+               ])
 			 ],
 			 [
 			   AS_IF([test "x$enable_websockets" = "xyes"],
 					 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
 			 ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
+AM_CONDITIONAL([ENABLE_WSEVH], [test "x$enable_websockets_event_handler" = "xyes"])
 AC_SUBST(WS_MANUAL_LIBS)
 
 AC_CHECK_LIB([rabbitmq],
@@ -564,16 +588,24 @@ AC_CHECK_LIB([nanomsg],
                   AC_DEFINE(HAVE_NANOMSG)
                   enable_nanomsg=yes
                ])
+               AS_IF([test "x$enable_nanomsg_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_NANOMSGEVH)
+                 enable_nanomsg_event_handler=yes
+               ])
              ],
              [
                AS_IF([test "x$enable_nanomsg" = "xyes"],
                      [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg])])
+               AS_IF([test "x$enable_nanomsg_event_handler" = "xyes"],
+                     [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg-event-handler])])
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
+AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -1013,12 +1045,18 @@ echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_WSEVH],
+	[echo "    WebSocket ev. handler: yes"],
+	[echo "    WebSocket ev. handler: no"])
 AM_COND_IF([ENABLE_RABBITMQEVH],
 	[echo "    RabbitMQ event handler:yes"],
 	[echo "    RabbitMQ event handler:no"])
 AM_COND_IF([ENABLE_MQTTEVH],
 	[echo "    MQTT event handler:    yes"],
 	[echo "    MQTT event handler:    no"])
+AM_COND_IF([ENABLE_NANOMSGEVH],
+	[echo "    Nanomsg event handler: yes"],
+	[echo "    Nanomsg event handler: no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"

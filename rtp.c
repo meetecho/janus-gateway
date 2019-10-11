@@ -990,13 +990,13 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 			if(substream < 0)
 				substream = 0;
 			if(context->substream != substream) {
-				JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-					context->substream, substream);
-				context->substream = substream;
-				/* Notify the caller that we need a PLI */
+				if(context->substream_target != substream) {
+					JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+						context->substream, substream);
+					context->substream_target = substream;
+				}
+				/* Notify the caller that we (still) need a PLI */
 				context->need_pli = TRUE;
-				/* Notify the caller that the substream changed as well */
-				context->changed_substream = TRUE;
 			}
 		}
 	}
