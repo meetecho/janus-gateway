@@ -1070,7 +1070,7 @@ room-<unique room ID>: {
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOROOM_PACKAGE			"janus.plugin.videoroom"
 
-#define JANUS_LOG_SESSION(session, level, format, ...) JANUS_LOG(level, "[%"SCNu64"] " format, (session ? session->log_handle_id : 0), ##__VA_ARGS__)
+#define JANUS_LOG_SESSION(session, level, format, ...) JANUS_LOG(level, "[%"SCNu64"] " format, (session ? session->log_session_id : 0), ##__VA_ARGS__)
 
 /* Plugin methods */
 janus_plugin *create(void);
@@ -1364,8 +1364,8 @@ typedef struct janus_videoroom_session {
 	volatile gint destroyed;
 	janus_mutex mutex;
 	janus_refcount ref;
-	/*! \brief Identifier, used for logging */
-	guint64 log_handle_id;
+	/*! \brief Session identifier for logging */
+	gint64 log_session_id;
 } janus_videoroom_session;
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
@@ -2308,8 +2308,8 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	g_hash_table_insert(sessions, handle, session);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_plugin_session *h = handle->gateway_handle;
-	session->log_handle_id = (guint64)(h->plugin_handle);
+	/* Log_session_id is used only for logging, initialization may vary on specific implementation */
+	session->log_session_id = janus_get_real_time();
 	JANUS_LOG_SESSION(session, LOG_INFO, "Videoroom session created.\n");
 
 	return;
