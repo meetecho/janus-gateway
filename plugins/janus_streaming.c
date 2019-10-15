@@ -5427,6 +5427,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl, CURLOPT_URL, source->rtsp_url);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L);
 	/* Any authentication to take into account? */
 	if(source->rtsp_username && source->rtsp_password) {
@@ -5493,6 +5494,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
+	janus_mutex_lock(&mountpoints_mutex);
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult;
 	vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
@@ -5501,6 +5503,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int aresult;
 	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
 		atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+	janus_mutex_unlock(&mountpoints_mutex);
 
 	if(vresult == -1 && aresult == -1) {
 		/* Both audio and video failed? Give up... */
@@ -6266,13 +6269,10 @@ static void *janus_streaming_relay_thread(void *data) {
 				}
 				source->video_rtcp_fd = -1;
 				/* Now let's try to reconnect */
-				janus_mutex_lock(&mountpoints_mutex);
 				if(janus_streaming_rtsp_connect_to_server(mountpoint) < 0) {
 					/* Reconnection failed? Let's try again later */
 					JANUS_LOG(LOG_WARN, "[%s] Reconnection of the RTSP stream failed, trying again in a few seconds...\n", name);
-					janus_mutex_unlock(&mountpoints_mutex);
 				} else {
-					janus_mutex_unlock(&mountpoints_mutex);
 					/* We're connected, let's send a PLAY */
 					if(janus_streaming_rtsp_play(source) < 0) {
 						/* Error trying to play? Let's try again later */
