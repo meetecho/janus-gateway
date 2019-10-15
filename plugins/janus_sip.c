@@ -491,7 +491,7 @@
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SIP_PACKAGE			"janus.plugin.sip"
 
-#define JANUS_LOG_SESSION(session, level, format, ...) JANUS_LOG(level, "[%"SCNu64"] " format, (session ? session->log_handle_id : 0), ##__VA_ARGS__)
+#define JANUS_LOG_SESSION(session, level, format, ...) JANUS_LOG(level, "[%"SCNu64"] " format, (session ? session->log_session_id : 0), ##__VA_ARGS__)
 
 /* Plugin methods */
 janus_plugin *create(void);
@@ -786,8 +786,8 @@ typedef struct janus_sip_session {
 	janus_refcount ref;
 	janus_mutex mutex;
 	char *hangup_reason_header;
-	/*! \brief Identifier, used for logging */
-	guint64 log_handle_id;
+	/*! \brief Session identifier for logging */
+	guint64 log_session_id;
 } janus_sip_session;
 static GHashTable *sessions;
 static GHashTable *identities;
@@ -1699,8 +1699,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	g_hash_table_insert(sessions, handle, session);
 	janus_mutex_unlock(&sessions_mutex);
 
-	janus_plugin_session *h = handle->gateway_handle;
-	session->log_handle_id = (guint64)(h->plugin_handle);
+	/* Log_session_id is used only for logging, initialization may vary on specific implementation */
+	session->log_session_id = janus_get_real_time();
 	JANUS_LOG_SESSION(session, LOG_INFO, "SIP session created.\n");
 
 	return;
