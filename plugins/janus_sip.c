@@ -4467,12 +4467,24 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			/* Access the headers we need */
-			char *refer_to = NULL, *referred_by = NULL, *custom_headers = NULL;
+			char *refer_to = NULL, *referred_by = NULL, *custom_headers = NULL, *replaces = NULL;
 			const char *url_headers = sip->sip_refer_to->r_url->url_headers;
 			if(url_headers != NULL) {
 				/* Convert to SIP headers */
 				sip->sip_refer_to->r_url->url_headers = NULL;
 				custom_headers = url_query_as_header_string(session->stack->s_home, url_headers);
+				/* FIXME Look for the "replaces" part, to extract the call-id */
+				char *start = strstr(custom_headers, "replaces:");
+				if(start != NULL) {
+					start += strlen("replaces:");
+					char *end = strchr(start, ';');
+					if(end != NULL) {
+						/* Found */
+						*end = '\0';
+						replaces = g_strdup(start);
+						*end = ';';
+					}
+				}
 			}
 			refer_to = url_as_string(session->stack->s_home, sip->sip_refer_to->r_url);
 			sip->sip_refer_to->r_url->url_headers = url_headers;
@@ -4514,6 +4526,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(referred_by != NULL) {
 				json_object_set_new(result, "referred_by", json_string(referred_by));
 				su_free(session->stack->s_home, referred_by);
+			}
+			if(replaces != NULL) {
+				json_object_set_new(result, "replaces", json_string(replaces));
+				g_free(replaces);
 			}
 			su_free(session->stack->s_home, refer_to);
 			if(custom_headers != NULL)

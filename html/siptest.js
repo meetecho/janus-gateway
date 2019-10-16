@@ -352,7 +352,11 @@ $(document).ready(function() {
 											var referTo = result["refer_to"];
 											var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
 											var referId = result["refer_id"];
-											bootbox.confirm("Transfer the call to " + referTo + "? (referred by " + referredBy + ")",
+											var replaces = result["replaces"];
+											var extra = ("referred by " + referredBy);
+											if(replaces)
+												extra += (", replaces call-ID " + replaces);
+											bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ")",
 												function(result) {
 													if(result) {
 														// Call the person we're being transferred to
@@ -1082,7 +1086,11 @@ function addHelper(helperCreated) {
 						var referTo = result["refer_to"];
 						var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
 						var referId = result["refer_id"];
-						bootbox.confirm("Transfer the call to " + referTo + "? (referred by " + referredBy + ", helper " + helperId + ")",
+						var replaces = result["replaces"];
+						var extra = ("referred by " + referredBy);
+						if(replaces)
+							extra += (", replaces call-ID " + replaces);
+						bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ", helper " + helperId + ")",
 							function(result) {
 								if(result) {
 									// Call the person we're being transferred to
