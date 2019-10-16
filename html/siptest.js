@@ -919,7 +919,8 @@ function addHelper(helperCreated) {
 						$('#call' + helperId).removeAttr('disabled').html('Call')
 							.removeClass("btn-danger").addClass("btn-success")
 							.unbind('click').click(doCall);
-						helperCreated(helperId);
+						if(helperCreated)
+							helperCreated(helperId);
 					} else if(event === 'calling') {
 						Janus.log("[Helper #" + helperId + "] Waiting for the peer to answer...");
 						// TODO Any ringtone?
