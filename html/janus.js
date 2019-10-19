@@ -108,7 +108,7 @@ Janus.useDefaultDependencies = function (deps) {
 				fetchOptions.headers['Content-Type'] = 'application/json';
 			}
 			if(options.withCredentials !== undefined) {
-				fetchOptions.credentials = options.withCredentials === true ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
+				fetchOptions.credentials = options.withCredentials ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
 			}
 			if(options.body) {
 				fetchOptions.body = JSON.stringify(options.body);
@@ -830,7 +830,7 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
-		if(server === null && Janus.isArray(servers)) {
+		if(!server && Janus.isArray(servers)) {
 			// We still need to find a working server from the list we were given
 			server = servers[serversIndex];
 			if(server.indexOf("ws") === 0) {
@@ -891,7 +891,7 @@ function Janus(gatewayCallbacks) {
 				},
 
 				'close': function() {
-					if (server === null || !connected) {
+					if (!server || !connected) {
 						return;
 					}
 					connected = false;
@@ -1562,7 +1562,7 @@ function Janus(gatewayCallbacks) {
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
 		var pluginHandle = pluginHandles[handleId];
-		if(pluginHandle === null || pluginHandle === undefined || pluginHandle.detached) {
+		if(!pluginHandle || pluginHandle.detached) {
 			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
 			delete pluginHandles[handleId];
 			callbacks.success();
@@ -1703,7 +1703,7 @@ function Janus(gatewayCallbacks) {
 			var pc_constraints = {
 				"optional": [{"DtlsSrtpKeyAgreement": true}]
 			};
-			if(ipv6Support === true) {
+			if(ipv6Support) {
 				pc_constraints.optional.push({"googIPv6":true});
 			}
 			// Any custom constraint to add?
@@ -1787,7 +1787,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(addTracks && stream) {
 			Janus.log('Adding local stream');
-			var simulcast2 = callbacks.simulcast2 === true ? true : false;
+			var simulcast2 = callbacks.simulcast2 ? true : false;
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
 				if(!simulcast2) {
@@ -1928,9 +1928,7 @@ function Janus(gatewayCallbacks) {
 						media.addAudio = true;
 					}
 				} else {
-					if(config.myStream.getAudioTracks() === null
-							|| config.myStream.getAudioTracks() === undefined
-							|| config.myStream.getAudioTracks().length === 0) {
+					if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 						// No audio track: if we were asked to replace, it's actually an "add"
 						if(media.replaceAudio) {
 							media.keepAudio = false;
@@ -2109,15 +2107,15 @@ function Janus(gatewayCallbacks) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
 			var audioSupport = isAudioSendEnabled(media);
-			if(audioSupport === true && media) {
+			if(audioSupport && media) {
 				if(typeof media.audio === 'object') {
 					audioSupport = media.audio;
 				}
 			}
 			var videoSupport = isVideoSendEnabled(media);
-			if(videoSupport === true && media) {
-				var simulcast = callbacks.simulcast === true ? true : false;
-				var simulcast2 = callbacks.simulcast2 === true ? true : false;
+			if(videoSupport && media) {
+				var simulcast = callbacks.simulcast ? true : false;
+				var simulcast2 = callbacks.simulcast2 ? true : false;
 				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
@@ -2438,7 +2436,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var simulcast = callbacks.simulcast === true ? true : false;
+		var simulcast = callbacks.simulcast ? true : false;
 		if(!simulcast) {
 			Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
 		} else {
@@ -2567,7 +2565,7 @@ function Janus(gatewayCallbacks) {
 			mediaConstraints["offerToReceiveAudio"] = isAudioRecvEnabled(media);
 			mediaConstraints["offerToReceiveVideo"] = isVideoRecvEnabled(media);
 		}
-		var iceRestart = callbacks.iceRestart === true ? true : false;
+		var iceRestart = callbacks.iceRestart ? true : false;
 		if(iceRestart) {
 			mediaConstraints["iceRestart"] = true;
 		}
@@ -2642,7 +2640,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var simulcast = callbacks.simulcast === true ? true : false;
+		var simulcast = callbacks.simulcast ? true : false;
 		if(!simulcast) {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		} else {
@@ -2964,9 +2962,7 @@ function Janus(gatewayCallbacks) {
 			return !config.myStream.getVideoTracks()[0].enabled;
 		} else {
 			// Check audio track
-			if(config.myStream.getAudioTracks() === null
-					|| config.myStream.getAudioTracks() === undefined
-					|| config.myStream.getAudioTracks().length === 0) {
+			if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return true;
 			}
@@ -2999,9 +2995,7 @@ function Janus(gatewayCallbacks) {
 			return true;
 		} else {
 			// Mute/unmute audio track
-			if(config.myStream.getAudioTracks() === null
-					|| config.myStream.getAudioTracks() === undefined
-					|| config.myStream.getAudioTracks().length === 0) {
+			if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return false;
 			}
@@ -3044,7 +3038,7 @@ function Janus(gatewayCallbacks) {
 								if(inStats) {
 									config.bitrate.bsnow = res.bytesReceived;
 									config.bitrate.tsnow = res.timestamp;
-									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+									if(!config.bitrate.bsbefore || !config.bitrate.tsbefore) {
 										// Skip this round
 										config.bitrate.bsbefore = config.bitrate.bsnow;
 										config.bitrate.tsbefore = config.bitrate.tsnow;
