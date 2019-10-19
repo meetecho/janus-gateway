@@ -206,7 +206,7 @@ Janus.endOfCandidates = null;
 Janus.init = function(options) {
 	options = options || {};
 	options.callback = (typeof options.callback == "function") ? options.callback : Janus.noop;
-	if(Janus.initDone === true) {
+	if(Janus.initDone) {
 		// Already initialized
 		options.callback();
 	} else {
@@ -774,7 +774,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var jsep = json["jsep"];
-			if(jsep !== undefined && jsep !== null) {
+			if(jsep) {
 				Janus.debug("Handling SDP as well...");
 				Janus.debug(jsep);
 			}
@@ -1835,7 +1835,7 @@ function Janus(gatewayCallbacks) {
 		if(config.myStream)
 			pluginHandle.onlocalstream(config.myStream);
 		// Create offer/answer now
-		if(jsep === null || jsep === undefined) {
+		if(!jsep) {
 			createOffer(handleId, media, callbacks);
 		} else {
 			config.pc.setRemoteDescription(jsep)
@@ -1926,7 +1926,7 @@ function Janus(gatewayCallbacks) {
 					media.removeAudio = false;
 					media.audioSend = true;
 				}
-				if(config.myStream === null || config.myStream === undefined) {
+				if(!config.myStream) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceAudio) {
 						media.keepAudio = false;
@@ -1983,7 +1983,7 @@ function Janus(gatewayCallbacks) {
 					media.removeVideo = false;
 					media.videoSend = true;
 				}
-				if(config.myStream === null || config.myStream === undefined) {
+				if(!config.myStream) {
 					// No media stream: if we were asked to replace, it's actually an "add"
 					if(media.replaceVideo) {
 						media.keepVideo = false;
@@ -2407,8 +2407,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(jsep !== undefined && jsep !== null) {
-			if(config.pc === null) {
+		if(jsep) {
+			if(!config.pc) {
 				Janus.warn("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
@@ -2920,10 +2920,10 @@ function Janus(gatewayCallbacks) {
 			config.volume[stream] = { value: 0 };
 		// Start getting the volume, if getStats is supported
 		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser === "chrome") {
-			if(remote && (config.remoteStream === null || config.remoteStream === undefined)) {
+			if(remote && !config.remoteStream) {
 				Janus.warn("Remote stream unavailable");
 				return 0;
-			} else if(!remote && (config.myStream === null || config.myStream === undefined)) {
+			} else if(!remote && !config.myStream) {
 				Janus.warn("Local stream unavailable");
 				return 0;
 			}
@@ -2961,7 +2961,7 @@ function Janus(gatewayCallbacks) {
 			return true;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config.pc === null || config.pc === undefined) {
+		if(!config.pc) {
 			Janus.warn("Invalid PeerConnection");
 			return true;
 		}
@@ -2997,7 +2997,7 @@ function Janus(gatewayCallbacks) {
 			return false;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config.pc === null || config.pc === undefined) {
+		if(!config.pc) {
 			Janus.warn("Invalid PeerConnection");
 			return false;
 		}
@@ -3035,7 +3035,7 @@ function Janus(gatewayCallbacks) {
 			return "Invalid handle";
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config.pc === null || config.pc === undefined)
+		if(!config.pc)
 			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats) {
@@ -3099,7 +3099,7 @@ function Janus(gatewayCallbacks) {
 	function cleanupWebrtc(handleId, hangupRequest) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
-		if(pluginHandle === null || pluginHandle === undefined) {
+		if(!pluginHandle) {
 			// Nothing to clean
 			return;
 		}
