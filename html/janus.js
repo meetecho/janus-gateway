@@ -3450,13 +3450,13 @@ function Janus(gatewayCallbacks) {
 
 	function isDataEnabled(media) {
 		Janus.debug("isDataEnabled:", media);
-		if(Janus.webRTCAdapter.browserDetails.browser == "edge") {
+		if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 			Janus.warn("Edge doesn't support data channels yet");
 			return false;
 		}
 		if(!media)
 			return false;	// Default
-		return (media.data === true);
+		return media.data;
 	}
 
 	function isTrickleEnabled(trickle) {
