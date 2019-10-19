@@ -123,7 +123,7 @@ Janus.useDefaultDependencies = function (deps) {
 			 * Work around this by starting a timeout manually, and racing it agains the fetch() to see which thing resolves first.
 			 */
 
-			if(options.timeout !== undefined) {
+			if(options.timeout) {
 				var timeout = new p(function(resolve, reject) {
 					var timerId = setTimeout(function() {
 						clearTimeout(timerId);
@@ -556,9 +556,9 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
-		if(maxev !== undefined && maxev !== null)
+		if(maxev)
 			longpoll = longpoll + "&maxev=" + maxev;
-		if(token !== null && token !== undefined)
+		if(token)
 			longpoll = longpoll + "&token=" + encodeURIComponent(token);
 		if(apisecret)
 			longpoll = longpoll + "&apisecret=" + encodeURIComponent(apisecret);
@@ -737,9 +737,9 @@ function Janus(gatewayCallbacks) {
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 			Janus.debug(json);
 			var transaction = json["transaction"];
-			if(transaction !== null && transaction !== undefined) {
+			if(transaction) {
 				var reportSuccess = transactions[transaction];
-				if(reportSuccess !== null && reportSuccess !== undefined) {
+				if(reportSuccess) {
 					reportSuccess(json);
 				}
 				delete transactions[transaction];
@@ -826,7 +826,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 		}
-		if(token !== null && token !== undefined)
+		if(token)
 			request["token"] = token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
@@ -983,7 +983,7 @@ function Janus(gatewayCallbacks) {
 		}
 		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
+		if(token)
 			request["token"] = token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
@@ -1076,7 +1076,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var plugin = callbacks.plugin;
-		if(plugin === undefined || plugin === null) {
+		if(!plugin) {
 			Janus.error("Invalid plugin");
 			callbacks.error("Invalid plugin");
 			return;
@@ -1085,7 +1085,7 @@ function Janus(gatewayCallbacks) {
 		var handleToken = callbacks.token ? callbacks.token : token;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
-		if(handleToken !== null && handleToken !== undefined)
+		if(handleToken)
 			request["token"] = handleToken;
 		if(apisecret)
 			request["apisecret"] = apisecret;
@@ -1731,11 +1731,11 @@ function Janus(gatewayCallbacks) {
 					pluginHandle.iceState(config.pc.iceConnectionState);
 			};
 			config.pc.onicecandidate = function(event) {
-				if (event.candidate == null ||
+				if (!event.candidate ||
 						(Janus.webRTCAdapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
 					Janus.log("End of candidates.");
 					config.iceDone = true;
-					if(config.trickle === true) {
+					if(config.trickle) {
 						// Notify end of candidates
 						sendTrickleCandidate(handleId, {"completed": true});
 					} else {
@@ -1750,7 +1750,7 @@ function Janus(gatewayCallbacks) {
 						"sdpMid": event.candidate.sdpMid,
 						"sdpMLineIndex": event.candidate.sdpMLineIndex
 					};
-					if(config.trickle === true) {
+					if(config.trickle) {
 						// Send candidate
 						sendTrickleCandidate(handleId, candidate);
 					}
@@ -1785,7 +1785,7 @@ function Janus(gatewayCallbacks) {
 				};
 			};
 		}
-		if(addTracks && stream !== null && stream !== undefined) {
+		if(addTracks && stream) {
 			Janus.log('Adding local stream');
 			var simulcast2 = callbacks.simulcast2 === true ? true : false;
 			stream.getTracks().forEach(function(track) {
@@ -1887,7 +1887,7 @@ function Janus(gatewayCallbacks) {
 			media.update = true;
 			// Check if there's anything to add/remove/replace, or if we
 			// can go directly to preparing the new SDP offer or answer
-			if(callbacks.stream !== null && callbacks.stream !== undefined) {
+			if(callbacks.stream) {
 				// External stream: is this the same as the one we were using before?
 				if(callbacks.stream !== config.myStream) {
 					Janus.log("Renegotiation involves a new external stream");
@@ -1985,9 +1985,7 @@ function Janus(gatewayCallbacks) {
 						media.addVideo = true;
 					}
 				} else {
-					if(config.myStream.getVideoTracks() === null
-							|| config.myStream.getVideoTracks() === undefined
-							|| config.myStream.getVideoTracks().length === 0) {
+					if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
 						// No video track: if we were asked to replace, it's actually an "add"
 						if(media.replaceVideo) {
 							media.keepVideo = false;
@@ -2075,7 +2073,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		// Was a MediaStream object passed, or do we need to take care of that?
-		if(callbacks.stream !== null && callbacks.stream !== undefined) {
+		if(callbacks.stream) {
 			var stream = callbacks.stream;
 			Janus.log("MediaStream provided by the application");
 			Janus.debug(stream);
@@ -2111,13 +2109,13 @@ function Janus(gatewayCallbacks) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
 			var audioSupport = isAudioSendEnabled(media);
-			if(audioSupport === true && media != undefined && media != null) {
+			if(audioSupport === true && media) {
 				if(typeof media.audio === 'object') {
 					audioSupport = media.audio;
 				}
 			}
 			var videoSupport = isVideoSendEnabled(media);
-			if(videoSupport === true && media != undefined && media != null) {
+			if(videoSupport === true && media) {
 				var simulcast = callbacks.simulcast === true ? true : false;
 				var simulcast2 = callbacks.simulcast2 === true ? true : false;
 				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
@@ -2318,7 +2316,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			// If we got here, we're not screensharing
-			if(media === null || media === undefined || media.video !== 'screen') {
+			if(!media || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
 				navigator.mediaDevices.enumerateDevices().then(function(devices) {
 					var audioExist = devices.some(function(device) {
@@ -2802,7 +2800,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 		} else {
-			if(Janus.webRTCAdapter.browserDetails.browser == "firefox" || Janus.webRTCAdapter.browserDetails.browser == "edge") {
+			if(Janus.webRTCAdapter.browserDetails.browser === "firefox" || Janus.webRTCAdapter.browserDetails.browser === "edge") {
 				mediaConstraints = {
 					offerToReceiveAudio: isAudioRecvEnabled(media),
 					offerToReceiveVideo: isVideoRecvEnabled(media)
@@ -2959,9 +2957,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(video) {
 			// Check video track
-			if(config.myStream.getVideoTracks() === null
-					|| config.myStream.getVideoTracks() === undefined
-					|| config.myStream.getVideoTracks().length === 0) {
+			if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
 				Janus.warn("No video track");
 				return true;
 			}
@@ -2995,9 +2991,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(video) {
 			// Mute/unmute video track
-			if(config.myStream.getVideoTracks() === null
-					|| config.myStream.getVideoTracks() === undefined
-					|| config.myStream.getVideoTracks().length === 0) {
+			if(!config.myStream.getVideoTracks() || config.myStream.getVideoTracks().length === 0) {
 				Janus.warn("No video track");
 				return false;
 			}
@@ -3057,10 +3051,10 @@ function Janus(gatewayCallbacks) {
 									} else {
 										// Calculate bitrate
 										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
-										if(Janus.webRTCAdapter.browserDetails.browser == "safari")
+										if(Janus.webRTCAdapter.browserDetails.browser === "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
 										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
-										if(Janus.webRTCAdapter.browserDetails.browser === 'safari')
+										if(Janus.webRTCAdapter.browserDetails.browser === "safari")
 											bitRate = parseInt(bitRate/1000);
 										config.bitrate.value = bitRate + ' kbits/sec';
 										//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
@@ -3133,7 +3127,7 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.value = null;
 			try {
 				// Try a MediaStreamTrack.stop() for each track
-				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
+				if(!config.streamExternal && config.myStream) {
 					Janus.log("Stopping local stream tracks");
 					var tracks = config.myStream.getTracks();
 					for(var i in tracks) {
