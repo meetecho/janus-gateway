@@ -110,7 +110,7 @@ Janus.useDefaultDependencies = function (deps) {
 			if(options.withCredentials !== undefined) {
 				fetchOptions.credentials = options.withCredentials === true ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
 			}
-			if(options.body !== undefined) {
+			if(options.body) {
 				fetchOptions.body = JSON.stringify(options.body);
 			}
 
@@ -280,8 +280,7 @@ Janus.init = function(options) {
 							var tracks = stream.getTracks();
 							for(var i in tracks) {
 								var mst = tracks[i];
-								if(mst !== null && mst !== undefined)
-									mst.stop();
+								if(mst) mst.stop();
 							}
 						} catch(e) {}
 					});
@@ -333,8 +332,7 @@ Janus.init = function(options) {
 		window.addEventListener(eventName, function(event) {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
-				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
-						Janus.sessions[s].destroyOnUnload) {
+				if(Janus.sessions[s] && Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
 					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
 				}
@@ -410,12 +408,11 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null;
+	return window.RTCPeerConnection ? true : false;
 };
 // Helper method to check whether devices can be accessed by this browser (e.g., not possible via plain HTTP)
 Janus.isGetUserMediaAvailable = function() {
-	return navigator.mediaDevices !== undefined && navigator.mediaDevices !== null &&
-		navigator.mediaDevices.getUserMedia !== undefined && navigator.mediaDevices.getUserMedia !== null;
+    return (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? true : false;
 };
 
 // Helper method to create random identifiers (e.g., transaction)
@@ -605,11 +602,9 @@ function Janus(gatewayCallbacks) {
 			Janus.debug("Got an ack on session " + sessionId);
 			Janus.debug(json);
 			var transaction = json["transaction"];
-			if(transaction !== null && transaction !== undefined) {
+			if(transaction) {
 				var reportSuccess = transactions[transaction];
-				if(reportSuccess !== null && reportSuccess !== undefined) {
-					reportSuccess(json);
-				}
+				if(reportSuccess) reportSuccess(json);
 				delete transactions[transaction];
 			}
 			return;
@@ -618,11 +613,9 @@ function Janus(gatewayCallbacks) {
 			Janus.debug("Got a success on session " + sessionId);
 			Janus.debug(json);
 			var transaction = json["transaction"];
-			if(transaction !== null && transaction !== undefined) {
+			if(transaction) {
 				var reportSuccess = transactions[transaction];
-				if(reportSuccess !== null && reportSuccess !== undefined) {
-					reportSuccess(json);
-				}
+				if(reportSuccess) reportSuccess(json);
 				delete transactions[transaction];
 			}
 			return;
@@ -645,7 +638,7 @@ function Janus(gatewayCallbacks) {
 			if(config.pc && config.remoteSdp) {
 				// Add candidate right now
 				Janus.debug("Adding remote candidate:", candidate);
-				if(!candidate || candidate.completed === true) {
+				if(!candidate || candidate.completed) {
 					// end-of-candidates
 					config.pc.addIceCandidate(Janus.endOfCandidates);
 				} else {
@@ -802,11 +795,11 @@ function Janus(gatewayCallbacks) {
 
 	// Private helper to send keep-alive messages on WebSockets
 	function keepAlive() {
-		if(server === null || !websockets || !connected)
+		if(!server || !websockets || !connected)
 			return;
 		wsKeepaliveTimeoutId = setTimeout(keepAlive, keepAlivePeriod);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": Janus.randomString(12) };
-		if(token !== null && token !== undefined)
+		if(token)
 			request["token"] = token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
@@ -1289,7 +1282,7 @@ function Janus(gatewayCallbacks) {
 			request["token"] = pluginHandle.token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
-		if(jsep !== null && jsep !== undefined)
+		if(jsep)
 			request.jsep = jsep;
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);
@@ -1314,7 +1307,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				} else if(json["janus"] !== "ack") {
 					// Not a success and not an ack, must be an error
-					if(json["error"] !== undefined && json["error"] !== null) {
+					if(json["error"]) {
 						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 						callbacks.error(json["error"].code + " " + json["error"].reason);
 					} else {
@@ -1351,7 +1344,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				} else if(json["janus"] !== "ack") {
 					// Not a success and not an ack, must be an error
-					if(json["error"] !== undefined && json["error"] !== null) {
+					if(json["error"]) {
 						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 						callbacks.error(json["error"].code + " " + json["error"].reason);
 					} else {
@@ -1843,7 +1836,7 @@ function Janus(gatewayCallbacks) {
 						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
-							if(!candidate || candidate.completed === true) {
+							if(!candidate || candidate.completed) {
 								// end-of-candidates
 								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
@@ -2096,8 +2089,7 @@ function Janus(gatewayCallbacks) {
 						for(var i in tracks) {
 							var mst = tracks[i];
 							Janus.log(mst);
-							if(mst !== null && mst !== undefined)
-								mst.stop();
+							if(mst) mst.stop();
 						}
 					} catch(e) {
 						// Do nothing if this fails
@@ -2418,7 +2410,7 @@ function Janus(gatewayCallbacks) {
 						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
-							if(!candidate || candidate.completed === true) {
+							if(!candidate || candidate.completed) {
 								// end-of-candidates
 								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
@@ -3147,8 +3139,7 @@ function Janus(gatewayCallbacks) {
 					for(var i in tracks) {
 						var mst = tracks[i];
 						Janus.log(mst);
-						if(mst !== null && mst !== undefined)
-							mst.stop();
+						if(mst) mst.stop();
 					}
 				}
 			} catch(e) {
