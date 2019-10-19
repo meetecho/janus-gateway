@@ -3377,7 +3377,7 @@ function Janus(gatewayCallbacks) {
 	// Helper methods to parse a media object
 	function isAudioSendEnabled(media) {
 		Janus.debug("isAudioSendEnabled:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return true;	// Default
 		if(media.audio === false)
 			return false;	// Generic audio has precedence
@@ -3388,7 +3388,7 @@ function Janus(gatewayCallbacks) {
 
 	function isAudioSendRequired(media) {
 		Janus.debug("isAudioSendRequired:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return false;	// Default
 		if(media.audio === false || media.audioSend === false)
 			return false;	// If we're not asking to capture audio, it's not required
@@ -3399,7 +3399,7 @@ function Janus(gatewayCallbacks) {
 
 	function isAudioRecvEnabled(media) {
 		Janus.debug("isAudioRecvEnabled:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return true;	// Default
 		if(media.audio === false)
 			return false;	// Generic audio has precedence
@@ -3410,7 +3410,7 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoSendEnabled(media) {
 		Janus.debug("isVideoSendEnabled:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return true;	// Default
 		if(media.video === false)
 			return false;	// Generic video has precedence
@@ -3421,7 +3421,7 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoSendRequired(media) {
 		Janus.debug("isVideoSendRequired:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return false;	// Default
 		if(media.video === false || media.videoSend === false)
 			return false;	// If we're not asking to capture video, it's not required
@@ -3432,7 +3432,7 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoRecvEnabled(media) {
 		Janus.debug("isVideoRecvEnabled:", media);
-		if(media === undefined || media === null)
+		if(!media)
 			return true;	// Default
 		if(media.video === false)
 			return false;	// Generic video has precedence
@@ -3443,7 +3443,7 @@ function Janus(gatewayCallbacks) {
 
 	function isScreenSendEnabled(media) {
 		Janus.debug("isScreenSendEnabled:", media);
-		if (media === undefined || media === null)
+		if (!media)
 			return false;
 		if (typeof media.video !== 'object' || typeof media.video.mandatory !== 'object')
 			return false;
@@ -3463,7 +3463,7 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Edge doesn't support data channels yet");
 			return false;
 		}
-		if(media === undefined || media === null)
+		if(!media)
 			return false;	// Default
 		return (media.data === true);
 	}
