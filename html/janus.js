@@ -1514,7 +1514,7 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		if(!config.dtmfSender) {
 			// Create the DTMF sender the proper way, if possible
-			if(config.pc !== undefined && config.pc !== null) {
+			if(config.pc) {
 				var senders = config.pc.getSenders();
 				var audioSender = senders.find(function(sender) {
 					return sender.track && sender.track.kind === 'audio';
@@ -1884,12 +1884,12 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		config.trickle = isTrickleEnabled(callbacks.trickle);
 		// Are we updating a session?
-		if(config.pc === undefined || config.pc === null) {
+		if(!config.pc) {
 			// Nope, new PeerConnection
 			media.update = false;
 			media.keepAudio = false;
 			media.keepVideo = false;
-		} else if(config.pc !== undefined && config.pc !== null) {
+		} else {
 			Janus.log("Updating existing media session");
 			media.update = true;
 			// Check if there's anything to add/remove/replace, or if we
@@ -3035,7 +3035,7 @@ function Janus(gatewayCallbacks) {
 			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats) {
-			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
+			if(!config.bitrate.timer) {
 				Janus.log("Starting bitrate timer (via getStats)");
 				config.bitrate.timer = setInterval(function() {
 					config.pc.getStats()
