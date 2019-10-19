@@ -431,7 +431,7 @@ Janus.randomString = function(len) {
 
 
 function Janus(gatewayCallbacks) {
-	if(Janus.initDone === undefined) {
+	if(!Janus.initDone) {
 		gatewayCallbacks.error("Library not initialized");
 		return {};
 	}
@@ -444,7 +444,7 @@ function Janus(gatewayCallbacks) {
 	gatewayCallbacks.success = (typeof gatewayCallbacks.success == "function") ? gatewayCallbacks.success : Janus.noop;
 	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
 	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
-	if(gatewayCallbacks.server === null || gatewayCallbacks.server === undefined) {
+	if(!gatewayCallbacks.server) {
 		gatewayCallbacks.error("Invalid server url");
 		return {};
 	}
@@ -469,15 +469,11 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Using REST API to contact Janus: " + server);
 		}
 	}
-	var iceServers = gatewayCallbacks.iceServers;
-	if(iceServers === undefined || iceServers === null)
-		iceServers = [{urls: "stun:stun.l.google.com:19302"}];
+	var iceServers = gatewayCallbacks.iceServers || [{urls: "stun:stun.l.google.com:19302"}];
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
 	var bundlePolicy = gatewayCallbacks.bundlePolicy;
 	// Whether IPv6 candidates should be gathered
-	var ipv6Support = gatewayCallbacks.ipv6;
-	if(ipv6Support === undefined || ipv6Support === null)
-		ipv6Support = false;
+	var ipv6Support = gatewayCallbacks.ipv6 || false;
 	// Whether we should enable the withCredentials flag for XHR requests
 	var withCredentials = false;
 	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
