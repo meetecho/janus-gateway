@@ -563,7 +563,7 @@ function Janus(gatewayCallbacks) {
 			longpoll = longpoll + "&maxev=" + maxev;
 		if(token !== null && token !== undefined)
 			longpoll = longpoll + "&token=" + encodeURIComponent(token);
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			longpoll = longpoll + "&apisecret=" + encodeURIComponent(apisecret);
 		Janus.httpAPICall(longpoll, {
 			verb: 'GET',
@@ -634,7 +634,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
@@ -670,7 +670,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
@@ -686,7 +686,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
@@ -702,7 +702,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				// Don't warn here because destroyHandle causes this situation.
 				return;
 			}
@@ -719,7 +719,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
@@ -734,7 +734,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
@@ -761,7 +761,7 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			var plugindata = json["plugindata"];
-			if(plugindata === undefined || plugindata === null) {
+			if(!plugindata) {
 				Janus.warn("Missing plugindata...");
 				return;
 			}
@@ -769,7 +769,7 @@ function Janus(gatewayCallbacks) {
 			var data = plugindata["data"];
 			Janus.debug(data);
 			var pluginHandle = pluginHandles[sender];
-			if(pluginHandle === undefined || pluginHandle === null) {
+			if(!pluginHandle) {
 				Janus.warn("This handle is not attached to this session");
 				return;
 			}
@@ -808,7 +808,7 @@ function Janus(gatewayCallbacks) {
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		ws.send(JSON.stringify(request));
 	}
@@ -835,7 +835,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(token !== null && token !== undefined)
 			request["token"] = token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		if(server === null && Janus.isArray(servers)) {
 			// We still need to find a working server from the list we were given
@@ -992,7 +992,7 @@ function Janus(gatewayCallbacks) {
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
@@ -1094,7 +1094,7 @@ function Janus(gatewayCallbacks) {
 		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
 		if(handleToken !== null && handleToken !== undefined)
 			request["token"] = handleToken;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			transactions[transaction] = function(json) {
@@ -1285,9 +1285,9 @@ function Janus(gatewayCallbacks) {
 		var jsep = callbacks.jsep;
 		var transaction = Janus.randomString(12);
 		var request = { "janus": "message", "body": message, "transaction": transaction };
-		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+		if(pluginHandle.token)
 			request["token"] = pluginHandle.token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		if(jsep !== null && jsep !== undefined)
 			request.jsep = jsep;
@@ -1302,7 +1302,7 @@ function Janus(gatewayCallbacks) {
 				if(json["janus"] === "success") {
 					// We got a success, must have been a synchronous transaction
 					var plugindata = json["plugindata"];
-					if(plugindata === undefined || plugindata === null) {
+					if(!plugindata) {
 						Janus.warn("Request succeeded, but missing plugindata...");
 						callbacks.success();
 						return;
@@ -1339,7 +1339,7 @@ function Janus(gatewayCallbacks) {
 				if(json["janus"] === "success") {
 					// We got a success, must have been a synchronous transaction
 					var plugindata = json["plugindata"];
-					if(plugindata === undefined || plugindata === null) {
+					if(!plugindata) {
 						Janus.warn("Request succeeded, but missing plugindata...");
 						callbacks.success();
 						return;
@@ -1382,9 +1382,9 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": Janus.randomString(12) };
-		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+		if(pluginHandle.token)
 			request["token"] = pluginHandle.token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		Janus.vdebug("Sending trickle candidate (handle=" + handleId + "):");
 		Janus.vdebug(request);
@@ -1478,7 +1478,7 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		var text = callbacks.text;
-		if(text === null || text === undefined) {
+		if(!text) {
 			Janus.warn("Invalid text");
 			callbacks.error("Invalid text");
 			return;
@@ -1512,7 +1512,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config.dtmfSender === null || config.dtmfSender === undefined) {
+		if(!config.dtmfSender) {
 			// Create the DTMF sender the proper way, if possible
 			if(config.pc !== undefined && config.pc !== null) {
 				var senders = config.pc.getSenders();
@@ -1530,30 +1530,26 @@ function Janus(gatewayCallbacks) {
 					config.dtmfSender.ontonechange = function(tone) { Janus.debug("Sent DTMF tone: " + tone.tone); };
 				}
 			}
-			if(config.dtmfSender === null || config.dtmfSender === undefined) {
+			if(!config.dtmfSender) {
 				Janus.warn("Invalid DTMF configuration");
 				callbacks.error("Invalid DTMF configuration");
 				return;
 			}
 		}
 		var dtmf = callbacks.dtmf;
-		if(dtmf === null || dtmf === undefined) {
+		if(!dtmf) {
 			Janus.warn("Invalid DTMF parameters");
 			callbacks.error("Invalid DTMF parameters");
 			return;
 		}
 		var tones = dtmf.tones;
-		if(tones === null || tones === undefined) {
+		if(!tones) {
 			Janus.warn("Invalid DTMF string");
 			callbacks.error("Invalid DTMF string");
 			return;
 		}
-		var duration = dtmf.duration;
-		if(duration === null || duration === undefined)
-			duration = 500;	// We choose 500ms as the default duration for a tone
-		var gap = dtmf.gap;
-		if(gap === null || gap === undefined)
-			gap = 50;	// We choose 50ms as the default gap between tones
+		var duration = dtmf.duration || 500; // We choose 500ms as the default duration for a tone
+		var gap = dtmf.gap || 50; // We choose 50ms as the default gap between tones
 		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms)");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
 		callbacks.success();
@@ -1591,9 +1587,9 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "detach", "transaction": Janus.randomString(12) };
-		if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+		if(pluginHandle.token)
 			request["token"] = pluginHandle.token;
-		if(apisecret !== null && apisecret !== undefined)
+		if(apisecret)
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
@@ -2893,7 +2889,7 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Sending offer/answer SDP...");
-		if(config.mySdp === null || config.mySdp === undefined) {
+		if(!config.mySdp) {
 			Janus.warn("Local SDP instance is invalid, not sending anything...");
 			return;
 		}
@@ -2927,7 +2923,7 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("Local stream unavailable");
 				return 0;
 			}
-			if(config.volume[stream].timer === null || config.volume[stream].timer === undefined) {
+			if(!config.volume[stream].timer) {
 				Janus.log("Starting " + stream + " volume monitor");
 				config.volume[stream].timer = setInterval(function() {
 					config.pc.getStats(function(stats) {
@@ -2965,7 +2961,7 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Invalid PeerConnection");
 			return true;
 		}
-		if(config.myStream === undefined || config.myStream === null) {
+		if(!config.myStream) {
 			Janus.warn("Invalid local MediaStream");
 			return true;
 		}
@@ -3001,7 +2997,7 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Invalid PeerConnection");
 			return false;
 		}
-		if(config.myStream === undefined || config.myStream === null) {
+		if(!config.myStream) {
 			Janus.warn("Invalid local MediaStream");
 			return false;
 		}
@@ -3104,13 +3100,13 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(config !== null && config !== undefined) {
+		if(config) {
 			if(hangupRequest === true) {
 				// Send a hangup request (we don't really care about the response)
 				var request = { "janus": "hangup", "transaction": Janus.randomString(12) };
-				if(pluginHandle.token !== null && pluginHandle.token !== undefined)
+				if(pluginHandle.token)
 					request["token"] = pluginHandle.token;
-				if(apisecret !== null && apisecret !== undefined)
+				if(apisecret)
 					request["apisecret"] = apisecret;
 				Janus.debug("Sending hangup request (handle=" + handleId + "):");
 				Janus.debug(request);
