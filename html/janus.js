@@ -108,7 +108,7 @@ Janus.useDefaultDependencies = function (deps) {
 				fetchOptions.headers['Content-Type'] = 'application/json';
 			}
 			if(options.withCredentials !== undefined) {
-				fetchOptions.credentials = options.withCredentials ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
+				fetchOptions.credentials = options.withCredentials ? 'include' : 'omit';
 			}
 			if(options.body) {
 				fetchOptions.body = JSON.stringify(options.body);
