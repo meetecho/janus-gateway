@@ -3826,6 +3826,15 @@ gint main(int argc, char *argv[])
 		/* We close stdin/stdout/stderr when initializing the logger */
 	}
 
+	/* Was a custom instance name provided? */
+	if(args_info.server_name_given) {
+		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
+	}
+	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "server_name");
+	if(item && item->value) {
+		server_name = g_strdup(item->value);
+	}
+
 	/* Initialize logger */
 	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
 		exit(1);
@@ -3835,7 +3844,7 @@ gint main(int argc, char *argv[])
 	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
 	gchar **disabled_loggers = NULL;
 	path = EVENTDIR;
-	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
+	item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
 	if(item && item->value)
 		path = (char *)item->value;
 	JANUS_LOG(LOG_INFO, "Logger plugins folder: %s\n", path);
@@ -3915,7 +3924,7 @@ gint main(int argc, char *argv[])
 						janus_logger->get_package(), janus_logger->get_api_compatibility(), JANUS_LOGGER_API_VERSION);
 					continue;
 				}
-				janus_logger->init(configs_folder);
+				janus_logger->init(server_name ? server_name : JANUS_SERVER_NAME, configs_folder);
 				JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_logger->get_version(), janus_logger->get_version_string());
 				JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_logger->get_package(), janus_logger->get_name());
 				JANUS_LOG(LOG_VERB, "\t   %s\n", janus_logger->get_description());
@@ -4007,9 +4016,6 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.debug_locks_given) {
 		janus_config_add(config, config_general, janus_config_item_create("debug_locks", "yes"));
-	}
-	if(args_info.server_name_given) {
-		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
 	}
 	if(args_info.session_timeout_given) {
 		char st[20];
@@ -4210,12 +4216,6 @@ gint main(int argc, char *argv[])
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
-
-	/* Was a custom instance name provided? */
-	item = janus_config_get(config, config_general, janus_config_type_item, "server_name");
-	if(item && item->value) {
-		server_name = g_strdup(item->value);
-	}
 
 	/* Check if a custom session timeout value was specified */
 	item = janus_config_get(config, config_general, janus_config_type_item, "session_timeout");

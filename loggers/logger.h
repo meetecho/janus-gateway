@@ -122,9 +122,10 @@ typedef struct janus_logger janus_logger;
 /*! \brief The logger plugin session and callbacks interface */
 struct janus_logger {
 	/*! \brief Logger plugin initialization/constructor
+	 * @param[in] server_name Name of the Janus instance generating the logs
 	 * @param[in] config_path Path of the folder where the configuration for this logger plugin can be found
 	 * @returns 0 in case of success, a negative integer in case of error */
-	int (* const init)(const char *config_path);
+	int (* const init)(const char *server_name, const char *config_path);
 	/*! \brief Logger plugin deinitialization/destructor */
 	void (* const destroy)(void);
 

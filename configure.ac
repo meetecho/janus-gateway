@@ -475,12 +475,19 @@ PKG_CHECK_MODULES([LIBCURL],
                         AC_DEFINE(HAVE_SAMPLEEVH)
                         enable_sample_event_handler=yes
                       ])
+                    AS_IF([test "x$enable_homer_logger" != "xno"],
+                      [
+                        AC_DEFINE(HAVE_HOMERLOGGER)
+                        enable_homer_logger=yes
+                      ])
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
                           [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-turn-rest-api])])
                     AS_IF([test "x$enable_sample_event_handler" = "xyes"],
                           [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
+                    AS_IF([test "x$enable_homer_logger" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-homer-logger])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])

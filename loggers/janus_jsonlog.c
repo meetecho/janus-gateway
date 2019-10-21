@@ -30,7 +30,7 @@
 
 /* Plugin methods */
 janus_logger *create(void);
-int janus_jsonlog_init(const char *config_path);
+int janus_jsonlog_init(const char *server_name, const char *config_path);
 void janus_jsonlog_destroy(void);
 int janus_jsonlog_get_api_compatibility(void);
 int janus_jsonlog_get_version(void);
@@ -109,7 +109,7 @@ static struct janus_json_parameter request_parameters[] = {
 
 
 /* Plugin implementation */
-int janus_jsonlog_init(const char *config_path) {
+int janus_jsonlog_init(const char *server_name, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
