@@ -181,7 +181,7 @@ int janus_homerlog_init(const char *server_name, const char *config_path) {
 	}
 	if(server_name != NULL)
 		server = g_strdup(server_name);
-JANUS_LOG(LOG_WARN, "%s\n", server);
+
 	/* Initialize libcurl, in case it's needed */
 	curl_global_init(CURL_GLOBAL_ALL);
 
