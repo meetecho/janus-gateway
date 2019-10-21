@@ -259,7 +259,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 
-	gchar **parts = g_strsplit(sdp, "\n", -1);
+	gchar **parts = g_strsplit(sdp, strstr(sdp, "\r\n") ? "\r\n" : "\n", -1);
 	if(parts) {
 		int index = 0;
 		char *line = NULL;
@@ -280,9 +280,6 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 				success = FALSE;
 				break;
 			}
-			char *cr = strchr(line, '\r');
-			if(cr != NULL)
-				*cr = '\0';
 			char c = *line;
 			if(mline == NULL) {
 				/* Global stuff */
