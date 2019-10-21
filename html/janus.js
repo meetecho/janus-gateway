@@ -310,8 +310,7 @@ Janus.init = function(options) {
 		Janus.reattachMediaStream = function(to, from) {
 			try {
 				to.srcObject = from.srcObject;
-			}
-			catch {
+			} catch {
 				try {
 					to.src = from.src;
 				} catch {
