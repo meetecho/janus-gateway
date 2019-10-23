@@ -517,8 +517,8 @@ static int janus_mqttevh_client_message_arrived(void *context, char *topicName, 
 	g_free(topic);
 
 	if(janus && message->payloadlen) {
-		JANUS_LOG(LOG_HUGE, "MQTT %s: Receiving %s EVH message over MQTT: %s\n",
-			ctx->connect.url, "Janus", (char *)message->payload);
+		JANUS_LOG(LOG_HUGE, "MQTT %s: Receiving %s EVH message over MQTT: %.*s\n",
+			ctx->connect.url, "Janus", message->payloadlen, (char *)message->payload);
 	}
 
 	MQTTAsync_freeMessage(&message);

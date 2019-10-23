@@ -161,6 +161,7 @@ void janus_mqtt_client_connected(void *context, char *cause);
 void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode);
 void janus_mqtt_client_connection_lost(void *context, char *cause);
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message);
+int janus_mqtt_client_set_metadata_property(json_t* properties, MQTTProperty property);
 int janus_mqtt_client_connect(janus_mqtt_context *ctx);
 int janus_mqtt_client_reconnect(janus_mqtt_context *ctx);
 int janus_mqtt_client_disconnect(janus_mqtt_context *ctx);
@@ -705,6 +706,7 @@ void janus_mqtt_client_connection_lost(void *context, char *cause) {
 }
 
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
+	int success = FALSE;
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	gchar *topic = g_strndup(topicName, topicLen);
 	const gboolean janus = janus_mqtt_api_enabled_ && !strcasecmp(topic, ctx->subscribe.topic);
@@ -712,16 +714,136 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 	g_free(topic);
 
 	if((janus || admin) && message->payloadlen) {
-		JANUS_LOG(LOG_HUGE, "Receiving %s API message over MQTT: %s\n", admin ? "admin" : "Janus", (char *)message->payload);
+		JANUS_LOG(LOG_HUGE, "Receiving %s API message over MQTT: %.*s\n", admin ? "admin" : "Janus", message->payloadlen, (char *)message->payload);
 
 		json_error_t error;
 		json_t *root = json_loadb(message->payload, message->payloadlen, 0, &error);
+
+		json_t *command = json_object_get(root, "janus");
+		if(command == NULL) {
+			JANUS_LOG(LOG_ERR, "Failed to get `janus` key from message payload\n");
+			goto done;
+		}
+		
+		const char *command_str = json_dumps(command, JSON_ENCODE_ANY | JSON_ENSURE_ASCII);
+		const gboolean is_message = g_strcmp0(command_str, "\"message\"") == 0;
+		free(command_str);
+
+		if(is_message) {
+			json_t *body = json_object_get(root, "body");
+			if(body == NULL) {
+				JANUS_LOG(LOG_ERR, "Failed to get `body` key from message payload\n");
+				goto done;
+			}
+
+			json_t *metadata = json_pack("{s:i,s:i}", "qos", message->qos, "retained", message->retained);
+
+			/* When using MQTT 5 set also properties to metadata */
+			#ifdef MQTTVERSION_5
+				if(ctx->connect.mqtt_version == MQTTVERSION_5) {
+					json_t *properties = json_object();
+
+					for (int i = 0; i < message->properties.count; i++) {
+						janus_mqtt_client_set_metadata_property(properties, message->properties.array[i]);
+					}
+
+					int rc = json_object_set_new_nocheck(metadata, "properties", properties);
+					if(rc == -1) {
+						JANUS_LOG(LOG_ERR, "Failed MQTT 5 properties to incoming message's metadata\n");
+						goto done;
+					}
+				}
+			#endif
+
+			/* Put metadata into __metadata key in payload */
+			int rc = json_object_set_new_nocheck(body, "__metadata", metadata);
+			if(rc == -1) {
+				JANUS_LOG(LOG_ERR, "Failed to set `__metadata` key to incoming message\n");
+				goto done;
+			}
+		}
+
 		ctx->gateway->incoming_request(&janus_mqtt_transport_, mqtt_session, NULL, admin, root, &error);
 	}
 
+	success = TRUE;
+
+done:
 	MQTTAsync_freeMessage(&message);
 	MQTTAsync_free(topicName);
-	return TRUE;
+	return success;
+}
+
+int janus_mqtt_client_set_metadata_property(json_t* dest, MQTTProperty property) {
+	int success = FALSE;
+	char *key;
+	json_t *value;
+	int type = MQTTProperty_getType(property.identifier);
+
+	if(type == MQTTPROPERTY_TYPE_UTF_8_STRING_PAIR) {
+		/* User property key is not guaranteed to be \0 terminated which is required by json_object_set_new so we copy it */
+		key = g_strndup(property.value.data.data, property.value.data.len);
+	} else {
+		key = (char*)MQTTPropertyName(property.identifier);
+	}
+
+	if(key == NULL) {
+		JANUS_LOG(LOG_ERR, "Failed to get MQTT 5 property key\n");
+		return FALSE;
+	}
+
+	switch(type) {
+		case MQTTPROPERTY_TYPE_BYTE:
+			value = json_boolean(property.value.byte);
+			break;
+		case MQTTPROPERTY_TYPE_TWO_BYTE_INTEGER:
+			value = json_integer(property.value.integer2);
+			break;
+		case MQTTPROPERTY_TYPE_FOUR_BYTE_INTEGER:
+		case MQTTPROPERTY_TYPE_VARIABLE_BYTE_INTEGER:
+			value = json_integer(property.value.integer4);
+			break;
+		case MQTTPROPERTY_TYPE_BINARY_DATA:
+			/* Base64 encode binary values because JSON doesn't support binaries */
+			;
+			const char *base64 = g_base64_encode((const guchar*)property.value.data.data, property.value.data.len);
+			value = json_string(base64);
+			g_free((gpointer)base64);
+			if (value == NULL) {
+				JANUS_LOG(LOG_ERR, "Failed to convert base64 encoded binary to JSON; key = %s\n", key);
+				goto done;
+			}
+			break;
+		case MQTTPROPERTY_TYPE_UTF_8_ENCODED_STRING:
+			value = json_stringn(property.value.data.data, property.value.data.len);
+			if(value == NULL) {
+				JANUS_LOG(LOG_ERR, "Failed to convert UTF-8 string to JSON; key = %s\n", key);
+				goto done;
+			}
+			break;
+		case MQTTPROPERTY_TYPE_UTF_8_STRING_PAIR:
+			value = json_stringn(property.value.value.data, property.value.value.len);
+			break;
+		default:
+			JANUS_LOG(LOG_ERR, "Unknown MQTT 5 property type\n");
+			goto done;
+	}
+
+	int rc = json_object_set_new(dest, key, value);
+	if(rc == -1) {
+		JANUS_LOG(LOG_ERR, "Failed to set `%s` key to MQTT 5 properties of incoming message\n", key);
+		goto done;
+	}
+
+	success = TRUE;
+
+done:
+	/* Free user property key which was previously dynamically allocated with g_strndup */
+	if(type == MQTTPROPERTY_TYPE_UTF_8_STRING_PAIR) {
+		g_free(key);
+	}
+
+	return success;
 }
 
 int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
