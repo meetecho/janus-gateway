@@ -119,7 +119,7 @@ static janus_mutex event_loops_mutex = JANUS_MUTEX_INITIALIZER;
 static void *janus_ice_static_event_loop_thread(void *data) {
 	janus_ice_static_event_loop *loop = data;
 	JANUS_LOG(LOG_VERB, "[loop#%d] Event loop thread started\n", loop->id);
-	if(loop->mainloop == NULL) {
+	if(loop->mainloop == NULL) {/
 		JANUS_LOG(LOG_ERR, "[loop#%d] Invalid loop...\n", loop->id);
 		g_thread_unref(g_thread_self());
 		return NULL;
@@ -266,7 +266,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
+		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
