@@ -121,7 +121,7 @@ $(document).ready(function() {
 									Janus.debug("[caller] Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -146,9 +146,9 @@ $(document).ready(function() {
 									Janus.log("[caller] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost) {
 									Janus.warn("[caller] Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on this PeerConnection (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug("[caller]  ::: Got a message :::");
@@ -309,7 +309,7 @@ $(document).ready(function() {
 									Janus.debug("[callee] Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -334,9 +334,9 @@ $(document).ready(function() {
 									Janus.log("[callee] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
 								},
-								slowLink: function(uplink, nacks) {
+								slowLink: function(uplink, lost) {
 									Janus.warn("[callee] Janus reports problems " + (uplink ? "sending" : "receiving") +
-										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
+										" packets on this PeerConnection (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug("[callee]  ::: Got a message :::");

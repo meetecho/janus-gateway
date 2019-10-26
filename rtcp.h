@@ -13,8 +13,8 @@
  * \ref protocols
  */
 
-#ifndef _JANUS_RTCP_H
-#define _JANUS_RTCP_H
+#ifndef JANUS_RTCP_H
+#define JANUS_RTCP_H
 
 #include <arpa/inet.h>
 #ifdef __MACH__

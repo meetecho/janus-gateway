@@ -82,14 +82,14 @@
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
- * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
@@ -794,6 +794,10 @@ echotest.createOffer({
  * -# By running NPM commands manually. This may be useful if you are looking to build just the JavaScript modules without
  *    incurring the overhead of a full build of Janus.
  *
+ * As an alternative to generating the module and copying it to your project, you can also tweak
+ * your module bundler to use \c janus.js directly from the official Janus repository. See more
+ * details (including concrete instructions for Webpack): \ref js-webpack
+ *
  * \section auto-build-js-modules Building modules using make
  * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module flag
  * (with or without a \c =yes directive) to \c configure before invoking \c make to build Janus.
@@ -840,6 +844,74 @@ echotest.createOffer({
  * -# https://rollupjs.org/#command-line-flags
  * -# https://rollupjs.org/#configuration-files
  *
+ * \section js-webpack Using janus.js directly with Webpack and other bundlers
+ *
+ * Generating a converted version of \c janus.js and copying it to your project is not always the best
+ * solution. In many situations it may be prefered to let your JavaScript module bundler (e.g.
+ * <a href="https://webpack.js.org">Webpack</a>) grab the file directly from the official Janus repository.
+ * Doing that you can manage \c janus.js just like any other dependency coming from Github or the npm Registry,
+ * getting rid of the manual copy step and letting the bundler take care of version management, updates
+ * and downloads.
+ *
+ * Of course, the first step is to include the official Janus repository as a dependency in your
+ * project by adding it to your \c packages.json file.
+ *
+ \verbatim
+ {
+   "dependencies": {
+     "janus-gateway": "git://github.com/meetecho/janus-gateway.git"
+   }
+ }
+ \endverbatim
+ *
+ * That will automatically drag in the dependency on the appropriate version of the
+ * <a href="https://www.npmjs.com/package/webrtc-adapter">WebRTC Adapter</a> from the npm Registry.
+ * But \c janus.js expects such adapter to be available as a global variable.
+ * So we have to make that happen for it to work properly. In the case of Webpack, is as easy as
+ * adding this to your \c webpack.config.js file.
+ \verbatim
+ const webpack = require('webpack');
+
+ module.exports = {
+   plugins: [
+     // janus.js does not use 'import' to access to the functionality of webrtc-adapter,
+     // instead it expects a global object called 'adapter' for that.
+     // Let's make that object available.
+     new webpack.ProvidePlugin({ adapter: 'webrtc-adapter' })
+   ]
+ }
+ \endverbatim
+ *
+ * On the other hand, \c janus.js defines the \c Janus object globally. So a small tweak is also
+ * needed to serve such object via \c export. That can be done using
+ * <a href="https://webpack.js.org/loaders/exports-loader/">exports-loader</a> and adding this to
+ * \c webpack.config.js
+ \verbatim
+ module.exports = {
+   module: {
+     rules: [
+       // janus.js does not use 'export' to provide its functionality to others, instead
+       // it creates a global variable called 'Janus' and expects consumers to use it.
+       // Let's use 'exports-loader' to simulate it uses 'export'.
+       {
+         test: require.resolve('janus-gateway'),
+         use: 'exports-loader?Janus=Janus'
+       }
+     ]
+   }
+ }
+ \endverbatim
+ *
+ * With that extra configuration, the official \c janus.js can be used directly in any modular
+ * JavaScript code base without any previous transformation of the file. That means you can simply
+ * do this to access to the Janus API from your modular code.
+ \verbatim
+ import { Janus } from 'janus-gateway';
+ \endverbatim
+
+ * For more detailed or updated documentation check the
+ * <a href="https://webpack.js.org/guides/shimming/">Webpack shimming guide</a> or the equivalent
+ * documentation for your bundler of choice.
  */
 
 /*!\page js-dependencies Working with custom janus.js dependencies
@@ -2193,7 +2265,8 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * memory leaks in the Janus structures and want to investigate them);
  * - \c set_libnice_debug: selectively enable/disable libnice debugging;
  * - \c set_max_nack_queue: change the value of the max NACK queue window;
- * - \c set_no_media_timer: change the value of the no-media timer value.
+ * - \c set_no_media_timer: change the value of the no-media timer property;
+ * - \c set_slowlink_threshold: change the value of the slowlink-threshold property.
  *
  * \subsection adminreqt Token-related requests
  * - \c add_token: add a valid token (only available if you enabled the \ref token);
@@ -2239,6 +2312,11 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * this can be useful whenever info from a third-party application needs to be
  * easily correlated to events originated by Janus, or to push information
  * Janus doesn't have available (e.g., a script polling CPU usage regularly).
+ *
+ * \subsection adminreql Custom logging-related requests
+ * - \c custom_logline: push a custom "external" string to print on the logs;
+ * this can be useful whenever info from a third-party application needs to be
+ * injected in the Janus logs for whatever reason. The log level can be chosen.
  *
  * \subsection adminreqz Helper requests
  * - \c resolve_address: helper request to evaluate whether this Janus instance
@@ -3398,14 +3476,14 @@ ldd janus | grep asan
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
- * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
  * - \b nanomsg: https://nanomsg.org/ (\c optional, Nanomsg)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
@@ -3544,7 +3622,13 @@ ldd janus | grep asan
  *    - Interview on Janus, at <a href="https://www.youtube.com/watch?v=dzQhyw1jiaA">ClueCon Weekly</a>;
  *    - Presentation at <a href="https://vimeo.com/303014581">Voip2day 2018</a> (here for the <a href="https://vimeo.com/302814764">Spanish version</a>);
  *    - Presentation on Janus and SIP at <a href="https://www.youtube.com/watch?v=beHHL0Ew5xY">OpenSIPS 2019</a>;
- *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>. \n\n
+ *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
+ *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
+ *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>. \n\n
+ *    Apart from these presentations, make sure you also check the slides
+ *    and presentations from <a href="https://januscon.it">JanusCon</a>,
+ *    the Janus conference we hosted here in Napoli.
+ *    \n\n
  *    .
  * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n

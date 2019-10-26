@@ -21,7 +21,8 @@
  * a "setup" message, by which the user initializes the PeerConnection
  * itself. Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
- * "create", "edit", "destroy", "list" and "exists" are available through the
+ * "create", "edit", "destroy", "list", "listparticipants" and "exists"
+ * and "announcement" are available through the
  * Janus API as well: notice that in this case you'll have to use "request"
  * and not "textroom" as the name of the request.
  *
@@ -99,6 +100,33 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 			"num_participants" : <count of the participants>
 		},
 		// Other rooms
+	]
+}
+\endverbatim
+ *
+ * To get a list of the participants in a specific room, instead, you
+ * can make use of the \c listparticipants request, which has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "listparticipants",
+	"room" : <unique numeric ID of the room>
+}
+\endverbatim
+ *
+ * A successful request will produce a list of participants in a
+ * \c participants response:
+ *
+\verbatim
+{
+	"room" : <unique numeric ID of the room>,
+	"participants" : [		// Array of participant objects
+		{	// Participant #1
+			"username" : "<username of participant>",
+			"display" : "<display name of participant, if any>"
+		},
+		// Other participants
 	]
 }
 \endverbatim
@@ -406,9 +434,10 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 }
 \endverbatim
  *
- * Incoming messages can come either as \c message or \c whisper events.
- * \c message will notify the user about an incoming public message, that
- * is a message that was sent to the whole room:
+ * Incoming messages will come either as \c message events. In particular,
+ * \c message will notify the user about an incoming public or privave
+ * message, that is either a message that was sent to the whole room,
+ * or to the user individually:
  *
 \verbatim
 {
@@ -416,22 +445,53 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 	"room" : <room ID the message was sent to>,
 	"from" : "<username of participant who sent the public message>",
 	"date" : "<date/time of when the message was sent>",
-	"text" : "<content of the message>"
+	"text" : "<content of the message>",
+	"whisper" : <true|false, depending on whether it's a public or private message>
 }
 \endverbatim
  *
- * \c whisper messages, instead, will notify the user about an incoming
- * \b private message from another participant in the room:
+ * In case the \c whisper attribute is \c true it means the user actually
+ * received a  private message from another participant in the room.
+ *
+ * Another way of injecting text into rooms is by means of announcements.
+ * Announcements are basically messages sent by the room itself, rather
+ * than individual users: as such, only users or applications managing
+ * the room can send these announcements, as the room secret will be
+ * required for the purpose. The \c announcement request implements this
+ * feature in the TextRoom plugin, and must be formatted like this:
  *
 \verbatim
 {
-	"textroom" : "whisper",
-	"room" : <room ID the message was sent to>,
-	"from" : "<username of participant who sent the private message>",
-	"date" : "<date/time of when the message was sent>",
-	"text" : "<content of the message>"
+	"textroom" : "announcement",
+	"room" : <unique numeric ID of the room this announcement will be sent to>,
+	"secret" : "<room secret; mandatory if configured>",
+	"text" : "<content of the announcement to send, as a string>"
 }
 \endverbatim
+ *
+ * In case the \c announcement request is accepted, the response will look
+ * like this:
+ *
+\verbatim
+{
+	"textroom" : "success"
+}
+\endverbatim
+ *
+ * Incoming announcements will be received by participants as \c announcement
+ * events. The syntax is pretty much identical to how \c message looks like,
+ * with the difference that no \c from attribute will be included as the
+ * announcement will be seen as coming from the room itself:
+ *
+\verbatim
+{
+	"textroom" : "announcement",
+	"room" : <room ID the announcement was sent to>,
+	"date" : "<date/time of when the announcement was sent>",
+	"text" : "<content of the announcement>"
+}
+\endverbatim
+ *
  */
 
 #include "plugin.h"
@@ -575,6 +635,11 @@ static struct janus_json_parameter message_parameters[] = {
 	{"to", JSON_STRING, 0},
 	{"tos", JSON_ARRAY, 0},
 	{"ack", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter announcement_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0},
+	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Static configuration instance */
@@ -1094,15 +1159,18 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	/* Some requests (e.g., 'create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")
+			|| !strcasecmp(request_text, "listparticipants")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
+			|| !strcasecmp(request_text, "announcement")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
 		 * the Janus API as well: add the properties the datachannel
 		 * processor would expect and handle everything there */
-		json_object_set_new(root, "textroom", json_string(request_text));
+		if(json_object_get(root, "textroom") == NULL)
+			json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
 		if(result == NULL) {
@@ -1168,13 +1236,17 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 	if(error_code != 0)
 		goto admin_response;
-	json_t *request = json_object_get(message, "textroom");
+	json_t *request = json_object_get(message, "request");
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")
+			|| !strcasecmp(request_text, "listparticipants")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
+			|| !strcasecmp(request_text, "announcement")
 			|| !strcasecmp(request_text, "destroy")) {
+		if(json_object_get(message, "textroom") == NULL)
+			json_object_set_new(message, "textroom", json_string(request_text));
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(NULL, NULL, message, FALSE);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
@@ -1667,7 +1739,6 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
-			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);
 			janus_mutex_unlock(&room->mutex);
@@ -1679,6 +1750,46 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "list", list);
+		}
+	} else if(!strcasecmp(request_text, "listparticipants")) {
+		/* List all participants in a room */
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		if(textroom == NULL || g_atomic_int_get(&textroom->destroyed)) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto msg_response;
+		}
+		janus_refcount_increase(&textroom->ref);
+		/* Return a list of all participants */
+		json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, textroom->participants);
+		while (!g_atomic_int_get(&textroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_textroom_participant *p = value;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "username", json_string(p->username));
+			if(p->display != NULL)
+				json_object_set_new(pl, "display", json_string(p->display));
+			json_array_append_new(list, pl);
+		}
+		janus_refcount_decrease(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
+		if(!internal) {
+			/* Send response back */
+			reply = json_object();
+			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "participants", list);
 		}
 	} else if(!strcasecmp(request_text, "allowed")) {
 		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing textroom room\n");
@@ -1862,6 +1973,100 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Send response back */
 			reply = json_object();
 			json_object_set_new(reply, "textbridge", json_string("success"));
+		}
+	} else if(!strcasecmp(request_text, "announcement")) {
+		JANUS_LOG(LOG_VERB, "Attempt to send a textroom announcement\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, announcement_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		if(textroom == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto msg_response;
+		}
+		janus_refcount_increase(&textroom->ref);
+		janus_mutex_lock(&textroom->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(textroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&textroom->mutex);
+			janus_refcount_decrease(&textroom->ref);
+			goto msg_response;
+		}
+		json_t *text = json_object_get(root, "text");
+		const char *message = json_string_value(text);
+		/* Prepare outgoing message */
+		json_t *msg = json_object();
+		json_object_set_new(msg, "textroom", json_string("announcement"));
+		json_object_set_new(msg, "room", json_integer(room_id));
+		time_t timer;
+		time(&timer);
+		struct tm *tm_info = localtime(&timer);
+		char msgTime[64];
+		strftime(msgTime, sizeof(msgTime), "%FT%T%z", tm_info);
+		json_object_set_new(msg, "date", json_string(msgTime));
+		json_object_set_new(msg, "text", json_string(message));
+		char *msg_text = json_dumps(msg, json_format);
+		json_decref(msg);
+		/* Send the announcement to everybody in the room */
+		if(textroom->participants) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, textroom->participants);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_textroom_participant *top = value;
+				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64": %s\n", top->username, room_id, message);
+				janus_refcount_increase(&top->ref);
+				gateway->relay_data(top->session->handle, NULL, msg_text, strlen(msg_text));
+				janus_refcount_decrease(&top->ref);
+			}
+		}
+#ifdef HAVE_LIBCURL
+		/* Is there a backend waiting for this message too? */
+		if(textroom->http_backend) {
+			/* Prepare the libcurl context */
+			CURLcode res;
+			CURL *curl = curl_easy_init();
+			if(curl == NULL) {
+				JANUS_LOG(LOG_ERR, "Error initializing CURL context\n");
+			} else {
+				curl_easy_setopt(curl, CURLOPT_URL, textroom->http_backend);
+				struct curl_slist *headers = NULL;
+				headers = curl_slist_append(headers, "Accept: application/json");
+				headers = curl_slist_append(headers, "Content-Type: application/json");
+				headers = curl_slist_append(headers, "charsets: utf-8");
+				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, msg_text);
+				curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_textroom_write_data);
+				/* Send the request */
+				res = curl_easy_perform(curl);
+				if(res != CURLE_OK) {
+					JANUS_LOG(LOG_ERR, "Couldn't relay event to the backend: %s\n", curl_easy_strerror(res));
+				} else {
+					JANUS_LOG(LOG_DBG, "Event sent!\n");
+				}
+				curl_easy_cleanup(curl);
+				curl_slist_free_all(headers);
+			}
+		}
+#endif
+		free(msg_text);
+		janus_mutex_unlock(&textroom->mutex);
+		janus_refcount_decrease(&textroom->ref);
+		if(!internal) {
+			/* Send response back */
+			reply = json_object();
+			json_object_set_new(reply, "textroom", json_string("success"));
 		}
 	} else if(!strcasecmp(request_text, "create")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,

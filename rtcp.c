@@ -1441,11 +1441,12 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Got it  */
 				first_received = TRUE;
 				/* Set it */
-				reference_time = (stat->timestamp/64000);
+				reference_time = stat->timestamp / 64000;
 				/* Get initial time */
 				timestamp = reference_time * 64000;
-				/* also in bufffer */
-				janus_set3(data, reference_time_pos, reference_time);
+				/* also in buffer */
+				/* (use only 23 bits of reference_time) */
+				janus_set3(data, reference_time_pos, (reference_time & 0x007FFFFF));
 			}
 
 			/* Get delta */
@@ -1454,7 +1455,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			else
 				delta = -(int)((timestamp-stat->timestamp)/250);
 			/* If it is negative or too big */
-			if (delta<0 || delta> 127) {
+			if (delta<0 || delta> 255) {
 				/* Big one */
 				status = janus_rtp_packet_status_largeornegativedelta;
 			} else {
@@ -1462,6 +1463,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				status = janus_rtp_packet_status_smalldelta;
 			}
 			/* Store delta */
+			/* Overflows are possible here */
 			g_queue_push_tail(deltas, GINT_TO_POINTER(delta));
 			/* Set last time */
 			timestamp = stat->timestamp;
@@ -1655,9 +1657,15 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		/* Get next delta */
 		gint delta = GPOINTER_TO_INT(g_queue_pop_head (deltas));
 		/* Check size */
-		if (delta<0 || delta>127) {
+		if (delta<0 || delta>255) {
+			short reported_delta = (short)delta;
+			/* Overflow */
+			if (reported_delta != delta) {
+				reported_delta = delta > 0 ? SHRT_MAX : SHRT_MIN;
+				JANUS_LOG(LOG_ERR, "Delta value (%d) too large, reporting it as %d\n", delta, reported_delta);
+			}
 			/* 2 bytes */
-			janus_set2(data, len, (short)delta);
+			janus_set2(data, len, reported_delta);
 			/* Inc */
 			len += 2;
 		} else {

@@ -33,8 +33,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_TEXT2PCAP_H
-#define _JANUS_TEXT2PCAP_H
+#ifndef JANUS_TEXT2PCAP_H
+#define JANUS_TEXT2PCAP_H
 
 #include <glib.h>
 

@@ -163,6 +163,14 @@ $(document).ready(function() {
 											$('#chatroom').append('<p>[' + dateString + '] <b>' + participants[from] + ':</b> ' + msg);
 											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										}
+									} else if(what === "announcement") {
+										// Room announcement
+										var msg = json["text"];
+										msg = msg.replace(new RegExp('<', 'g'), '&lt');
+										msg = msg.replace(new RegExp('>', 'g'), '&gt');
+										var dateString = getDateString(json["date"]);
+										$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <i>' + msg + '</i>');
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 									} else if(what === "join") {
 										// Somebody joined
 										var username = json["username"];
@@ -277,7 +285,7 @@ function registerUsername() {
 					// This is a "no such room" error: give a more meaningful description
 					bootbox.alert(
 						"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
-						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.cfg</code> " +
+						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.jcfg</code> " +
 						"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
 						"from that sample in your current configuration file, then restart Janus and try again."
 					);

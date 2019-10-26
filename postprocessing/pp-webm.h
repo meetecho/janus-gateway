@@ -9,8 +9,8 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_WEBM
-#define _JANUS_PP_WEBM
+#ifndef JANUS_PP_WEBM
+#define JANUS_PP_WEBM
 
 #include <stdio.h>
 

@@ -11,18 +11,18 @@
  * it is sent to the peers. The actual SDP processing (parsing SDP strings,
  * representation of SDP as an internal format, and so on) is done via
  * the tools provided in sdp-utils.h.
- * 
+ *
  * \todo Right now, we only support sessions with up to a single audio
  * and/or a single video stream (as in, a single audio and/or video
  * m-line) plus an optional DataChannel. Later versions of the server
  * will add support for more media streams of the same type in a session.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
-#ifndef _JANUS_SDP_H
-#define _JANUS_SDP_H
+
+#ifndef JANUS_SDP_H
+#define JANUS_SDP_H
 
 
 #include <inttypes.h>

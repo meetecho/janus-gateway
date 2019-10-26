@@ -13,7 +13,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
-* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
+* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.15 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
@@ -234,7 +234,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.3
+	janus 0.7.5
 
 	Usage: janus [OPTIONS]...
 
@@ -246,6 +246,8 @@ or on the command line:
                                   (default=none)
 	-N, --disable-stdout          Disable stdout based logging  (default=off)
 	-L, --log-file=path           Log to the specified file (default=stdout only)
+	-H  --cwd-path                Working directory for Janus daemon process
+	                              (default=/)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
@@ -285,6 +287,9 @@ or on the command line:
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
+	-W, --slowlink-threshold=number
+                                  Number of lost packets (per s) that should
+                                  trigger a 'slowlink' Janus API event to users
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to

@@ -1193,9 +1193,6 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context);
-		/* Do we need to drop this? */
-		if(!save)
-			return;
 		if(session->sim_context.need_pli) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
@@ -1204,6 +1201,9 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
 			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
 		}
+		/* Do we need to drop this? */
+		if(!save)
+			return;
 		/* If we got here, update the RTP header and save the packet */
 		janus_rtp_header_update(header, &session->context, TRUE, 0);
 		if(session->recording->vcodec == JANUS_VIDEOCODEC_VP8) {
@@ -1250,8 +1250,10 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_object_set_new(event, "recordplay", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("slow_link"));
+	json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+	if(video)
+		json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	/* What is uplink for the server is downlink for the client, so turn the tables */
-	json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
 	json_object_set_new(event, "result", result);
 	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event, NULL);

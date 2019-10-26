@@ -54,8 +54,8 @@ void my_free_function(janus_refcount *counter) {
  * \ref core
  */
 
-#ifndef _JANUS_REFCOUNT_H
-#define _JANUS_REFCOUNT_H
+#ifndef JANUS_REFCOUNT_H
+#define JANUS_REFCOUNT_H
 
 #include <glib.h>
 #include "mutex.h"
