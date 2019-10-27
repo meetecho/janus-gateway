@@ -238,7 +238,7 @@ gboolean janus_ice_is_enforced(const char *ip) {
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
-		if(enforced != NULL && strstr(ip, enforced)) {
+		if(enforced != NULL && strstr(ip, enforced) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
