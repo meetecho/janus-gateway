@@ -266,7 +266,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
+		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
