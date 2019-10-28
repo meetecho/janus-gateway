@@ -224,6 +224,11 @@ $(document).ready(function() {
 												// In case you want to offer video when reacting to an offerless call, set this to true
 												doVideo = false;
 											}
+											// Is this the result of a transfer?
+											var transfer = "";
+											var referredBy = result["referred_by"];
+											if(referredBy)
+												transfer = " (referred by " + referredBy + ")";
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
 											var srtp = result["srtp"];
@@ -237,7 +242,7 @@ $(document).ready(function() {
 											if(offerlessInvite)
 												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
+												message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -340,6 +345,51 @@ $(document).ready(function() {
 													error: function(error) {
 														Janus.error("WebRTC error:", error);
 														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
+										} else if(event === 'transfer') {
+											// We're being asked to transfer the call, ask the user what to do
+											var referTo = result["refer_to"];
+											var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+											var referId = result["refer_id"];
+											var replaces = result["replaces"];
+											var extra = ("referred by " + referredBy);
+											if(replaces)
+												extra += (", replaces call-ID " + replaces);
+											bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ")",
+												function(result) {
+													if(result) {
+														// Call the person we're being transferred to
+														if(!sipcall.webrtcStuff.pc) {
+															// Do it here
+															actuallyDoCall(sipcall, referTo, false, referId);
+														} else {
+															// We're in a call already, use a helper
+															var h = -1;
+															if(Object.keys(helpers).length > 0) {
+																// See if any of the helpers if available
+																for(var i in helpers) {
+																	if(!helpers[i].sipcall.webrtcStuff.pc) {
+																		h = parseInt(i);
+																		break;
+																	}
+																}
+															}
+															if(h !== -1) {
+																// Do in this helper
+																actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
+															} else {
+																// Create a new helper
+																addHelper(function(id) {
+																	// Do it here
+																	actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
+																});
+															}
+														}
+													} else {
+														// We're rejecting the transfer
+														var body = { request: "decline", refer_id: referId };
+														sipcall.send({"message": body});
 													}
 												});
 										} else if(event === 'hangup') {
@@ -669,6 +719,9 @@ function doCall(ev) {
 	// Call this URI
 	doVideo = $('#dovideo' + suffix).is(':checked');
 	Janus.log(prefix + "This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
+	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
+}
+function actuallyDoCall(handle, uri, doVideo, referId) {
 	handle.createOffer(
 		{
 			media: {
@@ -689,7 +742,7 @@ function doCall(ev) {
 				//				"AnotherHeader": "another string"
 				//			}
 				//		};
-				var body = { request: "call", uri: $('#peer' + suffix).val() };
+				var body = { request: "call", uri: uri };
 				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid
 				// values are "sdes_optional" and "sdes_mandatory", e.g.:
@@ -705,6 +758,11 @@ function doCall(ev) {
 				// may not be able to handle them. If you want to receive
 				// re-INVITES to handle them yourself, specify it here, e.g.:
 				//		body["autoaccept_reinvites"] = false;
+				if(referId) {
+					// In case we're originating this call because of a call
+					// transfer, we need to provide the internal reference ID
+					body["refer_id"] = referId;
+				}
 				handle.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
@@ -722,7 +780,6 @@ function doHangup(ev) {
 		helperId = null;
 	else
 		helperId = parseInt(helperId);
-	console.warn(helperId);
 	if(!helperId) {
 		$('#call').attr('disabled', true).unbind('click');
 		var hangup = { "request": "hangup" };
@@ -736,11 +793,11 @@ function doHangup(ev) {
 	}
 }
 
-
 // The following code is only needed if you're interested in supporting multiple
 // calls at the same time. As explained in the Janus documentation, each Janus
 // handle can only do one PeerConnection at a time, which means you normally
-// cannot do multiple calls. If that's something you need, then the SIP plugin
+// cannot do multiple calls. If that's something you need (e.g., because you
+// need to do a SIP transfer, or want to be in two calls), then the SIP plugin
 // provides the so-called "helpers": basically additional handles attached to
 // the SIP plugin, and associated to your SIP identity. They can be used to
 // originate and receive calls exactly as the main handle: notice that incoming
@@ -749,7 +806,7 @@ function doHangup(ev) {
 // In this demo, creating a "helper" adds a new row for calls that looks and
 // works exactly as the default one: you can add more than one "helper", and
 // obviously the more you have, the more concurrent calls you can have.
-function addHelper() {
+function addHelper(helperCreated) {
 	helpersCount++;
 	var helperId = helpersCount;
 	helpers[helperId] = { id: helperId };
@@ -866,6 +923,8 @@ function addHelper() {
 						$('#call' + helperId).removeAttr('disabled').html('Call')
 							.removeClass("btn-danger").addClass("btn-success")
 							.unbind('click').click(doCall);
+						if(helperCreated)
+							helperCreated(helperId);
 					} else if(event === 'calling') {
 						Janus.log("[Helper #" + helperId + "] Waiting for the peer to answer...");
 						// TODO Any ringtone?
@@ -888,6 +947,16 @@ function addHelper() {
 							// In case you want to offer video when reacting to an offerless call, set this to true
 							doVideo = false;
 						}
+						// Is this the result of a transfer?
+						var transfer = "";
+						var referredBy = result["referred_by"];
+						var replaces = result["replaces"];
+						if(referredBy && replaces)
+							transfer = " (referred by " + referredBy + ", replaces call-ID " + replaces + ")";
+						else if(referredBy && !replaces)
+							transfer = " (referred by " + referredBy + ")";
+						else if(!referredBy && replaces)
+							transfer = " (replaces call-ID " + replaces + ")";
 						// Any security offered? A missing "srtp" attribute means plain RTP
 						var rtpType = "";
 						var srtp = result["srtp"];
@@ -901,7 +970,7 @@ function addHelper() {
 						if(offerlessInvite)
 							extra = " (no SDP offer provided)"
 						incoming = bootbox.dialog({
-							message: "Incoming call from " + result["username"] + "!" + rtpType + extra + " (on helper #" + helperId + ")",
+							message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra + " (on helper #" + helperId + ")",
 							title: "Incoming call (helper " + helperId + ")",
 							closeButton: false,
 							buttons: {
@@ -1010,6 +1079,54 @@ function addHelper() {
 								error: function(error) {
 									Janus.error("[Helper #" + helperId + "] WebRTC error:", error);
 									bootbox.alert("WebRTC error... " + JSON.stringify(error));
+								}
+							});
+					} else if(event === 'transfer') {
+						// We're being asked to transfer the call, ask the user what to do
+						var referTo = result["refer_to"];
+						var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+						var referId = result["refer_id"];
+						var replaces = result["replaces"];
+						var extra = ("referred by " + referredBy);
+						if(replaces)
+							extra += (", replaces call-ID " + replaces);
+						bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ", helper " + helperId + ")",
+							function(result) {
+								if(result) {
+									// Call the person we're being transferred to
+									if(!helpers[helperId].sipcall.webrtcStuff.pc) {
+										// Do it here
+										actuallyDoCall(helpers[helperId].sipcall, referTo, false, referId);
+									} else if(!sipcall.webrtcStuff.pc) {
+										// Do it on the main handle
+										actuallyDoCall(sipcall, referTo, false, referId);
+									} else {
+										// We're in a call already, use the main handle or a helper
+										var h = -1;
+										if(Object.keys(helpers).length > 0) {
+											// See if any of the helpers if available
+											for(var i in helpers) {
+												if(!helpers[i].sipcall.webrtcStuff.pc) {
+													h = parseInt(i);
+													break;
+												}
+											}
+										}
+										if(h !== -1) {
+											// Do in this helper
+											actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
+										} else {
+											// Create a new helper
+											addHelper(function(id) {
+												// Do it here
+												actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
+											});
+										}
+									}
+								} else {
+									// We're rejecting the transfer
+									var body = { request: "decline", refer_id: referId };
+									sipcall.send({"message": body});
 								}
 							});
 					} else if(event === 'hangup') {
