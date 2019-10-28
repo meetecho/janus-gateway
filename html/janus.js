@@ -2940,18 +2940,19 @@ function Janus(gatewayCallbacks) {
 			if(config.volume[stream].timer === null || config.volume[stream].timer === undefined) {
 				Janus.log("Starting " + stream + " volume monitor");
 				config.volume[stream].timer = setInterval(function() {
-					config.pc.getStats(function(stats) {
-						var results = stats.result();
-						for(var i=0; i<results.length; i++) {
-							var res = results[i];
-							if(res.type == 'ssrc') {
-								if(remote && res.stat('audioOutputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
-								else if(!remote && res.stat('audioInputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
+					config.pc.getStats()
+						.then(function(stats) {
+							var results = stats.result();
+							for(var i=0; i<results.length; i++) {
+								var res = results[i];
+								if(res.type == 'ssrc') {
+									if(remote && res.stat('audioOutputLevel'))
+										config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
+									else if(!remote && res.stat('audioInputLevel'))
+										config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
+								}
 							}
-						}
-					});
+						});
 				}, 200);
 				return 0;	// We don't have a volume to return yet
 			}
