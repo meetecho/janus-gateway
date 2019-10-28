@@ -297,31 +297,25 @@ Janus.init = function(options) {
 		}
 		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
 		Janus.attachMediaStream = function(element, stream) {
-			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 52) {
-					element.srcObject = stream;
-				} else if(typeof element.src !== 'undefined') {
+			try {
+				element.srcObject = stream;
+			} catch {
+				try {
 					element.src = URL.createObjectURL(stream);
-				} else {
+				} catch {
 					Janus.error("Error attaching stream to element");
 				}
-			} else {
-				element.srcObject = stream;
 			}
 		};
 		Janus.reattachMediaStream = function(to, from) {
-			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 52) {
-					to.srcObject = from.srcObject;
-				} else if(typeof to.src !== 'undefined') {
+			try {
+				to.srcObject = from.srcObject;
+			} catch {
+				try {
 					to.src = from.src;
-				} else {
+				} catch {
 					Janus.error("Error reattaching stream to element");
 				}
-			} else {
-				to.srcObject = from.srcObject;
 			}
 		};
 		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
