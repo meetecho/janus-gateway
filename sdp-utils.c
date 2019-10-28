@@ -259,12 +259,17 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 
-	gchar **parts = g_strsplit(sdp, strstr(sdp, "\r\n") ? "\r\n" : "\n", -1);
+	gchar **parts = g_strsplit(sdp, "\n", -1);
 	if(parts) {
 		int index = 0;
-		char *line = NULL;
+		char *line = NULL, *cr = NULL;
 		while(success && (line = parts[index]) != NULL) {
+			cr = strchr(line, '\r');
+			if(cr != NULL)
+				*cr = '\0';
 			if(*line == '\0') {
+				if(cr != NULL)
+					*cr = '\r';
 				index++;
 				continue;
 			}
@@ -571,8 +576,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 				}
 			}
+			if(cr != NULL)
+				*cr = '\r';
 			index++;
 		}
+		if(cr != NULL)
+			*cr = '\r';
 		g_strfreev(parts);
 	}
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
