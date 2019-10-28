@@ -1,0 +1,30 @@
+# This configures the Nanomsg event handler. Since this plugin only
+# forwards each event it receives via Nanomsg, you simply need to
+# configure (i) which events to subscribe to, (ii) the address to use for
+# the communication, and (iii) whether the address should be used to bind
+# locally or to connect to a remote endpoint. Notice that the only supported
+# pattern is NN_PUBSUB, where the Nanomsg event handler is the publisher.
+
+general: {
+	enabled = false		# By default the module is not enabled
+	events = "all"		# Comma separated list of the events mask you're interested
+						# in. Valid values are none, sessions, handles, jsep, webrtc,
+						# media, plugins, transports, core, external and all. By
+						# default we subscribe to everything (all)
+	grouping = true		# Whether events should be sent individually (one per
+						# HTTP POST, JSON object), or if it's ok to group them
+						# (one or more per HTTP POST, JSON array with objects)
+						# The default is 'yes' to limit the number of connections.
+
+						# Address the plugin will send all events to as HTTP POST
+						# requests with an application/json payload. In case
+						# authentication is required to contact the backend, set
+						# the credentials as well (basic authentication only).
+	json = "indented"	# Whether the JSON messages should be indented (default),
+						# plain (no indentation) or compact (no indentation and no spaces)
+
+	#mode = "bind"						# Whether we should 'bind' to the specified
+										# address, or connect to it if remote (default)
+	address = "ipc:///tmp/janusevh.ipc"	# Address to use, refer to the Nanomsg documentation
+										# for more info on different transports you can use here
+}

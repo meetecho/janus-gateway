@@ -72,10 +72,10 @@ janus_eventhandler *create(void) {
  * handlers never need to contact the Janus core themselves. This path can be used to read and
  * parse a configuration file for the event handler plugin: the event handler
  * plugins we made available out of the box use the package name as a
- * name for the file (e.g., \c janus.eventhandler.fake.cfg for the sample
+ * name for the file (e.g., \c janus.eventhandler.fake.jcfg for the sample
  * event handler plugin), but you're free to use a different one, as long
  * as it doesn't collide with existing ones. Besides, the existing eventhandler
- * plugins use the same INI format for configuration files the core
+ * plugins use the same libconfig format for configuration files the core
  * uses (relying on the \c janus_config helpers for the purpose) but
  * again, if you prefer a different format (XML, JSON, etc.) that's up to you.
  *
@@ -109,7 +109,7 @@ janus_eventhandler *create(void) {
  * their event handler plugin structure, e.g.:
  *
 \verbatim
-static janus_eventhandler janus_fake_eventhandler handler plugin =
+static janus_eventhandler janus_fake_eventhandler_plugin =
 	{
 		JANUS_EVENTHANDLER_INIT,
 
@@ -225,7 +225,7 @@ struct janus_eventhandler {
 	 * returned as a response, which will be sent in response to the Admin API call.
 	 * This can be useful to tweak settings in real-time, or to probe the internals
 	 * of the handler plugin for monitoring purposes.
-	 * @param[in] event Jansson object containing the request
+	 * @param[in] request Jansson object containing the request
 	 * @returns A Jansson object containing the response for the client */
 	json_t *(* const handle_request)(json_t *request);
 

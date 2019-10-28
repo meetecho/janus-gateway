@@ -114,6 +114,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
+gboolean janus_faststart = FALSE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 static char *metadata = NULL;
@@ -180,6 +181,7 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			ignore_first_packets = val;
 	}
+
 	if(args_info.audiolevel_ext_given || (g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL)) {
 		int val = args_info.audiolevel_ext_given ? args_info.audiolevel_ext_arg : atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT"));
 		if(val >= 0)
@@ -194,6 +196,9 @@ int main(int argc, char *argv[])
 	if(args_info.format_given || (g_getenv("JANUS_PPREC_FORMAT") != NULL)) {
 		extension = g_strdup(args_info.format_given ? args_info.format_arg : g_getenv("JANUS_PPREC_FORMAT"));
 	}
+	if(args_info.faststart_given)
+		janus_faststart = TRUE;
+
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -275,6 +280,13 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	}
+
+	if (janus_faststart && strcasecmp(extension, "mp4")) {
+		JANUS_LOG(LOG_ERR, "Faststart only supported for MP4");
+		cmdline_parser_free(&args_info);
+		exit(1);
+	}
+
 	FILE *file = fopen(source, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not open file %s\n", source);
@@ -593,7 +605,7 @@ int main(int argc, char *argv[])
 		if(has_timestamps) {
 			JANUS_LOG(LOG_VERB, "  -- Time: %"SCNu32"ms\n", pkt_ts);
 		}
-		if(!data && len > 2000) {
+		if(!data && len > 1500) {
 			/* Way too large, very likely not RTP, skip */
 			JANUS_LOG(LOG_VERB, "  -- Too large packet (%d bytes), skipping\n", len);
 			offset += len;
@@ -912,7 +924,7 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if(h264) {
-			if(janus_pp_h264_create(destination, metadata) < 0) {
+			if(janus_pp_h264_create(destination, metadata, janus_faststart) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);

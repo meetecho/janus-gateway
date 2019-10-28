@@ -312,8 +312,8 @@ typedef struct janus_duktape_callback {
 
 /* Helper function to sample the number of occupied slots into JavaScript stack */
 static void janus_duktape_stackdump(duk_context *ctx) {
-    int top = duk_get_top(ctx);
-    JANUS_LOG(LOG_HUGE, "Total in Duktape stack: %d\n", top);
+	int top = duk_get_top(ctx);
+	JANUS_LOG(LOG_HUGE, "Total in Duktape stack: %d\n", top);
 }
 
 /* janus_duktape_session is defined in janus_duktape_data.h, but it's managed here */
@@ -407,6 +407,11 @@ static const char *janus_duktape_type_string(int type) {
 static duk_ret_t janus_duktape_method_getmodulesfolder(duk_context *ctx) {
 	/* This method returns the folder that was configured in the settings, for modules */
 	duk_push_string(ctx, duktape_folder ? duktape_folder : ".");
+	return 1;
+}
+
+static duk_ret_t janus_duktape_method_getversion(duk_context *ctx) {
+	duk_push_int(ctx, DUK_VERSION);
 	return 1;
 }
 
@@ -1309,12 +1314,14 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_put_global_string(duktape_ctx, "startRecording");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_stoprecording, 4);
 	duk_put_global_string(duktape_ctx, "stopRecording");
+	duk_push_c_function(duktape_ctx, janus_duktape_method_getversion, 0);
+	duk_put_global_string(duktape_ctx, "getDuktapeVersion");
 	/* Register all extra functions, if any were added */
 	janus_duktape_register_extra_functions(duktape_ctx);
 
 	/* Now load the script (FIXME badly) */
-    FILE *f = fopen(duktape_file, "rb");
-    if(f == NULL) {
+	FILE *f = fopen(duktape_file, "rb");
+	if(f == NULL) {
 		JANUS_LOG(LOG_ERR, "Error loading JS script %s: no such file\n", duktape_file);
 		duk_destroy_heap(duktape_ctx);
 		g_free(duktape_folder);
@@ -2364,8 +2371,8 @@ static void *janus_duktape_scheduler(void *data) {
 			int res = duk_pcall(duktape_ctx, 0);
 			if(res != DUK_EXEC_SUCCESS) {
 				JANUS_LOG(LOG_ERR, "Duktape error: %s\n", duk_safe_to_string(duktape_ctx, -1));
-				duk_pop(duktape_ctx);
 			}
+			duk_pop(duktape_ctx);
 			/* Print the count of elements into Duktape stack */
 			janus_duktape_stackdump(duktape_ctx);
 			janus_mutex_unlock(&duktape_mutex);
