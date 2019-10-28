@@ -166,7 +166,13 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx);
 int janus_mqtt_client_reconnect(janus_mqtt_context *ctx);
 int janus_mqtt_client_disconnect(janus_mqtt_context *ctx);
 int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin);
-int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin);
+int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin, char* topic, int qos, gboolean retain, GArray *properties);
+void janus_mqtt_property_set_byte(MQTTProperty *property, json_t *value);
+void janus_mqtt_property_set_two_byte_integer(MQTTProperty *property, json_t *value);
+void janus_mqtt_property_set_four_byte_integer(MQTTProperty *property, json_t *value);
+void janus_mqtt_property_set_utf_8_encoded_string(MQTTProperty *property, json_t *value);
+void janus_mqtt_property_set_binary_data(MQTTProperty *property, json_t *value);
+void janus_mqtt_property_set_utf_8_string_pair(MQTTProperty *property, char* key, json_t *value);
 int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payload);
 void janus_mqtt_client_destroy_context(janus_mqtt_context **ctx);
 /* MQTT v3.x interface callbacks */
@@ -618,17 +624,208 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 		return -1;
 	}
 
+	char *topic = admin ? ctx->admin.publish.topic : ctx->publish.topic;
+	int qos = ctx->publish.qos;
+	gboolean retain = FALSE;
+
+	/* Override topic, qos, retain and set properties from metadata if present */
+	json_t *metadata = NULL;
+	json_t *plugindata = json_object_get(message, "plugindata");
+	if(plugindata != NULL) {
+		json_t *data = json_object_get(plugindata, "data");
+		if (data != NULL) {
+			metadata = json_object_get(data, "__metadata");
+			if (metadata != NULL) {
+				json_incref(metadata);
+				json_object_del(data, "__metadata");
+
+				json_t *topic_json = json_object_get(metadata, "topic");
+				if (topic_json != NULL) {
+					topic = (char*)json_string_value(topic_json);
+				}
+
+				json_t *qos_json = json_object_get(metadata, "qos");
+				if (qos_json != NULL) {
+					qos = (int)json_integer_value(qos_json);
+				}
+
+				json_t *retain_json = json_object_get(metadata, "retain");
+				if (retain_json != NULL) {
+					retain = json_boolean_value(retain_json);
+				}
+			}
+		}
+	}
+
+	GArray *mqtt_properties = NULL;
+
+#ifdef MQTTVERSION_5	
+	if(metadata != NULL && ctx->connect.mqtt_version == MQTTVERSION_5) {
+		json_t *properties = json_object_get(metadata, "properties");
+		if(properties != NULL) {
+			mqtt_properties = g_array_sized_new(FALSE, FALSE, sizeof(MQTTProperty), json_object_size(properties));
+
+			const char *key;
+			json_t *value;
+			json_object_foreach(properties, key, value) {
+				MQTTProperty property;
+
+				if(strcmp(key, "payload_format_indicator") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_PAYLOAD_FORMAT_INDICATOR;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "message_expiry_interval") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_MESSAGE_EXPIRY_INTERVAL;
+					janus_mqtt_property_set_four_byte_integer(&property, value);
+				} else if(strcmp(key, "content_type") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_CONTENT_TYPE;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "response_topic") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_RESPONSE_TOPIC;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "correlation_data") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_CORRELATION_DATA;
+					janus_mqtt_property_set_binary_data(&property, value);
+				} else if(strcmp(key, "subscription_identifier") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SUBSCRIPTION_IDENTIFIER;
+					janus_mqtt_property_set_four_byte_integer(&property, value);
+				} else if(strcmp(key, "session_expiry_interval") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SESSION_EXPIRY_INTERVAL;
+					janus_mqtt_property_set_four_byte_integer(&property, value);
+				} else if(strcmp(key, "assigned_client_identifer") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_ASSIGNED_CLIENT_IDENTIFER;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "server_keep_alive") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SERVER_KEEP_ALIVE;
+					janus_mqtt_property_set_two_byte_integer(&property, value);
+				} else if(strcmp(key, "authentication_method") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_AUTHENTICATION_METHOD;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "authentication_data") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_AUTHENTICATION_DATA;
+					janus_mqtt_property_set_binary_data(&property, value);
+				} else if(strcmp(key, "request_problem_information") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_REQUEST_PROBLEM_INFORMATION;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "will_delay_interval") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_WILL_DELAY_INTERVAL;
+					janus_mqtt_property_set_four_byte_integer(&property, value);
+				} else if(strcmp(key, "request_response_information") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_REQUEST_RESPONSE_INFORMATION;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "response_information") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_RESPONSE_INFORMATION;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "server_reference") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SERVER_REFERENCE;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "reason_string") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_REASON_STRING;
+					janus_mqtt_property_set_utf_8_encoded_string(&property, value);
+				} else if(strcmp(key, "receive_maximum") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_RECEIVE_MAXIMUM;
+					janus_mqtt_property_set_two_byte_integer(&property, value);
+				} else if(strcmp(key, "topic_alias_maximum") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_TOPIC_ALIAS_MAXIMUM;
+					janus_mqtt_property_set_two_byte_integer(&property, value);
+				} else if(strcmp(key, "topic_alias") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_TOPIC_ALIAS;
+					janus_mqtt_property_set_two_byte_integer(&property, value);
+				} else if(strcmp(key, "maximum_qos") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_MAXIMUM_QOS;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "retain_available") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_RETAIN_AVAILABLE;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "maximum_packet_size") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_MAXIMUM_PACKET_SIZE;
+					janus_mqtt_property_set_four_byte_integer(&property, value);
+				} else if(strcmp(key, "wildcard_subscription_available") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_WILDCARD_SUBSCRIPTION_AVAILABLE;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "subscription_identifiers_available") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SUBSCRIPTION_IDENTIFIERS_AVAILABLE;
+					janus_mqtt_property_set_byte(&property, value);
+				} else if(strcmp(key, "shared_subscription_available") == 0) {
+					property.identifier = MQTTPROPERTY_CODE_SHARED_SUBSCRIPTION_AVAILABLE;
+					janus_mqtt_property_set_byte(&property, value);
+				} else {
+					property.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
+					janus_mqtt_property_set_utf_8_string_pair(&property, (char*)key, value);
+				}
+
+				g_array_append_val(mqtt_properties, property);
+			}
+		}
+	}
+#endif
+
 	char *payload = json_dumps(message, json_format_);
 	json_decref(message);
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
 
-	int rc = janus_mqtt_client_publish_message(ctx, payload, admin);
+	int rc = janus_mqtt_client_publish_message(ctx, payload, admin, topic, qos, retain, mqtt_properties);
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", admin ? ctx->admin.publish.topic : ctx->publish.topic, rc);
 	}
+
+#ifdef MQTTVERSION_5	
+	if(mqtt_properties != NULL) {
+		for (uint i = 0; i < mqtt_properties->len; i++) {
+			MQTTProperty property = g_array_index(mqtt_properties, MQTTProperty, i);
+			if (MQTTProperty_getType(property.identifier) == MQTTPROPERTY_TYPE_BINARY_DATA) {
+				g_free(property.value.data.data);
+			}
+		}
+
+		g_array_unref(mqtt_properties);
+	}
+#endif
+
 	free(payload);
 
 	return 0;
+}
+
+void janus_mqtt_property_set_byte(MQTTProperty *property, json_t *value) {
+	property->value.byte = json_is_true(value);
+}
+
+void janus_mqtt_property_set_two_byte_integer(MQTTProperty *property, json_t *value) {
+	property->value.integer2 = (short)json_number_value(value);
+}
+
+void janus_mqtt_property_set_four_byte_integer(MQTTProperty *property, json_t *value) {
+	property->value.integer4 = (int)json_number_value(value);
+}
+
+void janus_mqtt_property_set_utf_8_encoded_string(MQTTProperty *property, json_t *value) {
+	property->value.data.data = (char*)json_string_value(value);
+	property->value.data.len = json_string_length(value);
+}
+
+void janus_mqtt_property_set_binary_data(MQTTProperty *property, json_t *value) {
+	int len = json_array_size(value);
+	if(len == 0) {
+		property->value.data.data = NULL;
+		property->value.data.len = 0;
+		return;
+	}
+
+	char *binary = g_malloc0(len);
+	for(int i = 0; i < len; i++) {
+		json_t *byte_json = json_array_get(value, i);
+		binary[i] = (char)json_integer_value(byte_json);
+	}
+
+	property->value.data.data = binary;
+	property->value.data.len = len;
+}
+
+void janus_mqtt_property_set_utf_8_string_pair(MQTTProperty *property, char* key, json_t *value) {
+	property->value.data.data = key;
+	property->value.data.len = strlen(key);
+	property->value.value.data = (char*)json_string_value(value);
+	property->value.value.len = json_string_length(value);
 }
 
 void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id) {
@@ -727,7 +924,7 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 		
 		const char *command_str = json_dumps(command, JSON_ENCODE_ANY | JSON_ENSURE_ASCII);
 		const gboolean is_message = g_strcmp0(command_str, "\"message\"") == 0;
-		free(command_str);
+		free((char*)command_str);
 
 		if(is_message) {
 			json_t *body = json_object_get(root, "body");
@@ -736,7 +933,12 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 				goto done;
 			}
 
-			json_t *metadata = json_pack("{s:i,s:i}", "qos", message->qos, "retained", message->retained);
+			json_t *metadata = json_pack(
+				"{s:s,s:i,s:i}",
+				"topic", topicName,
+				"qos", message->qos,
+				"retained", message->retained
+			);
 
 			/* When using MQTT 5 set also properties to metadata */
 			#ifdef MQTTVERSION_5
@@ -1155,12 +1357,25 @@ void janus_mqtt_client_admin_subscribe_failure_impl(void *context, int rc) {
 	}
 }
 
-int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin) {
+int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin, char *topic, int qos, gboolean retain, GArray *properties) {
 	MQTTAsync_message msg = MQTTAsync_message_initializer;
 	msg.payload = payload;
 	msg.payloadlen = strlen(payload);
-	msg.qos = ctx->publish.qos;
-	msg.retained = FALSE;
+	msg.qos = qos;
+	msg.retained = retain;
+
+#ifdef MQTTVERSION_5	
+	if(properties != NULL && ctx->connect.mqtt_version == MQTTVERSION_5) {
+		for(uint i = 0; i < properties->len; i++) {
+			MQTTProperty property = g_array_index(properties, MQTTProperty, i);
+			int rc = MQTTProperties_add(&msg.properties, &property);
+			if(rc == -1) {
+				JANUS_LOG(LOG_ERR, "Failed to set property %s\n", MQTTPropertyName(property.identifier));
+				return -1;
+			}
+		}
+	}
+#endif
 
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
@@ -1178,7 +1393,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
 		options.onFailure = janus_mqtt_client_publish_admin_failure;
 #endif
-		return MQTTAsync_sendMessage(ctx->client, ctx->admin.publish.topic, &msg, &options);
+		return MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
 	} else {
 #ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
@@ -1192,7 +1407,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 		options.onSuccess = janus_mqtt_client_publish_janus_success;
 		options.onFailure = janus_mqtt_client_publish_janus_failure;
 #endif
-		return MQTTAsync_sendMessage(ctx->client, ctx->publish.topic, &msg, &options);
+		return MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
 	}
 }
 
