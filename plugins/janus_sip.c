@@ -85,12 +85,25 @@
 \endverbatim
  *
  * Coming to the available requests, you send a SIP REGISTER using the
- * \c register request, which has to be formatted as follows:
+ * \c register request. To be more precise, a \c register request MAY result
+ * in a SIP REGISTER, as this method actually provides ways to start using
+ * a SIP account with no need for a registration. It is the case, for instance,
+ * of the so-called \c guest registrations: if you register as a \c guest ,
+ * it means you'll use the provided SIP URI in your \c From headers for calls,
+ * but you will actually not send a SIP REGISTER; this is especially useful
+ * for outgoing calls to services that don't require registration (e.g., IVR
+ * systems, or conference bridges), but also means you won't be able to
+ * receive calls unless peers know what your private SIP address is. A SIP
+ * REGISTER isn't sent also when registering as a \c helper : as we'll
+ * explain later, \c helper sessions are sessions only meant to facilitate
+ * the setup of \ref sipmc.
+ *
+ * That said, a \c register request has to be formatted as follows:
  *
 \verbatim
 {
 	"request" : "register",
-	"type" : "<if guest, no SIP REGISTER is actually sent; optional>",
+	"type" : "<if guest or helper, no SIP REGISTER is actually sent; optional>",
 	"send_register" : <true|false; if false, no SIP REGISTER is actually sent; optional>,
 	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
@@ -104,7 +117,8 @@
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
-	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>"
+	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
+	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
 \endverbatim
  *
@@ -123,7 +137,8 @@
 	"result" : {
 		"event" : "registered",
 		"username" : <SIP URI username>,
-		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>
+		"register_sent" : <true|false, depending on whether a REGISTER was sent or not>,
+		"master_id" : <unique ID of this registered session in the plugin, if a potential master>
 	}
 }
 \endverbatim
@@ -452,6 +467,54 @@
  * that will be used for the up-to-four recordings that may need to be enabled.
  *
  * A \c recordingupdated event is sent back in case the request is successful.
+ *
+ * \section sipmc Simultaneous SIP calls using the same account
+ *
+ * As anticipated in the previous sections, attaching to the SIP plugin
+ * with a Janus handle means creating a SIP stack on behalf of a user
+ * or application: this typically means registering an account, and being
+ * able to start or receive calls, handle subscriptions, and so on. This
+ * also means that, since in Janus each core handle can only be associated
+ * with a single PeerConnection, each SIP account is limited to a single
+ * call per time: if a user is in a SIP session already, and another call
+ * comes in, it's automatically rejected with a \c 486 \c Busy .
+ *
+ * While usually not a big deal, there are use cases where it might make
+ * sense to be able to support multiple concurrent calls, and maybe switch
+ * from one to the other seamlessly. This is possible in the SIP plugin
+ * using the so-called \c helper sessions. Specifically, \c helper sessions
+ * work under the assumption that there's a \c master session that is
+ * registered normally (the "regular" SIP plugin handle, that is), and
+ * that these \c helper sessions can simply be associated to that: any time
+ * another concurrent call is needed, if the \c master session is busy
+ * one of the \c helpers can be used; the more \c helper sessions are
+ * available, the more simultaneous calls can be established.
+ *
+ * The way this works is simple:
+ *
+ * 1. you create a SIP session the usual way, and send a regular \c register
+ * there; this will be the \c master session, and will return a \c master_id
+ * when successfully registered;
+ * 2. for each \c helper you want to add, you attach a new Janus handle
+ * to the SIP plugin, and send a \c register with \c type: \c "helper" and
+ * providing the same \c username as the master, plus a \c master_id attribute
+ * referencing the main session;
+ * 3. at this point, the new \c helper is associated to the \c master ,
+ * meaning it can be used to start new calls or receive calls exactly
+ * as the main session, and using the same account information, credentials,
+ * etc.
+ *
+ * Notice that, as soon as the \c master unregisters, or the Janus handle
+ * it's on is detached, all the \c helper sessions associated to it are
+ * automatically torn down as well. Specifically, the plugin will forcibly
+ * detach the related handles. Should you need to register again, and want
+ * some helpers there too, you'll have to add them again.
+ *
+ * If you want to see this in practice, the SIP plugin demo has a "hidden"
+ * function you can invoke from the JavaScript console to play with helpers:
+ * calling the \c addHelper() function will add a new helper, and show additional
+ * controls. You can add as many helpers as you want.
+ *
  */
 
 #include "plugin.h"
@@ -558,6 +621,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"display_name", JSON_STRING, 0},
 	{"user_agent", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
+	{"master_id", JANUS_JSON_INTEGER, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter subscribe_parameters[] = {
@@ -699,6 +763,23 @@ static const char *janus_sip_call_status_string(janus_sip_call_status status) {
 typedef struct ssip_s ssip_t;
 typedef struct ssip_oper_s ssip_oper_t;
 
+#undef SU_ROOT_MAGIC_T
+#define SU_ROOT_MAGIC_T	ssip_t
+#undef NUA_MAGIC_T
+#define NUA_MAGIC_T		ssip_t
+#undef NUA_HMAGIC_T
+#define NUA_HMAGIC_T	ssip_oper_t
+
+struct ssip_s {
+	su_home_t s_home[1];
+	su_root_t *s_root;
+	nua_t *s_nua;
+	nua_handle_t *s_nh_r, *s_nh_i;
+	GHashTable *subscriptions;
+	janus_mutex smutex;
+	struct janus_sip_session *session;
+};
+
 typedef enum {
 	janus_sip_secret_type_plaintext = 1,
 	janus_sip_secret_type_hashed = 2,
@@ -781,6 +862,11 @@ typedef struct janus_sip_session {
 	volatile gint establishing, established;
 	volatile gint hangingup;
 	volatile gint destroyed;
+	/* Sessions may be helpers under a "master" (e.g., for multiple calls from/to the same account) */
+	guint32 master_id;		/* Master ID the helpers refer to */
+	struct janus_sip_session *master;
+	gboolean helper;		/* Whether this session is a helper or not */
+	GList *helpers;			/* The helper sessions, if this is the "master" */
 	janus_refcount ref;
 	janus_mutex mutex;
 	char *hangup_reason_header;
@@ -788,6 +874,7 @@ typedef struct janus_sip_session {
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
+static GHashTable *masters;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
@@ -818,13 +905,22 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
-	if(session->account.identity) {
+	if(session->master == NULL && session->account.identity) {
 		g_hash_table_remove(identities, session->account.identity);
 		g_free(session->account.identity);
 		session->account.identity = NULL;
 	}
-	session->account.force_udp = FALSE;
-	session->account.sips = TRUE;
+	if(session->stack != NULL) {
+		su_home_deinit(session->stack->s_home);
+		su_home_unref(session->stack->s_home);
+		janus_mutex_lock(&session->stack->smutex);
+		if(session->stack->subscriptions != NULL)
+			g_hash_table_unref(session->stack->subscriptions);
+		session->stack->subscriptions = NULL;
+		janus_mutex_unlock(&session->stack->smutex);
+		g_free(session->stack);
+		session->stack = NULL;
+	}
 	if(session->account.proxy) {
 		g_free(session->account.proxy);
 		session->account.proxy = NULL;
@@ -878,10 +974,6 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->media.remote_video_ip);
 		session->media.remote_video_ip = NULL;
 	}
-	if(session->stack) {
-		g_free(session->stack);
-		session->stack = NULL;
-	}
 	if(session->hangup_reason_header) {
 		g_free(session->hangup_reason_header);
 		session->hangup_reason_header = NULL;
@@ -911,24 +1003,6 @@ static void janus_sip_message_free(janus_sip_message *msg) {
 
 	g_free(msg);
 }
-
-
-#undef SU_ROOT_MAGIC_T
-#define SU_ROOT_MAGIC_T	ssip_t
-#undef NUA_MAGIC_T
-#define NUA_MAGIC_T		ssip_t
-#undef NUA_HMAGIC_T
-#define NUA_HMAGIC_T	ssip_oper_t
-
-struct ssip_s {
-	su_home_t s_home[1];
-	su_root_t *s_root;
-	nua_t *s_nua;
-	nua_handle_t *s_nh_r, *s_nh_i;
-	GHashTable *subscriptions;
-	janus_mutex smutex;
-	janus_sip_session *session;
-};
 
 
 /* SRTP stuff (in case we need SDES) */
@@ -1223,6 +1297,7 @@ static void janus_sip_remove_quotes(char *str) {
 #define JANUS_SIP_ERROR_IO_ERROR			450
 #define JANUS_SIP_ERROR_RECORDING_ERROR		451
 #define JANUS_SIP_ERROR_TOO_STRICT			452
+#define JANUS_SIP_ERROR_HELPER_ERROR		453
 
 
 /* Random string helper (for call-ids) */
@@ -1515,6 +1590,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
+	masters = g_hash_table_new(NULL, NULL);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
 	gateway = callback;
@@ -1548,9 +1624,11 @@ void janus_sip_destroy(void) {
 	g_hash_table_destroy(sessions);
 	g_hash_table_destroy(callids);
 	g_hash_table_destroy(identities);
+	g_hash_table_destroy(masters);
 	sessions = NULL;
 	callids = NULL;
 	identities = NULL;
+	masters = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
@@ -1686,7 +1764,6 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
-	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
 	janus_refcount_init(&session->ref, janus_sip_session_free);
@@ -1713,6 +1790,41 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 	janus_sip_hangup_media_internal(handle);
+	/* If this is a master or helper session, update the related sessions */
+	if(session->master_id != 0) {
+		if(session->master == NULL) {
+			/* This is the master, remove it from the list */
+			g_hash_table_remove(masters, GUINT_TO_POINTER(session->master_id));
+			/* TODO Remove the helper sessions */
+			janus_mutex_lock(&session->mutex);
+			GList *temp = NULL;
+			while(session->helpers != NULL) {
+				temp = session->helpers;
+				session->helpers = g_list_remove_link(session->helpers, temp);
+				janus_sip_session *helper = (janus_sip_session *)temp->data;
+				if(helper != NULL && helper->handle != NULL) {
+					/* TODO Get rid of this helper */
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_decrease(&helper->ref);
+					gateway->end_session(helper->handle);
+				}
+				g_list_free(temp);
+			}
+			janus_mutex_unlock(&session->mutex);
+		} else {
+			/* This is a helper session, remove it from the list and remove the references */
+			janus_sip_session *master = session->master;
+			janus_mutex_lock(&master->mutex);
+			gboolean found = (g_list_find(master->helpers, session) != NULL);
+			if(found) {
+				master->helpers = g_list_remove(master->helpers, session);
+				janus_refcount_decrease(&session->ref);
+				janus_refcount_decrease(&master->ref);
+			}
+			janus_mutex_unlock(&master->mutex);
+			session->master = NULL;
+		}
+	}
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
 		nua_shutdown(session->stack->s_nua);
@@ -1736,6 +1848,19 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
+	if(session->master != NULL) {
+		/* This is an helper session, provide the details for the master session */
+		json_object_set_new(info, "helper", json_true());
+		json_t *master = json_object();
+		json_object_set_new(master, "username", session->master->account.username ? json_string(session->master->account.username) : NULL);
+		json_object_set_new(master, "authuser", session->master->account.authuser ? json_string(session->master->account.authuser) : NULL);
+		json_object_set_new(master, "secret", session->master->account.secret ? json_string("(hidden)") : NULL);
+		json_object_set_new(master, "display_name", session->master->account.display_name ? json_string(session->master->account.display_name) : NULL);
+		json_object_set_new(master, "user_agent", session->master->account.user_agent ? json_string(session->master->account.user_agent) : NULL);
+		json_object_set_new(master, "identity", session->master->account.identity ? json_string(session->master->account.identity) : NULL);
+		json_object_set_new(master, "registration_status", json_string(janus_sip_registration_status_string(session->master->account.registration_status)));
+		json_object_set_new(info, "master", master);
+	}
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
 	json_object_set_new(info, "authuser", session->account.authuser ? json_string(session->account.authuser) : NULL);
 	json_object_set_new(info, "secret", session->account.secret ? json_string("(hidden)") : NULL);
@@ -1744,6 +1869,10 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sip_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
+	janus_mutex_lock(&session->mutex);
+	if(session->helpers != NULL)
+		json_object_set_new(info, "helpers", json_integer(g_list_length(session->helpers)));
+	janus_mutex_unlock(&session->mutex);
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee));
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
@@ -2177,16 +2306,88 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Parse the request */
-			gboolean guest = FALSE;
+			gboolean guest = FALSE, helper = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
 				const char *type_text = json_string_value(type);
 				if(!strcmp(type_text, "guest")) {
 					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
 					guest = TRUE;
+				} else if(!strcmp(type_text, "helper")) {
+					JANUS_LOG(LOG_INFO, "Registering as a helper\n");
+					helper = TRUE;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
 				}
+			}
+			if(helper) {
+				/* This is actually an helper session, for an already registered one */
+				json_t *master = json_object_get(root, "master_id");
+				if(master == NULL) {
+					JANUS_LOG(LOG_ERR, "Missing mandatory element for helper (master_id)\n");
+					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing mandatory element for helper (master_id)");
+					goto error;
+				}
+				guint32 master_id = json_integer_value(master);
+				janus_mutex_lock(&sessions_mutex);
+				if(session->master != NULL) {
+					janus_mutex_unlock(&sessions_mutex);
+					JANUS_LOG(LOG_ERR, "Session already a helper (%"SCNu32")\n", session->master_id);
+					error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+					g_snprintf(error_cause, 512, "Session already a helper (%"SCNu32")", master_id);
+					goto error;
+				}
+				janus_sip_session *ms = g_hash_table_lookup(masters, GUINT_TO_POINTER(master_id));
+				if(ms == NULL) {
+					janus_mutex_unlock(&sessions_mutex);
+					JANUS_LOG(LOG_ERR, "No such master session (%"SCNu32")\n", master_id);
+					error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+					g_snprintf(error_cause, 512, "No such master session (%"SCNu32")", master_id);
+					goto error;
+				}
+				/* TODO Add this session as an helper for the master */
+				janus_refcount_increase(&session->ref);
+				janus_refcount_increase(&ms->ref);
+				session->helper = TRUE;
+				session->master = ms;
+				session->master_id = master_id;
+				janus_mutex_lock(&ms->mutex);
+				ms->helpers = g_list_append(ms->helpers, session);
+				janus_mutex_unlock(&ms->mutex);
+				session->account.registration_status = janus_sip_registration_status_disabled;
+				g_free(session->account.username);
+				session->account.username = ms->account.username ? g_strdup(ms->account.username) : NULL;
+				if(session->stack == NULL) {
+					session->stack = g_malloc0(sizeof(ssip_t));
+					su_home_init(session->stack->s_home);
+				}
+				session->stack->session = session;
+				janus_mutex_unlock(&sessions_mutex);
+				/* Send an event back */
+				result = json_object();
+				json_object_set_new(result, "event", json_string("registered"));
+				json_object_set_new(result, "username", json_string(ms->account.username));
+				json_object_set_new(result, "register_sent", json_false());
+				json_object_set_new(result, "helper", json_true());
+				json_object_set_new(result, "master_id", json_integer(session->master_id));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("registered"));
+					json_object_set_new(info, "identity", json_string(ms->account.identity));
+					json_object_set_new(info, "type", json_string("guest"));
+					json_object_set_new(info, "helper", json_true());
+					json_object_set_new(info, "master_id", json_integer(session->master_id));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
+				goto done;
+			}
+			if(session->master != NULL) {
+				JANUS_LOG(LOG_ERR, "Can't register on a helper session\n");
+				error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+				g_snprintf(error_cause, 512, "Can't register on a helper session");
+				goto error;
 			}
 
 			gboolean send_register = TRUE;
@@ -2342,6 +2543,17 @@ static void *janus_sip_handler(void *data) {
 					proxy_text != NULL ? proxy_text : "(null)",
 					obproxy_text != NULL ? obproxy_text : "none");
 			}
+			/* Create a master ID if we don't have one yet */
+			if(session->master_id == 0) {
+				janus_mutex_lock(&sessions_mutex);
+				while(session->master_id == 0) {
+					session->master_id = janus_random_uint32();
+					if(g_hash_table_lookup(masters, GUINT_TO_POINTER(session->master_id)) != NULL)
+						session->master_id = 0;
+				}
+				g_hash_table_insert(masters, GUINT_TO_POINTER(session->master_id), session);
+				janus_mutex_unlock(&sessions_mutex);
+			}
 			/* If this is a refresh, get rid of the old values */
 			if(refresh) {
 				/* Cleanup old values */
@@ -2477,12 +2689,14 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
 				json_object_set_new(result, "register_sent", json_false());
+				json_object_set_new(result, "master_id", json_integer(session->master_id));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("registered"));
 					json_object_set_new(info, "identity", json_string(session->account.identity));
 					json_object_set_new(info, "type", json_string("guest"));
+					json_object_set_new(info, "master_id", json_integer(session->master_id));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			}
@@ -2492,6 +2706,26 @@ static void *janus_sip_handler(void *data) {
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (register first)");
 				goto error;
+			}
+			if(session->helper) {
+				/* Not really "unregistering", we're just removing the association to the "master" */
+				janus_sip_session *master = session->master;
+				janus_mutex_lock(&master->mutex);
+				gboolean found = (g_list_find(master->helpers, session) != NULL);
+				if(found) {
+					master->helpers = g_list_remove(master->helpers, session);
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_decrease(&master->ref);
+				}
+				janus_mutex_unlock(&master->mutex);
+				session->helper = FALSE;
+				session->master = NULL;
+				session->master_id = FALSE;
+				/* Done */
+				session->account.registration_status = janus_sip_registration_status_unregistered;
+				result = json_object();
+				json_object_set_new(result, "event", json_string("unregistering"));
+				goto done;
 			}
 			if(session->account.registration_status < janus_sip_registration_status_registered) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
@@ -2535,7 +2769,17 @@ static void *janus_sip_handler(void *data) {
 				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
 			if(nh == NULL) {
 				/* We don't, create one now */
-				nh = nua_handle(session->stack->s_nua, session, TAG_END());
+				if(!session->helper)
+					nh = nua_handle(session->stack->s_nua, session, TAG_END());
+				else {
+					/* This is a helper, we need to use the master's SIP stack */
+					if(session->master == NULL || session->master->stack == NULL) {
+						error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+						g_snprintf(error_cause, 512, "Invalid master SIP stack");
+						goto error;
+					}
+					nh = nua_handle(session->master->stack->s_nua, session, TAG_END());
+				}
 				if(session->stack->subscriptions == NULL) {
 					/* We still need a table for mapping these subscriptions as well */
 					session->stack->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
@@ -2549,6 +2793,8 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(to),
 				SIPTAG_EVENT_STR(event_type),
 				SIPTAG_ACCEPT_STR(accept),
+				NUTAG_PROXY(session->helper && session->master ?
+					session->master->account.outbound_proxy : session->account.outbound_proxy),
 				TAG_END());
 			result = json_object();
 			json_object_set_new(result, "event", json_string("subscribing"));
@@ -2744,15 +2990,33 @@ static void *janus_sip_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
 			/* Prepare the From header */
 			char from_hdr[1024];
-			if(session->account.display_name) {
-				g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
-			} else {
-				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
-			}
 			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
-			session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
+			if(!session->helper) {
+				session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
+				if(session->account.display_name) {
+					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
+				} else {
+					g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
+				}
+			} else {
+				/* This is a helper, we need to use the master's SIP stack */
+				if(session->master == NULL || session->master->stack == NULL) {
+					g_free(sdp);
+					session->sdp = NULL;
+					janus_sdp_destroy(parsed_sdp);
+					error_code = JANUS_SIP_ERROR_HELPER_ERROR;
+					g_snprintf(error_cause, 512, "Invalid master SIP stack");
+					goto error;
+				}
+				session->stack->s_nh_i = nua_handle(session->master->stack->s_nua, session, TAG_END());
+				if(session->master->account.display_name) {
+					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->master->account.display_name, session->master->account.identity);
+				} else {
+					g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->master->account.identity);
+				}
+			}
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for INVITE still null??\n");
 				g_free(sdp);
@@ -2794,19 +3058,36 @@ static void *janus_sip_handler(void *data) {
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (authuser) for authenticating the INVITE\n");
-				g_free(session->account.authuser);
-				session->account.authuser = g_strdup(json_string_value(authuser));
+				if(!session->helper) {
+					g_free(session->account.authuser);
+					session->account.authuser = g_strdup(json_string_value(authuser));
+				} else if(session->master != NULL) {
+					g_free(session->master->account.authuser);
+					session->master->account.authuser = g_strdup(json_string_value(authuser));
+				}
 			}
 			if(secret) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (secret) for authenticating the INVITE\n");
-				g_free(session->account.secret);
-				session->account.secret = g_strdup(json_string_value(secret));
-				session->account.secret_type = janus_sip_secret_type_plaintext;
+				if(!session->helper) {
+					g_free(session->account.secret);
+					session->account.secret = g_strdup(json_string_value(secret));
+					session->account.secret_type = janus_sip_secret_type_plaintext;
+				} else if(session->master != NULL) {
+					g_free(session->master->account.secret);
+					session->master->account.secret = g_strdup(json_string_value(secret));
+					session->master->account.secret_type = janus_sip_secret_type_plaintext;
+				}
 			} else if(ha1_secret) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (ha1_secret) for authenticating the INVITE\n");
-				g_free(session->account.secret);
-				session->account.secret = g_strdup(json_string_value(ha1_secret));
-				session->account.secret_type = janus_sip_secret_type_hashed;
+				if(!session->helper) {
+					g_free(session->account.secret);
+					session->account.secret = g_strdup(json_string_value(ha1_secret));
+					session->account.secret_type = janus_sip_secret_type_hashed;
+				} else if(session->master != NULL) {
+					g_free(session->master->account.secret);
+					session->master->account.secret = g_strdup(json_string_value(ha1_secret));
+					session->master->account.secret_type = janus_sip_secret_type_hashed;
+				}
 			}
 			/* Send INVITE */
 			g_free(session->callee);
@@ -2822,7 +3103,8 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
 				SOATAG_USER_SDP_STR(sdp),
-				NUTAG_PROXY(session->account.outbound_proxy),
+				NUTAG_PROXY(session->helper && session->master ?
+					session->master->account.outbound_proxy : session->account.outbound_proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
 				NUTAG_AUTOACK(FALSE),
@@ -3532,17 +3814,20 @@ static void *janus_sip_handler(void *data) {
 			goto error;
 		}
 
-		/* Prepare JSON event */
-		json_t *event = json_object();
-		json_object_set_new(event, "sip", json_string("event"));
-		if(result != NULL)
-			json_object_set_new(event, "result", result);
-		json_object_set_new(event, "call_id", json_string(session->callid));
-		int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event, NULL);
-		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
-		json_decref(event);
-		janus_sip_message_free(msg);
-		continue;
+done:
+		{
+			/* Prepare JSON event */
+			json_t *event = json_object();
+			json_object_set_new(event, "sip", json_string("event"));
+			if(result != NULL)
+				json_object_set_new(event, "result", result);
+			json_object_set_new(event, "call_id", json_string(session->callid));
+			int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(event);
+			janus_sip_message_free(msg);
+			continue;
+		}
 
 error:
 		{
@@ -3566,7 +3851,7 @@ error:
 /* Sofia callbacks */
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[])
 {
-	janus_sip_session *session = (janus_sip_session *)magic;
+	janus_sip_session *session = (janus_sip_session *)(hmagic ? hmagic : magic);
 	ssip_t *ssip = session->stack;
 
 	/* Notify event handlers about the content of the whole incoming SIP message, if any */
@@ -3744,6 +4029,31 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 			}
 			if(busy) {
+				/* This session is busy, any helper that can take it? */
+				JANUS_LOG(LOG_VERB, "Busy... maybe a helper can help?\n");
+				janus_sip_session *helper = NULL;
+				janus_mutex_lock(&session->mutex);
+				/* TODO Find a free helper */
+				GList *temp = session->helpers;
+				while(temp != NULL) {
+					helper = (janus_sip_session *)temp->data;
+					if(helper->stack->s_nh_i == NULL && !g_atomic_int_get(&helper->establishing) &&
+							!g_atomic_int_get(&helper->established) && helper->relayer_thread == NULL) {
+						/* Found! */
+						break;
+					}
+					JANUS_LOG(LOG_VERB, "  -- Helper %p is busy too...\n", helper);
+					helper = NULL;
+					temp = temp->next;
+				}
+				janus_mutex_unlock(&session->mutex);
+				if(helper != NULL) {
+					/* Bind the call to the helper and handle it there */
+					JANUS_LOG(LOG_VERB, "Passing INVITE to helper %p\n", helper);
+					nua_handle_bind(nh, helper);
+					janus_sip_sofia_callback(event, status, phrase, nua, magic, nh, helper, sip, tags);
+					break;
+				}
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
 				/* Notify the web app about the missed invite */
@@ -3791,7 +4101,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(!reinvite) {
 				/* New incoming call */
 				g_free(session->callee);
-				session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
+				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+				session->callee = g_strdup(caller_text);
+				su_free(session->stack->s_home, caller_text);
 				g_free(session->callid);
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
 				if(session->callid) {
@@ -4079,6 +4391,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char authuser[100], secret[100];
 				memset(authuser, 0, sizeof(authuser));
 				memset(secret, 0, sizeof(secret));
+				if(session->helper) {
+					/* This is an helper session, we'll need the credentials from the master */
+					if(session->master == NULL) {
+						JANUS_LOG(LOG_WARN, "No master session for this helper, authentication will fail...\n");
+					} else {
+						session = session->master;
+					}
+				}
 				if(session->account.authuser && strchr(session->account.authuser, ':')) {
 					/* The authuser contains a colon: wrap it in quotes */
 					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
@@ -4284,12 +4604,32 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *reging = json_object();
 				json_object_set_new(reging, "event", json_string(event_name));
 				json_object_set_new(reging, "username", json_string(session->account.username));
-				if(event == nua_r_register)
+				if(event == nua_r_register) {
 					json_object_set_new(reging, "register_sent", json_true());
+					json_object_set_new(reging, "master_id", json_integer(session->master_id));
+				}
 				json_object_set_new(reg, "result", reging);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, reg, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(reg);
+				/* If we unregistered and this session had helpers, get rid of them */
+				if(event == nua_r_unregister) {
+					janus_mutex_lock(&session->mutex);
+					GList *temp = NULL;
+					while(session->helpers != NULL) {
+						temp = session->helpers;
+						session->helpers = g_list_remove_link(session->helpers, temp);
+						janus_sip_session *helper = (janus_sip_session *)temp->data;
+						if(helper != NULL && helper->handle != NULL) {
+							/* TODO Get rid of this helper */
+							janus_refcount_decrease(&session->ref);
+							janus_refcount_decrease(&helper->ref);
+							gateway->end_session(helper->handle);
+						}
+						g_list_free(temp);
+					}
+					janus_mutex_unlock(&session->mutex);
+				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -4432,6 +4772,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char authuser[100], secret[100];
 				memset(authuser, 0, sizeof(authuser));
 				memset(secret, 0, sizeof(secret));
+				if(session->helper) {
+					/* This is an helper session, we'll need the credentials from the master */
+					if(session->master == NULL) {
+						JANUS_LOG(LOG_WARN, "No master session for this helper, authentication will fail...\n");
+					} else {
+						session = session->master;
+					}
+				}
 				if(session->account.authuser && strchr(session->account.authuser, ':')) {
 					/* The authuser contains a colon: wrap it in quotes */
 					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
@@ -5263,6 +5611,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack = g_malloc0(sizeof(ssip_t));
+	su_home_init(session->stack->s_home);
 	session->stack->session = session;
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;
@@ -5305,15 +5654,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	nua_destroy(session->stack->s_nua);
 	su_root_destroy(session->stack->s_root);
 	session->stack->s_root = NULL;
-	su_home_deinit(session->stack->s_home);
-	su_home_unref(session->stack->s_home);
-	janus_mutex_lock(&session->stack->smutex);
-	if(session->stack->subscriptions != NULL)
-		g_hash_table_unref(session->stack->subscriptions);
-	session->stack->subscriptions = NULL;
-	janus_mutex_unlock(&session->stack->smutex);
-	g_free(session->stack);
-	session->stack = NULL;
 	janus_refcount_decrease(&session->ref);
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
