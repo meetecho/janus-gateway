@@ -105,7 +105,7 @@ janus_transport *create(void) {
  * their transport plugin structure, e.g.:
  *
 \verbatim
-static janus_transport janus_http_transport plugin =
+static janus_transport janus_http_transport_plugin =
 	{
 		JANUS_TRANSPORT_INIT,
 

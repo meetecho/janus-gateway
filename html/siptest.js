@@ -56,6 +56,7 @@ var spinner = null;
 
 var selectedApproach = null;
 var registered = false;
+var masterId = null, helpers = {}, helpersCount = 0;
 
 var incoming = null;
 
@@ -76,7 +77,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to echo test plugin
+						// Attach to SIP plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.sip",
@@ -196,6 +197,7 @@ $(document).ready(function() {
 											// TODO Enable buttons to call now
 											if(!registered) {
 												registered = true;
+												masterId = result["master_id"];
 												$('#phone').removeClass('hide').show();
 												$('#call').unbind('click').click(doCall);
 												$('#peer').focus();
@@ -222,6 +224,11 @@ $(document).ready(function() {
 												// In case you want to offer video when reacting to an offerless call, set this to true
 												doVideo = false;
 											}
+											// Is this the result of a transfer?
+											var transfer = "";
+											var referredBy = result["referred_by"];
+											if(referredBy)
+												transfer = " (referred by " + referredBy + ")";
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
 											var srtp = result["srtp"];
@@ -235,7 +242,7 @@ $(document).ready(function() {
 											if(offerlessInvite)
 												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
+												message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -338,6 +345,51 @@ $(document).ready(function() {
 													error: function(error) {
 														Janus.error("WebRTC error:", error);
 														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
+										} else if(event === 'transfer') {
+											// We're being asked to transfer the call, ask the user what to do
+											var referTo = result["refer_to"];
+											var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+											var referId = result["refer_id"];
+											var replaces = result["replaces"];
+											var extra = ("referred by " + referredBy);
+											if(replaces)
+												extra += (", replaces call-ID " + replaces);
+											bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ")",
+												function(result) {
+													if(result) {
+														// Call the person we're being transferred to
+														if(!sipcall.webrtcStuff.pc) {
+															// Do it here
+															actuallyDoCall(sipcall, referTo, false, referId);
+														} else {
+															// We're in a call already, use a helper
+															var h = -1;
+															if(Object.keys(helpers).length > 0) {
+																// See if any of the helpers if available
+																for(var i in helpers) {
+																	if(!helpers[i].sipcall.webrtcStuff.pc) {
+																		h = parseInt(i);
+																		break;
+																	}
+																}
+															}
+															if(h !== -1) {
+																// Do in this helper
+																actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
+															} else {
+																// Create a new helper
+																addHelper(function(id) {
+																	// Do it here
+																	actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
+																});
+															}
+														}
+													} else {
+														// We're rejecting the transfer
+														var body = { request: "decline", refer_id: referId };
+														sipcall.send({"message": body});
 													}
 												});
 										} else if(event === 'hangup') {
@@ -454,7 +506,7 @@ $(document).ready(function() {
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
-									$('.no-video-container').remove();
+									$('#videos .no-video-container').remove();
 									$('#videos').hide();
 									$('#dtmf').parent().html("Remote UA");
 								}
@@ -635,30 +687,42 @@ function registerUsername() {
 	}
 }
 
-function doCall() {
-	// Call someone
-	$('#peer').attr('disabled', true);
-	$('#call').attr('disabled', true).unbind('click');
-	$('#dovideo').attr('disabled', true);
-	var username = $('#peer').val();
+function doCall(ev) {
+	// Call someone (from the main session or one of the helpers)
+	var button = ev ? ev.currentTarget.id : "call";
+	var helperId = button.split("call")[1];
+	if(helperId === "")
+		helperId = null;
+	else
+		helperId = parseInt(helperId);
+	var handle = helperId ? helpers[helperId].sipcall : sipcall;
+	var prefix = helperId ? ("[Helper #" + helperId + "]") : "";
+	var suffix = helperId ? (""+helperId) : "";
+	$('#peer' + suffix).attr('disabled', true);
+	$('#call' + suffix).attr('disabled', true).unbind('click');
+	$('#dovideo' + suffix).attr('disabled', true);
+	var username = $('#peer' + suffix).val();
 	if(username === "") {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
-		$('#peer').removeAttr('disabled');
-		$('#dovideo').removeAttr('disabled');
-		$('#call').removeAttr('disabled').click(doCall);
+		$('#peer' + suffix).removeAttr('disabled');
+		$('#dovideo' + suffix).removeAttr('disabled');
+		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
 		return;
 	}
 	if(username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 		bootbox.alert('Please insert a valid SIP address (e.g., sip:pluto@example.com)');
-		$('#peer').removeAttr('disabled').val("");
-		$('#dovideo').removeAttr('disabled').val("");
-		$('#call').removeAttr('disabled').click(doCall);
+		$('#peer' + suffix).removeAttr('disabled').val("");
+		$('#dovideo' + suffix).removeAttr('disabled').val("");
+		$('#call' + suffix).removeAttr('disabled').click(function() { doCall(helperId); });
 		return;
 	}
 	// Call this URI
-	doVideo = $('#dovideo').is(':checked');
-	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
-	sipcall.createOffer(
+	doVideo = $('#dovideo' + suffix).is(':checked');
+	Janus.log(prefix + "This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")");
+	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
+}
+function actuallyDoCall(handle, uri, doVideo, referId) {
+	handle.createOffer(
 		{
 			media: {
 				audioSend: true, audioRecv: true,		// We DO want audio
@@ -678,7 +742,7 @@ function doCall() {
 				//				"AnotherHeader": "another string"
 				//			}
 				//		};
-				var body = { request: "call", uri: $('#peer').val() };
+				var body = { request: "call", uri: uri };
 				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid
 				// values are "sdes_optional" and "sdes_mandatory", e.g.:
@@ -694,19 +758,495 @@ function doCall() {
 				// may not be able to handle them. If you want to receive
 				// re-INVITES to handle them yourself, specify it here, e.g.:
 				//		body["autoaccept_reinvites"] = false;
-				sipcall.send({"message": body, "jsep": jsep});
+				if(referId) {
+					// In case we're originating this call because of a call
+					// transfer, we need to provide the internal reference ID
+					body["refer_id"] = referId;
+				}
+				handle.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
-				Janus.error("WebRTC error...", error);
+				Janus.error(prefix + "WebRTC error...", error);
 				bootbox.alert("WebRTC error... " + JSON.stringify(error));
 			}
 		});
 }
 
-function doHangup() {
-	// Hangup a call
-	$('#call').attr('disabled', true).unbind('click');
-	var hangup = { "request": "hangup" };
-	sipcall.send({"message": hangup});
-	sipcall.hangup();
+function doHangup(ev) {
+	// Hangup a call (on the main session or one of the helpers)
+	var button = ev ? ev.currentTarget.id : "call";
+	var helperId = button.split("call")[1];
+	if(helperId === "")
+		helperId = null;
+	else
+		helperId = parseInt(helperId);
+	if(!helperId) {
+		$('#call').attr('disabled', true).unbind('click');
+		var hangup = { "request": "hangup" };
+		sipcall.send({"message": hangup});
+		sipcall.hangup();
+	} else {
+		$('#call' + helperId).attr('disabled', true).unbind('click');
+		var hangup = { "request": "hangup" };
+		helpers[helperId].sipcall.send({"message": hangup});
+		helpers[helperId].sipcall.hangup();
+	}
+}
+
+// The following code is only needed if you're interested in supporting multiple
+// calls at the same time. As explained in the Janus documentation, each Janus
+// handle can only do one PeerConnection at a time, which means you normally
+// cannot do multiple calls. If that's something you need (e.g., because you
+// need to do a SIP transfer, or want to be in two calls), then the SIP plugin
+// provides the so-called "helpers": basically additional handles attached to
+// the SIP plugin, and associated to your SIP identity. They can be used to
+// originate and receive calls exactly as the main handle: notice that incoming
+// calls will be rejected with a "486 Busy" if you're in a call already and there
+// are no available "helpers", which means you should add one in advance for that.
+// In this demo, creating a "helper" adds a new row for calls that looks and
+// works exactly as the default one: you can add more than one "helper", and
+// obviously the more you have, the more concurrent calls you can have.
+function addHelper(helperCreated) {
+	helpersCount++;
+	var helperId = helpersCount;
+	helpers[helperId] = { id: helperId };
+	// Add another row with a new "phone"
+	$('.footer').before(
+		'<div class="container" id="sipcall' + helperId + '">' +
+		'	<div class="row">' +
+		'		<div class="col-md-12">' +
+		'			<div class="col-md-6 container">' +
+		'				<span class="label label-info">Helper #' + helperId + '</span>' +
+		'			</div>' +
+		'			<div class="col-md-6 container" id="phone' + helperId + '">' +
+		'				<div class="input-group margin-bottom-sm">' +
+		'					<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>' +
+		'					<input disabled class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" autocomplete="off" id="peer' + helperId + '" onkeypress="return checkEnter(this, event, ' + helperId + ');"></input>' +
+		'				</div>' +
+		'				<button disabled class="btn btn-success margin-bottom-sm" autocomplete="off" id="call' + helperId + '">Call</button> <input autocomplete="off" id="dovideo' + helperId + '" type="checkbox">Use Video</input>' +
+		'			</div>' +
+		'		</div>' +
+		'	<div/>' +
+		'	<div id="videos' + helperId + '" class="hide">' +
+		'		<div class="col-md-6">' +
+		'			<div class="panel panel-default">' +
+		'				<div class="panel-heading">' +
+		'					<h3 class="panel-title">You</h3>' +
+		'				</div>' +
+		'				<div class="panel-body" id="videoleft' + helperId + '"></div>' +
+		'			</div>' +
+		'		</div>' +
+		'		<div class="col-md-6">' +
+		'			<div class="panel panel-default">' +
+		'				<div class="panel-heading">' +
+		'					<h3 class="panel-title">Remote UA</h3>' +
+		'				</div>' +
+		'				<div class="panel-body" id="videoright' + helperId + '"></div>' +
+		'			</div>' +
+		'		</div>' +
+		'	</div>' +
+		'</div>'
+	);
+	// Attach to SIP plugin, but only register as an helper for the master session
+	janus.attach(
+		{
+			plugin: "janus.plugin.sip",
+			opaqueId: opaqueId,
+			success: function(pluginHandle) {
+				helpers[helperId].sipcall = pluginHandle;
+				Janus.log("[Helper #" + helperId + "] Plugin attached! (" + helpers[helperId].sipcall.getPlugin() + ", id=" + helpers[helperId].sipcall.getId() + ")");
+				// TODO Send the "register"
+				helpers[helperId].sipcall.send({
+					message: {
+						request: "register",
+						type: "helper",
+						username: $('#username').val(),	// We use the same username as the master session
+						master_id: masterId				// Then we add the ID of the master session, nothing else
+					}
+				});
+			},
+			error: function(error) {
+				Janus.error("[Helper #" + helperId + "]   -- Error attaching plugin...", error);
+				bootbox.alert("  -- Error attaching plugin... " + error);
+			},
+			consentDialog: function(on) {
+				Janus.debug("[Helper #" + helperId + "] Consent dialog should be " + (on ? "on" : "off") + " now");
+				if(on) {
+					// Darken screen and show hint
+					$.blockUI({
+						message: '<div><img src="up_arrow.png"/></div>',
+						css: {
+							border: 'none',
+							padding: '15px',
+							backgroundColor: 'transparent',
+							color: '#aaa',
+							top: '10px',
+							left: (navigator.mozGetUserMedia ? '-100px' : '300px')
+						} });
+				} else {
+					// Restore screen
+					$.unblockUI();
+				}
+			},
+			mediaState: function(medium, on) {
+				Janus.log("[Helper #" + helperId + "] Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+			},
+			webrtcState: function(on) {
+				Janus.log("[Helper #" + helperId + "] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+				$("#videoleft" + helperId).parent().unblock();
+			},
+			onmessage: function(msg, jsep) {
+				Janus.debug("[Helper #" + helperId + "]  ::: Got a message :::");
+				Janus.debug(msg);
+				// Any error?
+				var error = msg["error"];
+				if(error != null && error != undefined) {
+					bootbox.alert(error);
+					return;
+				}
+				var result = msg["result"];
+				if(result !== null && result !== undefined && result["event"] !== undefined && result["event"] !== null) {
+					var event = result["event"];
+					if(event === 'registration_failed') {
+						Janus.warn("[Helper #" + helperId + "] Registration failed: " + result["code"] + " " + result["reason"]);
+						bootbox.alert(result["code"] + " " + result["reason"]);
+						// Get rid of the helper
+						helpers[helperId].detach();
+						delete helpers[helperId];
+						$('#sipcall' + helperId).remove();
+						return;
+					}
+					if(event === 'registered') {
+						Janus.log("[Helper #" + helperId + "] Successfully registered as " + result["username"] + "!");
+						// Unlock the "phone" controls
+						$('#peer' + helperId).removeAttr('disabled');
+						$('#call' + helperId).removeAttr('disabled').html('Call')
+							.removeClass("btn-danger").addClass("btn-success")
+							.unbind('click').click(doCall);
+						if(helperCreated)
+							helperCreated(helperId);
+					} else if(event === 'calling') {
+						Janus.log("[Helper #" + helperId + "] Waiting for the peer to answer...");
+						// TODO Any ringtone?
+						$('#call' + helperId).removeAttr('disabled').html('Hangup')
+							  .removeClass("btn-success").addClass("btn-danger")
+							  .unbind('click').click(doHangup);
+					} else if(event === 'incomingcall') {
+						Janus.log("[Helper #" + helperId + "] Incoming call from " + result["username"] + "! (on helper #" + helperId + ")");
+						var doAudio = true, doVideo = true;
+						var offerlessInvite = false;
+						if(jsep !== null && jsep !== undefined) {
+							// What has been negotiated?
+							doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
+							doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+							Janus.debug("[Helper #" + helperId + "] Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
+							Janus.debug("[Helper #" + helperId + "] Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+						} else {
+							Janus.log("[Helper #" + helperId + "] This call doesn't contain an offer... we'll need to provide one ourselves");
+							offerlessInvite = true;
+							// In case you want to offer video when reacting to an offerless call, set this to true
+							doVideo = false;
+						}
+						// Is this the result of a transfer?
+						var transfer = "";
+						var referredBy = result["referred_by"];
+						var replaces = result["replaces"];
+						if(referredBy && replaces)
+							transfer = " (referred by " + referredBy + ", replaces call-ID " + replaces + ")";
+						else if(referredBy && !replaces)
+							transfer = " (referred by " + referredBy + ")";
+						else if(!referredBy && replaces)
+							transfer = " (replaces call-ID " + replaces + ")";
+						// Any security offered? A missing "srtp" attribute means plain RTP
+						var rtpType = "";
+						var srtp = result["srtp"];
+						if(srtp === "sdes_optional")
+							rtpType = " (SDES-SRTP offered)";
+						else if(srtp === "sdes_mandatory")
+							rtpType = " (SDES-SRTP mandatory)";
+						// Notify user
+						bootbox.hideAll();
+						var extra = "";
+						if(offerlessInvite)
+							extra = " (no SDP offer provided)"
+						incoming = bootbox.dialog({
+							message: "Incoming call from " + result["username"] + "!" + transfer + rtpType + extra + " (on helper #" + helperId + ")",
+							title: "Incoming call (helper " + helperId + ")",
+							closeButton: false,
+							buttons: {
+								success: {
+									label: "Answer",
+									className: "btn-success",
+									callback: function() {
+										incoming = null;
+										$('#peer' + helperId).val(result["username"]).attr('disabled', true);
+										// Notice that we can only answer if we got an offer: if this was
+										// an offerless call, we'll need to create an offer ourselves
+										var sipcallAction = (offerlessInvite ? helpers[helperId].sipcall.createOffer : helpers[helperId].sipcall.createAnswer);
+										sipcallAction(
+											{
+												jsep: jsep,
+												media: { audio: doAudio, video: doVideo },
+												success: function(jsep) {
+													Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
+													Janus.debug(jsep);
+													var body = { request: "accept" };
+													// Note: as with "call", you can add a "srtp" attribute to
+													// negotiate/mandate SDES support for this incoming call.
+													// The default behaviour is to automatically use it if
+													// the caller negotiated it, but you may choose to require
+													// SDES support by setting "srtp" to "sdes_mandatory", e.g.:
+													//		var body = { request: "accept", srtp: "sdes_mandatory" };
+													// This way you'll tell the plugin to accept the call, but ONLY
+													// if SDES is available, and you don't want plain RTP. If it
+													// is not available, you'll get an error (452) back. You can
+													// also specify the SRTP profile to negotiate by setting the
+													// "srtp_profile" property accordingly (the default if not
+													// set in the request is "AES_CM_128_HMAC_SHA1_80")
+													// Note 2: by default, the SIP plugin auto-answers incoming
+													// re-INVITEs, without involving the browser/client: this is
+													// for backwards compatibility with older Janus clients that
+													// may not be able to handle them. If you want to receive
+													// re-INVITES to handle them yourself, specify it here, e.g.:
+													//		body["autoaccept_reinvites"] = false;
+													helpers[helperId].sipcall.send({"message": body, "jsep": jsep});
+													$('#call' + helperId).removeAttr('disabled').html('Hangup')
+														.removeClass("btn-success").addClass("btn-danger")
+														.unbind('click').click(doHangup);
+												},
+												error: function(error) {
+													Janus.error("[Helper #" + helperId + "] WebRTC error:", error);
+													bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													// Don't keep the caller waiting any longer, but use a 480 instead of the default 486 to clarify the cause
+													var body = { "request": "decline", "code": 480 };
+													helpers[helperId].sipcall.send({"message": body});
+												}
+											});
+									}
+								},
+								danger: {
+									label: "Decline",
+									className: "btn-danger",
+									callback: function() {
+										incoming = null;
+										var body = { "request": "decline" };
+										helpers[helperId].sipcall.send({"message": body});
+									}
+								}
+							}
+						});
+					} else if(event === 'accepting') {
+						// Response to an offerless INVITE, let's wait for an 'accepted'
+					} else if(event === 'progress') {
+						Janus.log("[Helper #" + helperId + "] There's early media from " + result["username"] + ", wairing for the call!");
+						Janus.log(jsep);
+						// Call can start already: handle the remote answer
+						if(jsep !== null && jsep !== undefined) {
+							helpers[helperId].sipcall.handleRemoteJsep({jsep: jsep, error: function() {
+								// Simulate an hangup from this helper's button
+								doHangup({ currentTarget: { id: "call" + helperId } });
+							}});
+						}
+						toastr.info("Early media...");
+					} else if(event === 'accepted') {
+						Janus.log("[Helper #" + helperId + "] " + result["username"] + " accepted the call!");
+						Janus.log(jsep);
+						// Call can start, now: handle the remote answer
+						if(jsep !== null && jsep !== undefined) {
+							helpers[helperId].sipcall.handleRemoteJsep({jsep: jsep, error: function() {
+								// Simulate an hangup from this helper's button
+								doHangup({ currentTarget: { id: "call" + helperId } });
+							}});
+						}
+						toastr.success("Call accepted!");
+					} else if(event === 'updatingcall') {
+						// We got a re-INVITE: while we may prompt the user (e.g.,
+						// to notify about media changes), to keep things simple
+						// we just accept the update and send an answer right away
+						Janus.log("[Helper #" + helperId + "] Got re-INVITE");
+						var doAudio = (jsep.sdp.indexOf("m=audio ") > -1),
+							doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+						helpers[helperId].sipcall.createAnswer(
+							{
+								jsep: jsep,
+								media: { audio: doAudio, video: doVideo },
+								success: function(jsep) {
+									Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
+									Janus.debug(jsep);
+									var body = { request: "update" };
+									helpers[helperId].sipcall.send({"message": body, "jsep": jsep});
+								},
+								error: function(error) {
+									Janus.error("[Helper #" + helperId + "] WebRTC error:", error);
+									bootbox.alert("WebRTC error... " + JSON.stringify(error));
+								}
+							});
+					} else if(event === 'transfer') {
+						// We're being asked to transfer the call, ask the user what to do
+						var referTo = result["refer_to"];
+						var referredBy = result["referred_by"] ? result["referred_by"] : "an unknown party";
+						var referId = result["refer_id"];
+						var replaces = result["replaces"];
+						var extra = ("referred by " + referredBy);
+						if(replaces)
+							extra += (", replaces call-ID " + replaces);
+						bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ", helper " + helperId + ")",
+							function(result) {
+								if(result) {
+									// Call the person we're being transferred to
+									if(!helpers[helperId].sipcall.webrtcStuff.pc) {
+										// Do it here
+										actuallyDoCall(helpers[helperId].sipcall, referTo, false, referId);
+									} else if(!sipcall.webrtcStuff.pc) {
+										// Do it on the main handle
+										actuallyDoCall(sipcall, referTo, false, referId);
+									} else {
+										// We're in a call already, use the main handle or a helper
+										var h = -1;
+										if(Object.keys(helpers).length > 0) {
+											// See if any of the helpers if available
+											for(var i in helpers) {
+												if(!helpers[i].sipcall.webrtcStuff.pc) {
+													h = parseInt(i);
+													break;
+												}
+											}
+										}
+										if(h !== -1) {
+											// Do in this helper
+											actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
+										} else {
+											// Create a new helper
+											addHelper(function(id) {
+												// Do it here
+												actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
+											});
+										}
+									}
+								} else {
+									// We're rejecting the transfer
+									var body = { request: "decline", refer_id: referId };
+									sipcall.send({"message": body});
+								}
+							});
+					} else if(event === 'hangup') {
+						if(incoming != null) {
+							incoming.modal('hide');
+							incoming = null;
+						}
+						Janus.log("[Helper #" + helperId + "] Call hung up (" + result["code"] + " " + result["reason"] + ")!");
+						bootbox.alert(result["code"] + " " + result["reason"]);
+						// Reset status
+						helpers[helperId].sipcall.hangup();
+						$('#dovideo' + helperId).removeAttr('disabled').val('');
+						$('#peer' + helperId).removeAttr('disabled').val('');
+						$('#call' + helperId).removeAttr('disabled').html('Call')
+							.removeClass("btn-danger").addClass("btn-success")
+							.unbind('click').click(doCall);
+					}
+				}
+			},
+			onlocalstream: function(stream) {
+				Janus.debug("[Helper #" + helperId + "]  ::: Got a local stream :::");
+				Janus.debug(stream);
+				$('#videos' + helperId).removeClass('hide').show();
+				if($('#myvideo' + helperId).length === 0)
+					$('#videoleft' + helperId).append('<video class="rounded centered" id="myvideo' + helperId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+				Janus.attachMediaStream($('#myvideo' + helperId).get(0), stream);
+				$("#myvideo" + helperId).get(0).muted = "muted";
+				if(helpers[helperId].sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
+						helpers[helperId].sipcall.webrtcStuff.pc.iceConnectionState !== "connected") {
+					$("#videoleft" + helperId).parent().block({
+						message: '<b>Calling...</b>',
+						css: {
+							border: 'none',
+							backgroundColor: 'transparent',
+							color: 'white'
+						}
+					});
+					// No remote video yet
+					$('#videoright' + helperId).append('<video class="rounded centered" id="waitingvideo' + helperId + '" width=320 height=240 />');
+					if(helpers[helperId].spinner == null) {
+						var target = document.getElementById('videoright' + helperId);
+						helpers[helperId].spinner = new Spinner({top:100}).spin(target);
+					} else {
+						helpers[helperId].spinner.spin();
+					}
+				}
+				var videoTracks = stream.getVideoTracks();
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+					// No webcam
+					$('#myvideo' + helperId).hide();
+					if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
+						$('#videoleft' + helperId).append(
+							'<div class="no-video-container">' +
+								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+								'<span class="no-video-text">No webcam available</span>' +
+							'</div>');
+					}
+				} else {
+					$('#videoleft' + helperId + ' .no-video-container').remove();
+					$('#myvideo' + helperId).removeClass('hide').show();
+				}
+			},
+			onremotestream: function(stream) {
+				Janus.debug("[Helper #" + helperId + "]  ::: Got a remote stream :::");
+				Janus.debug(stream);
+				if($('#remotevideo' + helperId).length === 0) {
+					$('#videoright' + helperId).parent().find('h3').html(
+						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>');
+					$('#videoright' + helperId).append(
+						'<video class="rounded centered hide" id="remotevideo' + helperId + '" width=320 height=240 autoplay playsinline/>');
+					for(var i=0; i<12; i++) {
+						if(i<10)
+							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">' + i + '</button>');
+						else if(i == 10)
+							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">#</button>');
+						else if(i == 11)
+							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">*</button>');
+					}
+					$('.dtmf' + helperId).click(function() {
+						// Send DTMF tone (inband)
+						helpers[helperId].sipcall.dtmf({dtmf: { tones: $(this).text()}});
+						// Notice you can also send DTMF tones using SIP INFO
+						// 		helpers[helperId].sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+					});
+					// Show the peer and hide the spinner when we get a playing event
+					$("#remotevideo" + helperId).bind("playing", function () {
+						$('#waitingvideo' + helperId).remove();
+						if(this.videoWidth)
+							$('#remotevideo' + helperId).removeClass('hide').show();
+						if(helpers[helperId].spinner !== null && helpers[helperId].spinner !== undefined)
+							helpers[helperId].spinner.stop();
+						helpers[helperId].spinner = null;
+					});
+				}
+				Janus.attachMediaStream($('#remotevideo' + helperId).get(0), stream);
+				var videoTracks = stream.getVideoTracks();
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+					// No remote video
+					$('#remotevideo' + helperId).hide();
+					if($('#videoright' + helperId + ' .no-video-container').length === 0) {
+						$('#videoright' + helperId).append(
+							'<div class="no-video-container">' +
+								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+								'<span class="no-video-text">No remote video available</span>' +
+							'</div>');
+					}
+				} else {
+					$('#videoright' + helperId + ' .no-video-container').remove();
+					$('#remotevideo' + helperId).removeClass('hide').show();
+				}
+			},
+			oncleanup: function() {
+				Janus.log("[Helper #" + helperId + "]  ::: Got a cleanup notification :::");
+				$('#myvideo' + helperId).remove();
+				$('#waitingvideo' + helperId).remove();
+				$('#remotevideo' + helperId).remove();
+				$('#videos' + helperId + ' .no-video-container').remove();
+				$('#videos' + helperId).hide();
+				$('#dtmf' + helperId).parent().html("Remote UA");
+			}
+		});
+
 }
