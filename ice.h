@@ -44,9 +44,11 @@ void janus_ice_deinit(void);
 /*! \brief Method to check whether a STUN server is reachable
  * @param[in] addr Address of the STUN server as a janus_network_address instance
  * @param[in] port Port of the STUN server
+ * @param[in] local_port Local port to bind to (0 means random choice)
  * @param[out] public_addr Public address returned by the STUN server as a janus_network_address instance
+ * @param[out] public_port Public port returned by the STUN server
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr);
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, uint16_t local_port, janus_network_address *public_addr, uint16_t *public_port);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
  * @param[in] stun_server STUN server address to use
  * @param[in] stun_port STUN port to use

@@ -259,12 +259,17 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	gboolean success = TRUE;
 	janus_sdp_mline *mline = NULL;
 
-	gchar **parts = g_strsplit(sdp, strstr(sdp, "\r\n") ? "\r\n" : "\n", -1);
+	gchar **parts = g_strsplit(sdp, "\n", -1);
 	if(parts) {
 		int index = 0;
-		char *line = NULL;
+		char *line = NULL, *cr = NULL;
 		while(success && (line = parts[index]) != NULL) {
+			cr = strchr(line, '\r');
+			if(cr != NULL)
+				*cr = '\0';
 			if(*line == '\0') {
+				if(cr != NULL)
+					*cr = '\r';
 				index++;
 				continue;
 			}
@@ -514,8 +519,8 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							break;
 						}
 						*semicolon = '\0';
-						if(strcmp(line, "AS")) {
-							/* We only support b=AS, skip */
+						if(strcmp(line, "AS") && strcmp(line, "TIAS")) {
+							/* We only support b=AS and b=TIAS, skip */
 							break;
 						}
 						mline->b_name = g_strdup(line);
@@ -571,8 +576,12 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						break;
 				}
 			}
+			if(cr != NULL)
+				*cr = '\r';
 			index++;
 		}
+		if(cr != NULL)
+			*cr = '\r';
 		g_strfreev(parts);
 	}
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
@@ -1351,46 +1360,52 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			/* Add the related attributes */
 			if(m->type == JANUS_SDP_AUDIO) {
 				/* Add rtpmap attribute */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
-				am->attributes = g_list_append(am->attributes, a);
-				/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
-				if(audio_dtmf) {
-					int dtmf_pt = janus_sdp_get_codec_pt(offer, "dtmf");
-					if(dtmf_pt >= 0) {
-						/* We do */
-						am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));
-						janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+				const char *codec_rtpmap = janus_sdp_get_codec_rtpmap(codec);
+				if(codec_rtpmap) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
+					am->attributes = g_list_append(am->attributes, a);
+					/* Check if we need to add a payload type for DTMF tones (telephone-event/8000) */
+					if(audio_dtmf) {
+						int dtmf_pt = janus_sdp_get_codec_pt(offer, "dtmf");
+						if(dtmf_pt >= 0) {
+							/* We do */
+							am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(dtmf_pt));
+							janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", dtmf_pt, janus_sdp_get_codec_rtpmap("dtmf"));
+							am->attributes = g_list_append(am->attributes, a);
+						}
+					}
+					/* Check if there's a custom fmtp line to add for audio
+					 * FIXME We should actually check if it matches the offer */
+					if(audio_fmtp) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
 						am->attributes = g_list_append(am->attributes, a);
 					}
 				}
-				/* Check if there's a custom fmtp line to add for audio
-				 * FIXME We should actually check if it matches the offer */
-				if(audio_fmtp) {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
-					am->attributes = g_list_append(am->attributes, a);
-				}
 			} else {
 				/* Add rtpmap attribute */
-				janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, janus_sdp_get_codec_rtpmap(codec));
-				am->attributes = g_list_append(am->attributes, a);
-				if(!strcasecmp(codec, "h264") && h264_fmtp) {
-					/* If it's H.264 and we were asked to, add the default fmtp profile as well */
-					a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+				const char *codec_rtpmap = janus_sdp_get_codec_rtpmap(codec);
+				if(codec_rtpmap) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d %s", pt, codec_rtpmap);
 					am->attributes = g_list_append(am->attributes, a);
-				}
-				if(video_rtcpfb) {
-					/* Add rtcp-fb attributes */
-					a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d nack", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
-					am->attributes = g_list_append(am->attributes, a);
-					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
-					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-					am->attributes = g_list_append(am->attributes, a);
+					if(!strcasecmp(codec, "h264") && h264_fmtp) {
+						/* If it's H.264 and we were asked to, add the default fmtp profile as well */
+						a = janus_sdp_attribute_create("fmtp", "%d profile-level-id=42e01f;packetization-mode=1", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
+					if(video_rtcpfb) {
+						/* Add rtcp-fb attributes */
+						a = janus_sdp_attribute_create("rtcp-fb", "%d ccm fir", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d nack", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d nack pli", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
+						am->attributes = g_list_append(am->attributes, a);
+						/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+						am->attributes = g_list_append(am->attributes, a);
+					}
 				}
 			}
 			/* Add the extmap attributes, if needed */

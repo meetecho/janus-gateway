@@ -73,3 +73,6 @@ Makefile.in
 
 # OS X
 .DS_Store
+
+# CLion
+.idea

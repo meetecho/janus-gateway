@@ -58,7 +58,7 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 
-int janus_pp_h264_create(char *destination, char *metadata) {
+int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -133,11 +133,15 @@ int janus_pp_h264_create(char *destination, char *metadata) {
 	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 #endif
-	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
+	AVDictionary *options = NULL;
+	if(faststart)
+		av_dict_set(&options, "movflags", "+faststart", 0);
+
+	if(avio_open2(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE, NULL, &options) < 0) {
 		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
 		return -1;
 	}
-	if(avformat_write_header(fctx, NULL) < 0) {
+	if(avformat_write_header(fctx, &options) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
 	}
