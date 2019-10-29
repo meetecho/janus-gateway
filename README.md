@@ -13,7 +13,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
-* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
+* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.15 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
@@ -234,7 +234,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.5
+	janus 0.7.6
 
 	Usage: janus [OPTIONS]...
 

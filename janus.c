@@ -152,6 +152,10 @@ static struct janus_json_parameter customevent_parameters[] = {
 	{"schema", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter customlogline_parameters[] = {
+	{"line", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"level", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter text2pcap_parameters[] = {
 	{"folder", JSON_STRING, 0},
 	{"filename", JSON_STRING, 0},
@@ -2088,6 +2092,33 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				json_incref(data);
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_EXTERNAL, 0, schema_value, data);
 			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "custom_logline")) {
+			/* Print something custom on the logs, using the specified debug level */
+			JANUS_VALIDATE_JSON_OBJECT(root, customlogline_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *line = json_object_get(root, "line");
+			const char *log_line = json_string_value(line);
+			json_t *level = json_object_get(root, "level");
+			int log_level = LOG_INFO;
+			if(level) {
+				log_level = json_integer_value(level);
+				if(log_level < LOG_NONE || log_level > LOG_MAX)
+					log_level = LOG_INFO;
+			}
+			/* Print the log line on the log */
+			JANUS_LOG(log_level, "%s\n", log_line);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));

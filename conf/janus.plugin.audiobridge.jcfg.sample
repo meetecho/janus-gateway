@@ -18,6 +18,7 @@
 #     By default plain RTP is used, SRTP must be configured if needed
 # rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 # rtp_forward_host = "<host address to forward RTP packets of mixed audio to>"
+# rtp_forward_host_family = "<ipv4|ipv6; by default, first family returned by DNS request>"
 # rtp_forward_port = port to forward RTP packets of mixed audio to
 # rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 # rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
