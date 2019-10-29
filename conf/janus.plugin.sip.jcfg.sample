@@ -1,7 +1,11 @@
 general: {
-	# Specify which local IP address to bind to for SIP stack and media.
+	# Specify which local IP address to bind to for SIP stack.
 	# If not set it will be automatically guessed from the system
 	#local_ip = "1.2.3.4"
+
+	# Specify which local IP address to bind for the media stack.
+	# If not set it will be automatically set to the value of local_ip
+	#local_media_ip = "1.2.3.4"
 
 	# Specify which (public) IP address to advertise in the SDP.
 	# If not set, the value above or anything autodetected will be used

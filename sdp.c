@@ -664,7 +664,7 @@ int janus_sdp_parse_candidate(void *webrtc, const char *candidate, int trickle) 
 				return res;
 			}
 			freeaddrinfo(info);
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
 				handle->handle_id, rip, janus_network_address_string_from_buffer(&addr_buf));
 			g_strlcpy(rip, janus_network_address_string_from_buffer(&addr_buf), sizeof(rip));
 		}

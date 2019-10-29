@@ -1,0 +1,26 @@
+# This configures the WebSockets event handler. Since this plugin only
+# forwards each event it receives via WebSockets, you simply need to
+# configure (i) which events to subscribe to, and (ii) the address of
+# the WebSockets server which will receive the requests.
+
+general: {
+	enabled = false		# By default the module is not enabled
+	events = "all"		# Comma separated list of the events mask you're interested
+						# in. Valid values are none, sessions, handles, jsep, webrtc,
+						# media, plugins, transports, core, external and all. By
+						# default we subscribe to everything (all)
+	grouping = true		# Whether events should be sent individually (one per
+						# HTTP POST, JSON object), or if it's ok to group them
+						# (one or more per HTTP POST, JSON array with objects)
+						# The default is 'yes' to limit the number of connections.
+
+						# Address the plugin will send all events to as HTTP POST
+						# requests with an application/json payload. In case
+						# authentication is required to contact the backend, set
+						# the credentials as well (basic authentication only).
+	json = "indented"	# Whether the JSON messages should be indented (default),
+						# plain (no indentation) or compact (no indentation and no spaces)
+
+	backend = "ws://your.websocket.here"
+	# subprotocol = "your-subprotocol"
+}
