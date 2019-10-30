@@ -3263,8 +3263,8 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td>JavaScript/node</td>
- * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
- * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
+ * 		<td><a href="https://github.com/sjkummer">Sebastian Schmid</a></td>
+ * 		<td><a href="https://github.com/sjkummer/janus-gateway-js">janus-gateway-js</a></td>
  * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
  * </tr>
  * <tr>
