@@ -5590,6 +5590,20 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_VERB, "  -- SSRC (video): %"SCNu32"\n", ssrc);
 			source->video_ssrc = ssrc;
 		}
+		if(strcmp(vhost, "0.0.0.0") == 0) {
+			/* SDP does not contain a valid host address, so check for an RTSP 'source' address instead */
+			const char *source = strstr(curldata->buffer, ";source=");
+			if(source != NULL) {
+				const char *start = source+strlen(";source=");
+				const char *semicolon = strchr(start, ';');
+				const size_t source_len = semicolon ? (size_t)(semicolon-start) : strlen(start);
+				if (source_len < sizeof(vhost)) {
+					strncpy(vhost, start, source_len);
+					vhost[source_len] = '\0';
+					JANUS_LOG(LOG_VERB, "  -- RTSP host (video): %s\n", vhost);
+				}
+			}
+		}
 		const char *server_ports = strstr(curldata->buffer, ";server_port=");
 		if(server_ports != NULL) {
 			char *dash = NULL;
