@@ -1105,8 +1105,10 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
-				rtp_range_min = atoi(item->value);
-				rtp_range_max = atoi(maxport);
+				if(janus_string_to_uint16(item->value, &rtp_range_min) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", item->value);
+				if(janus_string_to_uint16(maxport, &rtp_range_max) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 				maxport--;
 				*maxport = '-';
 			}

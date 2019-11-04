@@ -78,6 +78,27 @@ guint64 janus_random_uint64(void);
  * @returns A pointer to a guint64 number, if successful, NULL otherwise */
 guint64 *janus_uint64_dup(guint64 num);
 
+/*! \brief Helper method to convert a string to a uint8_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint8(const char *str, uint8_t *num);
+
+/*! \brief Helper method to convert a string to a uint16_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint16(const char *str, uint16_t *num);
+
+/*! \brief Helper method to convert a string to a uint32_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint32(const char *str, uint32_t *num);
+
 /** @name Flags helper methods
  */
 ///@{

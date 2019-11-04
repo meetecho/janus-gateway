@@ -93,6 +93,36 @@ guint64 *janus_uint64_dup(guint64 num) {
 	return numdup;
 }
 
+int janus_string_to_uint8(const char *str, uint8_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long int val = strtol(str, 0, 10);
+	if(val < 0 || val > UINT8_MAX)
+		return -ERANGE;
+	*num = val;
+	return errno;
+}
+
+int janus_string_to_uint16(const char *str, uint16_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long int val = strtol(str, 0, 10);
+	if(val < 0 || val > UINT16_MAX)
+		return -ERANGE;
+	*num = val;
+	return errno;
+}
+
+int janus_string_to_uint32(const char *str, uint32_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long long int val = strtoll(str, 0, 10);
+	if(val < 0 || val > UINT32_MAX)
+		return -ERANGE;
+	*num = val;
+	return errno;
+}
+
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)
 		g_atomic_pointer_set(flags, 0);

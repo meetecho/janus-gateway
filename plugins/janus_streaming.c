@@ -1391,8 +1391,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
-				rtp_range_min = atoi(range->value);
-				rtp_range_max = atoi(maxport);
+				if(janus_string_to_uint16(range->value, &rtp_range_min) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", range->value);
+				if(janus_string_to_uint16(maxport, &rtp_range_max) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 				maxport--;
 				*maxport = '-';
 			}
@@ -1494,11 +1496,19 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				uint16_t audio_port = 0, audio_rtcp_port = 0;
 				if(doaudio &&
-						(aport == NULL || aport->value == NULL || atoi(aport->value) == 0 ||
+						(aport == NULL || aport->value == NULL ||
+						janus_string_to_uint16(aport->value, &audio_port) < 0 || audio_port == 0 ||
 						acodec == NULL || acodec->value == NULL ||
 						artpmap == NULL || artpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for audio...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
+				if(doaudio && artcpport != NULL && artcpport->value != NULL &&
+						(janus_string_to_uint16(artcpport->value, &audio_rtcp_port) < 0 || audio_rtcp_port == 0)) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid audio RTCP port...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
@@ -1514,15 +1524,49 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
+				uint16_t video_port = 0, video_port2 = 0, video_port3 = 0, video_rtcp_port = 0;
 				if(dovideo &&
-						(vport == NULL || vport->value == NULL || atoi(vport->value) == 0 ||
+						(vport == NULL || vport->value == NULL ||
+						janus_string_to_uint16(vport->value, &video_port) < 0 || video_port == 0 ||
 						vcodec == NULL || vcodec->value == NULL ||
 						vrtpmap == NULL || vrtpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for video...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
-				if(dodata && (dport == NULL || dport->value == NULL || atoi(dport->value) == 0)) {
+				if(dovideo && vrtcpport != NULL && vrtcpport->value != NULL &&
+						(janus_string_to_uint16(vrtcpport->value, &video_rtcp_port) < 0 || video_rtcp_port == 0)) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid video RTCP port...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
+				if(dovideo && vport2 != NULL && vport2->value != NULL &&
+						(janus_string_to_uint16(vport2->value, &video_port2) < 0 || video_port2 == 0)) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid simulcast port...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
+				if(dovideo && vport3 != NULL && vport3->value != NULL &&
+						(janus_string_to_uint16(vport3->value, &video_port3) < 0 || video_port3 == 0)) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid simulcast port...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
+				if(dovideo && viface) {
+					if(!ifas) {
+						JANUS_LOG(LOG_ERR, "Skipping 'rtp' stream '%s', it relies on network configuration but network device information is unavailable...\n", cat->name);
+						cl = cl->next;
+						continue;
+					}
+					if(janus_network_lookup_interface(ifas, viface->value, &video_iface) != 0) {
+						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for video...\n", cat->name);
+						cl = cl->next;
+						continue;
+					}
+				}
+				uint16_t data_port = 0;
+				if(dodata && (dport == NULL || dport->value == NULL ||
+						janus_string_to_uint16(dport->value, &data_port) < 0 || data_port == 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for data...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -1542,18 +1586,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					}
 					if(janus_network_lookup_interface(ifas, diface->value, &data_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", cat->name);
-						cl = cl->next;
-						continue;
-					}
-				}
-				if(dovideo && viface) {
-					if(!ifas) {
-						JANUS_LOG(LOG_ERR, "Skipping 'rtp' stream '%s', it relies on network configuration but network device information is unavailable...\n", cat->name);
-						cl = cl->next;
-						continue;
-					}
-					if(janus_network_lookup_interface(ifas, viface->value, &video_iface) != 0) {
-						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for video...\n", cat->name);
 						cl = cl->next;
 						continue;
 					}
@@ -1601,8 +1633,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						doaudio,
 						amcast ? (char *)amcast->value : NULL,
 						doaudio && aiface && aiface->value ? &audio_iface : NULL,
-						(aport && aport->value) ? atoi(aport->value) : 0,
-						(artcpport && artcpport->value) ? atoi(artcpport->value) : 0,
+						(aport && aport->value) ? audio_port : 0,
+						(artcpport && artcpport->value) ? audio_rtcp_port : 0,
 						(acodec && acodec->value) ? atoi(acodec->value) : 0,
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
@@ -1610,21 +1642,21 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						dovideo,
 						vmcast ? (char *)vmcast->value : NULL,
 						dovideo && viface && viface->value ? &video_iface : NULL,
-						(vport && vport->value) ? atoi(vport->value) : 0,
-						(vrtcpport && vrtcpport->value) ? atoi(vrtcpport->value) : 0,
+						(vport && vport->value) ? video_port : 0,
+						(vrtcpport && vrtcpport->value) ? video_rtcp_port : 0,
 						(vcodec && vcodec->value) ? atoi(vcodec->value) : 0,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
 						bufferkf,
 						simulcast,
-						(vport2 && vport2->value) ? atoi(vport2->value) : 0,
-						(vport3 && vport3->value) ? atoi(vport3->value) : 0,
+						(vport2 && vport2->value) ? video_port2 : 0,
+						(vport3 && vport3->value) ? video_port3 : 0,
 						dosvc,
 						dovskew,
 						(rtpcollision && rtpcollision->value) ?  atoi(rtpcollision->value) : 0,
 						dodata,
 						dodata && diface && diface->value ? &data_iface : NULL,
-						(dport && dport->value) ? atoi(dport->value) : 0,
+						(dport && dport->value) ? data_port : 0,
 						buffermsg)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
 					cl = cl->next;

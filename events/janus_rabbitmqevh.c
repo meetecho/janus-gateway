@@ -193,10 +193,12 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		rmqhost = g_strdup(item->value);
 	else
 		rmqhost = g_strdup("localhost");
-	int rmqport = AMQP_PROTOCOL_PORT;
+	uint16_t rmqport = AMQP_PROTOCOL_PORT;
 	item = janus_config_get(config, config_general, janus_config_type_item, "port");
-	if(item && item->value)
-		rmqport = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &rmqport) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+		rmqport = AMQP_PROTOCOL_PORT;
+	}
 
 	/* Credentials and Virtual Host */
 	item = janus_config_get(config, config_general, janus_config_type_item, "vhost");

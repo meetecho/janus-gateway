@@ -1616,12 +1616,22 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		item = janus_config_get(config, config_general, janus_config_type_item, "keepalive_interval");
 		if(item && item->value)
 			keepalive_interval = atoi(item->value);
-		JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+		if(keepalive_interval < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid SIP keep-alive interval: %s (falling back to default)\n", item->value);
+			keepalive_interval = 120;
+		} else {
+			JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "register_ttl");
 		if(item && item->value)
 			register_ttl = atoi(item->value);
-		JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
+		if(register_ttl < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid SIP registration TTL: %s (falling back to default)\n", item->value);
+			register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+		} else {
+			JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
+		}
 
 		item = janus_config_get(config, config_general, janus_config_type_item, "behind_nat");
 		if(item && item->value)
@@ -1641,8 +1651,10 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			if(maxport != NULL) {
 				*maxport = '\0';
 				maxport++;
-				rtp_range_min = atoi(item->value);
-				rtp_range_max = atoi(maxport);
+				if(janus_string_to_uint16(item->value, &rtp_range_min) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", item->value);
+				if(janus_string_to_uint16(maxport, &rtp_range_max) < 0)
+					JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 				maxport--;
 				*maxport = '-';
 			}

@@ -1269,21 +1269,34 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	janus_config_item *forwarder_id_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_id");
 	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL)
 		forwarder_id = atoi(forwarder_id_item->value);
+	if(forwarder_id < 1) {
+		JANUS_LOG(LOG_ERR, "Invalid forwarder ID (%s)\n", forwarder_id_item->value);
+		return 0;
+	}
 
 	guint32 ssrc_value = 0;
 	janus_config_item *ssrc = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ssrc");
-	if(ssrc != NULL && ssrc->value != NULL)
-		ssrc_value = atoi(ssrc->value);
+	if(ssrc != NULL && ssrc->value != NULL && janus_string_to_uint32(ssrc->value, &ssrc_value) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid SSRC (%s)\n", ssrc->value);
+		return 0;
+	}
 
 	int ptype = 100;
 	janus_config_item *pt = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ptype");
-	if(pt != NULL && pt->value != NULL)
+	if(pt != NULL && pt->value != NULL) {
 		ptype = atoi(pt->value);
+		if(ptype < 0 || ptype > 127) {
+			JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", pt->value);
+			return 0;
+		}
+	}
 
 	janus_config_item *port_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_port");
 	uint16_t port = 0;
-	if(port_item != NULL && port_item->value != NULL && strlen(port_item->value) > 0)
-		port = atoi(port_item->value);
+	if(port_item != NULL && port_item->value != NULL && janus_string_to_uint16(port_item->value, &port) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid port (%s)\n", port_item->value);
+		return 0;
+	}
 	if(port == 0) {
 		return 0;
 	}
@@ -4440,6 +4453,8 @@ static void *janus_audiobridge_handler(void *data) {
 						if(a->value) {
 							if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 								extmap_id = atoi(a->value);
+								if(extmap_id < 0)
+									extmap_id = 0;
 							}
 						}
 						ma = ma->next;
