@@ -299,10 +299,10 @@ Janus.init = function(options) {
 		Janus.attachMediaStream = function(element, stream) {
 			try {
 				element.srcObject = stream;
-			} catch {
+			} catch (e) {
 				try {
 					element.src = URL.createObjectURL(stream);
-				} catch {
+				} catch (e) {
 					Janus.error("Error attaching stream to element");
 				}
 			}
@@ -310,10 +310,10 @@ Janus.init = function(options) {
 		Janus.reattachMediaStream = function(to, from) {
 			try {
 				to.srcObject = from.srcObject;
-			} catch {
+			} catch (e) {
 				try {
 					to.src = from.src;
-				} catch {
+				} catch (e) {
 					Janus.error("Error reattaching stream to element");
 				}
 			}
