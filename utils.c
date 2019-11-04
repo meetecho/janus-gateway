@@ -827,9 +827,7 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 
 /* Helper method to parse a VP9 RTP video frame and get some SVC-related info:
  * notice that this only works with VP9, right now, on an experimental basis */
-int janus_vp9_parse_svc(char *buffer, int len, int *found,
-		int *spatial_layer, int *temporal_layer,
-		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
+int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_info *info) {
 	if(!buffer || len < 8)
 		return -1;
 	/* VP9 depay: */
@@ -846,7 +844,7 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 	if(!lbit) {
 		/* No Layer indices present, no need to go on */
 		if(found)
-			*found = 0;
+			*found = FALSE;
 		return 0;
 	}
 	/* Move to the next octet and see what's there */
@@ -875,24 +873,20 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		uint8_t ubit = (vp9pd & 0x10) >> 4;
 		int slid = (vp9pd & 0x0E) >> 1;
 		uint8_t dbit = (vp9pd & 0x01);
-		JANUS_LOG(LOG_HUGE, "Parsed Layer indices: Temporal: %d (%u), Spatial: %d (%u)\n",
-			tlid, ubit, slid, dbit);
-		if(temporal_layer)
-			*temporal_layer = tlid;
-		if(spatial_layer)
-			*spatial_layer = slid;
-		if(p)
-			*p = pbit;
-		if(d)
-			*d = dbit;
-		if(u)
-			*u = ubit;
-		if(b)
-			*b = bbit;
-		if(e)
-			*e = ebit;
+		JANUS_LOG(LOG_HUGE, "%s Mode, Layer indices: Temporal: %d (u=%u), Spatial: %d (d=%u)\n",
+			fbit ? "Flexible" : "Non-flexible", tlid, ubit, slid, dbit);
+		if(info) {
+			info->temporal_layer = tlid;
+			info->spatial_layer = slid;
+			info->fbit = fbit;
+			info->pbit = pbit;
+			info->dbit = dbit;
+			info->ubit = ubit;
+			info->bbit = bbit;
+			info->ebit = ebit;
+		}
 		if(found)
-			*found = 1;
+			*found = TRUE;
 		/* Go on, just to get to the SS, if available (which we currently ignore anyway) */
 		buffer++;
 		len--;

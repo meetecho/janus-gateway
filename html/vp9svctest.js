@@ -646,7 +646,7 @@ function addSvcButtons(feed) {
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
+			feeds[index].send({message: { request: "configure", spatial_layer: 2 }});
 		});
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
