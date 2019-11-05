@@ -4106,7 +4106,7 @@ gint main(int argc, char *argv[])
 #endif
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE, ignore_unreachable_ice_server = FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
@@ -4139,6 +4139,9 @@ gint main(int argc, char *argv[])
 	/* Check if we need to do full-trickle instead of half-trickle */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "full_trickle");
 	full_trickle = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we should exit if a STUN or TURN server is unreachable */
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ignore_unreachable_ice_server");
+	ignore_unreachable_ice_server = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "stun_server");
 	if(item && item->value)
@@ -4194,11 +4197,15 @@ gint main(int argc, char *argv[])
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
-		exit(1);
+		if(!ignore_unreachable_ice_server) {
+        	exit(1);
+        }
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
-		exit(1);
+		if(!ignore_unreachable_ice_server) {
+			exit(1);
+		}
 	}
 #ifndef HAVE_TURNRESTAPI
 	if(turn_rest_api != NULL || turn_rest_api_key != NULL) {
