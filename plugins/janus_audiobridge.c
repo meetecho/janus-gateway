@@ -1267,10 +1267,9 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *cat, janus_audiobridge_room *audiobridge) {
 	guint32 forwarder_id = 0;
 	janus_config_item *forwarder_id_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_id");
-	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL)
-		forwarder_id = atoi(forwarder_id_item->value);
-	if(forwarder_id < 1) {
-		JANUS_LOG(LOG_ERR, "Invalid forwarder ID (%s)\n", forwarder_id_item->value);
+	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL &&
+			janus_string_to_uint32(forwarder_id_item->value, &forwarder_id) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid forwarder ID\n");
 		return 0;
 	}
 
