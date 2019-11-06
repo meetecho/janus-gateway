@@ -4196,15 +4196,19 @@ gint main(int argc, char *argv[])
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		if(!ignore_unreachable_ice_server) {
+			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 			exit(1);
+		} else {
+			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		}
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 		if(!ignore_unreachable_ice_server) {
+			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 			exit(1);
+		} else {
+			JANUS_LOG(LOG_ERR, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 		}
 	}
 #ifndef HAVE_TURNRESTAPI
