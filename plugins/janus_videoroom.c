@@ -6219,11 +6219,14 @@ static void *janus_videoroom_handler(void *data) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 							if(a->value) {
 								if(videoroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
-									participant->audio_level_extmap_id = atoi(a->value);
+									if(janus_string_to_uint8(a->value, &participant->audio_level_extmap_id) < 0)
+										JANUS_LOG(LOG_WARN, "Invalid audio-level extension ID: %s\n", a->value);
 								} else if(videoroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
-									participant->video_orient_extmap_id = atoi(a->value);
+									if(janus_string_to_uint8(a->value, &participant->video_orient_extmap_id) < 0)
+										JANUS_LOG(LOG_WARN, "Invalid video-orientation extension ID: %s\n", a->value);
 								} else if(videoroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
-									participant->playout_delay_extmap_id = atoi(a->value);
+									if(janus_string_to_uint8(a->value, &participant->playout_delay_extmap_id) < 0)
+										JANUS_LOG(LOG_WARN, "Invalid playout-delay extension ID: %s\n", a->value);
 								} else if(m->type == JANUS_SDP_AUDIO && !strcasecmp(a->name, "fmtp") && strstr(a->value, "useinbandfec=1")) {
 									participant->do_opusfec = videoroom->do_opusfec;
 								}
