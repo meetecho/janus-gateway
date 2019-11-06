@@ -3741,13 +3741,12 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
-			if(!janus_sip_call_is_established(session)) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not established? status=%s)\n", janus_sip_call_status_string(session->status));
+			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not established/inviting? status=%s)\n",
+					janus_sip_call_status_string(session->status));
 				/* Ignore */
 				janus_sip_message_free(msg);
 				continue;
-				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
-				//~ goto error;
 			}
 			if(session->callee == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
