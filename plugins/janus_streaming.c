@@ -2999,9 +2999,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_ERR, "No such mountpoint (%"SCNu64")\n", mp->id);
+			JANUS_LOG(LOG_ERR, "No such mountpoint (%"SCNu64")\n", id_value);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint (%"SCNu64")", mp->id);
+			g_snprintf(error_cause, 512, "No such mountpoint (%"SCNu64")", id_value);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -3804,6 +3804,11 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	janus_rtp_switching_context_reset(&session->context);
 	/* If this is related to a live RTP mountpoint, any keyframe we can shoot already? */
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
+	if (!mountpoint) {
+		janus_refcount_decrease(&session->ref);
+		JANUS_LOG(LOG_ERR, "No mountpoint associated with this session...\n");
+		return;
+	}
 	if(mountpoint->streaming_source == janus_streaming_source_rtp) {
 		janus_streaming_rtp_source *source = mountpoint->source;
 		if(source->keyframe.enabled) {
