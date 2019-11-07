@@ -451,7 +451,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 								m->fmts = g_list_append(m->fmts, g_strdup(mline_parts[mindex]));
 								/* Add numeric payload type */
 								int ptype = atoi(mline_parts[mindex]);
-								if(ptype < 0 || ptype > 127) {
+								if(ptype < 0) {
 									JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", mline_parts[mindex]);
 								} else {
 									m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(ptype));
@@ -689,7 +689,7 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
 				int pt = atoi(a->value);
-				if(pt < 0 || pt > 127) {
+				if(pt < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
 				} else if(strstr(a->value, format) || strstr(a->value, format2)) {
 					return pt;
