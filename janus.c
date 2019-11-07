@@ -4152,8 +4152,10 @@ gint main(int argc, char *argv[])
 		if(maxport != NULL) {
 			*maxport = '\0';
 			maxport++;
-			rtp_min_port = atoi(item->value);
-			rtp_max_port = atoi(maxport);
+			if(janus_string_to_uint16(item->value, &rtp_min_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", item->value);
+			if(janus_string_to_uint16(maxport, &rtp_max_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 			maxport--;
 			*maxport = '-';
 		}
@@ -4180,8 +4182,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		stun_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "stun_port");
-	if(item && item->value)
-		stun_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &stun_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid STUN port: %s (disabling STUN)\n", item->value);
+		stun_server = NULL;
+	}
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
@@ -4199,8 +4203,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_port");
-	if(item && item->value)
-		turn_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &turn_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid TURN port: %s (disabling TURN)\n", item->value);
+		turn_server = NULL;
+	}
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_type");
 	if(item && item->value)
 		turn_type = (char *)item->value;
@@ -4357,10 +4363,12 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	guint dtls_timeout = 1000;
+	guint16 dtls_timeout = 1000;
 	item = janus_config_get(config, config_media, janus_config_type_item, "dtls_timeout");
-	if(item && item->value)
-		dtls_timeout = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &dtls_timeout) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid DTLS timeout: %s (falling back to default)\n", item->value);
+		dtls_timeout = 1000;
+	}
 	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout) < 0) {
 		exit(1);
 	}
