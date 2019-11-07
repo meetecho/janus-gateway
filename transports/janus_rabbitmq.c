@@ -219,10 +219,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmqhost = g_strdup(item->value);
 	else
 		rmqhost = g_strdup("localhost");
-	int rmqport = AMQP_PROTOCOL_PORT;
+	uint16_t rmqport = AMQP_PROTOCOL_PORT;
 	item = janus_config_get(config, config_general, janus_config_type_item, "port");
-	if(item && item->value)
-		rmqport = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &rmqport) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+		rmqport = AMQP_PROTOCOL_PORT;
+	}
 
 	/* Credentials and Virtual Host */
 	item = janus_config_get(config, config_general, janus_config_type_item, "vhost");
@@ -661,7 +663,7 @@ void *janus_rmq_in_thread(void *data) {
 		int res = amqp_simple_wait_frame_noblock(rmq_client->rmq_conn, &frame, &timeout);
 		if(res != AMQP_STATUS_OK) {
 			/* No data */
-			if(res == AMQP_STATUS_TIMEOUT)
+			if(res == AMQP_STATUS_TIMEOUT || res == AMQP_STATUS_SSL_ERROR)
 				continue;
 			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
 			break;

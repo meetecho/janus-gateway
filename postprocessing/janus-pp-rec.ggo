@@ -11,3 +11,5 @@ option "videoorient-ext" v "ID of the video-orientation RTP extension (default=n
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
+option "format" f "Specifies the output format (overrides the format from the destination)" string values="opus", "wav", "webm", "mp4", "srt" optional
+option "faststart" t "For mp4 files write the MOOV atom at the head of the file" flag off

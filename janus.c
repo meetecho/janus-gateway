@@ -152,6 +152,10 @@ static struct janus_json_parameter customevent_parameters[] = {
 	{"schema", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"data", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter customlogline_parameters[] = {
+	{"line", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"level", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter text2pcap_parameters[] = {
 	{"folder", JSON_STRING, 0},
 	{"filename", JSON_STRING, 0},
@@ -165,7 +169,8 @@ static struct janus_json_parameter resaddr_parameters[] = {
 };
 static struct janus_json_parameter teststun_parameters[] = {
 	{"address", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"localport", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */
@@ -2094,6 +2099,33 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "custom_logline")) {
+			/* Print something custom on the logs, using the specified debug level */
+			JANUS_VALIDATE_JSON_OBJECT(root, customlogline_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *line = json_object_get(root, "line");
+			const char *log_line = json_string_value(line);
+			json_t *level = json_object_get(root, "level");
+			int log_level = LOG_INFO;
+			if(level) {
+				log_level = json_integer_value(level);
+				if(log_level < LOG_NONE || log_level > LOG_MAX)
+					log_level = LOG_INFO;
+			}
+			/* Print the log line on the log */
+			JANUS_LOG(log_level, "%s\n", log_line);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		} else if(!strcasecmp(message_text, "list_sessions")) {
 			/* List sessions */
 			session_id = 0;
@@ -2236,6 +2268,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			const char *address = json_string_value(json_object_get(root, "address"));
 			uint16_t port = json_integer_value(json_object_get(root, "port"));
+			uint16_t local_port = json_integer_value(json_object_get(root, "localport"));
 			/* Resolve the address */
 			gint64 start = janus_get_monotonic_time();
 			struct addrinfo *res = NULL;
@@ -2253,8 +2286,9 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			freeaddrinfo(res);
 			/* Test the STUN server */
-			janus_network_address public_addr;
-			if(janus_ice_test_stun_server(&addr, port, &public_addr) < 0) {
+			janus_network_address public_addr = { 0 };
+			uint16_t public_port = 0;
+			if(janus_ice_test_stun_server(&addr, port, local_port, &public_addr, &public_port) < 0) {
 				ret = janus_process_error_string(request, session_id, transaction_text,
 					JANUS_ERROR_UNKNOWN, (char *)"STUN request failed");
 				goto jsondone;
@@ -2269,6 +2303,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "public_ip", json_string(public_ip));
+			json_object_set_new(reply, "public_port", json_integer(public_port));
 			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -3725,7 +3760,8 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		/* Change the current working directory */
-		if((chdir("/")) < 0) {
+		const char *cwd = (args_info.cwd_path_given) ? args_info.cwd_path_arg : "/";
+		if((chdir(cwd)) < 0) {
 			g_print("Error changing the current working directory!\n");
 			exit(1);
 		}
@@ -4116,8 +4152,10 @@ gint main(int argc, char *argv[])
 		if(maxport != NULL) {
 			*maxport = '\0';
 			maxport++;
-			rtp_min_port = atoi(item->value);
-			rtp_max_port = atoi(maxport);
+			if(janus_string_to_uint16(item->value, &rtp_min_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", item->value);
+			if(janus_string_to_uint16(maxport, &rtp_max_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 			maxport--;
 			*maxport = '-';
 		}
@@ -4147,12 +4185,14 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		stun_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "stun_port");
-	if(item && item->value)
-		stun_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &stun_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid STUN port: %s (disabling STUN)\n", item->value);
+		stun_server = NULL;
+	}
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
-		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
+		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public IP - %s\n", item->value);
 		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
 			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
 		} else {
@@ -4166,8 +4206,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_port");
-	if(item && item->value)
-		turn_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &turn_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid TURN port: %s (disabling TURN)\n", item->value);
+		turn_server = NULL;
+	}
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_type");
 	if(item && item->value)
 		turn_type = (char *)item->value;
@@ -4332,10 +4374,12 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	guint dtls_timeout = 1000;
+	guint16 dtls_timeout = 1000;
 	item = janus_config_get(config, config_media, janus_config_type_item, "dtls_timeout");
-	if(item && item->value)
-		dtls_timeout = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &dtls_timeout) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid DTLS timeout: %s (falling back to default)\n", item->value);
+		dtls_timeout = 1000;
+	}
 	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout) < 0) {
 		exit(1);
 	}
@@ -4776,6 +4820,15 @@ gint main(int argc, char *argv[])
 	if(!admin_api_enabled && janus_auth_is_stored_mode()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the stored token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API or set the token auth secret.\n");
 		exit(1);	/* FIXME Should we really give up? */
+	}
+
+	/* Make sure libnice is recent enough, otherwise print a warning */
+	int libnice_version = 0;
+	if(sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
+		if(libnice_version < 15) {
+			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
+				libnice_version_string);
+		}
 	}
 
 	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */

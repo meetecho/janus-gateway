@@ -96,9 +96,9 @@ gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	if(!data[0] || !data[1])
 		goto fail;
 	/* Verify timestamp */
-	gint64 expiry_time = atoi(data[0]);
+	gint64 expiry_time = strtoll(data[0], NULL, 10);
 	gint64 real_time = janus_get_real_time() / 1000000;
-	if(real_time > expiry_time)
+	if(expiry_time < 0 || real_time > expiry_time)
 		goto fail;
 	/* Verify realm */
 	if(strcmp(data[1], realm))
@@ -133,9 +133,9 @@ gboolean janus_auth_check_signature_contains(const char *token, const char *real
 	if(!data[0] || !data[1])
 		goto fail;
 	/* Verify timestamp */
-	gint64 expiry_time = atoi(data[0]);
+	gint64 expiry_time = strtoll(data[0], NULL, 10);
 	gint64 real_time = janus_get_real_time() / 1000000;
-	if(real_time > expiry_time)
+	if(expiry_time < 0 || real_time > expiry_time)
 		goto fail;
 	/* Verify realm */
 	if(strcmp(data[1], realm))

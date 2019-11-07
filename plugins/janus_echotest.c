@@ -553,6 +553,13 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 			gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 				buf, len, session->ssrc, session->rid, session->vcodec, &session->context);
+			if(session->sim_context.need_pli) {
+				/* Send a PLI */
+				char rtcpbuf[12];
+				memset(rtcpbuf, 0, 12);
+				janus_rtcp_pli((char *)&rtcpbuf, 12);
+				gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
+			}
 			/* Do we need to drop this? */
 			if(!relay)
 				return;
@@ -565,14 +572,6 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 				json_object_set_new(event, "substream", json_integer(session->sim_context.substream));
 				gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
-			}
-			if(session->sim_context.need_pli) {
-				/* Send a PLI */
-				JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-				char rtcpbuf[12];
-				memset(rtcpbuf, 0, 12);
-				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
 			}
 			if(session->sim_context.changed_temporal) {
 				/* Notify the user about the temporal layer change */

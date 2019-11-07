@@ -297,31 +297,25 @@ Janus.init = function(options) {
 		}
 		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
 		Janus.attachMediaStream = function(element, stream) {
-			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 52) {
-					element.srcObject = stream;
-				} else if(typeof element.src !== 'undefined') {
+			try {
+				element.srcObject = stream;
+			} catch (e) {
+				try {
 					element.src = URL.createObjectURL(stream);
-				} else {
+				} catch (e) {
 					Janus.error("Error attaching stream to element");
 				}
-			} else {
-				element.srcObject = stream;
 			}
 		};
 		Janus.reattachMediaStream = function(to, from) {
-			if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
-				var chromever = Janus.webRTCAdapter.browserDetails.version;
-				if(chromever >= 52) {
-					to.srcObject = from.srcObject;
-				} else if(typeof to.src !== 'undefined') {
+			try {
+				to.srcObject = from.srcObject;
+			} catch (e) {
+				try {
 					to.src = from.src;
-				} else {
+				} catch (e) {
 					Janus.error("Error reattaching stream to element");
 				}
-			} else {
-				to.srcObject = from.srcObject;
 			}
 		};
 		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
@@ -976,11 +970,6 @@ function Janus(gatewayCallbacks) {
 		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
 			cleanupHandles = (callbacks.cleanupHandles === true);
 		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
-		if(!connected) {
-			Janus.warn("Is the server down? (connected=false)");
-			callbacks.success();
-			return;
-		}
 		if(sessionId === undefined || sessionId === null) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
@@ -991,6 +980,11 @@ function Janus(gatewayCallbacks) {
 		if(cleanupHandles) {
 			for(var handleId in pluginHandles)
 				destroyHandle(handleId, { noRequest: true });
+		}
+		if(!connected) {
+			Janus.warn("Is the server down? (connected=false)");
+			callbacks.success();
+			return;
 		}
 		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
@@ -2207,7 +2201,7 @@ function Janus(gatewayCallbacks) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						navigator.mediaDevices.getDisplayMedia({ video: true })
+						navigator.mediaDevices.getDisplayMedia({ video: true, audio: media.captureDesktopAudio })
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media) && !media.keepAudio) {
@@ -2946,18 +2940,19 @@ function Janus(gatewayCallbacks) {
 			if(config.volume[stream].timer === null || config.volume[stream].timer === undefined) {
 				Janus.log("Starting " + stream + " volume monitor");
 				config.volume[stream].timer = setInterval(function() {
-					config.pc.getStats(function(stats) {
-						var results = stats.result();
-						for(var i=0; i<results.length; i++) {
-							var res = results[i];
-							if(res.type == 'ssrc') {
-								if(remote && res.stat('audioOutputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
-								else if(!remote && res.stat('audioInputLevel'))
-									config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
+					config.pc.getStats()
+						.then(function(stats) {
+							var results = stats.result();
+							for(var i=0; i<results.length; i++) {
+								var res = results[i];
+								if(res.type == 'ssrc') {
+									if(remote && res.stat('audioOutputLevel'))
+										config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
+									else if(!remote && res.stat('audioInputLevel'))
+										config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
+								}
 							}
-						}
-					});
+						});
 				}, 200);
 				return 0;	// We don't have a volume to return yet
 			}

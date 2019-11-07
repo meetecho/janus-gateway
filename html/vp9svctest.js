@@ -235,7 +235,7 @@ $(document).ready(function() {
 													// This is a "no such room" error: give a more meaningful description
 													bootbox.alert(
 														"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses for testing VP9 SVC) " +
-														"does not exist...</p><p>Do you have an updated <code>janus.plugin.videoroom.cfg</code> " +
+														"does not exist...</p><p>Do you have an updated <code>janus.plugin.videoroom.jcfg</code> " +
 														"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
 														"from that sample in your current configuration file, then restart Janus and try again."
 													);
@@ -646,7 +646,7 @@ function addSvcButtons(feed) {
 				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl' + index + '-0').hasClass('btn-success'))
 				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
+			feeds[index].send({message: { request: "configure", spatial_layer: 2 }});
 		});
 	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
