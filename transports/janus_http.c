@@ -125,6 +125,7 @@ typedef struct janus_http_msg {
 	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
 	json_t *response;					/* The response from the core */
+	volatile gint timeout;				/* Whether the request to the core timed out */
 } janus_http_msg;
 static GHashTable *messages = NULL;
 static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
@@ -1062,6 +1063,11 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			json_decref(message);
 			return -1;
 		}
+		if(g_atomic_int_get(&msg->timeout)) {
+			JANUS_LOG(LOG_ERR, "Request timed out...\n");
+			json_decref(message);
+			return -1;
+		}
 		janus_mutex_lock(&msg->wait_mutex);
 		msg->response = message;
 		msg->got_response = TRUE;
@@ -1492,8 +1498,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || !res)
+		if(msg->got_response || !res) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #else
@@ -1505,7 +1513,8 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || res == ETIMEDOUT) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
@@ -1745,8 +1754,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || !res)
+		if(msg->got_response || !res) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #else
@@ -1758,8 +1769,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || res == ETIMEDOUT) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #endif
