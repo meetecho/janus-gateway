@@ -108,7 +108,7 @@ Janus.useDefaultDependencies = function (deps) {
 				fetchOptions.headers['Content-Type'] = 'application/json';
 			}
 			if(options.withCredentials !== undefined) {
-				fetchOptions.credentials = options.withCredentials ? 'include' : 'omit';
+				fetchOptions.credentials = options.withCredentials === true ? 'include' : (options.withCredentials ? options.withCredentials : 'omit');
 			}
 			if(options.body) {
 				fetchOptions.body = JSON.stringify(options.body);
@@ -280,7 +280,8 @@ Janus.init = function(options) {
 							var tracks = stream.getTracks();
 							for(var i in tracks) {
 								var mst = tracks[i];
-								if(mst) mst.stop();
+								if(mst)
+									mst.stop();
 							}
 						} catch(e) {}
 					});
@@ -470,7 +471,7 @@ function Janus(gatewayCallbacks) {
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
 	var bundlePolicy = gatewayCallbacks.bundlePolicy;
 	// Whether IPv6 candidates should be gathered
-	var ipv6Support = gatewayCallbacks.ipv6 || false;
+	var ipv6Support = (gatewayCallbacks.ipv6 === true);
 	// Whether we should enable the withCredentials flag for XHR requests
 	var withCredentials = false;
 	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
@@ -638,7 +639,7 @@ function Janus(gatewayCallbacks) {
 			if(config.pc && config.remoteSdp) {
 				// Add candidate right now
 				Janus.debug("Adding remote candidate:", candidate);
-				if(!candidate || candidate.completed) {
+				if(!candidate || candidate.completed === true) {
 					// end-of-candidates
 					config.pc.addIceCandidate(Janus.endOfCandidates);
 				} else {
@@ -1541,8 +1542,8 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid DTMF string");
 			return;
 		}
-		var duration = dtmf.duration || 500; // We choose 500ms as the default duration for a tone
-		var gap = dtmf.gap || 50; // We choose 50ms as the default gap between tones
+		var duration = (typeof dtmf.duration === 'number') ? dtmf.duration : 500; // We choose 500ms as the default duration for a tone
+		var gap = (typeof dtmf.gap === 'number') ? dtmf.gap : 50; // We choose 50ms as the default gap between tones
 		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms)");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
 		callbacks.success();
@@ -1787,7 +1788,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(addTracks && stream) {
 			Janus.log('Adding local stream');
-			var simulcast2 = callbacks.simulcast2 ? true : false;
+			var simulcast2 = (callbacks.simulcast2 === true);
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
 				if(!simulcast2) {
@@ -1836,7 +1837,7 @@ function Janus(gatewayCallbacks) {
 						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
-							if(!candidate || candidate.completed) {
+							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
 								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
@@ -1866,7 +1867,8 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("A valid JSEP is required for createAnswer");
 			return;
 		}
-		callbacks.media = callbacks.media || { audio: true, video: true };
+		/* Check that callbacks.media is a (not null) Object */
+		callbacks.media = (typeof callbacks.media === 'object' && callbacks.media) ? callbacks.media : { audio: true, video: true };
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
@@ -2085,7 +2087,8 @@ function Janus(gatewayCallbacks) {
 						for(var i in tracks) {
 							var mst = tracks[i];
 							Janus.log(mst);
-							if(mst) mst.stop();
+							if(mst)
+								mst.stop();
 						}
 					} catch(e) {
 						// Do nothing if this fails
@@ -2114,8 +2117,8 @@ function Janus(gatewayCallbacks) {
 			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport && media) {
-				var simulcast = callbacks.simulcast ? true : false;
-				var simulcast2 = callbacks.simulcast2 ? true : false;
+				var simulcast = (callbacks.simulcast === true);
+				var simulcast2 = (callbacks.simulcast2 === true);
 				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
@@ -2384,7 +2387,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : webrtcError;
 		var jsep = callbacks.jsep;
-        var pluginHandle = pluginHandles[handleId];
+		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
@@ -2406,7 +2409,7 @@ function Janus(gatewayCallbacks) {
 						for(var i = 0; i< config.candidates.length; i++) {
 							var candidate = config.candidates[i];
 							Janus.debug("Adding remote candidate:", candidate);
-							if(!candidate || candidate.completed) {
+							if(!candidate || candidate.completed === true) {
 								// end-of-candidates
 								config.pc.addIceCandidate(Janus.endOfCandidates);
 							} else {
@@ -2436,7 +2439,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var simulcast = callbacks.simulcast ? true : false;
+		var simulcast = (callbacks.simulcast === true);
 		if(!simulcast) {
 			Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
 		} else {
@@ -2565,7 +2568,7 @@ function Janus(gatewayCallbacks) {
 			mediaConstraints["offerToReceiveAudio"] = isAudioRecvEnabled(media);
 			mediaConstraints["offerToReceiveVideo"] = isVideoRecvEnabled(media);
 		}
-		var iceRestart = callbacks.iceRestart ? true : false;
+		var iceRestart = (callbacks.iceRestart === true);
 		if(iceRestart) {
 			mediaConstraints["iceRestart"] = true;
 		}
@@ -2640,7 +2643,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var simulcast = callbacks.simulcast ? true : false;
+		var simulcast = (callbacks.simulcast === true);
 		if(!simulcast) {
 			Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		} else {
@@ -3038,7 +3041,7 @@ function Janus(gatewayCallbacks) {
 								if(inStats) {
 									config.bitrate.bsnow = res.bytesReceived;
 									config.bitrate.tsnow = res.timestamp;
-									if(!config.bitrate.bsbefore || !config.bitrate.tsbefore) {
+									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
 										// Skip this round
 										config.bitrate.bsbefore = config.bitrate.bsnow;
 										config.bitrate.tsbefore = config.bitrate.tsnow;
@@ -3127,7 +3130,8 @@ function Janus(gatewayCallbacks) {
 					for(var i in tracks) {
 						var mst = tracks[i];
 						Janus.log(mst);
-						if(mst) mst.stop();
+						if(mst)
+							mst.stop();
 					}
 				}
 			} catch(e) {
@@ -3442,9 +3446,9 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Edge doesn't support data channels yet");
 			return false;
 		}
-		if(!media)
+		if(media === undefined || media === null)
 			return false;	// Default
-		return media.data;
+		return (media.data === true);
 	}
 
 	function isTrickleEnabled(trickle) {
