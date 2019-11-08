@@ -4242,7 +4242,7 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 			exit(1);
 		} else {
-			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u\n", stun_server, stun_port);
+			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u. STUN will be disabled\n", stun_server, stun_port);
 		}
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
@@ -4250,7 +4250,7 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 			exit(1);
 		} else {
-			JANUS_LOG(LOG_ERR, "Invalid TURN address %s:%u\n", turn_server, turn_port);
+			JANUS_LOG(LOG_ERR, "Invalid TURN address %s:%u. TURN will be disabled\n", turn_server, turn_port);
 		}
 	}
 #ifndef HAVE_TURNRESTAPI

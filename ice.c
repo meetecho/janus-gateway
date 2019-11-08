@@ -1011,17 +1011,13 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	/* Test the STUN server */
 	janus_network_address public_addr = { 0 };
 	if(janus_ice_test_stun_server(&addr, janus_stun_port, 0, &public_addr, NULL) < 0) {
-		if(janus_stun_server) {
-        	g_free(janus_stun_server);
-        }
+		g_free(janus_stun_server);
 		janus_stun_server = NULL;
 		return -1;
 	}
 	if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve public address...\n");
-		if(janus_stun_server) {
-			g_free(janus_stun_server);
-		}
+		g_free(janus_stun_server);
 		janus_stun_server = NULL;
 		return -1;
 	}
