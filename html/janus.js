@@ -228,7 +228,7 @@ Janus.init = function(options) {
 			Janus.warn = console.warn.bind(console);
 			Janus.error = console.error.bind(console);
 		} else if(Array.isArray(options.debug)) {
-			for(var i in options.debug) {
+			for(var i of options.debug) {
 				var d = options.debug[i];
 				switch(d) {
 					case "trace":
@@ -278,7 +278,7 @@ Janus.init = function(options) {
 						// Get rid of the now useless stream
 						try {
 							var tracks = stream.getTracks();
-							for(var i in tracks) {
+							for(var i of tracks) {
 								var mst = tracks[i];
 								if(mst)
 									mst.stop();
@@ -332,7 +332,7 @@ Janus.init = function(options) {
 		var oldOBF = window["on" + eventName];
 		window.addEventListener(eventName, function(event) {
 			Janus.log("Closing window");
-			for(var s in Janus.sessions) {
+			for(var s of Janus.sessions) {
 				if(Janus.sessions[s] && Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
 					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
@@ -348,7 +348,7 @@ Janus.init = function(options) {
 			// Let's see if RTCRtpSender.getCapabilities() is there
 			if(RTCRtpSender && RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("video") &&
 					RTCRtpSender.getCapabilities("video").codecs && RTCRtpSender.getCapabilities("video").codecs.length) {
-				for(var i in RTCRtpSender.getCapabilities("video").codecs) {
+				for(var i of RTCRtpSender.getCapabilities("video").codecs) {
 					var codec = RTCRtpSender.getCapabilities("video").codecs[i];
 					if(codec && codec.mimeType && codec.mimeType.toLowerCase() === "video/vp8") {
 						Janus.safariVp8 = true;
@@ -901,7 +901,7 @@ function Janus(gatewayCallbacks) {
 				}
 			};
 
-			for(var eventName in wsHandlers) {
+			for(var eventName of wsHandlers) {
 				ws.addEventListener(eventName, wsHandlers[eventName]);
 			}
 
@@ -974,7 +974,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		if(cleanupHandles) {
-			for(var handleId in pluginHandles)
+			for(var handleId of pluginHandles)
 				destroyHandle(handleId, { noRequest: true });
 		}
 		if(!connected) {
@@ -992,7 +992,7 @@ function Janus(gatewayCallbacks) {
 			request["session_id"] = sessionId;
 
 			var unbindWebSocket = function() {
-				for(var eventName in wsHandlers) {
+				for(var eventName of wsHandlers) {
 					ws.removeEventListener(eventName, wsHandlers[eventName]);
 				}
 				ws.removeEventListener('message', onUnbindMessage);
@@ -1428,7 +1428,7 @@ function Janus(gatewayCallbacks) {
 				// Any pending messages to send?
 				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
 					Janus.log("Sending pending messages on <" + label + ">:", config.dataChannel[label].pending.length);
-					for(var i in config.dataChannel[label].pending) {
+					for(var i of config.dataChannel[label].pending) {
 						var text = config.dataChannel[label].pending[i];
 						Janus.log("Sending string on data channel <" + label + ">: " + text);
 						config.dataChannel[label].send(text);
@@ -1646,7 +1646,7 @@ function Janus(gatewayCallbacks) {
 					var audioTransceiver = null;
 					var transceivers = config.pc.getTransceivers();
 					if(transceivers && transceivers.length > 0) {
-						for(var i in transceivers) {
+						for(var i of transceivers) {
 							var t = transceivers[i];
 							if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
 									(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
@@ -1674,7 +1674,7 @@ function Janus(gatewayCallbacks) {
 					var videoTransceiver = null;
 					var transceivers = config.pc.getTransceivers();
 					if(transceivers && transceivers.length > 0) {
-						for(var i in transceivers) {
+						for(var i of transceivers) {
 							var t = transceivers[i];
 							if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
 									(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
@@ -1710,7 +1710,7 @@ function Janus(gatewayCallbacks) {
 			// Any custom constraint to add?
 			if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
 				Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
-				for(var i in callbacks.rtcConstraints) {
+				for(var i of callbacks.rtcConstraints) {
 					pc_constraints.optional.push(callbacks.rtcConstraints[i]);
 				}
 			}
@@ -2035,7 +2035,7 @@ function Janus(gatewayCallbacks) {
 						ra = false;
 					}
 					if(ra) {
-						for(var index in config.pc.getSenders()) {
+						for(var index of config.pc.getSenders()) {
 							var s = config.pc.getSenders()[index];
 							if(s && s.track && s.track.kind === "audio") {
 								Janus.log("Removing audio sender:", s);
@@ -2061,7 +2061,7 @@ function Janus(gatewayCallbacks) {
 						rv = false;
 					}
 					if(rv) {
-						for(var index in config.pc.getSenders()) {
+						for(var index of config.pc.getSenders()) {
 							var s = config.pc.getSenders()[index];
 							if(s && s.track && s.track.kind === "video") {
 								Janus.log("Removing video sender:", s);
@@ -2084,7 +2084,7 @@ function Janus(gatewayCallbacks) {
 					try {
 						// Try a MediaStreamTrack.stop() for each track
 						var tracks = config.myStream.getTracks();
-						for(var i in tracks) {
+						for(var i of tracks) {
 							var mst = tracks[i];
 							Janus.log(mst);
 							if(mst)
@@ -2452,7 +2452,7 @@ function Janus(gatewayCallbacks) {
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
-				for(var i in transceivers) {
+				for(var i of transceivers) {
 					var t = transceivers[i];
 					if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
 							(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
@@ -2656,7 +2656,7 @@ function Janus(gatewayCallbacks) {
 			var audioTransceiver = null, videoTransceiver = null;
 			var transceivers = config.pc.getTransceivers();
 			if(transceivers && transceivers.length > 0) {
-				for(var i in transceivers) {
+				for(var i of transceivers) {
 					var t = transceivers[i];
 					if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
 							(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
@@ -3127,7 +3127,7 @@ function Janus(gatewayCallbacks) {
 				if(!config.streamExternal && config.myStream) {
 					Janus.log("Stopping local stream tracks");
 					var tracks = config.myStream.getTracks();
-					for(var i in tracks) {
+					for(var i of tracks) {
 						var mst = tracks[i];
 						Janus.log(mst);
 						if(mst)
