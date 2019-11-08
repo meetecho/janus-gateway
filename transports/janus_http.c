@@ -1516,6 +1516,7 @@ parsingdone:
 		if(msg->got_response || res == ETIMEDOUT) {
 			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #endif
