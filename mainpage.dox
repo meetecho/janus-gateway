@@ -82,7 +82,7 @@
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
@@ -3263,8 +3263,8 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td>JavaScript/node</td>
- * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
- * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
+ * 		<td><a href="https://github.com/sjkummer">Sebastian Schmid</a></td>
+ * 		<td><a href="https://github.com/sjkummer/janus-gateway-js">janus-gateway-js</a></td>
  * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
  * </tr>
  * <tr>
@@ -3476,7 +3476,7 @@ ldd janus | grep asan
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.13 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)

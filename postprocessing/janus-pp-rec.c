@@ -605,7 +605,7 @@ int main(int argc, char *argv[])
 		if(has_timestamps) {
 			JANUS_LOG(LOG_VERB, "  -- Time: %"SCNu32"ms\n", pkt_ts);
 		}
-		if(!data && len > 2000) {
+		if(!data && len > 1500) {
 			/* Way too large, very likely not RTP, skip */
 			JANUS_LOG(LOG_VERB, "  -- Too large packet (%d bytes), skipping\n", len);
 			offset += len;

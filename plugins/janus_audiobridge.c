@@ -46,6 +46,7 @@ room-<unique room ID>: {
 		By default plain RTP is used, SRTP must be configured if needed]
 	rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 	rtp_forward_host = host address to forward RTP packets of mixed audio to
+	rtp_forward_host_family = ipv4|ipv6; by default, first family returned by DNS request
 	rtp_forward_port = port to forward RTP packets of mixed audio to
 	rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
 	rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
@@ -373,6 +374,7 @@ room-<unique room ID>: {
 	"ssrc" : <SSRC to use to use when streaming (optional: stream_id used if missing)>,
 	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
+	"host_family" : "<ipv4|ipv6, if we need to resolve the host address to an IP; by default, whatever we get>",
 	"port" : <port to forward the RTP packets to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
 	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>",
@@ -392,7 +394,7 @@ room-<unique room ID>: {
 	"audiobridge" : "success",
 	"room" : <unique numeric ID, same as request>,
 	"stream_id" : <unique numeric ID assigned to the new RTP forwarder>,
-	"host" : "<host this forwarder is streaming to, same as request>",
+	"host" : "<host this forwarder is streaming to, same as request if not resolved>",
 	"port" : <audio port this forwarder is streaming to, same as request>
 }
 \endverbatim
@@ -555,9 +557,9 @@ room-<unique room ID>: {
  * which will only include the \c room and the updated participant as the
  * only object in a \c participants array.
  *
- * If you're the administrator of a room (that is, you created it and have access to the secret) 
+ * If you're the administrator of a room (that is, you created it and have access to the secret)
  * you can mute or unmute participants using the \c mute or \c unmute request
- * 
+ *
  \verbatim
 {
 	"request" : "<mute|unmute, whether to mute or unmute >",
@@ -568,13 +570,13 @@ room-<unique room ID>: {
 \endverbatim
  *
  * A successful request will result in a success response:
- * 
+ *
  \verbatim
 {
 	"audiobridge" : "success",
 }
 \endverbatim
- * 
+ *
  * As anticipated, you can leave an audio room using the \c leave request,
  * which has to be formatted as follows:
  *
@@ -649,6 +651,7 @@ room-<unique room ID>: {
 
 #include <jansson.h>
 #include <opus/opus.h>
+#include <netdb.h>
 #include <sys/time.h>
 
 #include "../debug.h"
@@ -661,6 +664,7 @@ room-<unique room ID>: {
 #include "../record.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+#include "../ip-utils.h"
 
 
 /* Plugin information */
@@ -806,6 +810,7 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"ptype", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"host_family", JSON_STRING, 0},
 	{"srtp_suite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtp_crypto", JSON_STRING, 0},
 	{"always_on", JANUS_JSON_BOOL, 0}
@@ -1054,6 +1059,7 @@ static void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
 /* RTP forwarder instance: address to send to, and current RTP header info */
 typedef struct janus_audiobridge_rtp_forwarder {
 	struct sockaddr_in serv_addr;
+	struct sockaddr_in6 serv_addr6;
 	uint32_t ssrc;
 	int payload_type;
 	uint16_t seq_number;
@@ -1105,10 +1111,16 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 		}
 		rf->is_srtp = TRUE;
 	}
-	/* Resolve address */
-	rf->serv_addr.sin_family = AF_INET;
-	inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
-	rf->serv_addr.sin_port = htons(port);
+	/* Check if the host address is IPv4 or IPv6 */
+	if(strstr(host, ":") != NULL) {
+		rf->serv_addr6.sin6_family = AF_INET6;
+		inet_pton(AF_INET6, host, &(rf->serv_addr6.sin6_addr));
+		rf->serv_addr6.sin6_port = htons(port);
+	} else {
+		rf->serv_addr.sin_family = AF_INET;
+		inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
+		rf->serv_addr.sin_port = htons(port);
+	}
 	/* Setup RTP info (we'll use the stream ID as SSRC) */
 	rf->ssrc = ssrc;
 	rf->payload_type = pt;
@@ -1208,8 +1220,13 @@ static int janus_audiobridge_create_udp_socket_if_needed(janus_audiobridge_room 
 		return 0;
 	}
 
-	audiobridge->rtp_udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	audiobridge->rtp_udp_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	if(audiobridge->rtp_udp_sock <= 0) {
+		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %"SCNu64")\n", audiobridge->room_id);
+		return -1;
+	}
+	int v6only = 0;
+	if(setsockopt(audiobridge->rtp_udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %"SCNu64")\n", audiobridge->room_id);
 		return -1;
 	}
@@ -1250,23 +1267,35 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *cat, janus_audiobridge_room *audiobridge) {
 	guint32 forwarder_id = 0;
 	janus_config_item *forwarder_id_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_id");
-	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL)
-		forwarder_id = atoi(forwarder_id_item->value);
+	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL &&
+			janus_string_to_uint32(forwarder_id_item->value, &forwarder_id) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid forwarder ID\n");
+		return 0;
+	}
 
 	guint32 ssrc_value = 0;
 	janus_config_item *ssrc = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ssrc");
-	if(ssrc != NULL && ssrc->value != NULL)
-		ssrc_value = atoi(ssrc->value);
+	if(ssrc != NULL && ssrc->value != NULL && janus_string_to_uint32(ssrc->value, &ssrc_value) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid SSRC (%s)\n", ssrc->value);
+		return 0;
+	}
 
 	int ptype = 100;
 	janus_config_item *pt = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_ptype");
-	if(pt != NULL && pt->value != NULL)
+	if(pt != NULL && pt->value != NULL) {
 		ptype = atoi(pt->value);
+		if(ptype < 0 || ptype > 127) {
+			JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", pt->value);
+			return 0;
+		}
+	}
 
 	janus_config_item *port_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_port");
 	uint16_t port = 0;
-	if(port_item != NULL && port_item->value != NULL && strlen(port_item->value) > 0)
-		port = atoi(port_item->value);
+	if(port_item != NULL && port_item->value != NULL && janus_string_to_uint16(port_item->value, &port) < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid port (%s)\n", port_item->value);
+		return 0;
+	}
 	if(port == 0) {
 		return 0;
 	}
@@ -1275,7 +1304,51 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	if(host_item == NULL || host_item->value == NULL || strlen(host_item->value) == 0) {
 		return 0;
 	}
-	const gchar *host = g_strdup(host_item->value);
+	const char *host = host_item->value, *resolved_host = NULL;
+	int family = 0;
+	janus_config_item *host_family_item = janus_config_get(config, cat, janus_config_type_item, "rtp_forward_host_family");
+	if(host_family_item != NULL && host_family_item->value != NULL) {
+		const char *host_family = host_family_item->value;
+		if(host_family) {
+			if(!strcasecmp(host_family, "ipv4")) {
+				family = AF_INET;
+			} else if(!strcasecmp(host_family, "ipv6")) {
+				family = AF_INET6;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", host_family);
+				return 0;
+			}
+		}
+	}
+	/* Check if we need to resolve this host address */
+	struct addrinfo *res = NULL, *start = NULL;
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	if(family != 0)
+		hints.ai_family = family;
+	if(getaddrinfo(host, NULL, family != 0 ? &hints : NULL, &res) == 0) {
+		start = res;
+		while(res != NULL) {
+			if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+					janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+				/* Resolved */
+				resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+				freeaddrinfo(start);
+				start = NULL;
+				break;
+			}
+			res = res->ai_next;
+		}
+	}
+	if(resolved_host == NULL) {
+		if(start)
+			freeaddrinfo(start);
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
+		return 0;
+	}
+	host = resolved_host;
 
 	/* We may need to SRTP-encrypt this stream */
 	int srtp_suite = 0;
@@ -1286,7 +1359,6 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		srtp_suite = atoi(s_suite->value);
 		if(srtp_suite != 32 && srtp_suite != 80) {
 			JANUS_LOG(LOG_ERR, "Can't add static RTP forwarder for room %"SCNu64", invalid SRTP suite...\n", audiobridge->room_id);
-			g_free((char *)host);
 			return 0;
 		}
 		if(s_crypto && s_crypto->value)
@@ -1304,14 +1376,12 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 	janus_mutex_lock(&audiobridge->mutex);
 
 	if(janus_audiobridge_create_udp_socket_if_needed(audiobridge)) {
-		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
 	}
 
 	if(janus_audiobridge_create_opus_encoder_if_needed(audiobridge)) {
-		g_free((char *)host);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		return -1;
@@ -1321,7 +1391,6 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		host, port, ssrc_value, ptype, srtp_suite, srtp_crypto,
 		always_on, forwarder_id);
 
-	g_free((char *)host);
 	janus_mutex_unlock(&audiobridge->mutex);
 	janus_mutex_unlock(&rooms_mutex);
 
@@ -2401,7 +2470,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 
 		if(participant->muted == muted) {
-			/* If someone trying to mute an already muted user, or trying to unmute a user that is not mute), 
+			/* If someone trying to mute an already muted user, or trying to unmute a user that is not mute),
 			then we should do nothing */
 
 			/* Nothing to do, just prepare response */
@@ -2648,7 +2717,53 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			goto prepare_response;
 		}
 		json_t *json_host = json_object_get(root, "host");
-		const char *host = json_string_value(json_host);
+		const char *host = json_string_value(json_host), *resolved_host = NULL;
+		json_t *json_host_family = json_object_get(root, "host_family");
+		const char *host_family = json_string_value(json_host_family);
+		int family = 0;
+		if(host_family) {
+			if(!strcasecmp(host_family, "ipv4")) {
+				family = AF_INET;
+			} else if(!strcasecmp(host_family, "ipv6")) {
+				family = AF_INET6;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unsupported protocol family (%s)\n", host_family);
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Unsupported protocol family (%s)", host_family);
+				goto prepare_response;
+			}
+		}
+		/* Check if we need to resolve this host address */
+		struct addrinfo *res = NULL, *start = NULL;
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		if(family != 0)
+			hints.ai_family = family;
+		if(getaddrinfo(host, NULL, family != 0 ? &hints : NULL, &res) == 0) {
+			start = res;
+			while(res != NULL) {
+				if(janus_network_address_from_sockaddr(res->ai_addr, &addr) == 0 &&
+						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+					/* Resolved */
+					resolved_host = janus_network_address_string_from_buffer(&addr_buf);
+					freeaddrinfo(start);
+					start = NULL;
+					break;
+				}
+				res = res->ai_next;
+			}
+		}
+		if(resolved_host == NULL) {
+			if(start)
+				freeaddrinfo(start);
+			JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", host);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Could not resolve address (%s)...", host);
+			goto prepare_response;
+		}
+		host = resolved_host;
 		json_t *always = json_object_get(root, "always_on");
 		gboolean always_on = always ? json_is_true(always) : FALSE;
 		/* Besides, we may need to SRTP-encrypt this stream */
@@ -2823,7 +2938,14 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			janus_audiobridge_rtp_forwarder *rf = (janus_audiobridge_rtp_forwarder *)value;
 			json_t *fl = json_object();
 			json_object_set_new(fl, "stream_id", json_integer(stream_id));
-			json_object_set_new(fl, "ip", json_string(inet_ntoa(rf->serv_addr.sin_addr)));
+			char address[100];
+			if(rf->serv_addr.sin_family == AF_INET) {
+				json_object_set_new(fl, "ip", json_string(
+					inet_ntop(AF_INET, &rf->serv_addr.sin_addr, address, sizeof(address))));
+			} else {
+				json_object_set_new(fl, "ip", json_string(
+					inet_ntop(AF_INET6, &rf->serv_addr6.sin6_addr, address, sizeof(address))));
+			}
 			json_object_set_new(fl, "port", json_integer(ntohs(rf->serv_addr.sin_port)));
 			json_object_set_new(fl, "ssrc", json_integer(rf->ssrc ? rf->ssrc : stream_id));
 			json_object_set_new(fl, "ptype", json_integer(rf->payload_type));
@@ -4330,6 +4452,8 @@ static void *janus_audiobridge_handler(void *data) {
 						if(a->value) {
 							if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 								extmap_id = atoi(a->value);
+								if(extmap_id < 0)
+									extmap_id = 0;
 							}
 						}
 						ma = ma->next;
@@ -4674,7 +4798,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						forwarder->timestamp += OPUS_SAMPLES;
 						rtph->timestamp = htonl(forwarder->timestamp);
 						/* Send RTP packet */
-						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr)) < 0) {
+						struct sockaddr *address = (forwarder->serv_addr.sin_family == AF_INET ?
+							(struct sockaddr *)&forwarder->serv_addr : (struct sockaddr *)&forwarder->serv_addr6);
+						size_t addrlen = (forwarder->serv_addr.sin_family == AF_INET ? sizeof(forwarder->serv_addr) : sizeof(forwarder->serv_addr6));
+						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, address, addrlen) < 0) {
 							JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %"SCNu64"... %s (len=%d)...\n",
 								audiobridge->room_id, strerror(errno), length+12);
 						}

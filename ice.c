@@ -238,7 +238,7 @@ gboolean janus_ice_is_enforced(const char *ip) {
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
-		if(enforced != NULL && strstr(ip, enforced)) {
+		if(enforced != NULL && strstr(ip, enforced) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
@@ -266,7 +266,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
+		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
@@ -1010,10 +1010,15 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 
 	/* Test the STUN server */
 	janus_network_address public_addr = { 0 };
-	if(janus_ice_test_stun_server(&addr, janus_stun_port, 0, &public_addr, NULL) < 0)
+	if(janus_ice_test_stun_server(&addr, janus_stun_port, 0, &public_addr, NULL) < 0) {
+		g_free(janus_stun_server);
+		janus_stun_server = NULL;
 		return -1;
+	}
 	if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve public address...\n");
+		g_free(janus_stun_server);
+		janus_stun_server = NULL;
 		return -1;
 	}
 	const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
@@ -4182,7 +4187,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							/* Let's check if this was G.711: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 							int pt = header->type;
-							if((pt == 0 || pt == 8) && rtcp_ctx && (rtcp_ctx->tb == 48000))
+							if((pt == 0 || pt == 8 || pt == 9) && rtcp_ctx && (rtcp_ctx->tb == 48000))
 								rtcp_ctx->tb = 8000;
 						} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 							component->out_stats.video[0].packets++;
