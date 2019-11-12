@@ -78,6 +78,27 @@ guint64 janus_random_uint64(void);
  * @returns A pointer to a guint64 number, if successful, NULL otherwise */
 guint64 *janus_uint64_dup(guint64 num);
 
+/*! \brief Helper method to convert a string to a uint8_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint8(const char *str, uint8_t *num);
+
+/*! \brief Helper method to convert a string to a uint16_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint16(const char *str, uint16_t *num);
+
+/*! \brief Helper method to convert a string to a uint32_t
+ * @note The value of \c num should be ignored, if the method returned an error
+ * @param[in] str The string to convert
+ * @param[out] num Pointer to the converted number
+ * @returns 0 if successful, or a negative integer otherwise (e.g., \c -ERANGE if the value is out of range) */
+int janus_string_to_uint32(const char *str, uint32_t *num);
+
 /** @name Flags helper methods
  */
 ///@{
@@ -270,21 +291,19 @@ int janus_vp8_parse_descriptor(char *buffer, int len,
  * @param[in] switched Whether there has been a source switch or not (important to compute offsets) */
 void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched);
 
+/*! \brief VP9 SVC info, as parsed from a payload descriptor */
+typedef struct janus_vp9_svc_info {
+	int spatial_layer, temporal_layer;
+	uint8_t fbit, pbit, dbit, ubit, bbit, ebit;
+} janus_vp9_svc_info;
+
 /*! \brief Helper method to parse a VP9 payload descriptor for SVC-related info (e.g., when SVC is enabled)
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
  * @param[out] found Whether any SVC related info has been found or not
- * @param[out] spatial_layer Spatial layer of the packet
- * @param[out] temporal_layer Temporal layer of the packet
- * @param[out] p Inter-picture predicted picture bit
- * @param[out] d Inter-layer dependency used bit
- * @param[out] u Switching up point bit
- * @param[out] b Start of a frame bit
- * @param[out] e End of a frame bit
+ * @param[out] info Pointer to a janus_vp9_svc_info structure for passing the parsed info back
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_vp9_parse_svc(char *buffer, int len, int *found,
-		int *spatial_layer, int *temporal_layer,
-		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e);
+int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_info *info);
 
 /*! \brief Helper method to push individual bits at the end of a word
  * @param[in] word Initial value of word

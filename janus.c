@@ -4142,7 +4142,7 @@ gint main(int argc, char *argv[])
 #endif
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE, ignore_unreachable_ice_server = FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
@@ -4152,8 +4152,10 @@ gint main(int argc, char *argv[])
 		if(maxport != NULL) {
 			*maxport = '\0';
 			maxport++;
-			rtp_min_port = atoi(item->value);
-			rtp_max_port = atoi(maxport);
+			if(janus_string_to_uint16(item->value, &rtp_min_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP min port value: %s (assuming 0)\n", item->value);
+			if(janus_string_to_uint16(maxport, &rtp_max_port) < 0)
+				JANUS_LOG(LOG_WARN, "Invalid RTP max port value: %s (assuming 0)\n", maxport);
 			maxport--;
 			*maxport = '-';
 		}
@@ -4175,17 +4177,22 @@ gint main(int argc, char *argv[])
 	/* Check if we need to do full-trickle instead of half-trickle */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "full_trickle");
 	full_trickle = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we should exit if a STUN or TURN server is unreachable */
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ignore_unreachable_ice_server");
+	ignore_unreachable_ice_server = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "stun_server");
 	if(item && item->value)
 		stun_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "stun_port");
-	if(item && item->value)
-		stun_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &stun_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid STUN port: %s (disabling STUN)\n", item->value);
+		stun_server = NULL;
+	}
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
-		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
+		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public IP - %s\n", item->value);
 		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
 			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
 		} else {
@@ -4199,8 +4206,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_server = (char *)item->value;
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_port");
-	if(item && item->value)
-		turn_port = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &turn_port) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid TURN port: %s (disabling TURN)\n", item->value);
+		turn_server = NULL;
+	}
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_type");
 	if(item && item->value)
 		turn_type = (char *)item->value;
@@ -4229,12 +4238,20 @@ gint main(int argc, char *argv[])
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
-		exit(1);
+		if(!ignore_unreachable_ice_server) {
+			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
+			exit(1);
+		} else {
+			JANUS_LOG(LOG_ERR, "Invalid STUN address %s:%u. STUN will be disabled\n", stun_server, stun_port);
+		}
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
-		exit(1);
+		if(!ignore_unreachable_ice_server) {
+			JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
+			exit(1);
+		} else {
+			JANUS_LOG(LOG_ERR, "Invalid TURN address %s:%u. TURN will be disabled\n", turn_server, turn_port);
+		}
 	}
 #ifndef HAVE_TURNRESTAPI
 	if(turn_rest_api != NULL || turn_rest_api_key != NULL) {
@@ -4357,10 +4374,12 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
-	guint dtls_timeout = 1000;
+	guint16 dtls_timeout = 1000;
 	item = janus_config_get(config, config_media, janus_config_type_item, "dtls_timeout");
-	if(item && item->value)
-		dtls_timeout = atoi(item->value);
+	if(item && item->value && janus_string_to_uint16(item->value, &dtls_timeout) < 0) {
+		JANUS_LOG(LOG_WARN, "Invalid DTLS timeout: %s (falling back to default)\n", item->value);
+		dtls_timeout = 1000;
+	}
 	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout) < 0) {
 		exit(1);
 	}
@@ -4805,7 +4824,7 @@ gint main(int argc, char *argv[])
 
 	/* Make sure libnice is recent enough, otherwise print a warning */
 	int libnice_version = 0;
-	if(sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
+	if(libnice_version_string != NULL && sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
 		if(libnice_version < 15) {
 			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
 				libnice_version_string);

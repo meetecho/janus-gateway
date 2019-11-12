@@ -644,14 +644,29 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	/* Connect configuration */
 	keep_alive_interval_item = janus_config_get(config, config_general, janus_config_type_item, "keep_alive_interval");
-	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ? atoi(keep_alive_interval_item->value) : DEFAULT_KEEPALIVE;
+	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ?
+		atoi(keep_alive_interval_item->value) : DEFAULT_KEEPALIVE;
+	if(ctx->connect.keep_alive_interval < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid keep-alive value: %s (falling back to default)\n", keep_alive_interval_item->value);
+		ctx->connect.keep_alive_interval = DEFAULT_KEEPALIVE;
+	}
 
 	cleansession_item = janus_config_get(config, config_general, janus_config_type_item, "cleansession");
-	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ? atoi(cleansession_item->value) : DEFAULT_CLEANSESSION;
+	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ?
+		atoi(cleansession_item->value) : DEFAULT_CLEANSESSION;
+	if(ctx->connect.cleansession < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid clean-session value: %s (falling back to default)\n", cleansession_item->value);
+		ctx->connect.cleansession = DEFAULT_CLEANSESSION;
+	}
 
 	/* Disconnect configuration */
 	disconnect_timeout_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_timeout");
-	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : DEFAULT_DISCONNECT_TIMEOUT;
+	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ?
+		atoi(disconnect_timeout_item->value) : DEFAULT_DISCONNECT_TIMEOUT;
+	if(ctx->disconnect.timeout < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid disconnect-timeout value: %s (falling back to default)\n", disconnect_timeout_item->value);
+		ctx->disconnect.timeout = DEFAULT_DISCONNECT_TIMEOUT;
+	}
 
 	topic_item = janus_config_get(config, config_general, janus_config_type_item, "topic");
 	if(!topic_item || !topic_item->value) {
@@ -666,10 +681,18 @@ static int janus_mqttevh_init(const char *config_path) {
 	retain_item = janus_config_get(config, config_general, janus_config_type_item, "retain");
 	if(retain_item && retain_item->value && janus_is_true(retain_item->value)) {
 		ctx->publish.retain = atoi(retain_item->value);;
+		if(ctx->publish.retain < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid publish-retain value: %s (disabling)\n", retain_item->value);
+			ctx->publish.retain = 0;
+		}
 	}
 
 	qos_item = janus_config_get(config, config_general, janus_config_type_item, "qos");
 	ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+	if(ctx->publish.qos < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid publish-qos value: %s (falling back to default)\n", qos_item->value);
+		ctx->publish.qos = 1;
+	}
 
 	connect_status_item = janus_config_get(config, config_general, janus_config_type_item, "connect_status");
 	if(connect_status_item && connect_status_item->value) {
@@ -698,6 +721,10 @@ static int janus_mqttevh_init(const char *config_path) {
 		will_qos_item = janus_config_get(config, config_general, janus_config_type_item, "will_qos");
 		if(will_qos_item && will_qos_item->value) {
 			ctx->will.qos = atoi(will_qos_item->value);
+			if(ctx->will.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid will-qos value: %s (setting to 0)\n", will_qos_item->value);
+				ctx->will.qos = 0;
+			}
 		}
 
 		/* Using the topic for LWT as configured for publish and suffixed with JANUS_MQTTEVH_STATUS_TOPIC. */

@@ -244,6 +244,16 @@ nat: {
 	# has been configured. By default, Janus ignores all interfaces whose
 	# name starts with 'vmnet', to skip VMware interfaces:
 	ice_ignore_list = "vmnet"
+
+	# In case you want to allow Janus to start even if the configured STUN or TURN
+	# server is unreachable, you can set 'ignore_unreachable_ice_server' to true.
+	# WARNING: We do not recommend to ignore reachability problems, particularly
+	# if you run Janus in the cloud. Before enabling this flag, make sure your
+	# system is correctly configured and Janus starts after the network layer of
+	# your machine is ready. Note that Linux distributions offer such directives.
+	# You could use the following directive in systemd: 'After=network-online.target'
+	# https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=
+	# ignore_unreachable_ice_server = true
 }
 
 # You can choose which of the available plugins should be

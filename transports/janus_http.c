@@ -662,10 +662,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 		} else {
-			int wsport = 8088;
+			uint16_t wsport = 8088;
 			item = janus_config_get(config, config_general, janus_config_type_item, "port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 8088;
+			}
 			const char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "interface");
 			if(item && item->value)
@@ -708,10 +710,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				int swsport = 8089;
+				uint16_t swsport = 8089;
 				item = janus_config_get(config, config_general, janus_config_type_item, "secure_port");
-				if(item && item->value)
-					swsport = atoi(item->value);
+				if(item && item->value && janus_string_to_uint16(item->value, &swsport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+					swsport = 8089;
+				}
 				const char *interface = NULL;
 				item = janus_config_get(config, config_general, janus_config_type_item, "secure_interface");
 				if(item && item->value)
@@ -734,10 +738,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 		} else {
-			int wsport = 7088;
+			uint16_t wsport = 7088;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 7088;
+			}
 			const char *interface = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_interface");
 			if(item && item->value)
@@ -762,10 +768,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			if(!server_key) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				int swsport = 7889;
+				uint16_t swsport = 7889;
 				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_port");
-				if(item && item->value)
-					swsport = atoi(item->value);
+				if(item && item->value && janus_string_to_uint16(item->value, &swsport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+					swsport = 7889;
+				}
 				const char *interface = NULL;
 				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_interface");
 				if(item && item->value)
