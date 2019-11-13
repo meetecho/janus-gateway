@@ -44,7 +44,7 @@ All of those libraries are usually available on most of the most common distribu
     yum install libmicrohttpd-devel jansson-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib2-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
-       libconfig-devel libtool autoconf automake
+       libconfig-devel libnice-devel libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're attempting an installation on a CentOS machine instead.
 
