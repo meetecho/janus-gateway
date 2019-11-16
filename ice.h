@@ -378,6 +378,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
 	/*! \brief RTP payload types of this stream */
 	gint audio_payload_type, video_payload_type, video_rtx_payload_type;
 	/*! \brief Codecs used by this stream */

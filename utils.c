@@ -100,7 +100,7 @@ int janus_string_to_uint8(const char *str, uint8_t *num) {
 	if(val < 0 || val > UINT8_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 int janus_string_to_uint16(const char *str, uint16_t *num) {
@@ -110,7 +110,7 @@ int janus_string_to_uint16(const char *str, uint16_t *num) {
 	if(val < 0 || val > UINT16_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 int janus_string_to_uint32(const char *str, uint32_t *num) {
@@ -120,7 +120,7 @@ int janus_string_to_uint32(const char *str, uint32_t *num) {
 	if(val < 0 || val > UINT32_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 void janus_flags_reset(janus_flags *flags) {

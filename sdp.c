@@ -514,6 +514,22 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 							}
 						}
 					}
+				} else if(!strcasecmp(a->name, "rtpmap")) {
+					if(a->value) {
+						int ptype = atoi(a->value);
+						if(ptype > -1) {
+							char *cr = strchr(a->value, '/');
+							if(cr != NULL) {
+								cr++;
+								uint32_t clock_rate = 0;
+								if(janus_string_to_uint32(cr, &clock_rate) == 0) {
+									if(stream->clock_rates == NULL)
+										stream->clock_rates = g_hash_table_new(NULL, NULL);
+									g_hash_table_insert(stream->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+								}
+							}
+						}
+					}
 				}
 #ifdef HAVE_SCTP
 				else if(!strcasecmp(a->name, "sctpmap")) {

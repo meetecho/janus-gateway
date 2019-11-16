@@ -1464,6 +1464,9 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	if(stream->rtx_payload_types != NULL)
 		g_hash_table_destroy(stream->rtx_payload_types);
 	stream->rtx_payload_types = NULL;
+	if(stream->clock_rates != NULL)
+		g_hash_table_destroy(stream->clock_rates);
+	stream->clock_rates = NULL;
 	g_free(stream->audio_codec);
 	stream->audio_codec = NULL;
 	g_free(stream->video_codec);
@@ -2527,7 +2530,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen,
 						(video && rtx) ? TRUE : FALSE,
 						(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)),
-						retransmissions_disabled
+						retransmissions_disabled, stream->clock_rates
 				);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
@@ -4184,11 +4187,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->audio_first_rtp_ts = timestamp;
 							}
-							/* Let's check if this was G.711: in case we may need to change the timestamp base */
+							/* Let's check if this is not Opus: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 							int pt = header->type;
-							if((pt == 0 || pt == 8 || pt == 9) && rtcp_ctx && (rtcp_ctx->tb == 48000))
-								rtcp_ctx->tb = 8000;
+							uint32_t clock_rate = stream->clock_rates ?
+								GPOINTER_TO_UINT(g_hash_table_lookup(stream->clock_rates, GINT_TO_POINTER(pt))) : 48000;
+							if(rtcp_ctx->tb != clock_rate)
+								rtcp_ctx->tb = clock_rate;
 						} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 							component->out_stats.video[0].packets++;
 							component->out_stats.video[0].bytes += pkt->length;
