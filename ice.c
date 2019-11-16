@@ -3572,7 +3572,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
 	/* Audio */
-	if(stream && stream->component && stream->component->out_stats.audio.packets > 0) {
+	if(stream && stream->audio_send && stream->component && stream->component->out_stats.audio.packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
@@ -3631,7 +3631,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
 	}
 	/* Now do the same for video */
-	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
+	if(stream && stream->video_send && stream->component && stream->component->out_stats.video[0].packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
