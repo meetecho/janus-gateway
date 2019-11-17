@@ -488,10 +488,10 @@ uint janus_get_min_nack_queue(void) {
 static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboolean audio, gboolean video) {
 	if(stream && stream->component) {
 		/* Check the current RTT, to see if we need to update the size of the queue: we take
-		 * the highest RTT (audio or video), double it, and add 100ms just to be conservative */
+		 * the highest RTT (audio or video) and add 100ms just to be conservative */
 		uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
 			video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
-		stream->nack_queue_ms = 2*(audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
+		stream->nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
 		if(stream->nack_queue_ms < min_nack_queue)
 			stream->nack_queue_ms = min_nack_queue;
 		janus_ice_component *component = stream->component;
