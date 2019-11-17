@@ -83,8 +83,8 @@ Whether to enable ICE-TCP or not (warning: only works with ICE Lite) (default=of
 .BR \-R ", " \-\-rfc-4588
 Whether to enable RFC4588 retransmissions support or not (default=off)
 .TP
-.BR \-q ", " \-\-max-nack-queue=\fInumber\fR
-Maximum size of the NACK queue per user for retransmissions
+.BR \-q ", " \-\-min-nack-queue=\fInumber\fR
+Minimum size of the NACK queue (in ms) per user for retransmissions, no matter the RTT
 .TP
 .BR \-t ", " \-\-no-media-timer=\fInumber\fR
 Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this

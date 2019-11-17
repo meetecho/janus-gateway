@@ -282,8 +282,8 @@ or on the command line:
                                   (default=off)
 	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
                                   support or not  (default=off)
-	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
-                                  for retransmissions
+	-q, --min-nack-queue=number   Minimum size of the NACK queue (in ms) per user
+                                  for retransmissions, no matter the RTT
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
