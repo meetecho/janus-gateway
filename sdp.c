@@ -670,11 +670,10 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			component->stream_id = stream->stream_id;
 			NiceCandidate *c = NULL;
 			if(!strcasecmp(rtype, "host")) {
-        JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Skipping remote candidate component:%d stream:%d type:host %s:%d\n",
-        /*JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:host %s:%d\n",*/
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:host %s:%d\n",
 					handle->handle_id, rcomponent, stream->stream_id, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
-				/*if(!strcasecmp(rtransport, "udp")) {
+				if(!strcasecmp(rtransport, "udp")) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
@@ -682,13 +681,12 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 #endif
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
-          }*/
+				}
 			} else if(!strcasecmp(rtype, "srflx")) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Skipping remote candidate component:%d stream:%d type:srflx %s:%d --> %s:%d \n",
-        /*JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:srflx %s:%d --> %s:%d \n",*/
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:srflx %s:%d --> %s:%d \n",
 					handle->handle_id, rcomponent, stream->stream_id,  rrelip, rrelport, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
-				/*if(!strcasecmp(rtransport, "udp")) {
+				if(!strcasecmp(rtransport, "udp")) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
@@ -696,13 +694,12 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 #endif
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
-          }*/
+				}
 			} else if(!strcasecmp(rtype, "prflx")) {
-				/*JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:prflx %s:%d --> %s:%d\n",*/
-        JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Skipping remote candidate component:%d stream:%d type:prflx %s:%d --> %s:%d\n",
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:prflx %s:%d --> %s:%d\n",
 					handle->handle_id, rcomponent, stream->stream_id, rrelip, rrelport, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
-				/*if(!strcasecmp(rtransport, "udp")) {
+				if(!strcasecmp(rtransport, "udp")) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
 #ifdef HAVE_LIBNICE_TCP
 				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
@@ -710,7 +707,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 #endif
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
-          }*/
+				}
 			} else if(!strcasecmp(rtype, "relay")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:relay %s:%d --> %s:%d\n",
 					handle->handle_id, rcomponent, stream->stream_id, rrelip, rrelport, rip, rport);
