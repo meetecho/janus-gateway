@@ -671,7 +671,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			NiceCandidate *c = NULL;
 			if(!strcasecmp(rtype, "host")) {
         //JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Skipping remote candidate component:%d stream:%d type:host %s:%d\n",
-        JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:host %s:%d\n",*/
+        JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding remote candidate component:%d stream:%d type:host %s:%d\n",
 					handle->handle_id, rcomponent, stream->stream_id, rip, rport);
 				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(!strcasecmp(rtransport, "udp")) {
