@@ -468,14 +468,15 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	g_free(pkt);
 }
 
-/* Minimum value, in milliseconds, for the NACK queue/retransmissions (default=200ms) */
+/* Minimum and maximum value, in milliseconds, for the NACK queue/retransmissions (default=200ms/1000ms) */
 #define DEFAULT_MIN_NACK_QUEUE	200
+#define DEFAULT_MAX_NACK_QUEUE	1000
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
 
 static uint min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
 void janus_set_min_nack_queue(uint mnq) {
-	min_nack_queue = mnq;
+	min_nack_queue = mnq < DEFAULT_MAX_NACK_QUEUE ? mnq : DEFAULT_MAX_NACK_QUEUE;
 	if(min_nack_queue == 0)
 		JANUS_LOG(LOG_VERB, "Disabling NACK queue\n");
 	else
@@ -491,9 +492,13 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboo
 		 * the highest RTT (audio or video) and add 100ms just to be conservative */
 		uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
 			video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
-		stream->nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
-		if(stream->nack_queue_ms < min_nack_queue)
-			stream->nack_queue_ms = min_nack_queue;
+		uint nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
+		if(nack_queue_ms > DEFAULT_MAX_NACK_QUEUE)
+			nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
+		else if(nack_queue_ms < min_nack_queue)
+			nack_queue_ms = min_nack_queue;
+		if(stream->nack_queue_ms < nack_queue_ms)
+			stream->nack_queue_ms = nack_queue_ms;
 		janus_ice_component *component = stream->component;
 		if(audio && component->audio_retransmit_buffer) {
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->audio_retransmit_buffer);
