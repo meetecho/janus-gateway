@@ -5813,11 +5813,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 						pi++;
 					char name[50], value[50];
 					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
-						if(!strcasecmp(name, "timeout")) {
-							/* Take note of the timeout, for keep-alives */
-							ka_timeout = atoi(value);
-							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", ka_timeout);
-						} else if(!strcasecmp(name, "ssrc")) {
+						if(!strcasecmp(name, "ssrc")) {
 							/* Take note of the audio SSRC */
 							uint32_t ssrc = strtol(value, NULL, 16);
 							JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
@@ -5833,6 +5829,46 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 							asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
 							JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", vsport);
 							JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", vsport_rtcp);
+						}
+					}
+				}
+				/* Move to the next param */
+				p += read;
+				if(*p != ';')
+					break;
+				while(*p == ';')
+					p++;
+			}
+		}
+		/* Find the Session header and parse it */
+		header = strstr(curldata->buffer, "Session:");
+		if(header == NULL)
+			header = strstr(curldata->buffer, "session:");
+		if(header != NULL) {
+			char *end = strchr(header, '\r');
+			if(end != NULL)
+				*end = '\0';
+			end = strchr(header, '\n');
+			if(end != NULL)
+				*end = '\0';
+			/* Iterate on all params */
+			char *p = header, param[100], *pi = NULL;
+			int read = 0;
+			gboolean first = TRUE;
+			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+				if(first) {
+					/* Skip */
+					first = FALSE;
+				} else {
+					pi = param;
+					while(*pi == ' ')
+						pi++;
+					char name[50], value[50];
+					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+						if(!strcasecmp(name, "timeout")) {
+							/* Take note of the timeout, for keep-alives */
+							ka_timeout = atoi(value);
+							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", ka_timeout);
 						}
 					}
 				}
