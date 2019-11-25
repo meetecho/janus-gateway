@@ -119,6 +119,7 @@
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
+	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
 	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
 	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
@@ -694,6 +695,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"display_name", JSON_STRING, 0},
 	{"user_agent", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
+	{"contact_params", JSON_OBJECT, 0},
 	{"master_id", JANUS_JSON_INTEGER, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
 };
@@ -1435,9 +1437,42 @@ static void janus_sip_parse_custom_headers(json_t *root, char *custom_headers, s
 				}
 				char h[255];
 				g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
-				JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+				JANUS_LOG(LOG_VERB, "Adding custom header, %s\n", h);
 				g_strlcat(custom_headers, h, size);
 				iter = json_object_iter_next(headers, iter);
+			}
+		}
+	}
+}
+
+static void janus_sip_parse_custom_contact_params(json_t *root, char *custom_params, size_t size) {
+	custom_params[0] = '\0';
+	json_t *params = json_object_get(root, "contact_params");
+	gboolean first = TRUE;
+	if(params) {
+		if(json_object_size(params) > 0) {
+			/* Parse custom Contact URI params */
+			const char *key = NULL;
+			json_t *value = NULL;
+			void *iter = json_object_iter(params);
+			while(iter != NULL) {
+				key = json_object_iter_key(iter);
+				value = json_object_get(params, key);
+				if(value == NULL || !json_is_string(value)) {
+					JANUS_LOG(LOG_WARN, "Skipping param '%s': value is not a string\n", key);
+					iter = json_object_iter_next(params, iter);
+					continue;
+				}
+				char h[255];
+				if(first) {
+					first = FALSE;
+					g_snprintf(h, 255, "%s=%s", key, json_string_value(value));
+				} else {
+					g_snprintf(h, 255, ";%s=%s", key, json_string_value(value));
+				}
+				JANUS_LOG(LOG_VERB, "Adding custom param, %s\n", h);
+				g_strlcat(custom_params, h, size);
+				iter = json_object_iter_next(params, iter);
 			}
 		}
 	}
@@ -2777,6 +2812,10 @@ static void *janus_sip_handler(void *data) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
 				janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
+				/* Do the same in case there are custom Contact URI params */
+				char custom_params[2048];
+				janus_sip_parse_custom_contact_params(root, (char *)&custom_params, sizeof(custom_params));
+				/* Create a new NUA handle */
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -2784,6 +2823,7 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
+				/* TTL */
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				/* Send the REGISTER */
@@ -2793,6 +2833,7 @@ static void *janus_sip_handler(void *data) {
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+					TAG_IF(strlen(custom_params) > 0, NUTAG_M_PARAMS(custom_params)),
 					SIPTAG_EXPIRES_STR(ttl_text),
 					NUTAG_REGISTRAR(proxy_text),
 					NUTAG_PROXY(obproxy_text),
