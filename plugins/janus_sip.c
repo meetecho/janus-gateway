@@ -704,7 +704,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"user_agent", JSON_STRING, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"master_id", JANUS_JSON_INTEGER, 0},
-	{"refresh", JANUS_JSON_BOOL, 0}
+	{"refresh", JANUS_JSON_BOOL, 0},
+	{"incoming_header_prefixes", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter subscribe_parameters[] = {
 	{"to", JSON_STRING, 0},
@@ -1399,24 +1400,24 @@ static void janus_sip_remove_quotes(char *str) {
 
 static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_session *session) {
 	json_t *headers = json_object();
-	if (!sip) {
+	if(!sip)
 		return headers;
+	sip_unknown_t *unknown_header = sip->sip_unknown;
+	while(unknown_header != NULL) {
+		GList *temp = session->incoming_header_prefixes;
+		while(temp != NULL) {
+			char *header_prefix = (char *) temp->data;
+			if(header_prefix != NULL && unknown_header->un_name != NULL)
+				if(strncmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
+					const char *header_name = g_strdup(unknown_header->un_name);
+					json_object_set(headers, header_name, json_string(unknown_header->un_value));
+					break;
+				}
+			temp = temp->next;
+		}
+		unknown_header = unknown_header->un_next;
 	}
-        sip_unknown_t *unknown_header = sip->sip_unknown;
-        while (unknown_header != NULL) {
-                GList *temp = session->incoming_header_prefixes;
-                while (temp != NULL) {
-                        char *header_prefix = (char *) temp->data;
-                        if (strncmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
-                                const char *header_name = g_strdup(unknown_header->un_name);
-                                json_object_set(headers, header_name, json_string(unknown_header->un_value));
-                                break;
-                        }
-                        temp = temp->next;
-                }
-                unknown_header = unknown_header->un_next;
-        }
-        return headers;
+	return headers;
 }
 
 /* Error codes */
@@ -2709,13 +2710,14 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
-			if(header_prefixes_json && json_is_array(header_prefixes_json)) {
+			if(header_prefixes_json) {
 				size_t index;
 				json_t *value;
 
 				json_array_foreach(header_prefixes_json, index, value) {
-					const char *header_prefix = g_strdup(json_string_value(value));
-					session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, header_prefix);
+					const char *header_prefix = json_string_value(value);
+					if(header_prefix)
+						session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, g_strdup(header_prefix));
 				}
 			}
 
