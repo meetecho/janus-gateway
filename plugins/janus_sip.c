@@ -2708,18 +2708,18 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_unlock(&sessions_mutex);
 			}
 
-                        json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
-                        if(header_prefixes_json && json_is_array(header_prefixes_json)) {
-                                size_t index;
-                                json_t *value;
+			json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
+			if(header_prefixes_json && json_is_array(header_prefixes_json)) {
+				size_t index;
+				json_t *value;
 
-                                json_array_foreach(header_prefixes_json, index, value) {
-                                        const char *header_prefix = g_strdup(json_string_value(value));
-                                        session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, header_prefix);
-                                }
-                        }
+				json_array_foreach(header_prefixes_json, index, value) {
+					const char *header_prefix = g_strdup(json_string_value(value));
+					session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, header_prefix);
+				}
+			}
 
-                        /* If this is a refresh, get rid of the old values */
+			/* If this is a refresh, get rid of the old values */
 			if(refresh) {
 				/* Cleanup old values */
 				if(session->account.identity != NULL) {
