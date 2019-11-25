@@ -119,6 +119,7 @@
 	"proxy" : "<server to register at; optional, as won't be needed in case the REGISTER is not goint to be sent (e.g., guests)>",
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
+	"incoming_header_prefixes" : "<array of strings, to specify custom headers to read on incoming SIP events; optional>",
 	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
 	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
@@ -205,6 +206,7 @@
 	"call_id" : "<value of SIP Call-ID header for related call>",
 	"result" : {
 		"event" : "ringing",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -220,7 +222,8 @@
 	"call_id" : "<value of SIP Call-ID header for related call>",
 	"result" : {
 		"event" : "accepted",
-		"username" : "<SIP URI of the callee>"
+		"username" : "<SIP URI of the callee>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -241,7 +244,8 @@
 	"call_id" : "<value of SIP Call-ID header for related call>",
 	"result" : {
 		"event" : "progress",
-		"username" : "<SIP URI of the callee>"
+		"username" : "<SIP URI of the callee>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -282,7 +286,8 @@
 		"displayname" : "<display name of the caller, if available; optional>",
 		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
-		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>"
+		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -387,7 +392,8 @@
 		"event" : "message",
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
-		"content" : "<content of the message>"
+		"content" : "<content of the message>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -414,7 +420,8 @@
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
 		"type" : "<content type of the message>",
-		"content" : "<content of the message>"
+		"content" : "<content of the message>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -444,7 +451,8 @@
 		"notify" : "<name of the event that the user is subscribed to, e.g., 'message-summary'>",
 		"substate" : "<substate of the subscription, e.g., 'active'>",
 		"content-type" : "<content-type of the message>"
-		"content" : "<content of the message>"
+		"content" : "<content of the message>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -560,7 +568,8 @@
 		"refer_id" : <unique ID, internal to Janus, of this referral>,
 		"refer_to" : "<SIP URI to call>",
 		"referred_by" : "<SIP URI of the transferor; optional>",
-		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>"
+		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
+		"headers" : "<array of key/value objects, optional>"
 	}
 }
 \endverbatim
@@ -961,6 +970,7 @@ typedef struct janus_sip_session {
 	janus_refcount ref;
 	janus_mutex mutex;
 	char *hangup_reason_header;
+	GList *incoming_header_prefixes;
 } janus_sip_session;
 static GHashTable *sessions;
 static GHashTable *identities;
@@ -1069,6 +1079,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 	if(session->hangup_reason_header) {
 		g_free(session->hangup_reason_header);
 		session->hangup_reason_header = NULL;
+	}
+	if(session->incoming_header_prefixes) {
+		g_list_free_full(session->incoming_header_prefixes, g_free);
+		session->incoming_header_prefixes = NULL;
 	}
 	janus_sip_srtp_cleanup(session);
 	g_free(session);
@@ -1381,6 +1395,28 @@ static void janus_sip_remove_quotes(char *str) {
 		memmove(str, str+1, len-2);
 		str[len-2] = 0;
 	}
+}
+
+static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_session *session) {
+	json_t *headers = json_object();
+	if (!sip) {
+		return headers;
+	}
+        sip_unknown_t *unknown_header = sip->sip_unknown;
+        while (unknown_header != NULL) {
+                GList *temp = session->incoming_header_prefixes;
+                while (temp != NULL) {
+                        char *header_prefix = (char *) temp->data;
+                        if (strncmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
+                                const char *header_name = g_strdup(unknown_header->un_name);
+                                json_object_set(headers, header_name, json_string(unknown_header->un_value));
+                                break;
+                        }
+                        temp = temp->next;
+                }
+                unknown_header = unknown_header->un_next;
+        }
+        return headers;
 }
 
 /* Error codes */
@@ -2671,7 +2707,19 @@ static void *janus_sip_handler(void *data) {
 				g_hash_table_insert(masters, GUINT_TO_POINTER(session->master_id), session);
 				janus_mutex_unlock(&sessions_mutex);
 			}
-			/* If this is a refresh, get rid of the old values */
+
+                        json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
+                        if(header_prefixes_json && json_is_array(header_prefixes_json)) {
+                                size_t index;
+                                json_t *value;
+
+                                json_array_foreach(header_prefixes_json, index, value) {
+                                        const char *header_prefix = g_strdup(json_string_value(value));
+                                        session->incoming_header_prefixes = g_list_append(session->incoming_header_prefixes, header_prefix);
+                                }
+                        }
+
+                        /* If this is a refresh, get rid of the old values */
 			if(refresh) {
 				/* Cleanup old values */
 				if(session->account.identity != NULL) {
@@ -4424,6 +4472,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip->sip_from && sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(calling, "headers", headers);
+			}
 			char *referred_by = NULL;
 			if(sip->sip_referred_by && sip->sip_referred_by->b_url) {
 				char *rby_text = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
@@ -4542,6 +4594,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "replaces", json_string(replaces));
 				g_free(replaces);
 			}
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(result, "headers", headers);
+			}
 			su_free(session->stack->s_home, refer_to);
 			if(custom_headers != NULL)
 				su_free(session->stack->s_home, custom_headers);
@@ -4574,6 +4630,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			json_object_set_new(result, "type", json_string(type));
 			json_object_set_new(result, "content", json_string(payload));
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(result, "headers", headers);
+			}
 			json_object_set_new(info, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, info, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4604,6 +4664,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 			}
 			json_object_set_new(result, "content", json_string(payload));
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(result, "headers", headers);
+			}
 			json_object_set_new(message, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4640,6 +4704,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(sip->sip_content_type != NULL)
 				json_object_set_new(result, "content-type", json_string(sip->sip_content_type->c_type));
 			json_object_set_new(result, "content", json_string(sip->sip_payload->pl_data));
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(result, "headers", headers);
+			}
 			json_object_set_new(notify, "result", result);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, notify, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -4727,6 +4795,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(ringing, "sip", json_string("event"));
 					json_t *result = json_object();
 					json_object_set_new(result, "event", json_string("ringing"));
+					if(session->incoming_header_prefixes) {
+						json_t *headers = janus_sip_get_incoming_headers(sip, session);
+						json_object_set_new(result, "headers", headers);
+					}
 					json_object_set_new(ringing, "result", result);
 					json_object_set_new(ringing, "call_id", json_string(session->callid));
 					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
@@ -4934,6 +5006,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "username", json_string(session->callee));
 			if(is_focus)
 				json_object_set_new(calling, "isfocus", json_true());
+			if(session->incoming_header_prefixes) {
+				json_t *headers = janus_sip_get_incoming_headers(sip, session);
+				json_object_set_new(calling, "headers", headers);
+			}
 			json_object_set_new(call, "result", calling);
 			json_object_set_new(call, "call_id", json_string(session->callid));
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, jsep);
@@ -5096,6 +5172,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "event", json_string("registration_failed"));
 				json_object_set_new(result, "code", json_integer(status));
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				if(session->incoming_header_prefixes) {
+					json_t *headers = janus_sip_get_incoming_headers(sip, session);
+					json_object_set_new(result, "headers", headers);
+				}
 				json_object_set_new(event, "result", result);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -5120,6 +5200,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("subscribe_succeeded"));
 				json_object_set_new(result, "code", json_integer(status));
+				if(session->incoming_header_prefixes) {
+					json_t *headers = janus_sip_get_incoming_headers(sip, session);
+					json_object_set_new(result, "headers", headers);
+				}
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
 				json_object_set_new(event, "result", result);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
@@ -5186,6 +5270,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "event", json_string("subscribe_failed"));
 				json_object_set_new(result, "code", json_integer(status));
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+				if(session->incoming_header_prefixes) {
+					json_t *headers = janus_sip_get_incoming_headers(sip, session);
+					json_object_set_new(result, "headers", headers);
+				}
 				json_object_set_new(event, "result", result);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
