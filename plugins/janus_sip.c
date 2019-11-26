@@ -3209,7 +3209,7 @@ static void *janus_sip_handler(void *data) {
 			guint32 refer_id = json_integer_value(json_object_get(root, "refer_id"));
 			char *referred_by = NULL;
 			if(refer_id > 0) {
-				JANUS_LOG(LOG_WARN, "Call is after a refer (%"SCNu32")\n", refer_id);
+				JANUS_LOG(LOG_VERB, "Call is after a refer (%"SCNu32")\n", refer_id);
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
@@ -3217,7 +3217,7 @@ static void *janus_sip_handler(void *data) {
 					/* Send a 202 */
 					nua_respond(transfer->nh_s, 202, sip_status_phrase(202),
 						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
-					JANUS_LOG(LOG_WARN, "[%p] 202\n", transfer->nh_s);
+					JANUS_LOG(LOG_VERB, "[%p] 202\n", transfer->nh_s);
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 				}
@@ -3703,7 +3703,7 @@ static void *janus_sip_handler(void *data) {
 				sip_replaces_t *r = nua_handle_make_replaces(replaced->stack->s_nh_i, session->stack->s_home, 0);
 				char *replaces = sip_headers_as_url_query(session->stack->s_home, SIPTAG_REPLACES(r), TAG_END());
 				refer_to = sip_refer_to_format(session->stack->s_home, "<%s?%s>", uri_text, replaces);
-				JANUS_LOG(LOG_WARN, "Attended transfer: <%s?%s>\n", uri_text, replaces);
+				JANUS_LOG(LOG_VERB, "Attended transfer: <%s?%s>\n", uri_text, replaces);
 				su_free(session->stack->s_home, r);
 				su_free(session->stack->s_home, replaces);
 			}
@@ -4544,11 +4544,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				referred_by = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
 			else if(sip->sip_from != NULL)
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-			JANUS_LOG(LOG_WARN, "Incoming REFER: %s (by %s, headers: %s)\n",
+			JANUS_LOG(LOG_VERB, "Incoming REFER: %s (by %s, headers: %s)\n",
 				refer_to, referred_by ? referred_by : "unknown", custom_headers ? custom_headers : "unknown");
 			/* Send a 100 back */
 			nua_respond(nh, 100, sip_status_phrase(100), NUTAG_WITH_CURRENT(nua), TAG_END());
-			JANUS_LOG(LOG_WARN, "[%p] 100\n", nh);
+			JANUS_LOG(LOG_VERB, "[%p] 100\n", nh);
 			/* Take note of the session and NUA handle we got the REFER from (for NOTIFY) */
 			janus_mutex_lock(&sessions_mutex);
 			guint32 refer_id = 0;
@@ -4735,8 +4735,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_refer: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			/* TODO We got a response to our REFER */
-			JANUS_LOG(LOG_WARN, "Response to REFER received\n");
+			/* We got a response to our REFER */
+			JANUS_LOG(LOG_VERB, "Response to REFER received\n");
 			break;
 		}
 		case nua_r_invite: {
