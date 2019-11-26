@@ -423,7 +423,7 @@ uint janus_get_slowlink_threshold(void) {
 }
 
 /* Period, in milliseconds, to refer to for sending TWCC feedback */
-#define DEFAULT_TWCC_PERIOD		1000
+#define DEFAULT_TWCC_PERIOD		200
 static uint twcc_period = DEFAULT_TWCC_PERIOD;
 void janus_set_twcc_period(uint period) {
 	twcc_period = period;

@@ -140,7 +140,7 @@ certificates: {
 # 0 disables these events entirely), how many lost packets should trigger
 # a 'slowlink' event to users (default=4), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
-# to senders, if negotiated (default=1s). Finally, if you're using BoringSSL
+# to senders, if negotiated (default=200ms). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
 # value of 1 second (the default), while BoringSSL can override that. Notice
 # that lower values (e.g., 100ms) will typically get you faster connection
@@ -154,7 +154,7 @@ media: {
 	#dtls_mtu = 1200
 	#no_media_timer = 1
 	#slowlink_threshold = 4
-	#twcc_period = 200
+	#twcc_period = 100
 	#dtls_timeout = 500
 }
 
