@@ -120,7 +120,7 @@
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
-  "incoming_header_prefixes" : "<array of strings, to specify custom headers to read on incoming SIP events; optional>",
+	"incoming_header_prefixes" : "<array of strings, to specify custom headers to read on incoming SIP events; optional>",
 	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
 	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
