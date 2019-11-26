@@ -5543,6 +5543,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char uri[1024];
 	char vtransport[1024];
 	char vhost[256];
+	vhost[0] = '\0';
 	int vsport = 0, vsport_rtcp = 0;
 	multiple_fds video_fds = {-1, -1};
 
@@ -5552,18 +5553,22 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char acontrol[2048];
 	char atransport[1024];
 	char ahost[256];
+	ahost[0] = '\0';
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
 	janus_mutex_lock(&mountpoints_mutex);
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
-	int vresult;
-	vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
-		vtransport, vhost, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
-
-	int aresult;
-	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
-		atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+	int vresult = -1;
+	if(dovideo) {
+		vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+			vtransport, vhost, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
+	}
+	int aresult = -1;
+	if(doaudio) {
+		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+			atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+	}
 	janus_mutex_unlock(&mountpoints_mutex);
 
 	if(vresult == -1 && aresult == -1) {
@@ -5609,33 +5614,139 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -5;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
-		const char *timeout = strstr(curldata->buffer, ";timeout=");
-		size_t attr_len = strlen(";timeout=");
-		/* Check also the attribute in the form "; timeout" */
-		if (timeout == NULL) {
-			timeout = strstr(curldata->buffer, "; timeout=");
-			attr_len = strlen("; timeout=");
+		/* Find the Transport header and parse it */
+		char *header = strstr(curldata->buffer, "Transport:");
+		if(header == NULL)
+			header = strstr(curldata->buffer, "transport:");
+		if(header != NULL) {
+			char *end = strchr(header, '\r');
+			if(end != NULL)
+				*end = '\0';
+			end = strchr(header, '\n');
+			if(end != NULL)
+				*end = '\0';
+			/* Iterate on all params */
+			char *p = header, param[100], *pi = NULL;
+			int read = 0;
+			gboolean first = TRUE;
+			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+				if(first) {
+					/* Skip */
+					first = FALSE;
+				} else {
+					pi = param;
+					while(*pi == ' ')
+						pi++;
+					char name[50], value[50];
+					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+						if(!strcasecmp(name, "ssrc")) {
+							/* Take note of the video SSRC */
+							uint32_t ssrc = strtol(value, NULL, 16);
+							JANUS_LOG(LOG_VERB, "  -- SSRC (video): %"SCNu32"\n", ssrc);
+							source->video_ssrc = ssrc;
+						} else if(!strcasecmp(name, "source")) {
+							/* If we got an address via c-line, replace it */
+							g_snprintf(vhost, sizeof(vhost), "%s", value);
+							JANUS_LOG(LOG_VERB, "  -- Source (video): %s\n", vhost);
+						} else if(!strcasecmp(name, "server_port")) {
+							/* Take note of the server port */
+							char *dash = NULL;
+							vsport = strtol(value, &dash, 10);
+							vsport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
+							JANUS_LOG(LOG_VERB, "  -- RTP port (video): %d\n", vsport);
+							JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %d\n", vsport_rtcp);
+						}
+					}
+				}
+				/* Move to the next param */
+				p += read;
+				if(*p != ';')
+					break;
+				while(*p == ';')
+					p++;
+			}
 		}
-		if(timeout != NULL) {
-			/* There's a timeout to take into account: take note of the
-			 * value for sending OPTIONS keepalives later on */
-			ka_timeout = atoi(timeout+attr_len);
-			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
+		/* Find the Session header and parse it */
+		header = strstr(curldata->buffer, "Session:");
+		if(header == NULL)
+			header = strstr(curldata->buffer, "session:");
+		if(header != NULL) {
+			char *end = strchr(header, '\r');
+			if(end != NULL)
+				*end = '\0';
+			end = strchr(header, '\n');
+			if(end != NULL)
+				*end = '\0';
+			/* Iterate on all params */
+			char *p = header, param[100], *pi = NULL;
+			int read = 0;
+			gboolean first = TRUE;
+			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+				if(first) {
+					/* Skip */
+					first = FALSE;
+				} else {
+					pi = param;
+					while(*pi == ' ')
+						pi++;
+					char name[50], value[50];
+					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+						if(!strcasecmp(name, "timeout")) {
+							/* Take note of the timeout, for keep-alives */
+							ka_timeout = atoi(value);
+							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
+						}
+					}
+				}
+				/* Move to the next param */
+				p += read;
+				if(*p != ';')
+					break;
+				while(*p == ';')
+					p++;
+			}
 		}
-		/* Get the RTP server port, which we'll need for the latching packet */
-		const char *vssrc = strstr(curldata->buffer, ";ssrc=");
-		if(vssrc != NULL) {
-			uint32_t ssrc = strtol(vssrc+strlen(";ssrc="), NULL, 16);
-			JANUS_LOG(LOG_VERB, "  -- SSRC (video): %"SCNu32"\n", ssrc);
-			source->video_ssrc = ssrc;
+#if CURL_AT_LEAST_VERSION(7, 62, 0)
+		/* If we don't have a host yet (no c-line, no source in Transport), use the server address */
+		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
+			JANUS_LOG(LOG_WARN, "No c-line or source for RTSP video address, resolving server address...\n");
+			CURLU *url = curl_url();
+			if(url != NULL) {
+				CURLUcode code = curl_url_set(url, CURLUPART_URL, source->rtsp_url, 0);
+				if(code == 0) {
+					char *host = NULL;
+					code = curl_url_get(url, CURLUPART_HOST, &host, 0);
+					if(code == 0) {
+						/* Resolve the address */
+						struct addrinfo *info = NULL, *start = NULL;
+						janus_network_address addr;
+						janus_network_address_string_buffer addr_buf;
+						if(getaddrinfo(host, NULL, NULL, &info) == 0) {
+							start = info;
+							while(info != NULL) {
+								if(janus_network_address_from_sockaddr(info->ai_addr, &addr) == 0 &&
+										janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+									/* Resolved */
+									g_snprintf(vhost, sizeof(vhost), "%s",
+										janus_network_address_string_from_buffer(&addr_buf));
+									JANUS_LOG(LOG_WARN, "   -- %s\n", vhost);
+									break;
+								}
+								info = info->ai_next;
+							}
+						}
+						if(start)
+							freeaddrinfo(start);
+						curl_free(host);
+					}
+				}
+				curl_url_cleanup(url);
+			}
 		}
-		const char *server_ports = strstr(curldata->buffer, ";server_port=");
-		if(server_ports != NULL) {
-			char *dash = NULL;
-			vsport = strtol(server_ports+strlen(";server_port="), &dash, 10);
-			vsport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-			JANUS_LOG(LOG_VERB, "  -- RTP port (video): %d\n", vsport);
-			JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %d\n", vsport_rtcp);
+#endif
+		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
+			/* Still nothing... */
+			JANUS_LOG(LOG_WARN, "No host address for the RTSP video stream, no latching will be performed\n");
 		}
 	}
 
@@ -5677,35 +5788,144 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -6;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
-		const char *timeout = strstr(curldata->buffer, ";timeout=");
-		size_t attr_len = strlen(";timeout=");
-		/* Check also the attribute in the form "; timeout" */
-		if (timeout == NULL) {
-			timeout = strstr(curldata->buffer, "; timeout=");
-			attr_len = strlen("; timeout=");
+		/* Find the Transport header and parse it */
+		char *header = strstr(curldata->buffer, "Transport:");
+		if(header == NULL)
+			header = strstr(curldata->buffer, "transport:");
+		if(header != NULL) {
+			char *end = strchr(header, '\r');
+			if(end != NULL)
+				*end = '\0';
+			end = strchr(header, '\n');
+			if(end != NULL)
+				*end = '\0';
+			/* Iterate on all params */
+			char *p = header, param[100], *pi = NULL;
+			int read = 0;
+			gboolean first = TRUE;
+			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+				if(first) {
+					/* Skip */
+					first = FALSE;
+				} else {
+					pi = param;
+					while(*pi == ' ')
+						pi++;
+					char name[50], value[50];
+					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+						if(!strcasecmp(name, "ssrc")) {
+							/* Take note of the audio SSRC */
+							uint32_t ssrc = strtol(value, NULL, 16);
+							JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
+							source->audio_ssrc = ssrc;
+						} else if(!strcasecmp(name, "source")) {
+							/* If we got an address via c-line, replace it */
+							g_snprintf(ahost, sizeof(ahost), "%s", value);
+							JANUS_LOG(LOG_VERB, "  -- Source (audio): %s\n", ahost);
+						} else if(!strcasecmp(name, "server_port")) {
+							/* Take note of the server port */
+							char *dash = NULL;
+							asport = strtol(value, &dash, 10);
+							asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
+							JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", vsport);
+							JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", vsport_rtcp);
+						}
+					}
+				}
+				/* Move to the next param */
+				p += read;
+				if(*p != ';')
+					break;
+				while(*p == ';')
+					p++;
+			}
 		}
-		if(timeout != NULL) {
-			/* There's a timeout to take into account: take note of the
-			 * value for sending OPTIONS keepalives later on */
-			int temp_timeout = atoi(timeout+attr_len);
-			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", temp_timeout);
-			if(temp_timeout > 0 && temp_timeout < ka_timeout)
-				ka_timeout = temp_timeout;
+		/* Find the Session header and parse it */
+		header = strstr(curldata->buffer, "Session:");
+		if(header == NULL)
+			header = strstr(curldata->buffer, "session:");
+		if(header != NULL) {
+			char *end = strchr(header, '\r');
+			if(end != NULL)
+				*end = '\0';
+			end = strchr(header, '\n');
+			if(end != NULL)
+				*end = '\0';
+			/* Iterate on all params */
+			char *p = header, param[100], *pi = NULL;
+			int read = 0;
+			gboolean first = TRUE;
+			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+				if(first) {
+					/* Skip */
+					first = FALSE;
+				} else {
+					pi = param;
+					while(*pi == ' ')
+						pi++;
+					char name[50], value[50];
+					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+						if(!strcasecmp(name, "timeout")) {
+							/* Take note of the timeout, for keep-alives */
+							ka_timeout = atoi(value);
+							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", ka_timeout);
+						}
+					}
+				}
+				/* Move to the next param */
+				p += read;
+				if(*p != ';')
+					break;
+				while(*p == ';')
+					p++;
+			}
 		}
-		/* Get the RTP server port, which we'll need for the latching packet */
-		const char *assrc = strstr(curldata->buffer, ";ssrc=");
-		if(assrc != NULL) {
-			uint32_t ssrc = strtol(assrc+strlen(";ssrc="), NULL, 16);
-			JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
-			source->audio_ssrc = ssrc;
+		/* If we don't have a host yet (no c-line, no source in Transport), use the server address */
+		if(strlen(ahost) == 0 || !strcmp(ahost, "0.0.0.0")) {
+			if(strlen(vhost) > 0 && strcmp(vhost, "0.0.0.0")) {
+				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, copying the video address (%s)\n", vhost);
+				g_snprintf(ahost, sizeof(ahost), "%s", vhost);
+			} else {
+#if CURL_AT_LEAST_VERSION(7, 62, 0)
+				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, resolving server address...\n");
+				CURLU *url = curl_url();
+				if(url != NULL) {
+					CURLUcode code = curl_url_set(url, CURLUPART_URL, source->rtsp_url, 0);
+					if(code == 0) {
+						char *host = NULL;
+						code = curl_url_get(url, CURLUPART_HOST, &host, 0);
+						if(code == 0) {
+							/* Resolve the address */
+							struct addrinfo *info = NULL, *start = NULL;
+							janus_network_address addr;
+							janus_network_address_string_buffer addr_buf;
+							if(getaddrinfo(host, NULL, NULL, &info) == 0) {
+								start = info;
+								while(info != NULL) {
+									if(janus_network_address_from_sockaddr(info->ai_addr, &addr) == 0 &&
+											janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+										/* Resolved */
+										g_snprintf(ahost, sizeof(ahost), "%s",
+											janus_network_address_string_from_buffer(&addr_buf));
+										JANUS_LOG(LOG_WARN, "   -- %s\n", ahost);
+										break;
+									}
+									info = info->ai_next;
+								}
+							}
+							if(start)
+								freeaddrinfo(start);
+							curl_free(host);
+						}
+					}
+					curl_url_cleanup(url);
+				}
+#endif
+			}
 		}
-		const char *server_ports = strstr(curldata->buffer, ";server_port=");
-		if(server_ports != NULL) {
-			char *dash = NULL;
-			asport = strtol(server_ports+strlen(";server_port="), &dash, 10);
-			asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-			JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", asport);
-			JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", asport_rtcp);
+		if(strlen(ahost) == 0 || !strcmp(ahost, "0.0.0.0")) {
+			/* Still nothing... */
+			JANUS_LOG(LOG_WARN, "No host address for the RTSP audio stream, no latching will be performed\n");
 		}
 	}
 
