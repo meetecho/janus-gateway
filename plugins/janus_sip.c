@@ -1407,12 +1407,13 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 		GList *temp = session->incoming_header_prefixes;
 		while(temp != NULL) {
 			char *header_prefix = (char *) temp->data;
-			if(header_prefix != NULL && unknown_header->un_name != NULL)
+			if(header_prefix != NULL && unknown_header->un_name != NULL) {
 				if(strncmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
 					const char *header_name = g_strdup(unknown_header->un_name);
 					json_object_set(headers, header_name, json_string(unknown_header->un_value));
 					break;
 				}
+			}
 			temp = temp->next;
 		}
 		unknown_header = unknown_header->un_next;
