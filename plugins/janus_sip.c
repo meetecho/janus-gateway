@@ -207,7 +207,7 @@
 	"call_id" : "<value of SIP Call-ID header for related call>",
 	"result" : {
 		"event" : "ringing",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -224,7 +224,7 @@
 	"result" : {
 		"event" : "accepted",
 		"username" : "<SIP URI of the callee>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -246,7 +246,7 @@
 	"result" : {
 		"event" : "progress",
 		"username" : "<SIP URI of the callee>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -288,7 +288,7 @@
 		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -394,7 +394,7 @@
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
 		"content" : "<content of the message>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -422,7 +422,7 @@
 		"displayname" : "<display name of the sender, if available; optional>",
 		"type" : "<content type of the message>",
 		"content" : "<content of the message>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -453,7 +453,7 @@
 		"substate" : "<substate of the subscription, e.g., 'active'>",
 		"content-type" : "<content-type of the message>"
 		"content" : "<content of the message>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
@@ -570,7 +570,7 @@
 		"refer_to" : "<SIP URI to call>",
 		"referred_by" : "<SIP URI of the transferor; optional>",
 		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
-		"headers" : "<array of custom headers as key/value objects; optional>"
+		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
 }
 \endverbatim
