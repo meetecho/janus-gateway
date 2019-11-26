@@ -120,7 +120,7 @@
 	"outbound_proxy" : "<outbound proxy to use, if any; optional>",
 	"headers" : "<array of key/value objects, to specify custom headers to add to the SIP REGISTER; optional>",
 	"contact_params" : "<array of key/value objects, to specify custom Contact URI params to add to the SIP REGISTER; optional>",
-	"incoming_header_prefixes" : "<array of strings, to specify custom headers to read on incoming SIP events; optional>",
+	"incoming_header_prefixes" : "<array of strings, to specify custom (non-standard) headers to read on incoming SIP events; optional>",
 	"refresh" : <true|false; if true, only uses the SIP REGISTER as an update and not a new registration; optional>",
 	"master_id" : <ID of an already registered account, if this is an helper for multiple calls (more on that later); optional>
 }
@@ -207,7 +207,7 @@
 	"call_id" : "<value of SIP Call-ID header for related call>",
 	"result" : {
 		"event" : "ringing",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -224,7 +224,7 @@
 	"result" : {
 		"event" : "accepted",
 		"username" : "<SIP URI of the callee>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -246,7 +246,7 @@
 	"result" : {
 		"event" : "progress",
 		"username" : "<SIP URI of the callee>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -288,7 +288,7 @@
 		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -394,7 +394,7 @@
 		"sender" : "<SIP URI of the message sender>",
 		"displayname" : "<display name of the sender, if available; optional>",
 		"content" : "<content of the message>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -422,7 +422,7 @@
 		"displayname" : "<display name of the sender, if available; optional>",
 		"type" : "<content type of the message>",
 		"content" : "<content of the message>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -453,7 +453,7 @@
 		"substate" : "<substate of the subscription, e.g., 'active'>",
 		"content-type" : "<content-type of the message>"
 		"content" : "<content of the message>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -570,7 +570,7 @@
 		"refer_to" : "<SIP URI to call>",
 		"referred_by" : "<SIP URI of the transferor; optional>",
 		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
-		"headers" : "<array of key/value objects, optional>"
+		"headers" : "<array of custom headers as key/value objects; optional>"
 	}
 }
 \endverbatim
@@ -1410,7 +1410,7 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 		while(temp != NULL) {
 			char *header_prefix = (char *) temp->data;
 			if(header_prefix != NULL && unknown_header->un_name != NULL) {
-				if(strncmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
+				if(strncasecmp(unknown_header->un_name, header_prefix, strlen(header_prefix)) == 0) {
 					const char *header_name = g_strdup(unknown_header->un_name);
 					json_object_set(headers, header_name, json_string(unknown_header->un_value));
 					break;
@@ -2747,8 +2747,8 @@ static void *janus_sip_handler(void *data) {
 
 			json_t *header_prefixes_json = json_object_get(root, "incoming_header_prefixes");
 			if(header_prefixes_json) {
-				size_t index;
-				json_t *value;
+				size_t index = 0;
+				json_t *value = NULL;
 
 				json_array_foreach(header_prefixes_json, index, value) {
 					const char *header_prefix = json_string_value(value);
