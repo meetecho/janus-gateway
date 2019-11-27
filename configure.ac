@@ -213,6 +213,15 @@ AC_ARG_ENABLE([all-handlers],
               ],
               [])
 
+AC_ARG_ENABLE([all-loggers],
+              [AS_HELP_STRING([--disable-all-loggers],
+                              [Disable building all loggers (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_json_logger" != "xyes"],
+                     [enable_json_logger=no])
+              ],
+              [])
+
 AC_ARG_ENABLE([all-js-modules],
               [AS_HELP_STRING([--enable-all-js-modules],
                               [Build all the JavaScript modules (instead of manually enabling them one by one)])],
@@ -300,6 +309,13 @@ AC_ARG_ENABLE([nanomsg-event-handler],
               [AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])],
               [enable_nanomsg_event_handler=maybe])
+
+AC_ARG_ENABLE([json-logger],
+              [AS_HELP_STRING([--enable-json-logger],
+                              [Enable external JSON file logger ])],
+              [AS_IF([test "x$enable_json_logger" != "xyes"],
+                     [enable_json_logger=no])],
+              [enable_json_logger=no])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -608,6 +624,8 @@ AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
 
+AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
+
 AC_TRY_COMPILE([
                #include <stdlib.h>
                #include <sys/socket.h>
@@ -863,6 +881,17 @@ PKG_CHECK_MODULES([EVENTS],
 
 
 ##
+# Loggers
+##
+
+PKG_CHECK_MODULES([LOGGERS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson >= $jansson_version
+                  ])
+
+
+##
 # JavaScript modules
 ##
 
@@ -1058,6 +1087,10 @@ AM_COND_IF([ENABLE_MQTTEVH],
 AM_COND_IF([ENABLE_NANOMSGEVH],
 	[echo "    Nanomsg event handler: yes"],
 	[echo "    Nanomsg event handler: no"])
+echo "External loggers:"
+AM_COND_IF([ENABLE_JSONLOGGER],
+	[echo "    JSON file logger:      yes"],
+	[echo "    JSON file logger:      no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"
