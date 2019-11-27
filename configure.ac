@@ -475,11 +475,6 @@ PKG_CHECK_MODULES([LIBCURL],
                         AC_DEFINE(HAVE_SAMPLEEVH)
                         enable_sample_event_handler=yes
                       ])
-                    AS_IF([test "x$enable_homer_logger" != "xno"],
-                      [
-                        AC_DEFINE(HAVE_HOMERLOGGER)
-                        enable_homer_logger=yes
-                      ])
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
@@ -640,7 +635,6 @@ AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
-AM_CONDITIONAL([ENABLE_HOMERLOGGER], [test "x$enable_homer_logger" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -1107,9 +1101,6 @@ echo "External loggers:"
 AM_COND_IF([ENABLE_JSONLOGGER],
 	[echo "    JSON file logger:      yes"],
 	[echo "    JSON file logger:      no"])
-AM_COND_IF([ENABLE_HOMERLOGGER],
-	[echo "    Homer logger via HEP:  yes"],
-	[echo "    Homer logger via HEP:  no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"
