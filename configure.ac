@@ -219,8 +219,6 @@ AC_ARG_ENABLE([all-loggers],
               [
                AS_IF([test "x$enable_json_logger" != "xyes"],
                      [enable_json_logger=no])
-               AS_IF([test "x$enable_homer_logger" != "xyes"],
-                     [enable_homer_logger=no])
               ],
               [])
 
@@ -318,13 +316,6 @@ AC_ARG_ENABLE([json-logger],
               [AS_IF([test "x$enable_json_logger" != "xyes"],
                      [enable_json_logger=no])],
               [enable_json_logger=no])
-
-AC_ARG_ENABLE([homer-logger],
-              [AS_HELP_STRING([--enable-homer-logger],
-                              [Enable external Homer logger via HEP ])],
-              [AS_IF([test "x$enable_homer_logger" != "xyes"],
-                     [enable_homer_logger=no])],
-              [enable_homer_logger=no])
 
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
@@ -481,8 +472,6 @@ PKG_CHECK_MODULES([LIBCURL],
                           [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-turn-rest-api])])
                     AS_IF([test "x$enable_sample_event_handler" = "xyes"],
                           [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
-                    AS_IF([test "x$enable_homer_logger" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-homer-logger])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
