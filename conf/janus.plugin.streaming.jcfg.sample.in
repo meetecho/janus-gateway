@@ -47,6 +47,7 @@
 #		passed, which would then change the current SSRC (0=disabled)
 # dataport = local port for receiving data messages to relay
 # dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
+# datatype = text|binary (type of data this mountpoint will relay, default=text)
 # databuffermsg = true|false (whether the plugin should store the latest
 #		message and send it immediately for new viewers)
 # threads = number of threads to assist with the relaying part, which can help
@@ -162,6 +163,7 @@ file-ondemand-sample: {
 	#video = false
 	#data = true
 	#dataport = 5008
+	#datatype = "text"
 #}
 
 #
