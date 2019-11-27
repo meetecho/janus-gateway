@@ -296,7 +296,6 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
-	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
@@ -3310,10 +3309,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		if(ice_handle->agent == NULL) {
-			if(janus_is_rfc4588_enabled()) {
-				/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
-				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
-			}
+			/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
+			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			janus_mutex_lock(&ice_handle->mutex);
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
@@ -4145,9 +4142,6 @@ gint main(int argc, char *argv[])
 		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
 		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
 	}
-	if(args_info.rfc_4588_given) {
-		janus_config_add(config, config_media, janus_config_item_create("rfc_4588", "yes"));
-	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add(config, config_media, janus_config_item_create("rtp_port_range", args_info.rtp_port_range_arg));
 	}
@@ -4533,11 +4527,6 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_set_twcc_period(tp);
 		}
-	}
-	/* RFC4588 support */
-	item = janus_config_get(config, config_media, janus_config_type_item, "rfc_4588");
-	if(item && item->value) {
-		janus_set_rfc4588_enabled(janus_is_true(item->value));
 	}
 
 	/* Setup OpenSSL stuff */

@@ -439,16 +439,6 @@ uint janus_get_twcc_period(void) {
 }
 
 
-/* RFC4588 support */
-static gboolean rfc4588_enabled = FALSE;
-void janus_set_rfc4588_enabled(gboolean enabled) {
-	rfc4588_enabled = enabled;
-	JANUS_LOG(LOG_VERB, "RFC4588 support is %s\n", rfc4588_enabled ? "enabled" : "disabled");
-}
-gboolean janus_is_rfc4588_enabled(void) {
-	return rfc4588_enabled;
-}
-
 static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 	if(pkt == NULL) {
 		return;
