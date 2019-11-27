@@ -963,6 +963,7 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                            libavcodec
                            libavformat
                            ogg
+                           zlib
                          ])
       ])
 

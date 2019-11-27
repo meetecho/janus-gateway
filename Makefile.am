@@ -586,6 +586,7 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
 	log.c \
+	utils.c \
 	version.c \
 	$(NULL)
 
@@ -612,6 +613,7 @@ mjr2pcap_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/mjr2pcap.c \
 	log.c \
+	utils.c \
 	$(NULL)
 
 mjr2pcap_CFLAGS = \
