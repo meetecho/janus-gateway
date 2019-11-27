@@ -340,4 +340,16 @@ void janus_set3(guint8 *data, size_t i, guint32 val);
  */
 void janus_set4(guint8 *data, size_t i, guint32 val);
 
+/*! \brief Helper method to compress a string to gzip (using zlib)
+ * \note It's up to you to provide a buffer large enough for the compressed
+ * data: in case the buffer isn't large enough, the request will fail
+ * @param[in] compression Compression factor (1=fastest, 9=best compression)
+ * @param[in] text Pointer to the string to compress
+ * @param[in] tlen Length of the string to compress
+ * @param[in] compressed Pointer to the buffer where to compress the string to
+ * @param[in] zlen Size of the output buffer
+ * @returns The size of the compressed data, if successful, or 0 otherwise
+ */
+size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen);
+
 #endif

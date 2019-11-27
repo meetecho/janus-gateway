@@ -315,6 +315,7 @@ PKG_CHECK_MODULES([JANUS],
                     jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
+                    zlib
                   ])
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)

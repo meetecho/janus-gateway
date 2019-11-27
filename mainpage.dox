@@ -96,6 +96,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
@@ -3490,6 +3491,7 @@ ldd janus | grep asan
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *

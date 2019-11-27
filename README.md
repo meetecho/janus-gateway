@@ -36,6 +36,7 @@ A couple of plugins depend on a few more libraries:
 Additionally, you'll need the following libraries and tools:
 
 * [GLib](http://library.gnome.org/devel/glib/)
+* [zlib](https://zlib.net/)
 * [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
 * [gengetopt](http://www.gnu.org/software/gengetopt/)
 
