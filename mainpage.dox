@@ -43,9 +43,14 @@
  * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page. Event handler
  * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
- * page if you're interested in creating your own. Janus also supports
- * \ref recordings out of the box, so check the related documentation
- * to know more about how that works.
+ * page if you're interested in creating your own. For what concerns logging,
+ * out of the box Janus supports printing the output to \c stdout and saving
+ * to a local file, but logging can also be extended via additional plugins:
+ * refer to the \ref loggerapi for more details, and to learn how to write
+ * your own.
+ *
+ * Janus also supports \ref recordings out of the box, so check the
+ * related documentation to know more about how that works.
  *
  * Finally, some information on how to deploy Janus and your web
  * applications that want to make use of it are provided in the \ref deploy
@@ -4112,6 +4117,21 @@ ldd janus | grep asan
  * \details The eventhandler.h header specifies the API a plugin needs to
  * implement and make available in order to receive events from Janus.
  * \ingroup eventhandlers
+ */
+
+/*! \defgroup loggers Loggers
+ * \brief Logger plugins available out of the box
+ * \details In order to showcase how different plugins can handle log lines
+ * originated by the Janus core or any of its plugins, a sample plugin
+ * implementation is provided out of the box. The API for writing a new
+ * logger plugin is specified in the \ref loggerapi section.
+ */
+
+/*! \defgroup loggerapi Logger API
+ * \brief Logger API (aka, how to write your own logger plugin)
+ * \details The logger.h header specifies the API a plugin needs to
+ * implement and make available in order to receive log lines from Janus.
+ * \ingroup loggers
  */
 
 /*! \defgroup tools Tools and utilities
