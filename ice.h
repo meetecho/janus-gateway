@@ -146,12 +146,6 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
-/*! \brief Method to enable or disable the RFC4588 support negotiation
- * @param[in] enabled The new timer value, in seconds */
-void janus_set_rfc4588_enabled(gboolean enabled);
-/*! \brief Method to check whether the RFC4588 support is enabled
- * @returns TRUE if it's enabled, FALSE otherwise */
-gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
@@ -378,6 +372,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
 	/*! \brief RTP payload types of this stream */
 	gint audio_payload_type, video_payload_type, video_rtx_payload_type;
 	/*! \brief Codecs used by this stream */

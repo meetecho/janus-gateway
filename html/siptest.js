@@ -664,6 +664,20 @@ function registerUsername() {
 		var sip_domain = username.substring(username.indexOf('@')+1);
 		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
+	// Should you want the SIP stack to add some custom headers to the
+	// REGISTER, you can do so by adding an additional "headers" object,
+	// containing each of the headers as key-value, e.g.:
+	//		register["headers"] = {
+	//			"My-Header": "value",
+	//			"AnotherHeader": "another string"
+	//		};
+	// Similarly, a "contact_params" object will allow you to
+	// inject custom Contact URI params, e.g.:
+	//		register["contact_params"] = {
+	//			"pn-provider": "acme",
+	//			"pn-param": "acme-param",
+	//			"pn-prid": "ZTY4ZDJlMzODE1NmUgKi0K"
+	//		};
 	if(sipserver === "") {
 		bootbox.confirm("You didn't specify a SIP Registrar: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 			function(result) {

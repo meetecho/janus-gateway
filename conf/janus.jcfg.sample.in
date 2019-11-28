@@ -8,6 +8,7 @@ general: {
 	plugins_folder = "@plugindir@"			# Plugins folder
 	transports_folder = "@transportdir@"	# Transports folder
 	events_folder = "@eventdir@"			# Event handlers folder
+	loggers_folder = "@loggerdir@"			# External loggers folder
 
 		# The next settings configure logging
 	#log_to_stdout = false					# Whether the Janus output should be written
@@ -130,17 +131,16 @@ certificates: {
 }
 
 # Media-related stuff: you can configure whether if you want
-# to enable IPv6 support, if RFC4588 support for retransmissions
-# should be negotiated or not (off by default), the maximum size
-# of the NACK queue (in milliseconds, defaults to 500ms) for retransmissions, the
-# range of ports to use for RTP and RTCP (by default, no range is envisaged), the
+# to enable IPv6 support, the maximum size of the NACK queue (in
+# milliseconds, defaults to 500ms) for retransmissions, the range of
+# ports to use for RTP and RTCP (by default, no range is envisaged), the
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
 # video) being received before Janus notifies you about this (default=1s,
 # 0 disables these events entirely), how many lost packets should trigger
 # a 'slowlink' event to users (default=4), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
-# to senders, if negotiated (default=1s). Finally, if you're using BoringSSL
+# to senders, if negotiated (default=200ms). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
 # value of 1 second (the default), while BoringSSL can override that. Notice
 # that lower values (e.g., 100ms) will typically get you faster connection
@@ -149,12 +149,11 @@ certificates: {
 media: {
 	#ipv6 = true
 	#max_nack_queue = 500
-	#rfc_4588 = true
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
 	#slowlink_threshold = 4
-	#twcc_period = 200
+	#twcc_period = 100
 	#dtls_timeout = 500
 }
 
@@ -272,6 +271,16 @@ plugins: {
 # transports are enabled and loaded at startup.
 transports: {
 	#disable = "libjanus_rabbitmq.so"
+}
+
+# As a core feature, Janus can log either on the standard output, or to
+# a local file. Should you need more advanced logging functionality, you
+# can make use of one of the custom loggers, or write one yourself. Use the
+# 'disable' directive to prevent Janus from loading one or more loggers:
+# use a comma separated list of logger file names to identify the loggers
+# to disable. By default all available loggers are enabled and loaded at startup.
+loggers: {
+	#disable = "libjanus_jsonlog.so"
 }
 
 # Event handlers allow you to receive live events from Janus happening

@@ -36,6 +36,7 @@ A couple of plugins depend on a few more libraries:
 Additionally, you'll need the following libraries and tools:
 
 * [GLib](http://library.gnome.org/devel/glib/)
+* [zlib](https://zlib.net/)
 * [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
 * [gengetopt](http://www.gnu.org/software/gengetopt/)
 
@@ -234,7 +235,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.6
+	janus 0.8.0
 
 	Usage: janus [OPTIONS]...
 
@@ -280,8 +281,6 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
-                                  support or not  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
