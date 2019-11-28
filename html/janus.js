@@ -602,7 +602,8 @@ function Janus(gatewayCallbacks) {
 			var transaction = json["transaction"];
 			if(transaction) {
 				var reportSuccess = transactions[transaction];
-				if(reportSuccess) reportSuccess(json);
+				if(reportSuccess)
+					reportSuccess(json);
 				delete transactions[transaction];
 			}
 			return;
@@ -613,7 +614,8 @@ function Janus(gatewayCallbacks) {
 			var transaction = json["transaction"];
 			if(transaction) {
 				var reportSuccess = transactions[transaction];
-				if(reportSuccess) reportSuccess(json);
+				if(reportSuccess)
+					reportSuccess(json);
 				delete transactions[transaction];
 			}
 			return;
@@ -1730,7 +1732,7 @@ function Janus(gatewayCallbacks) {
 						(Janus.webRTCAdapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
 					Janus.log("End of candidates.");
 					config.iceDone = true;
-					if(config.trickle) {
+					if(config.trickle === true) {
 						// Notify end of candidates
 						sendTrickleCandidate(handleId, {"completed": true});
 					} else {
@@ -1745,7 +1747,7 @@ function Janus(gatewayCallbacks) {
 						"sdpMid": event.candidate.sdpMid,
 						"sdpMLineIndex": event.candidate.sdpMLineIndex
 					};
-					if(config.trickle) {
+					if(config.trickle === true) {
 						// Send candidate
 						sendTrickleCandidate(handleId, candidate);
 					}
@@ -2101,16 +2103,13 @@ function Janus(gatewayCallbacks) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
 			var audioSupport = isAudioSendEnabled(media);
-			if(audioSupport && media) {
-				if(typeof media.audio === 'object') {
-					audioSupport = media.audio;
-				}
-			}
+			if(audioSupport && media && typeof media.audio === 'object')
+				audioSupport = media.audio;
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport && media) {
 				var simulcast = (callbacks.simulcast === true);
 				var simulcast2 = (callbacks.simulcast2 === true);
-				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
+				if((simulcast || simulcast2) && !jsep && !media.video)
 					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
