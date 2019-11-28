@@ -89,6 +89,10 @@ guint64 janus_random_uint64(void) {
 	return num;
 }
 
+char *janus_random_uuid(void) {
+	return g_uuid_string_random();
+}
+
 guint64 *janus_uint64_dup(guint64 num) {
 	guint64 *numdup = g_malloc(sizeof(guint64));
 	*numdup = num;
