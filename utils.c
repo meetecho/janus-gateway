@@ -1026,6 +1026,7 @@ inline void janus_set4(guint8 *data,size_t i,guint32 val) {
 	data[i]   = (guint8)(val>>24);
 }
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen) {
 	if(text == NULL || tlen < 1 || compressed == NULL || zlen < 1)
 		return -1;
@@ -1063,3 +1064,4 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	/* Done, return the size of the compressed data */
 	return zs.total_out;
 }
+#endif
