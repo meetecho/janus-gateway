@@ -3871,7 +3871,7 @@ gint main(int argc, char *argv[])
 	DIR *dir = NULL;
 	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
 	gchar **disabled_loggers = NULL;
-	path = EVENTDIR;
+	path = LOGGERDIR;
 	item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
 	if(item && item->value)
 		path = (char *)item->value;
