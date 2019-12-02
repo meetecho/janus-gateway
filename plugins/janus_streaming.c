@@ -5589,14 +5589,17 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
+		gboolean add_qs = (rtsp_querystring != NULL);
+		if(add_qs && strstr(vcontrol, rtsp_querystring) != NULL)
+			add_qs = FALSE;
 		if(strstr(vcontrol, rtsp_url) == vcontrol) {
 			/* The control attribute already contains the whole URL? */
 			g_snprintf(uri, sizeof(uri), "%s%s%s", vcontrol,
-				rtsp_querystring ? "?" : "", rtsp_querystring ? rtsp_querystring : "");
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
 			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, vcontrol,
-				rtsp_querystring ? "?" : "", rtsp_querystring ? rtsp_querystring : "");
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, vtransport);
@@ -5767,14 +5770,17 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		if(strstr(acontrol, source->rtsp_url) == acontrol) {
+		gboolean add_qs = (rtsp_querystring != NULL);
+		if(add_qs && strstr(acontrol, rtsp_querystring) != NULL)
+			add_qs = FALSE;
+		if(strstr(acontrol, rtsp_url) == acontrol) {
 			/* The control attribute already contains the whole URL? */
 			g_snprintf(uri, sizeof(uri), "%s%s%s", acontrol,
-				rtsp_querystring ? "?" : "", rtsp_querystring ? rtsp_querystring : "");
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
-			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", source->rtsp_url, acontrol,
-				rtsp_querystring ? "?" : "", rtsp_querystring ? rtsp_querystring : "");
+			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, acontrol,
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
