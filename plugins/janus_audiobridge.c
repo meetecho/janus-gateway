@@ -693,8 +693,8 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_audiobridge_handle_admin_message(json_t *message);
 void janus_audiobridge_setup_media(janus_plugin_session *handle);
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_audiobridge_query_session(janus_plugin_session *handle);
@@ -3179,7 +3179,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&rooms_mutex);
 }
 
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
@@ -3188,6 +3188,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	if(!g_atomic_int_get(&participant->active) || participant->muted || !participant->decoder || !participant->room)
 		return;
+	char *buf = packet->buffer;
+	uint16_t len = packet->length;
 	/* Save the frame if we're recording this leg */
 	janus_recorder_save_frame(participant->arc, buf, len);
 	if(g_atomic_int_get(&participant->active) && participant->decoder) {
@@ -3241,8 +3243,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 
 		if(participant->extmap_id > 0) {
 			/* Check the audio levels, in case we need to notify participants about who's talking */
-			int level = 0;
-			if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
+			int level = packet->extensions.audio_level;
+			if(level != -1) {
 				/* Is this silence? */
 				pkt->silence = (level == 127);
 				if(participant->room && participant->room->audiolevel_event) {
@@ -3420,7 +3422,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 	}
 }
 
-void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME Should we care? */
@@ -4948,9 +4950,13 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	packet->data->type = participant->opus_pt;
 	/* Fix sequence number and timestamp (room switching may be involved) */
 	janus_rtp_header_update(packet->data, &participant->context, FALSE, OPUS_SAMPLES);
-	if(gateway != NULL)
-		gateway->relay_rtp(session->handle, 0, (char *)packet->data, packet->length);
-	/* Restore the timestamp and sequence number to what the publisher set them to */
+	if(gateway != NULL) {
+		janus_plugin_rtp rtp = { .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_rtp_extensions_reset(&rtp.extensions);
+		/* FIXME Should we add our own audio level extension? */
+		gateway->relay_rtp(session->handle, &rtp);
+	}
+	/* Restore the timestamp and sequence number to what the mixer set them to */
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);
 }

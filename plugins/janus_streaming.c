@@ -721,8 +721,8 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_streaming_handle_admin_message(json_t *message);
 void janus_streaming_setup_media(janus_plugin_session *handle);
-void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
@@ -3878,13 +3878,13 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME We don't care about what the browser sends us, we're sendonly */
 }
 
-void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
@@ -3894,6 +3894,9 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 	if(mp->streaming_source != janus_streaming_source_rtp)
 		return;
 	janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
+	gboolean video = packet->video;
+	char *buf = packet->buffer;
+	uint16_t len = packet->length;
 	if(!video && (source->audio_rtcp_fd > -1) && (source->audio_rtcp_addr.ss_family != 0)) {
 		JANUS_LOG(LOG_HUGE, "Got audio RTCP feedback from a viewer: SSRC %"SCNu32"\n",
 			janus_rtcp_get_sender_ssrc(buf, len));
@@ -7326,8 +7329,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 1;
 				}
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+				janus_plugin_rtp_extensions_reset(&rtp.extensions);
 				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+					gateway->relay_rtp(session->handle, &rtp);
 				if(override_mark_bit && !has_marker_bit) {
 					packet->data->markerbit = 0;
 				}
@@ -7386,8 +7391,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 						session->sim_context.changed_substream);
 				}
 				/* Send the packet */
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+				janus_plugin_rtp_extensions_reset(&rtp.extensions);
 				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+					gateway->relay_rtp(session->handle, &rtp);
 				/* Restore the timestamp and sequence number to what the publisher set them to */
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
@@ -7398,8 +7405,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 			} else {
 				/* Fix sequence number and timestamp (switching may be involved) */
 				janus_rtp_header_update(packet->data, &session->context, TRUE, 0);
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+				janus_plugin_rtp_extensions_reset(&rtp.extensions);
 				if(gateway != NULL)
-					gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+					gateway->relay_rtp(session->handle, &rtp);
 				/* Restore the timestamp and sequence number to what the video source set them to */
 				packet->data->timestamp = htonl(packet->timestamp);
 				packet->data->seq_number = htons(packet->seq_number);
@@ -7409,8 +7418,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				return;
 			/* Fix sequence number and timestamp (switching may be involved) */
 			janus_rtp_header_update(packet->data, &session->context, FALSE, 0);
+			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_rtp_extensions_reset(&rtp.extensions);
 			if(gateway != NULL)
-				gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+				gateway->relay_rtp(session->handle, &rtp);
 			/* Restore the timestamp and sequence number to what the video source set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
@@ -7420,8 +7431,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(!session->data)
 			return;
 		char *text = (char *)packet->data;
-		if(gateway != NULL && text != NULL)
-			gateway->relay_data(session->handle, NULL, text, strlen(text));
+		if(gateway != NULL && text != NULL) {
+			janus_plugin_data data = { .label = NULL, .buffer = text, .length = strlen(text) };
+			gateway->relay_data(session->handle, &data);
+		}
 	}
 
 	return;
@@ -7444,8 +7457,9 @@ static void janus_streaming_relay_rtcp_packet(gpointer data, gpointer user_data)
 		return;
 	}
 
+	janus_plugin_rtcp rtcp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
 	if(gateway != NULL)
-		gateway->relay_rtcp(session->handle, (packet->is_video ? 1 : 0), (char*)packet->data, packet->length);
+		gateway->relay_rtcp(session->handle, &rtcp);
 
 	return;
 }
