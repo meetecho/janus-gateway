@@ -4343,15 +4343,22 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	if((!packet->video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
 			|| (packet->video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
+	uint16_t totlen = RTP_HEADER_SIZE;
+	/* Check how large the payload is */
+	int plen = 0;
+	char *payload = janus_rtp_payload(packet->buffer, packet->length, &plen);
+	if(payload != NULL)
+		totlen += plen;
 	/* We need to strip extensions, here, and add those that need to be there manually */
-	uint16_t totlen = RTP_HEADER_SIZE, extlen = 0;
+	uint16_t extlen = 0;
 	char extensions[50];
 	janus_rtp_header *header = (janus_rtp_header *)packet->buffer;
+	int origext = header->extension;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
 	if(handle->stream->mid_ext_id > 0) {
 		header->extension = 1;
-		memset(extensions, sizeof(extensions), extlen);
+		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
 		extheader->type = htons(0xBEDE);
 		extheader->length = 0;
@@ -4392,11 +4399,6 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		extlen = 4 + (words*4);
 		totlen += extlen;
 	}
-	/* Check how large the payload is */
-	int plen = 0;
-	char *payload = janus_rtp_payload(packet->buffer, packet->length, &plen);
-	if(payload != NULL)
-		totlen += plen;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 	pkt->data = g_malloc(totlen + SRTP_MAX_TAG_LEN);
@@ -4416,6 +4418,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
+	/* Restore the extension flag to what the plugin set it to */
+	header->extension = origext;
 }
 
 void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *packet, gboolean filter_rtcp) {
