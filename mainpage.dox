@@ -7,7 +7,8 @@
  * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
  * check the \ref DEPS before attempting a compilation. If you are
  * interested in how to compile, install and use Janus,
- * checkout the \ref README information. A \ref FAQ page is also available.
+ * checkout the \ref README information. A \ref FAQ page is also available,
+ * as well as an overview on \ref CHANGELOG.
  *
  * \par A general purpose WebRTC server
  * The Janus WebRTC Server has been conceived as a <tt>general purpose</tt>
@@ -3512,6 +3513,32 @@ ldd janus | grep asan
  * <a href="https://janus.conf.meetecho.com/support">contact us</a>.
  *
  *  \verbinclude COPYING
+ */
+
+/*! \page CHANGELOG Tagged versions and Changelog
+ * There are different tagged versions on the Janus repository. We usually
+ * tag a new version any time a breaking change and/or a set of comprehensive
+ * changes and fixes is going to be merged/applied to Janus, and so the
+ * Changelog below can act as a simple and quick summary of which changes
+ * are available in each version.
+ *
+ * It's very important to point out, though, that tagged version are \b NOT
+ * to be considered \b stable versions. This is a common misunderstanding.
+ * The only version we consider \b stable is \b master as it's the only
+ * branch where we continuously provide fixes and enhancements: this is
+ * particularly important in the WebRTC world, where it's not uncommon to
+ * see features breaking overnight due to changes in how browsers and other
+ * WebRTC devices implement things. As such, again, a tagged version is
+ * \b only a way to take a snapshot of where Janus was at a specific point
+ * in time, and before a more or less major change occurred. While you're
+ * free to stick to tagged versions for your deployments (e.g., because
+ * that's how provisioning is usually done in your company), please notice
+ * we will ignore issues and reports addressing any other branch that is
+ * not master: due to lack of time and resources, we simply cannot go and
+ * investigate issues we may have fixed already, so if you're experiencing
+ * issues, make sure you can replicate them on master as well first.
+ *
+ *  \verbinclude CHANGELOG.md
  */
 
 /*! \page FAQ Frequently Asked Questions
