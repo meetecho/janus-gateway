@@ -479,27 +479,27 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.2.1] - 2016-12-13
 
-- ?
+- Missing info
 
 
 ## [v0.2.0] - 2016-10-10
 
-- ?
+- Missing info
 
 
 ## [v0.1.2] - 2016-09-05
 
-- ?
+- Missing info
 
 
 ## [v0.1.1] - 2016-06-15
 
-- ?
+- Missing info
 
 
 ## [v0.1.0] - 2016-05-27
 
-- Mainstream version of Janus
+- Missing info
 
 
 ## [v0.0.9] - 2015-11-11
