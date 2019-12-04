@@ -5721,6 +5721,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					p++;
 			}
 		}
+#ifdef HAVE_LIBCURL
 #if CURL_AT_LEAST_VERSION(7, 62, 0)
 		/* If we don't have a host yet (no c-line, no source in Transport), use the server address */
 		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
@@ -5758,6 +5759,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				curl_url_cleanup(url);
 			}
 		}
+#endif
 #endif
 		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
 			/* Still nothing... */
@@ -5908,6 +5910,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, copying the video address (%s)\n", vhost);
 				g_snprintf(ahost, sizeof(ahost), "%s", vhost);
 			} else {
+#ifdef HAVE_LIBCURL
 #if CURL_AT_LEAST_VERSION(7, 62, 0)
 				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, resolving server address...\n");
 				CURLU *url = curl_url();
@@ -5942,6 +5945,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					}
 					curl_url_cleanup(url);
 				}
+#endif
 #endif
 			}
 		}
