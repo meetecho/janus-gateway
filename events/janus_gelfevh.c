@@ -200,36 +200,33 @@ static int janus_gelfevh_send(char *message) {
 		}
 	// UDP chunking with headers
 	} else {
-		size_t len = strlen(message);
+		int len = strlen(message);
 		char *buf = message;
 		int total = len / max_gelf_msg_len + 1;
 
 		int offset = 0;
 		char *rnd = randstring(8);
-
-		for (int i = 1; i < total+1; i++) {
-			int bytesToSend = offset + max_gelf_msg_len < (int)len ? max_gelf_msg_len : (int)len - offset;
+		for (int i = 0; i < total; i++) {
+			int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
 			// prepend the necessary headers (imitate TCP)
-			char chunk[max_gelf_msg_len + 12];
-			memset(chunk, 0, sizeof chunk);
-
+			char chunk[bytesToSend + 12];
 			chunk[0] = 0x1e;
 			chunk[1] = 0x0f;
-			strncpy(chunk + 2, rnd, 8);
+			memcpy(chunk + 2, rnd, 8);
 			chunk[10] = (char)i;
 			chunk[11] = (char)total;
 			char *head = chunk;
-			free(rnd);
-
-			strncat(head, buf, bytesToSend);
+			memcpy(head+12, buf, bytesToSend);
 			buf += bytesToSend;
-
-			if (write(sockfd, head, bytesToSend + 12) < 0) {
+			int n = write(sockfd, head, bytesToSend + 12);
+			if(n < 0) {
 				JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
 				return -1;
 			}
 			offset += bytesToSend;
+			bzero(chunk, bytesToSend + 12);
 		}
+		free(rnd);
 	}
 	return 1;
 }
