@@ -628,10 +628,12 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_DATA, FALSE,
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);

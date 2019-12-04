@@ -6308,43 +6308,45 @@ static void *janus_videoroom_handler(void *data) {
 				/* Generate an SDP string we can send back to the publisher */
 				char *answer_sdp = janus_sdp_write(answer);
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
+				int mid_ext_id = 1;
+				while(mid_ext_id < 15) {
+					if(mid_ext_id != participant->audio_level_extmap_id &&
+							mid_ext_id != participant->video_orient_extmap_id &&
+							mid_ext_id != participant->playout_delay_extmap_id)
+						break;
+					mid_ext_id++;
+				}
+				int twcc_ext_id = 1;
+				while(twcc_ext_id < 15) {
+					if(twcc_ext_id != mid_ext_id &&
+							twcc_ext_id != participant->audio_level_extmap_id &&
+							twcc_ext_id != participant->video_orient_extmap_id &&
+							twcc_ext_id != participant->playout_delay_extmap_id)
+						break;
+					twcc_ext_id++;
+				}
 				offer = janus_sdp_generate_offer(s_name, answer->c_addr,
 					JANUS_SDP_OA_AUDIO, participant->audio,
 					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->acodec),
 					JANUS_SDP_OA_AUDIO_PT, janus_audiocodec_pt(participant->acodec),
 					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
 					JANUS_SDP_OA_AUDIO_FMTP, participant->do_opusfec ? "useinbandfec=1" : NULL,
+					JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+						participant->audio_level_extmap_id > 0 ? participant->audio_level_extmap_id : 0,
+					JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
 					JANUS_SDP_OA_VIDEO, participant->video,
 					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
 					JANUS_SDP_OA_VIDEO_PT, janus_videocodec_pt(participant->vcodec),
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
+					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
+					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
+						participant->video_orient_extmap_id > 0 ? participant->video_orient_extmap_id : 0,
+					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_PLAYOUT_DELAY,
+						participant->playout_delay_extmap_id > 0 ? participant->playout_delay_extmap_id : 0,
+					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
+						videoroom->transport_wide_cc_ext ? twcc_ext_id : 0,
 					JANUS_SDP_OA_DATA, participant->data,
 					JANUS_SDP_OA_DONE);
-				/* Add the extmap attributes, if needed */
-				if(participant->audio_level_extmap_id > 0) {
-					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
-					if(m != NULL) {
-						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-							"%d %s\r\n", participant->audio_level_extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-						janus_sdp_attribute_add_to_mline(m, a);
-					}
-				}
-				if(participant->video_orient_extmap_id > 0) {
-					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
-					if(m != NULL) {
-						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-							"%d %s\r\n", participant->video_orient_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
-						janus_sdp_attribute_add_to_mline(m, a);
-					}
-				}
-				if(participant->playout_delay_extmap_id > 0) {
-					janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
-					if(m != NULL) {
-						janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-							"%d %s\r\n", participant->playout_delay_extmap_id, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
-						janus_sdp_attribute_add_to_mline(m, a);
-					}
-				}
 				/* Is this room recorded, or are we recording this publisher already? */
 				janus_mutex_lock(&participant->rec_mutex);
 				if(videoroom->record || participant->recording_active) {

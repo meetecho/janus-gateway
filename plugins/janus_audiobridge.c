@@ -4467,6 +4467,7 @@ static void *janus_audiobridge_handler(void *data) {
 				/* Reject video and data channels, if offered */
 				JANUS_SDP_OA_VIDEO, FALSE,
 				JANUS_SDP_OA_DATA, FALSE,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				JANUS_SDP_OA_DONE);
 			/* Replace the session name */

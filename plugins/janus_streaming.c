@@ -4244,6 +4244,8 @@ done:
 					g_strlcat(sdptemp, buffer, 2048);
 				}
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
+				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
+				g_strlcat(sdptemp, buffer, 2048);
 			}
 			if(mp->codecs.video_pt > 0 && session->video) {
 				/* Add video line */
@@ -4277,6 +4279,8 @@ done:
 					mp->codecs.video_pt);
 				g_strlcat(sdptemp, buffer, 2048);
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
+				g_snprintf(buffer, 512, "a=extmap:%d %s\r\n", 1, JANUS_RTP_EXTMAP_MID);
+				g_strlcat(sdptemp, buffer, 2048);
 			}
 #ifdef HAVE_SCTP
 			if(mp->data && session->data) {
