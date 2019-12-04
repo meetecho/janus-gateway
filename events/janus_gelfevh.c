@@ -78,6 +78,9 @@ janus_eventhandler *create(void) {
 	return &janus_gelfevh;
 }
 
+/* Compression, if any */
+static gboolean compress = FALSE;
+static int compression = 6; /* Z_DEFAULT_COMPRESSION */
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -198,8 +201,28 @@ static int janus_gelfevh_send(char *message) {
 		}
 	// UDP chunking with headers
 	} else {
-		int len = strlen(message);
-		char *buf = message;
+		/* Check if we need to compress the data */
+		int len = 0;
+		char *buf;
+		char compressed_text[8192];
+		size_t compressed_len = 0;
+		if(compress) {
+			compressed_len = janus_gzip_compress(compression,
+				message, strlen(message),
+				compressed_text, sizeof(compressed_text));
+			if(compressed_len == 0) {
+				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(message));
+				/* Sending message uncompressed*/
+				len = strlen(message);
+				buf = message;
+			} else {
+				len = strlen(compressed_text);
+				buf = compressed_text;
+			}
+		} else {
+			len = strlen(message);
+			buf = message;
+		}
 		int total = len / max_gelf_msg_len + 1;
 		if (total > MAX_GELF_CHUNKS) {
 			JANUS_LOG(LOG_WARN, "Sending UDP message failed, Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
@@ -212,8 +235,8 @@ static int janus_gelfevh_send(char *message) {
 			int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
 			// prepend the necessary headers (imitate TCP)
 			char chunk[bytesToSend + 12];
-			chunk[0] = 0x1e;
-			chunk[1] = 0x0f;
+			chunk[0] = 0x78;
+			chunk[1] = 0x01;
 			memcpy(chunk + 2, rnd, 8);
 			chunk[10] = (char)i;
 			chunk[11] = (char)total;
@@ -296,6 +319,21 @@ int janus_gelfevh_init(const char *config_path) {
 			janus_events_edit_events_mask(item->value, &janus_gelfevh.events_mask);
 		/* Compact, so no spaces between separators */
 		json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+
+		/* Check if we need any compression */
+		item = janus_config_get(config, config_general, janus_config_type_item, "compress");
+		if(item && item->value && janus_is_true(item->value)) {
+			compress = TRUE;
+			item = janus_config_get(config, config_general, janus_config_type_item, "compression");
+			if(item && item->value) {
+				int c = atoi(item->value);
+				if(c < 0 || c > 9) {
+					JANUS_LOG(LOG_WARN, "Invalid compression factor '%d', falling back to '%d'...\n", c, compression);
+				} else {
+					compression = c;
+				}
+			}
+		}
 		/* Done */
 		enabled = TRUE;
 	}
@@ -422,9 +460,15 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 			goto plugin_response;
 		/* Parameters we can change */
 		const char *req_events = NULL, *req_backend = NULL, *req_port = NULL;
+		int req_compress = -1, req_compression = -1;
 		/* Events */
 		if(json_object_get(request, "events"))
 			req_events = json_string_value(json_object_get(request, "events"));
+		/* Compression */
+		if (json_object_get(request, "compress"))
+			req_compress = json_is_true(json_object_get(request, "compress"));
+		if (json_object_get(request, "compression"))
+			req_compress = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));
@@ -442,16 +486,20 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 			goto plugin_response;
 		}
 		/* If we got here, we can enforce */
+		janus_mutex_lock(&evh_mutex);
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_gelfevh.events_mask);
+		if (req_compress > -1)
+			compress = req_compress ? TRUE : FALSE;
+		if (req_compression > -1 && req_compression < 10)
+			compression = req_compression;
 		if(req_backend && req_port) {
-			janus_mutex_lock(&evh_mutex);
 			g_free(backend);
 			g_free(port);
 			backend = g_strdup(req_backend);
 			port = g_strdup(req_port);
-			janus_mutex_unlock(&evh_mutex);
 		}
+		janus_mutex_unlock(&evh_mutex);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_GELFEVH_ERROR_INVALID_REQUEST;
