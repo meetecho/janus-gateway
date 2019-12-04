@@ -206,36 +206,23 @@ static int janus_gelfevh_send(char *message) {
 
 		int offset = 0;
 		char *rnd = randstring(8);
-		JANUS_LOG(LOG_ERR, "Total bytes: %d, total packets: %d\n", len, total);
 		for (int i = 0; i < total; i++) {
-			JANUS_LOG(LOG_ERR, "Packet No: %d\n", i+1);
-			JANUS_LOG(LOG_ERR, "offset: %d\n", offset);
 			int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
 			// prepend the necessary headers (imitate TCP)
-			JANUS_LOG(LOG_ERR, "Bytes to send: %d\n", bytesToSend);
 			char chunk[bytesToSend + 12];
-
 			chunk[0] = 0x1e;
 			chunk[1] = 0x0f;
-			strncpy(chunk + 2, rnd, 8);
+			memcpy(chunk + 2, rnd, 8);
 			chunk[10] = (char)i;
 			chunk[11] = (char)total;
 			char *head = chunk;
-			JANUS_LOG(LOG_ERR, "Before strncat, size of buf: %lu, size of head: %lu\n", strlen(buf), strlen(head));
-			// if(i == 1) {
-				strncat(head, buf, bytesToSend);
-			// } else {
-			// 	strncat(head, buf-1, bytesToSend);
-			// }
+			memcpy(head+12, buf, bytesToSend);
 			buf += bytesToSend;
-			JANUS_LOG(LOG_ERR, "Ready to send\n");
 			int n = write(sockfd, head, bytesToSend + 12);
 			if(n < 0) {
 				JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
 				return -1;
 			}
-			JANUS_LOG(LOG_ERR, "Sent: %d\n", n);
-			JANUS_LOG(LOG_ERR, "Sent HEAD: %s\n", head);
 			offset += bytesToSend;
 			bzero(chunk, bytesToSend + 12);
 		}
