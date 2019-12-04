@@ -1,0 +1,19 @@
+# This configures the Homer logger. It provides a way to send Janus logs
+# to a remote Homer instance using the HEP protocol or simulated event
+# handler events, depending on the configured transport. You can configure
+# the address of the Homer instance and how Janus should talk to it.
+
+general: {
+	enabled = false		# By default the module is not enabled
+
+	agent_id = 1234		# Capture agent ID to put in HEP packets
+
+		# This is where you configure how to reach the remote Homer instance.
+		# Homer supports multiple protocols (e.g., UDP, TCP, HTTP, HTTPS,
+		# MQTT and others), but this specific logger implementation only
+		# supports some of them, namely plain "udp", plain "tcp", "http"
+		# and "https". Future updates may extend this support to other
+		# protocols as well. Notice that, in case of "udp", long log lines
+		# will be truncated if their length exceeds the MTU size (1472 bytes).
+	address = "udp://localhost:9060"
+}

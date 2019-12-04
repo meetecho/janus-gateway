@@ -317,8 +317,8 @@ events_libadd = \
 if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
-events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
-events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags) $(LIBCURL_CFLAGS)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) -lm
 events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
@@ -385,6 +385,16 @@ loggers_libjanus_jsonlog_la_LDFLAGS = $(loggers_ldflags)
 loggers_libjanus_jsonlog_la_LIBADD = $(loggers_libadd)
 conf_DATA += conf/janus.logger.jsonlog.jcfg.sample
 EXTRA_DIST += conf/janus.logger.jsonlog.jcfg.sample
+endif
+
+if ENABLE_HOMERLOGGER
+logger_LTLIBRARIES += loggers/libjanus_homerlog.la
+loggers_libjanus_homerlog_la_SOURCES = loggers/janus_homerlog.c
+loggers_libjanus_homerlog_la_CFLAGS = $(loggers_cflags) $(LIBCURL_CFLAGS)
+loggers_libjanus_homerlog_la_LDFLAGS = $(loggers_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) -lm
+loggers_libjanus_homerlog_la_LIBADD = $(loggers_libadd)
+conf_DATA += conf/janus.logger.homerlog.jcfg.sample
+EXTRA_DIST += conf/janus.logger.homerlog.jcfg.sample
 endif
 
 ##
