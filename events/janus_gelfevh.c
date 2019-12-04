@@ -1,11 +1,11 @@
 /*! \file   janus_gelfevh.c
- * \author Lorenzo Miniero <lorenzo@meetecho.com>
+ * \author Mirko Brankovic <mirkobrankovic@gmail.com>
  * \copyright GNU General Public License v3
  * \brief  Janus GelfEventHandler plugin
- * \details  This is a trivial event handler plugin for Janus, which is only
- * there to showcase how you can handle an event coming from the Janus core
- * or one of the plugins. This specific plugin forwards every event it receives
- * to a web server via an UDP request, using libcurl.
+ * \details  This is a event handler plugin for Janus, which 
+ * handles events coming from the Janus core or one of the plugins. 
+ * This specific plugin forwards every event it receives
+ * to a Gelf server via TCP/UDP.
  *
  * \ingroup eventhandlers
  * \ref eventhandlers
@@ -14,7 +14,6 @@
 #include "eventhandler.h"
 
 #include <math.h>
-// #include <curl/curl.h>
 
 #include "../debug.h"
 #include "../config.h"
@@ -37,7 +36,6 @@
 #define JANUS_GELFEVH_AUTHOR 			"Meetecho s.r.l."
 #define JANUS_GELFEVH_PACKAGE			"janus.eventhandler.gelfevh"
 
-#define MAX_DATAGRAM_LEN 				8192
 #define MAX_GELF_CHUNKS 				128
 
 /* Plugin methods */
@@ -203,6 +201,10 @@ static int janus_gelfevh_send(char *message) {
 		int len = strlen(message);
 		char *buf = message;
 		int total = len / max_gelf_msg_len + 1;
+		if (total > MAX_GELF_CHUNKS) {
+			JANUS_LOG(LOG_WARN, "Sending UDP message failed, Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
+			return -1;
+		}
 
 		int offset = 0;
 		char *rnd = randstring(8);
@@ -226,7 +228,7 @@ static int janus_gelfevh_send(char *message) {
 			offset += bytesToSend;
 			bzero(chunk, bytesToSend + 12);
 		}
-		free(rnd);
+		g_free(rnd);
 	}
 	return 1;
 }
