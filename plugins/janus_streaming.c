@@ -684,6 +684,9 @@ rtspiface = network interface IP address or device name to listen on when receiv
 
 #ifdef HAVE_LIBCURL
 #include <curl/curl.h>
+#ifndef CURL_AT_LEAST_VERSION
+#define CURL_AT_LEAST_VERSION(x,y,z) 0
+#endif
 #endif
 
 #include "../debug.h"
