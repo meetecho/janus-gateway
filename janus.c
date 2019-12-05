@@ -3379,7 +3379,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		/* Make sure we don't send the rid/repaired-rid attributes when offering ourselves */
-		int mid_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0;
+		int mid_ext_id = 0, transport_wide_cc_ext_id = 0, audiolevel_ext_id = 0, videoorientation_ext_id = 0;
 		GList *temp = parsed_sdp->m_lines;
 		while(temp) {
 			janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -3389,6 +3389,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				if(a->name && a->value) {
 					if(strstr(a->value, JANUS_RTP_EXTMAP_MID))
 						mid_ext_id = atoi(a->value);
+					else if(strstr(a->value, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+						transport_wide_cc_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
 						audiolevel_ext_id = atoi(a->value);
 					else if(strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
@@ -3407,6 +3409,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		}
 		if(ice_handle->stream && ice_handle->stream->mid_ext_id != mid_ext_id)
 			ice_handle->stream->mid_ext_id = mid_ext_id;
+		if(ice_handle->stream && ice_handle->stream->transport_wide_cc_ext_id != transport_wide_cc_ext_id) {
+			ice_handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+			ice_handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+		}
 		if(ice_handle->stream && ice_handle->stream->audiolevel_ext_id != audiolevel_ext_id)
 			ice_handle->stream->audiolevel_ext_id = audiolevel_ext_id;
 		if(ice_handle->stream && ice_handle->stream->videoorientation_ext_id != videoorientation_ext_id)

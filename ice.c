@@ -3499,7 +3499,7 @@ static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstp
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
-	if(stream && stream->do_transport_wide_cc) {
+	if(stream && stream->video_send && stream->do_transport_wide_cc) {
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
@@ -4087,6 +4087,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					/* ... but only if this isn't a retransmission (for those we already set it before) */
 					header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 				}
+				/* Set the transport-wide sequence number, if needed */
+				if(video && stream->transport_wide_cc_ext_id > 0) {
+					stream->transport_wide_cc_out_seq_num++;
+					if(janus_rtp_header_extension_set_transport_wide_cc(pkt->data, pkt->length,
+							stream->transport_wide_cc_ext_id, stream->transport_wide_cc_out_seq_num) < 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting transport wide CC sequence number...\n", handle->handle_id);
+					}
+				}
 				/* Keep track of payload types too */
 				if(!video && stream->audio_payload_type < 0) {
 					stream->audio_payload_type = header->type;
@@ -4364,6 +4372,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 		extheader->length = 0;
 		/* Iterate on all extensions we need */
 		char *index = extensions + 4;
+		/* Check if we need to add the transport-wide CC extension */
+		if(packet->video && handle->stream->transport_wide_cc_ext_id > 0) {
+			*index = (handle->stream->transport_wide_cc_ext_id << 4) + 1;
+			/* We'll actually set the sequence number later, when sending the packet */
+			memset(index+1, 0, 2);
+			index += 3;
+			extlen += 3;
+		}
 		/* Check if we need to add the mid extension */
 		if(handle->stream->mid_ext_id > 0) {
 			char *mid = packet->video ? handle->video_mid : handle->audio_mid;
