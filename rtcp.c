@@ -203,7 +203,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 			/* Run length */
 			s = (chunk & 0x6000) >> 13;
 			length = (chunk & 0x1FFF);
-			JANUS_LOG(LOG_HUGE, " [%d] t=run-length, s=%s, l=%"SCNu16"\n", num,
+			JANUS_LOG(LOG_HUGE, "  [%d] t=run-length, s=%s, l=%"SCNu16"\n", num,
 				janus_rtp_packet_status_description(s), length);
 			while(length > 0 && psc > 0) {
 				list = g_list_append(list, GUINT_TO_POINTER(s));
@@ -218,7 +218,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 				s ? "2-bit" : "bit", length);
 			while(length > 0 && psc > 0) {
 				if(!ss)
-					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_notreceived : janus_rtp_packet_status_reserved;
+					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_smalldelta : janus_rtp_packet_status_notreceived;
 				else
 					s = (chunk & (3 << (2*length-2))) >> (2*length-2);
 				list = g_list_append(list, GUINT_TO_POINTER(s));
