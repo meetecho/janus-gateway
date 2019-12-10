@@ -203,7 +203,7 @@ $(document).ready(function() {
 					//	or
 					//		apisecret: "serversecret",
 					success: function() {
-						// Attach to echo test plugin
+						// Attach to EchoTest plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.echotest",

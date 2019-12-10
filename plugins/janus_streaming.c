@@ -685,6 +685,9 @@ rtspiface = network interface IP address or device name to listen on when receiv
 
 #ifdef HAVE_LIBCURL
 #include <curl/curl.h>
+#ifndef CURL_AT_LEAST_VERSION
+#define CURL_AT_LEAST_VERSION(x,y,z) 0
+#endif
 #endif
 
 #include "../debug.h"
@@ -5609,17 +5612,30 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		return -7;
 	}
 
+	/* Check if a query string is part of the URL, as that may impact the SETUP request */
+	char *rtsp_url = source->rtsp_url, *rtsp_querystring = NULL;
+	char **parts = g_strsplit(source->rtsp_url, "?", 2);
+	if(parts[0] != NULL) {
+		rtsp_url = parts[0];
+		rtsp_querystring = parts[1];
+	}
+
 	if(vresult != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		if(strstr(vcontrol, source->rtsp_url) == vcontrol) {
+		gboolean add_qs = (rtsp_querystring != NULL);
+		if(add_qs && strstr(vcontrol, rtsp_querystring) != NULL)
+			add_qs = FALSE;
+		if(strstr(vcontrol, rtsp_url) == vcontrol) {
 			/* The control attribute already contains the whole URL? */
-			g_snprintf(uri, sizeof(uri), "%s", vcontrol);
+			g_snprintf(uri, sizeof(uri), "%s%s%s", vcontrol,
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
-			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, vcontrol);
+			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, vcontrol,
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, vtransport);
@@ -5627,6 +5643,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
 			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
+			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
@@ -5637,6 +5654,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -5;
 		} else if(code != 200) {
 			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
@@ -5739,6 +5757,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					p++;
 			}
 		}
+#ifdef HAVE_LIBCURL
 #if CURL_AT_LEAST_VERSION(7, 62, 0)
 		/* If we don't have a host yet (no c-line, no source in Transport), use the server address */
 		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
@@ -5777,6 +5796,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			}
 		}
 #endif
+#endif
 		if(strlen(vhost) == 0 || !strcmp(vhost, "0.0.0.0")) {
 			/* Still nothing... */
 			JANUS_LOG(LOG_WARN, "No host address for the RTSP video stream, no latching will be performed\n");
@@ -5788,12 +5808,17 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		if(strstr(acontrol, source->rtsp_url) == acontrol) {
+		gboolean add_qs = (rtsp_querystring != NULL);
+		if(add_qs && strstr(acontrol, rtsp_querystring) != NULL)
+			add_qs = FALSE;
+		if(strstr(acontrol, rtsp_url) == acontrol) {
 			/* The control attribute already contains the whole URL? */
-			g_snprintf(uri, sizeof(uri), "%s", acontrol);
+			g_snprintf(uri, sizeof(uri), "%s%s%s", acontrol,
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
-			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
+			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, acontrol,
+				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
@@ -5801,6 +5826,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
 			JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
+			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
@@ -5811,6 +5837,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -6;
 		} else if(code != 200) {
 			JANUS_LOG(LOG_ERR, "Couldn't get SETUP code: %ld\n", code);
+			g_strfreev(parts);
 			curl_easy_cleanup(curl);
 			g_free(curldata->buffer);
 			g_free(curldata);
@@ -5919,6 +5946,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, copying the video address (%s)\n", vhost);
 				g_snprintf(ahost, sizeof(ahost), "%s", vhost);
 			} else {
+#ifdef HAVE_LIBCURL
 #if CURL_AT_LEAST_VERSION(7, 62, 0)
 				JANUS_LOG(LOG_WARN, "No c-line or source for RTSP audio stream, resolving server address...\n");
 				CURLU *url = curl_url();
@@ -5954,6 +5982,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 					curl_url_cleanup(url);
 				}
 #endif
+#endif
 			}
 		}
 		if(strlen(ahost) == 0 || !strcmp(ahost, "0.0.0.0")) {
@@ -5961,6 +5990,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_WARN, "No host address for the RTSP audio stream, no latching will be performed\n");
 		}
 	}
+	g_strfreev(parts);
 
 	/* Update the source (but check if ptype/rtpmap/fmtp need to be overridden) */
 	if(mp->codecs.audio_pt == -1)
