@@ -286,7 +286,9 @@ static char *lua_script_package = NULL;
 static gboolean has_handle_admin_message = FALSE;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
-static gboolean has_incoming_text_data = FALSE, has_incoming_binary_data = FALSE;
+static gboolean has_incoming_data_legacy = FALSE,	/* Legacy callback */
+	has_incoming_text_data = FALSE,
+	has_incoming_binary_data = FALSE;
 static gboolean has_slow_link = FALSE;
 /* Lua C scheduler (for coroutines) */
 static GThread *scheduler_thread = NULL;
@@ -982,6 +984,11 @@ static int janus_lua_method_relaybinarydata(lua_State *s) {
 	return 1;
 }
 
+static int janus_lua_method_relaydata(lua_State *s) {
+	JANUS_LOG(LOG_WARN, "Deprecated function 'relayData' called, invoking 'relayTextData' instead\n");
+	return janus_lua_method_relaytextdata(s);
+}
+
 static int janus_lua_method_startrecording(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
@@ -1214,6 +1221,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_register(lua_state, "sendPli", janus_lua_method_sendpli);
 	lua_register(lua_state, "relayRtp", janus_lua_method_relayrtp);
 	lua_register(lua_state, "relayRtcp", janus_lua_method_relayrtcp);
+	lua_register(lua_state, "relayData", janus_lua_method_relaydata);	/* Legacy function, deprecated */
 	lua_register(lua_state, "relayTextData", janus_lua_method_relaytextdata);
 	lua_register(lua_state, "relayBinaryData", janus_lua_method_relaybinarydata);
 	lua_register(lua_state, "startRecording", janus_lua_method_startrecording);
@@ -1272,6 +1280,12 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "incomingRtcp");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtcp = TRUE;
+	lua_getglobal(lua_state, "incomingData");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0) {
+		has_incoming_data_legacy = TRUE;
+		JANUS_LOG(LOG_WARN, "The Lua script contains the deprecated 'incomingData' callback: update it "
+			"to use 'incomingTextData' and/or 'incomingBinaryData' in the future (see PR #1878)\n");
+	}
 	lua_getglobal(lua_state, "incomingTextData");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_text_data = TRUE;
@@ -1920,11 +1934,13 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *label, gboolean
 	/* Are we recording? */
 	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the Lua script wants to handle/manipulate data channel packets itself */
-	if((textdata && has_incoming_text_data) || (!textdata && has_incoming_binary_data)) {
+	if((textdata && (has_incoming_data_legacy || has_incoming_text_data)) || (!textdata && has_incoming_binary_data)) {
 		/* Yep, pass the data to the Lua script and return */
+		if(textdata && !has_incoming_text_data)
+			JANUS_LOG(LOG_WARN, "Missing 'incomingTextData', invoking deprecated function 'incomingData' instead\n");
 		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
-		lua_getglobal(t, textdata ? "incomingTextData" : "incomingBinaryData");
+		lua_getglobal(t, textdata ? (has_incoming_text_data ? "incomingTextData" : "incomingData") : "incomingBinaryData");
 		lua_pushnumber(t, session->id);
 		/* We use a string for both text and binary data */
 		lua_pushlstring(t, buf, len);

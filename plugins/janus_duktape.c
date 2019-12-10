@@ -286,7 +286,9 @@ static char *duktape_script_package = NULL;
 static gboolean has_handle_admin_message = FALSE;
 static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
-static gboolean has_incoming_text_data = FALSE, has_incoming_binary_data = FALSE;
+static gboolean has_incoming_data_legacy = FALSE,	/* Legacy callback */
+	has_incoming_text_data = FALSE,
+	has_incoming_binary_data = FALSE;
 static gboolean has_slow_link = FALSE;
 /* JavaScript C scheduler (for coroutines) */
 static GThread *scheduler_thread = NULL;
@@ -1062,7 +1064,7 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
-	/* Send the RTP packet */
+	/* Send the data packet */
 	janus_core->relay_data(session->handle, NULL, TRUE, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -1105,11 +1107,16 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&duktape_sessions_mutex);
-	/* Send the RTP packet */
+	/* Send the data packet */
 	janus_core->relay_data(session->handle, NULL, FALSE, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
 	return 1;
+}
+
+static int janus_duktape_method_relaydata(duk_context *ctx) {
+	JANUS_LOG(LOG_WARN, "Deprecated function 'relayData' called, invoking 'relayTextData' instead\n");
+	return janus_duktape_method_relaytextdata(ctx);
 }
 
 static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
@@ -1355,6 +1362,8 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_put_global_string(duktape_ctx, "relayRtp");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_relayrtcp, 4);
 	duk_put_global_string(duktape_ctx, "relayRtcp");
+	duk_push_c_function(duktape_ctx, janus_duktape_method_relaydata, 3);	/* Legacy function, deprecated */
+	duk_put_global_string(duktape_ctx, "relayData");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_relaytextdata, 3);
 	duk_put_global_string(duktape_ctx, "relayTextData");
 	duk_push_c_function(duktape_ctx, janus_duktape_method_relaybinarydata, 3);
@@ -1443,6 +1452,12 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 	duk_get_global_string(duktape_ctx, "incomingRtcp");
 	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
 		has_incoming_rtcp = TRUE;
+	duk_get_global_string(duktape_ctx, "incomingData");
+	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0) {
+		has_incoming_data_legacy = TRUE;
+		JANUS_LOG(LOG_WARN, "The Duktape script contains the deprecated 'incomingData' callback: update it "
+			"to use 'incomingTextData' and/or 'incomingBinaryData' in the future (see PR #1878)\n");
+	}
 	duk_get_global_string(duktape_ctx, "incomingTextData");
 	if(duk_is_function(duktape_ctx, duk_get_top(duktape_ctx)-1) != 0)
 		has_incoming_text_data = TRUE;
@@ -2226,12 +2241,14 @@ void janus_duktape_incoming_data(janus_plugin_session *handle, char *label, gboo
 	/* Are we recording? */
 	janus_recorder_save_frame(session->drc, buf, len);
 	/* Check if the JS script wants to handle/manipulate data channel packets itself */
-	if((textdata && has_incoming_text_data) || (!textdata && has_incoming_binary_data)) {
+	if((textdata && (has_incoming_data_legacy || has_incoming_text_data)) || (!textdata && has_incoming_binary_data)) {
 		/* Yep, pass the data to the JS script and return */
+		if(textdata && !has_incoming_text_data)
+			JANUS_LOG(LOG_WARN, "Missing 'incomingTextData', invoking deprecated function 'incomingData' instead\n");
 		janus_mutex_lock(&duktape_mutex);
 		duk_idx_t thr_idx = duk_push_thread(duktape_ctx);
 		duk_context *t = duk_get_context(duktape_ctx, thr_idx);
-		duk_get_global_string(t, textdata ? "incomingTextData" : "incomingBinaryData");
+		duk_get_global_string(t, textdata ? (has_incoming_text_data ? "incomingTextData" : "incomingData") : "incomingBinaryData");
 		duk_push_number(t, session->id);
 		/* We use a string for both text and binary data */
 		duk_push_lstring(t, buf, len);
