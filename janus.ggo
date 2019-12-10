@@ -1,4 +1,4 @@
-#Janus 0.7.6 gengetopt file
+#Janus 0.8.0 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -20,12 +20,11 @@ option "libnice-debug" l "Whether to enable libnice debugging or not" flag off
 option "full-trickle" f "Do full-trickle instead of half-trickle" flag off
 option "ice-lite" I "Whether to enable the ICE Lite mode or not" flag off
 option "ice-tcp" T "Whether to enable ICE-TCP or not (warning: only works with ICE Lite)" flag off
-option "rfc-4588" R "Whether to enable RFC4588 retransmissions support or not" flag off
 option "min-nack-queue" Q "Minimum size of the NACK queue (in ms) per user for retransmissions, no matter the RTT" int typestr="number" optional
 option "no-media-timer" t "Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this" int typestr="number" optional
 option "slowlink-threshold" W "Number of lost packets (per s) that should trigger a 'slowlink' Janus API event to users" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
-option "twcc-period" B "How often (in ms) to send TWCC feedback back to senders, if negotiated (default=1s)" int typestr="number" optional
+option "twcc-period" B "How often (in ms) to send TWCC feedback back to senders, if negotiated (default=200ms)" int typestr="number" optional
 option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
 option "session-timeout" s "Session timeout value, in seconds (default=60)" int typestr="number" optional
 option "reclaim-session-timeout" m "Reclaim session timeout value, in seconds (default=0)" int typestr="number" optional

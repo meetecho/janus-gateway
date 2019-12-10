@@ -36,6 +36,7 @@ A couple of plugins depend on a few more libraries:
 Additionally, you'll need the following libraries and tools:
 
 * [GLib](http://library.gnome.org/devel/glib/)
+* [zlib](https://zlib.net/)
 * [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
 * [gengetopt](http://www.gnu.org/software/gengetopt/)
 
@@ -234,7 +235,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.6
+	janus 0.8.0
 
 	Usage: janus [OPTIONS]...
 
@@ -280,8 +281,6 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
-                                  support or not  (default=off)
 	-Q, --min-nack-queue=number   Minimum size of the NACK queue (in ms) per user
                                   for retransmissions, no matter the RTT
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
@@ -293,7 +292,7 @@ or on the command line:
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to
-                                  senders, if negotiated (default=1s)
+                                  senders, if negotiated (default=200ms)
 	-n, --server-name=name        Public name of this Janus instance
                                   (default=MyJanusInstance)
 	-s, --session-timeout=number  Session timeout value, in seconds (default=60)
