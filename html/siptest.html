@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: SIP Gateway Demo (Sofia)</title>
+<title>Janus WebRTC Server: SIP Gateway Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -51,21 +51,15 @@
 						<p>This demo shows how you can make use of the SIP plugin to interact with a
 						SIP Proxy (e.g., Kamailio) or PBX (e.g., Asterisk) in order to place or
 						receive calls to and from other SIP clients. Specifically, it uses the Sofia-based
-						SIP plugin: in case you're interested in the libre-based one, check
-						<a href="sipretest.html">this other demo</a> instead. Notice that both
-						plugins only exchange SIP messages from within the plugin itself: no SIP
-						is done in JavaScript, except for references to SIP URIs.</p>
+						SIP plugin. Notice the plugin only exchange SIP messages from within the plugin
+						itself: no SIP is done in JavaScript, except for references to SIP URIs.</p>
 						<p>When started, the demo will allow you to insert a minimum set of information
 						required to REGISTER the web page as a SIP client at a SIP Proxy or PBX you specify.
 						This will allow you to call SIP URIs, or receive calls through the SIP Server itself.
 						During a call, you'll also be able to interact with the PBX via DTMF tones, e.g.,
 						to drive an Interactive Voice Response (IVR) menu that you're being presented with.</p>
-						<div class="alert alert-info"><b>Note well!</b> This demo, as the plugin it makes use of,
-						has a few issues, right now. Specifically, it has only been tested with the widespread
-						Asterisk PBX (extended with our
-						<a href="https://github.com/meetecho/asterisk-opus" target="_blank">Opus and VP8 support</a> patch),
-						even though it should work fine with others as well. Besides, video has not been
-						tested yet and as such may not work as expected.
+						<div class="alert alert-info"><b>Note well!</b> Please notice that, while audio support
+						has been tested extensively, video hasn't as much, and as such may not work as expected.
 						</div>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
