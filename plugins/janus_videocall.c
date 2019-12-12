@@ -833,20 +833,18 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_da
 		char *label = packet->label;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
-		char *text = g_malloc(len+1);
-		memcpy(text, buf, len);
-		*(text+len) = '\0';
-		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+		JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
+			!packet->binary ? "text" : "binary", len);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, buf, len);
 		/* Forward the packet to the peer */
 		janus_plugin_data r = {
 			.label = label,
-			.buffer = text,
-			.length = strlen(text)
+			.binary = packet->binary,
+			.buffer = buf,
+			.length = len
 		};
 		gateway->relay_data(peer->handle, &r);
-		g_free(text);
 	}
 }
 

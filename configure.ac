@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.8.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.8.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=80
+JANUS_VERSION=81
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.8.0"
+JANUS_VERSION_STRING="0.8.1"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -160,8 +160,6 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
-               AS_IF([test "x$enable_plugin_sipre" != "xyes"],
-                     [enable_plugin_sipre=no])
                AS_IF([test "x$enable_plugin_nosip" != "xyes"],
                      [enable_plugin_nosip=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
@@ -711,13 +709,6 @@ AC_ARG_ENABLE([plugin-sip],
                      [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
-AC_ARG_ENABLE([plugin-sipre],
-              [AS_HELP_STRING([--disable-plugin-sipre],
-                              [Disable sipre plugin])],
-              [AS_IF([test "x$enable_plugin_sipre" != "xyes"],
-                     [enable_plugin_sipre=no])],
-              [enable_plugin_sipre=maybe])
-
 AC_ARG_ENABLE([plugin-nosip],
               [AS_HELP_STRING([--disable-plugin-nosip],
                               [Disable nosip plugin])],
@@ -769,41 +760,6 @@ PKG_CHECK_MODULES([SOFIA],
                   [
                     AS_IF([test "x$enable_plugin_sip" = "xyes"],
                           [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-sip])])
-                  ])
-AC_SUBST([SOFIA_CFLAGS])
-AC_SUBST([SOFIA_LIBS])
-
-PKG_CHECK_MODULES([LIBRE],
-                  [libre >= 0.5.7],
-                  [
-                    AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
-                          [
-                           enable_plugin_sipre=yes
-                           AC_DEFINE(HAVE_LIBRE_SIPREGNEWAPI)
-                           AC_CHECK_LIB([re],
-                                        [sip_set_trace],
-                                        [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
-                                        [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
-                                       )
-                          ])
-                  ],
-                  [PKG_CHECK_MODULES([LIBRE],
-                                     [libre],
-                                     [
-                                      AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
-                                            [
-                                             enable_plugin_sipre=yes
-                                             AC_CHECK_LIB([re],
-                                                          [sip_set_trace],
-                                                          [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
-                                                          [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
-                                                         )
-                                            ])
-                                     ],
-                                     [
-                                      AS_IF([test "x$enable_plugin_sipre" = "xyes"],
-                                            [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
-                                     ])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -860,7 +816,6 @@ AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xye
 AM_CONDITIONAL([ENABLE_PLUGIN_LUA], [test "x$enable_plugin_lua" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
-AM_CONDITIONAL([ENABLE_PLUGIN_SIPRE], [test "x$enable_plugin_sipre" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
@@ -1043,11 +998,8 @@ AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
 	[echo "    Video Call:            yes"],
 	[echo "    Video Call:            no"])
 AM_COND_IF([ENABLE_PLUGIN_SIP],
-	[echo "    SIP Gateway (Sofia):   yes"],
-	[echo "    SIP Gateway (Sofia):   no"])
-AM_COND_IF([ENABLE_PLUGIN_SIPRE],
-	[echo "    SIP Gateway (libre):   yes"],
-	[echo "    SIP Gateway (libre):   no"])
+	[echo "    SIP Gateway:           yes"],
+	[echo "    SIP Gateway:           no"])
 AM_COND_IF([ENABLE_PLUGIN_NOSIP],
 	[echo "    NoSIP (RTP Bridge):    yes"],
 	[echo "    NoSIP (RTP Bridge):    no"])

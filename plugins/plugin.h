@@ -590,6 +590,8 @@ void janus_plugin_rtcp_reset(janus_plugin_rtcp *packet);
 struct janus_plugin_data {
 	/*! \brief The label this message belongs to */
 	char *label;
+	/*! \brief Whether the message data is text (default=FALSE) or binary */
+	gboolean binary;
 	/*! \brief The message data */
 	char *buffer;
 	/*! \brief The message length */

@@ -195,7 +195,16 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->filename = g_strdup(newname);
 	rc->type = type;
 	/* Write the first part of the header */
-	fwrite(header, sizeof(char), strlen(header), rc->file);
+	size_t res = fwrite(header, sizeof(char), strlen(header), rc->file);
+	if(res != strlen(header)) {
+		JANUS_LOG(LOG_ERR, "Couldn't write .mjr header (%zu != %zu, %s)\n",
+			res, strlen(header), strerror(errno));
+		g_free(rc->dir);
+		g_free(rc->filename);
+		fclose(rc->file);
+		g_free(rc);
+		return NULL;
+	}
 	g_atomic_int_set(&rc->writable, 1);
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
@@ -243,24 +252,48 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));
-		fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
-		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
+		size_t res = fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
+		if(res != 1) {
+			JANUS_LOG(LOG_WARN, "Couldn't write size of JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+				res, sizeof(uint16_t), strerror(errno));
+		}
+		res = fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
+		if(res != strlen(info_text)) {
+			JANUS_LOG(LOG_WARN, "Couldn't write JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+				res, strlen(info_text), strerror(errno));
+		}
 		free(info_text);
 		/* Done */
 		recorder->started = now;
 		g_atomic_int_set(&recorder->header, 1);
 	}
 	/* Write frame header (fixed part[4], timestamp[4], length[2]) */
-	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
+	size_t res = fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
+	if(res != strlen(frame_header)) {
+		JANUS_LOG(LOG_WARN, "Couldn't write frame header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+			res, strlen(frame_header), strerror(errno));
+	}
 	uint32_t timestamp = (uint32_t)(now > recorder->started ? ((now - recorder->started)/1000) : 0);
 	timestamp = htonl(timestamp);
-	fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
+	res = fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
+	if(res != 1) {
+		JANUS_LOG(LOG_WARN, "Couldn't write frame timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+			res, sizeof(uint32_t), strerror(errno));
+	}
 	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
-	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
+	res = fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
+	if(res != 1) {
+		JANUS_LOG(LOG_WARN, "Couldn't write size of frame in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+			res, sizeof(uint16_t), strerror(errno));
+	}
 	if(recorder->type == JANUS_RECORDER_DATA) {
 		/* If it's data, then we need to prepend timing related info, as it's not there by itself */
 		gint64 now = htonll(janus_get_real_time());
-		fwrite(&now, sizeof(gint64), 1, recorder->file);
+		res = fwrite(&now, sizeof(gint64), 1, recorder->file);
+		if(res != 1) {
+			JANUS_LOG(LOG_WARN, "Couldn't write data timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
+				res, sizeof(gint64), strerror(errno));
+		}
 	}
 	/* Save packet on file */
 	int temp = 0, tot = length;
