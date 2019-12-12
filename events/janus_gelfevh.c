@@ -202,8 +202,8 @@ static int janus_gelfevh_send(char *message) {
 	// UDP chunking with headers
 	} else {
 		/* Check if we need to compress the data */
-		int len = 0;
-		char *buf;
+		int len = strlen(message);
+		char *buf = message;
 		if(compress) {
 			char compressed_text[8192];
 			size_t compressed_len = 0;
@@ -214,29 +214,33 @@ static int janus_gelfevh_send(char *message) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(message));
 				/* Sending message uncompressed*/
 			} else {
-				JANUS_LOG(LOG_WARN, "Size of compressed message: %zu", strlen(compressed_text));
-				int n = write(sockfd, compressed_text, strlen(compressed_text));
-				if(n < 0) {
-					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
-					return -1;
-				}
+				len = compressed_len;
+				buf = compressed_text;
 			}
-		} else {
-			len = strlen(message);
-			buf = message;
-			int total = len / max_gelf_msg_len + 1;
-			if (total > MAX_GELF_CHUNKS) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed, Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
+		}
+
+		int total = len / max_gelf_msg_len + 1;
+		if (total > MAX_GELF_CHUNKS) {
+			JANUS_LOG(LOG_WARN, "Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
+			return -1;
+		}
+		// do we need to chunk the message
+		if(total == 1) {
+			int n = write(sockfd, buf, len);
+			if(n < 0) {
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
 				return -1;
 			}
+			return 1;
+		} else {
 			int offset = 0;
 			char *rnd = randstring(8);
 			for (int i = 0; i < total; i++) {
 				int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
 				// prepend the necessary headers (imitate TCP)
 				char chunk[bytesToSend + 12];
-				chunk[0] = 0x78;
-				chunk[1] = 0x01;
+				chunk[0] = 0x1e;
+				chunk[1] = 0x0f;
 				memcpy(chunk + 2, rnd, 8);
 				chunk[10] = (char)i;
 				chunk[11] = (char)total;
@@ -249,7 +253,7 @@ static int janus_gelfevh_send(char *message) {
 					return -1;
 				}
 				offset += bytesToSend;
-				bzero(chunk, bytesToSend + 12);
+				memset(chunk, 0, sizeof chunk);
 			}
 			g_free(rnd);
 		}
