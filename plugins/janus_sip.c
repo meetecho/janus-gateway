@@ -5836,7 +5836,7 @@ static void *janus_sip_relay_thread(void *data) {
 
 			if(session->media.remote_video_ip && inet_aton(session->media.remote_video_ip, &video_server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 				/* Note that gethostbyname() may block waiting for response if it triggers on the wire request.*/
-				struct hostent *host = gethostbyname(session->media.remote_audio_ip);	/* ...resolve name */
+				struct hostent *host = gethostbyname(session->media.remote_video_ip);	/* ...resolve name */
 				if(!host) {
 					JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_video_ip);
 					have_video_server_ip = FALSE;
