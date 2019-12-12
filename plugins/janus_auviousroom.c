@@ -681,10 +681,8 @@ typedef struct janus_auviousroom_rtp_relay_packet {
 	uint32_t timestamp;
 	uint16_t seq_number;
 	/* The following are only relevant if we're doing VP9 SVC*/
-	gboolean svc;
-	int spatial_layer;
-	int temporal_layer;
-	uint8_t pbit, dbit, ubit, bbit, ebit;
+  gboolean svc;
+  janus_vp9_svc_info svc_info;
 } janus_auviousroom_rtp_relay_packet;
 
 
@@ -2971,20 +2969,11 @@ void janus_auviousroom_incoming_rtp(janus_plugin_session *handle, int video, cha
 			char *payload = janus_rtp_payload(buf, len, &plen);
 			if(payload == NULL)
 				return;
-			uint8_t pbit = 0, dbit = 0, ubit = 0, bbit = 0, ebit = 0;
-			int found = 0, spatial_layer = 0, temporal_layer = 0;
-			if(janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit) == 0) {
-				if(found) {
-					packet.svc = TRUE;
-					packet.spatial_layer = spatial_layer;
-					packet.temporal_layer = temporal_layer;
-					packet.pbit = pbit;
-					packet.dbit = dbit;
-					packet.ubit = ubit;
-					packet.bbit = bbit;
-					packet.ebit = ebit;
-				}
-			}
+      gboolean found = FALSE;
+      memset(&packet.svc_info, 0, sizeof(packet.svc_info));
+      if(janus_vp9_parse_svc(payload, plen, &found, &packet.svc_info) == 0) {
+        packet.svc = found;
+      }
 		}
 		packet.ssrc[0] = (sc != -1 ? participant->ssrc[0] : 0);
 		packet.ssrc[1] = (sc != -1 ? participant->ssrc[1] : 0);
@@ -4919,10 +4908,10 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			if(listener->target_temporal_layer > listener->temporal_layer) {
 				/* We need to upscale */
 				JANUS_LOG(LOG_HUGE, "We need to upscale temporally:\n");
-				if(packet->ubit && packet->bbit && packet->temporal_layer <= listener->target_temporal_layer) {
+				if(packet->svc_info.ubit && packet->svc_info.bbit && packet->svc_info.temporal_layer <= listener->target_temporal_layer) {
 					JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %u --> %u\n",
-						packet->temporal_layer, listener->target_temporal_layer);
-					listener->temporal_layer = packet->temporal_layer;
+						packet->svc_info.temporal_layer, listener->target_temporal_layer);
+					listener->temporal_layer = packet->svc_info.temporal_layer;
 					temporal_layer = listener->temporal_layer;
 					/* Notify the viewer */
 					json_t *event = json_object();
@@ -4935,7 +4924,7 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			} else if(listener->target_temporal_layer < listener->temporal_layer) {
 				/* We need to downscale */
 				JANUS_LOG(LOG_HUGE, "We need to downscale temporally:\n");
-				if(packet->ebit) {
+				if(packet->svc_info.ebit) {
 					JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %u --> %u\n",
 						listener->temporal_layer, listener->target_temporal_layer);
 					listener->temporal_layer = listener->target_temporal_layer;
@@ -4948,9 +4937,9 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 					json_decref(event);
 				}
 			}
-			if(temporal_layer < packet->temporal_layer) {
+			if(temporal_layer < packet->svc_info.temporal_layer) {
 				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
+				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->svc_info.temporal_layer);
 				listener->context.v_base_seq++;
 				return;
 			}
@@ -4958,10 +4947,10 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			if(listener->target_spatial_layer > listener->spatial_layer) {
 				JANUS_LOG(LOG_HUGE, "We need to upscale spatially:\n");
 				/* We need to upscale */
-				if(packet->pbit == 0 && packet->bbit && packet->spatial_layer == listener->spatial_layer+1) {
+				if(packet->svc_info.pbit == 0 && packet->svc_info.bbit && packet->svc_info.spatial_layer == listener->spatial_layer+1) {
 					JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %u --> %u\n",
-						packet->spatial_layer, listener->target_spatial_layer);
-					listener->spatial_layer = packet->spatial_layer;
+						packet->svc_info.spatial_layer, listener->target_spatial_layer);
+					listener->spatial_layer = packet->svc_info.spatial_layer;
 					spatial_layer = listener->spatial_layer;
 					/* Notify the viewer */
 					json_t *event = json_object();
@@ -4974,7 +4963,7 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			} else if(listener->target_spatial_layer < listener->spatial_layer) {
 				/* We need to downscale */
 				JANUS_LOG(LOG_HUGE, "We need to downscale spatially:\n");
-				if(packet->ebit) {
+				if(packet->svc_info.ebit) {
 					JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %u --> %u\n",
 						listener->spatial_layer, listener->target_spatial_layer);
 					listener->spatial_layer = listener->target_spatial_layer;
@@ -4987,19 +4976,19 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 					json_decref(event);
 				}
 			}
-			if(spatial_layer < packet->spatial_layer) {
+			if(spatial_layer < packet->svc_info.spatial_layer) {
 				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->spatial_layer);
+				JANUS_LOG(LOG_HUGE, "Dropping packet (spatial layer %d < %d)\n", spatial_layer, packet->svc_info.spatial_layer);
 				listener->context.v_base_seq++;
 				return;
-			} else if(packet->ebit && spatial_layer == packet->spatial_layer) {
+			} else if(packet->svc_info.ebit && spatial_layer == packet->svc_info.spatial_layer) {
 				/* If we stop at layer 0, we need a marker bit now, as the one from layer 1 will not be received */
 				override_mark_bit = TRUE;
 			}
 			/* If we got here, we can send the frame: this doesn't necessarily mean it's
 			 * one of the layers the user wants, as there may be dependencies involved */
 			JANUS_LOG(LOG_HUGE, "Sending packet (spatial=%d, temporal=%d)\n",
-				packet->spatial_layer, packet->temporal_layer);
+				packet->svc_info.spatial_layer, packet->svc_info.temporal_layer);
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
 			janus_rtp_header_update(packet->data, &listener->context, TRUE, 4500);
 			if(override_mark_bit && !has_marker_bit) {

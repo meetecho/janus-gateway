@@ -2,13 +2,13 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \brief    Semaphors, Mutexes and Conditions
  * \details  Implementation (based on GMutex or pthread_mutex) of a locking mechanism based on mutexes and conditions.
- * 
+ *
  * \ingroup core
  * \ref core
  */
- 
-#ifndef _JANUS_MUTEX_H
-#define _JANUS_MUTEX_H
+
+#ifndef JANUS_MUTEX_H
+#define JANUS_MUTEX_H
 
 #include <pthread.h>
 #include <errno.h>

@@ -111,7 +111,7 @@ gboolean janus_is_dtls(char *buf) {
 /* DTLS timeout base to enforce: notice that this can currently only be
  * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
  * that value cannot be modified (it will in OpenSSL v1.1.1) */
-static guint dtls_timeout_base = 1000;
+static guint16 dtls_timeout_base = 1000;
 
 static SSL_CTX *ssl_ctx = NULL;
 static X509 *ssl_cert = NULL;
@@ -329,7 +329,7 @@ const char *janus_get_ssl_version(void) {
 }
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint timeout) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -551,7 +551,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
 #ifdef HAVE_DTLS_SETTIMEOUT
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %u\n", handle->handle_id, dtls_timeout_base);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %"SCNu16"ms\n", handle->handle_id, dtls_timeout_base);
 	DTLSv1_set_initial_timeout_duration(dtls->ssl, dtls_timeout_base);
 #endif
 	dtls->ready = 0;

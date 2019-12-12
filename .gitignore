@@ -6,6 +6,7 @@ docs/html/
 /janus
 /janus-cfgconv
 /janus-pp-rec
+/mjr2pcap
 /plugins/*.so
 /transports/*.so
 /events/*.so
@@ -45,6 +46,8 @@ Makefile.in
 /events/*.la
 /events/.libs
 /postprocessing/*.o
+/postprocessing/pp-cmdline.c
+/postprocessing/pp-cmdline.h
 /fuzzers/*.a
 /fuzzers/*.o
 /fuzzers/out
@@ -70,3 +73,8 @@ Makefile.in
 
 # OS X
 .DS_Store
+
+# CLion
+.idea
+
+.vscode

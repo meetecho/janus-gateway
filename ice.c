@@ -238,7 +238,7 @@ gboolean janus_ice_is_enforced(const char *ip) {
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
-		if(enforced != NULL && strstr(ip, enforced)) {
+		if(enforced != NULL && strstr(ip, enforced) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
@@ -266,7 +266,7 @@ gboolean janus_ice_is_ignored(const char *ip) {
 	GList *temp = janus_ice_ignore_list;
 	while(temp) {
 		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
+		if(ignored != NULL && strstr(ip, ignored) == ip) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
@@ -401,14 +401,29 @@ void janus_set_no_media_timer(uint timer) {
 	if(no_media_timer == 0)
 		JANUS_LOG(LOG_VERB, "Disabling no-media timer\n");
 	else
-		JANUS_LOG(LOG_VERB, "Setting no-media timer to %ds\n", no_media_timer);
+		JANUS_LOG(LOG_VERB, "Setting no-media timer to %us\n", no_media_timer);
 }
 uint janus_get_no_media_timer(void) {
 	return no_media_timer;
 }
 
+/* Number of lost packets per seconds on a media stream (uplink or downlink,
+ * audio or video), that should result in a slow-link event to the iser */
+#define DEFAULT_SLOWLINK_THRESHOLD	4
+static uint slowlink_threshold = DEFAULT_SLOWLINK_THRESHOLD;
+void janus_set_slowlink_threshold(uint packets) {
+	slowlink_threshold = packets;
+	if(slowlink_threshold == 0)
+		JANUS_LOG(LOG_VERB, "Disabling slow-link events\n");
+	else
+		JANUS_LOG(LOG_VERB, "Setting slowlink-threshold to %u packets\n", slowlink_threshold);
+}
+uint janus_get_slowlink_threshold(void) {
+	return slowlink_threshold;
+}
+
 /* Period, in milliseconds, to refer to for sending TWCC feedback */
-#define DEFAULT_TWCC_PERIOD		1000
+#define DEFAULT_TWCC_PERIOD		200
 static uint twcc_period = DEFAULT_TWCC_PERIOD;
 void janus_set_twcc_period(uint period) {
 	twcc_period = period;
@@ -832,7 +847,8 @@ void janus_ice_deinit(void) {
 #endif
 }
 
-int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus_network_address *public_addr) {
+int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
+		uint16_t local_port, janus_network_address *public_addr, uint16_t *public_port) {
 	if(!addr || !public_addr)
 		return -1;
 	/* Test the STUN server */
@@ -855,7 +871,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	if(addr->family == AF_INET) {
 		memset(&address4, 0, sizeof(address4));
 		address4.sin_family = AF_INET;
-		address4.sin_port = 0;
+		address4.sin_port = htons(local_port);
 		address4.sin_addr.s_addr = INADDR_ANY;
 		memset(&remote4, 0, sizeof(remote4));
 		remote4.sin_family = AF_INET;
@@ -867,7 +883,7 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	} else if(addr->family == AF_INET6) {
 		memset(&address6, 0, sizeof(address6));
 		address6.sin6_family = AF_INET6;
-		address6.sin6_port = 0;
+		address6.sin6_port = htons(local_port);
 		address6.sin6_addr = in6addr_any;
 		memset(&remote6, 0, sizeof(remote6));
 		remote6.sin6_family = AF_INET6;
@@ -927,18 +943,36 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port, janus
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+		if(janus_network_address_from_sockaddr(address, public_addr) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
 			return -1;
+		}
+		if(public_port != NULL) {
+			if(address->sa_family == AF_INET) {
+				struct sockaddr_in *addr = (struct sockaddr_in *)address;
+				*public_port = ntohs(addr->sin_port);
+			} else if(address->sa_family == AF_INET6) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)address;
+				*public_port = ntohs(addr->sin6_port);
+			}
 		}
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)address, public_addr) != 0) {
+		if(janus_network_address_from_sockaddr(address, public_addr) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
 			return -1;
+		}
+		if(public_port != NULL) {
+			if(address->sa_family == AF_INET) {
+				struct sockaddr_in *addr = (struct sockaddr_in *)address;
+				*public_port = ntohs(addr->sin_port);
+			} else if(address->sa_family == AF_INET6) {
+				struct sockaddr_in6 *addr = (struct sockaddr_in6 *)address;
+				*public_port = ntohs(addr->sin6_port);
+			}
 		}
 		return 0;
 	}
@@ -975,11 +1009,16 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
 
 	/* Test the STUN server */
-	janus_network_address public_addr;
-	if(janus_ice_test_stun_server(&addr, janus_stun_port, &public_addr) < 0)
+	janus_network_address public_addr = { 0 };
+	if(janus_ice_test_stun_server(&addr, janus_stun_port, 0, &public_addr, NULL) < 0) {
+		g_free(janus_stun_server);
+		janus_stun_server = NULL;
 		return -1;
+	}
 	if(janus_network_address_to_string_buffer(&public_addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve public address...\n");
+		g_free(janus_stun_server);
+		janus_stun_server = NULL;
 		return -1;
 	}
 	const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
@@ -1332,6 +1371,10 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		return;
 	janus_mutex_lock(&handle->mutex);
 	if(!handle->agent_created) {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
@@ -1421,6 +1464,9 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	if(stream->rtx_payload_types != NULL)
 		g_hash_table_destroy(stream->rtx_payload_types);
 	stream->rtx_payload_types = NULL;
+	if(stream->clock_rates != NULL)
+		g_hash_table_destroy(stream->clock_rates);
+	stream->clock_rates = NULL;
 	g_free(stream->audio_codec);
 	stream->audio_codec = NULL;
 	g_free(stream->video_codec);
@@ -1560,32 +1606,16 @@ static void janus_ice_component_free(const janus_refcount *component_ref) {
 	//~ janus_mutex_unlock(&handle->mutex);
 }
 
-/* Call plugin slow_link callback if enough NACKs within a second */
-#define SLOW_LINK_NACKS_PER_SEC 8
+/* Call plugin slow_link callback if a minimum of lost packets are detected within a second */
 static void
 janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
-		guint nacks, int video, int uplink, gint64 now) {
+		gboolean video, gboolean uplink, guint lost) {
 	/* We keep the counters in different janus_ice_stats objects, depending on the direction */
-	gint64 sl_nack_period_ts = uplink ? component->in_stats.sl_nack_period_ts : component->out_stats.sl_nack_period_ts;
-	/* Is the NACK too old? */
-	if(now-sl_nack_period_ts > 2*G_USEC_PER_SEC) {
-		/* Old nacks too old, don't count them */
-		if(uplink) {
-			component->in_stats.sl_nack_period_ts = now;
-			component->in_stats.sl_nack_recent_cnt = 0;
-		} else {
-			component->out_stats.sl_nack_period_ts = now;
-			component->out_stats.sl_nack_recent_cnt = 0;
-		}
-	}
-	if(uplink) {
-		component->in_stats.sl_nack_recent_cnt += nacks;
-	} else {
-		component->out_stats.sl_nack_recent_cnt += nacks;
-	}
-	gint64 last_slowlink_time = uplink ? component->in_stats.last_slowlink_time : component->out_stats.last_slowlink_time;
-	guint sl_nack_recent_cnt = uplink ? component->in_stats.sl_nack_recent_cnt : component->out_stats.sl_nack_recent_cnt;
-	if((sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC) && (now-last_slowlink_time > 1*G_USEC_PER_SEC)) {
+	guint sl_lost_last_count = uplink ?
+		(video ? component->in_stats.sl_lost_count_video : component->in_stats.sl_lost_count_audio) :
+		(video ? component->out_stats.sl_lost_count_video : component->out_stats.sl_lost_count_audio);
+	guint sl_lost_recently = (lost >= sl_lost_last_count) ? (lost - sl_lost_last_count) : 0;
+	if(slowlink_threshold > 0 && sl_lost_recently >= slowlink_threshold) {
 		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
@@ -1600,8 +1630,9 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 			json_object_set_new(event, "sender", json_integer(handle->handle_id));
 			if(opaqueid_in_api && handle->opaque_id != NULL)
 				json_object_set_new(event, "opaque_id", json_string(handle->opaque_id));
+			json_object_set_new(event, "media", json_string(video ? "video" : "audio"));
 			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
-			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
+			json_object_set_new(event, "lost", json_integer(sl_lost_recently));
 			/* Send the event */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 			janus_session_notify_event(session, event);
@@ -1610,20 +1641,22 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 				json_t *info = json_object();
 				json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
 				json_object_set_new(info, "slow_link", json_string(uplink ? "uplink" : "downlink"));
-				json_object_set_new(info, "nacks_lastsec", json_integer(sl_nack_recent_cnt));
+				json_object_set_new(info, "lost_lastsec", json_integer(sl_lost_recently));
 				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, handle->opaque_id, info);
 			}
 		}
-		/* Update the counters */
-		if(uplink) {
-			component->in_stats.last_slowlink_time = now;
-			component->in_stats.sl_nack_period_ts = now;
-			component->in_stats.sl_nack_recent_cnt = 0;
-		} else {
-			component->out_stats.last_slowlink_time = now;
-			component->out_stats.sl_nack_period_ts = now;
-			component->out_stats.sl_nack_recent_cnt = 0;
-		}
+	}
+	/* Update the counter */
+	if(uplink) {
+		if(video)
+			component->in_stats.sl_lost_count_video = lost;
+		else
+			component->in_stats.sl_lost_count_audio = lost;
+	} else {
+		if(video)
+			component->out_stats.sl_lost_count_video = lost;
+		else
+			component->out_stats.sl_lost_count_audio = lost;
 	}
 }
 
@@ -2497,7 +2530,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen,
 						(video && rtx) ? TRUE : FALSE,
 						(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)),
-						retransmissions_disabled
+						retransmissions_disabled, stream->clock_rates
 				);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
@@ -2623,8 +2656,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						component->out_stats.audio.nacks += nacks_count;
 					}
-					/* Inform the plugin about the slow downlink in case it's needed */
-					janus_slow_link_update(component, handle, nacks_count, video, 0, now);
 				}
 				if(component->nack_sent_recent_cnt &&
 						(now - component->nack_sent_log_ts) > 5*G_USEC_PER_SEC) {
@@ -2690,7 +2721,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* Mh, no SR or RR? Try checking if there's any FIR, PLI or REMB */
 							video = 1;
 						} else {
-							JANUS_LOG(LOG_WARN,"[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
 							return;
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (local SSRC: video=%"SCNu32", audio=%"SCNu32", got %"SCNu32")\n",
@@ -2714,7 +2745,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							video = 1;
 							vindex = 2;
 						} else {
-							JANUS_LOG(LOG_WARN,"[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Dropping RTCP packet with unknown SSRC (%"SCNu32")\n", handle->handle_id, rtcp_ssrc);
 							return;
 						}
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32" #%d, audio=%"SCNu32", got %"SCNu32")\n",
@@ -2806,8 +2837,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					} else {
 						component->in_stats.audio.nacks += nacks_count;
 					}
-					/* Inform the plugin about the slow uplink in case it's needed */
-					janus_slow_link_update(component, handle, retransmits_cnt, video, 1, now);
 					janus_mutex_unlock(&component->mutex);
 					g_slist_free(nacks);
 					nacks = NULL;
@@ -3386,7 +3415,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		janus_refcount_decrease(&handle->ref);
+		janus_ice_webrtc_hangup(handle, "Gathering error");
 		return -1;
 	}
 	nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop),
@@ -3403,7 +3432,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating DTLS-SRTP stack...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
-		janus_refcount_decrease(&handle->ref);
+		janus_ice_webrtc_hangup(handle, "DTLS-SRTP stack error");
 		return -1;
 	}
 	janus_refcount_increase(&component->dtls->ref);
@@ -3543,10 +3572,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
 	/* Audio */
-	if(stream && stream->component && stream->component->out_stats.audio.packets > 0) {
+	if(stream && stream->audio_send && stream->component && stream->component->out_stats.audio.packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 24;
+		int sdeslen = 16;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
@@ -3578,6 +3607,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		sdes->chunk.ssrc = htonl(stream->audio_ssrc);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
+		/* Check if we detected too many losses, and send a slowlink event in case */
+		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		janus_slow_link_update(stream->component, handle, FALSE, TRUE, lost);
 	}
 	if(stream && stream->audio_recv) {
 		/* Create a RR too */
@@ -3594,12 +3626,15 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		rr->rb[0].ssrc = htonl(stream->audio_ssrc_peer);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, 32, FALSE);
+		/* Check if we detected too many losses, and send a slowlink event in case */
+		guint lost = janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE);
+		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
 	}
 	/* Now do the same for video */
-	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
+	if(stream && stream->video_send && stream->component && stream->component->out_stats.video[0].packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
-		int sdeslen = 24;
+		int sdeslen = 16;
 		char rtcpbuf[srlen+sdeslen];
 		memset(rtcpbuf, 0, sizeof(rtcpbuf));
 		rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
@@ -3631,6 +3666,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		sdes->chunk.ssrc = htonl(stream->video_ssrc);
 		/* Enqueue it, we'll send it later */
 		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
+		/* Check if we detected too many losses, and send a slowlink event in case */
+		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
+		janus_slow_link_update(stream->component, handle, TRUE, TRUE, lost);
 	}
 	if(stream && stream->video_recv) {
 		/* Create a RR too (for each SSRC, if we're simulcasting) */
@@ -3653,6 +3691,9 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, 32, FALSE);
 			}
 		}
+		/* Check if we detected too many losses, and send a slowlink event in case */
+		guint lost = janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx[0], FALSE);
+		janus_slow_link_update(stream->component, handle, TRUE, FALSE, lost);
 	}
 	if(twcc_period == 1000) {
 		/* The Transport Wide CC feedback period is 1s as well, send it here */
@@ -3815,6 +3856,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		if(!janus_is_webrtc_encryption_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] WebRTC encryption disabled, skipping DTLS handshake\n", handle->handle_id);
 			janus_ice_dtls_handshake_done(handle, component);
+			return G_SOURCE_CONTINUE;
+		} else if(!component) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE component not initialized, aborting DTLS handshake\n", handle->handle_id);
 			return G_SOURCE_CONTINUE;
 		}
 		/* Start the DTLS handshake */
@@ -4143,11 +4187,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->audio_first_rtp_ts = timestamp;
 							}
-							/* Let's check if this was G.711: in case we may need to change the timestamp base */
+							/* Let's check if this is not Opus: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 							int pt = header->type;
-							if((pt == 0 || pt == 8) && rtcp_ctx && (rtcp_ctx->tb == 48000))
-								rtcp_ctx->tb = 8000;
+							uint32_t clock_rate = stream->clock_rates ?
+								GPOINTER_TO_UINT(g_hash_table_lookup(stream->clock_rates, GINT_TO_POINTER(pt))) : 48000;
+							if(rtcp_ctx->tb != clock_rate)
+								rtcp_ctx->tb = clock_rate;
 						} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 							component->out_stats.video[0].packets++;
 							component->out_stats.video[0].bytes += pkt->length;

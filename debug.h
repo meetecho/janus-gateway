@@ -3,14 +3,13 @@
  * \copyright GNU General Public License v3
  * \brief    Logging and Debugging
  * \details  Implementation of a wrapper on printf (or g_print) to either log or debug.
- * \todo     Improve this wrappers to optionally save logs on file
  *
  * \ingroup core
  * \ref core
  */
 
-#ifndef _JANUS_DEBUG_H
-#define _JANUS_DEBUG_H
+#ifndef JANUS_DEBUG_H
+#define JANUS_DEBUG_H
 
 #include <glib.h>
 #include <glib/gprintf.h>

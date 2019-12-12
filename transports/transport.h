@@ -79,8 +79,8 @@ janus_transport *create(void) {
  * \ref transportapi
  */
 
-#ifndef _JANUS_TRANSPORT_H
-#define _JANUS_TRANSPORT_H
+#ifndef JANUS_TRANSPORT_H
+#define JANUS_TRANSPORT_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -105,7 +105,7 @@ janus_transport *create(void) {
  * their transport plugin structure, e.g.:
  *
 \verbatim
-static janus_transport janus_http_transport plugin =
+static janus_transport janus_http_transport_plugin =
 	{
 		JANUS_TRANSPORT_INIT,
 

@@ -315,6 +315,16 @@ conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
 
+if ENABLE_WSEVH
+event_LTLIBRARIES += events/libjanus_wsevh.la
+events_libjanus_wsevh_la_SOURCES = events/janus_wsevh.c
+events_libjanus_wsevh_la_CFLAGS = $(events_cflags)
+events_libjanus_wsevh_la_LDFLAGS = $(events_ldflags) $(WS_MANUAL_LIBS)
+events_libjanus_wsevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.wsevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.wsevh.jcfg.sample
+endif
+
 if ENABLE_RABBITMQEVH
 event_LTLIBRARIES += events/libjanus_rabbitmqevh.la
 events_libjanus_rabbitmqevh_la_SOURCES = events/janus_rabbitmqevh.c
@@ -333,6 +343,16 @@ events_libjanus_mqttevh_la_LDFLAGS = $(events_ldflags) -lpaho-mqtt3as
 events_libjanus_mqttevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.mqttevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.mqttevh.jcfg.sample
+endif
+
+if ENABLE_NANOMSGEVH
+event_LTLIBRARIES += events/libjanus_nanomsgevh.la
+events_libjanus_nanomsgevh_la_SOURCES = events/janus_nanomsgevh.c
+events_libjanus_nanomsgevh_la_CFLAGS = $(events_cflags)
+events_libjanus_nanomsgevh_la_LDFLAGS = $(events_ldflags) -lnanomsg
+events_libjanus_nanomsgevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.nanomsgevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
 endif
 
 ##
@@ -533,8 +553,11 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
+bin_PROGRAMS += mjr2pcap
 
 janus_pp_rec_SOURCES = \
+	postprocessing/pp-cmdline.c \
+	postprocessing/pp-cmdline.h \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
 	postprocessing/pp-g722.c \
@@ -562,8 +585,37 @@ janus_pp_rec_CFLAGS = \
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
 	$(NULL)
-endif
+
+BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
+postprocessing/pp-cmdline.h: postprocessing/pp-cmdline.c
+
+postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
+	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < postprocessing/janus-pp-rec.ggo
+
+EXTRA_DIST += postprocessing/janus-pp-rec.ggo
+CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
+
+mjr2pcap_SOURCES = \
+	postprocessing/pp-rtp.h \
+	postprocessing/mjr2pcap.c \
+	log.c \
+	$(NULL)
+
+mjr2pcap_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(POST_PROCESSING_CFLAGS) \
+	$(NULL)
+
+mjr2pcap_LDADD = \
+	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
+	$(NULL)
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
+dist_man1_MANS += postprocessing/mjr2pcap.1
+
+endif
 
 ##
 # Docs

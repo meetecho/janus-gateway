@@ -137,9 +137,10 @@ certificates: {
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
 # video) being received before Janus notifies you about this (default=1s,
-# 0 disables these events entirely), and how often, in milliseconds,
+# 0 disables these events entirely), how many lost packets should trigger
+# a 'slowlink' event to users (default=4), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
-# to senders, if negotiated (default=1s). Finally, if you're using BoringSSL
+# to senders, if negotiated (default=200ms). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
 # value of 1 second (the default), while BoringSSL can override that. Notice
 # that lower values (e.g., 100ms) will typically get you faster connection
@@ -152,7 +153,8 @@ media: {
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
-	#twcc_period = 200
+	#slowlink_threshold = 4
+	#twcc_period = 100
 	#dtls_timeout = 500
 }
 
@@ -242,6 +244,16 @@ nat: {
 	# has been configured. By default, Janus ignores all interfaces whose
 	# name starts with 'vmnet', to skip VMware interfaces:
 	ice_ignore_list = "vmnet"
+
+	# In case you want to allow Janus to start even if the configured STUN or TURN
+	# server is unreachable, you can set 'ignore_unreachable_ice_server' to true.
+	# WARNING: We do not recommend to ignore reachability problems, particularly
+	# if you run Janus in the cloud. Before enabling this flag, make sure your
+	# system is correctly configured and Janus starts after the network layer of
+	# your machine is ready. Note that Linux distributions offer such directives.
+	# You could use the following directive in systemd: 'After=network-online.target'
+	# https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=
+	# ignore_unreachable_ice_server = true
 }
 
 # You can choose which of the available plugins should be

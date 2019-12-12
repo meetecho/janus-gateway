@@ -9,15 +9,15 @@
  * \ref postprocessing
  */
 
-#ifndef _JANUS_PP_H264
-#define _JANUS_PP_H264
+#ifndef JANUS_PP_H264
+#define JANUS_PP_H264
 
 #include <stdio.h>
 
 #include "pp-rtp.h"
 
 /* H.264 stuff */
-int janus_pp_h264_create(char *destination, char *metadata);
+int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart);
 int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list);
 int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working);
 void janus_pp_h264_close(void);

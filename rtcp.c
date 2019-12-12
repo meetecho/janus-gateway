@@ -589,6 +589,10 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 					/* We handle NACKs ourselves as well, remove this too */
 					keep = FALSE;
 					break;
+				} else if(rtcp->rc == 15) {
+					/* We handle Transport Wide CC ourselves as well, remove this too */
+					keep = FALSE;
+					break;
 				}
 				break;
 			case RTCP_XR:
@@ -622,15 +626,19 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 }
 
 
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled) {
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len,
+		gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled,
+		GHashTable *clock_rates) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
-	/* First of all, let's check if this is G.711: in case we may need to change the timestamp base */
+	/* First of all, let's check if we need to change the timestamp base */
 	janus_rtp_header *rtp = (janus_rtp_header *)packet;
 	int pt = rtp->type;
-	if((pt == 0 || pt == 8) && (ctx->tb == 48000))
-		ctx->tb = 8000;
+	uint32_t clock_rate = clock_rates ?
+		GPOINTER_TO_UINT(g_hash_table_lookup(clock_rates, GINT_TO_POINTER(pt))) : 0;
+	if(clock_rate > 0 && ctx->tb != clock_rate)
+		ctx->tb = clock_rate;
 	/* Now parse this RTP packet header and update the rtcp_context instance */
 	uint16_t seq_number = ntohs(rtp->seq_number);
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
@@ -1437,11 +1445,12 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				/* Got it  */
 				first_received = TRUE;
 				/* Set it */
-				reference_time = (stat->timestamp/64000);
+				reference_time = stat->timestamp / 64000;
 				/* Get initial time */
 				timestamp = reference_time * 64000;
-				/* also in bufffer */
-				janus_set3(data, reference_time_pos, reference_time);
+				/* also in buffer */
+				/* (use only 23 bits of reference_time) */
+				janus_set3(data, reference_time_pos, (reference_time & 0x007FFFFF));
 			}
 
 			/* Get delta */
@@ -1450,7 +1459,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 			else
 				delta = -(int)((timestamp-stat->timestamp)/250);
 			/* If it is negative or too big */
-			if (delta<0 || delta> 127) {
+			if (delta<0 || delta> 255) {
 				/* Big one */
 				status = janus_rtp_packet_status_largeornegativedelta;
 			} else {
@@ -1458,6 +1467,7 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 				status = janus_rtp_packet_status_smalldelta;
 			}
 			/* Store delta */
+			/* Overflows are possible here */
 			g_queue_push_tail(deltas, GINT_TO_POINTER(delta));
 			/* Set last time */
 			timestamp = stat->timestamp;
@@ -1651,9 +1661,15 @@ int janus_rtcp_transport_wide_cc_feedback(char *packet, size_t size, guint32 ssr
 		/* Get next delta */
 		gint delta = GPOINTER_TO_INT(g_queue_pop_head (deltas));
 		/* Check size */
-		if (delta<0 || delta>127) {
+		if (delta<0 || delta>255) {
+			short reported_delta = (short)delta;
+			/* Overflow */
+			if (reported_delta != delta) {
+				reported_delta = delta > 0 ? SHRT_MAX : SHRT_MIN;
+				JANUS_LOG(LOG_ERR, "Delta value (%d) too large, reporting it as %d\n", delta, reported_delta);
+			}
 			/* 2 bytes */
-			janus_set2(data, len, (short)delta);
+			janus_set2(data, len, reported_delta);
 			/* Inc */
 			len += 2;
 		} else {

@@ -552,10 +552,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
 		} else {
-			int wsport = 8188;
+			uint16_t wsport = 8188;
 			item = janus_config_get(config, config_general, janus_config_type_item, "ws_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 8188;
+			}
 			char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "ws_interface");
 			if(item && item->value)
@@ -596,10 +598,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 		} else {
-			int wsport = 8989;
+			uint16_t wsport = 8989;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 8989;
+			}
 			char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "wss_interface");
 			if(item && item->value)
@@ -660,10 +664,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin WebSockets server disabled\n");
 		} else {
-			int wsport = 7188;
+			uint16_t wsport = 7188;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 7188;
+			}
 			char *interface = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_ws_interface");
 			if(item && item->value)
@@ -704,10 +710,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure Admin WebSockets server disabled\n");
 		} else {
-			int wsport = 7989;
+			uint16_t wsport = 7989;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 7989;
+			}
 			char *interface = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_wss_interface");
 			if(item && item->value)

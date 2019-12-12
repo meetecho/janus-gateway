@@ -5,13 +5,13 @@
  * \details  Definitions of the SRTP usage. This header tries to abstract
  * the differences there may be between libsrtp and libsrtp2, with respect
  * to the structs and defines (e.g., errors), plus adding some helpers.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
 
-#ifndef _JANUS_RTPSRTP_H
-#define _JANUS_RTPSRTP_H
+#ifndef JANUS_RTPSRTP_H
+#define JANUS_RTPSRTP_H
 
 #ifdef HAVE_SRTP_2
 #include <srtp2/srtp.h>

@@ -1718,6 +1718,19 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 		}
 		if(session->status != janus_sip_call_status_incall)
 			return;
+
+		struct sockaddr_in server_addr;
+		memset(&server_addr, 0, sizeof(server_addr));
+		server_addr.sin_family = AF_INET;
+		if(inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
+			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
+			if(!host) {
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
+			} else {
+				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
+			}
+		}
+
 		/* Forward to our SIP peer */
 		if(video) {
 			if(!session->media.video_send) {
@@ -1741,6 +1754,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			if(session->media.has_video && session->media.video_rtp_fd != -1) {
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(session->vrc, buf, len);
+				server_addr.sin_port = htons(session->media.remote_video_rtp_port);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1759,7 +1773,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							header->type = session->media.remote_video_pt;
 						}
 						/* Forward the frame to the peer */
-						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
+						if(sendto(session->media.video_rtp_fd, sbuf, protected, 0, &server_addr, sizeof(server_addr)) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1772,7 +1786,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						header->type = session->media.remote_video_pt;
 					}
 					/* Forward the frame to the peer */
-					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
+					if(sendto(session->media.video_rtp_fd, buf, len, 0, &server_addr, sizeof(server_addr)) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1793,6 +1807,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			if(session->media.has_audio && session->media.audio_rtp_fd != -1) {
 				/* Save the frame if we're recording */
 				janus_recorder_save_frame(session->arc, buf, len);
+				server_addr.sin_port = htons(session->media.remote_audio_rtp_port);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1811,7 +1826,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							header->type = session->media.remote_audio_pt;
 						}
 						/* Forward the frame to the peer */
-						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
+						if(sendto(session->media.audio_rtp_fd, sbuf, protected, 0, &server_addr, sizeof(server_addr)) < 0) {
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1824,7 +1839,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 						header->type = session->media.remote_audio_pt;
 					}
 					/* Forward the frame to the peer */
-					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
+					if(sendto(session->media.audio_rtp_fd, buf, len, 0, &server_addr, sizeof(server_addr)) < 0) {
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
@@ -1847,6 +1862,19 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		}
 		if(session->status != janus_sip_call_status_incall)
 			return;
+
+		struct sockaddr_in server_addr;
+		memset(&server_addr, 0, sizeof(server_addr));
+		server_addr.sin_family = AF_INET;
+		if(inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
+			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
+			if(!host) {
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
+			} else {
+				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
+			}
+		}
+
 		/* Forward to our SIP peer */
 		if(video) {
 			if(session->media.has_video && session->media.video_rtcp_fd != -1) {
@@ -1854,6 +1882,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.video_ssrc, session->media.video_ssrc_peer);
 				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+				server_addr.sin_port = htons(session->media.remote_video_rtcp_port);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1865,14 +1894,14 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 							session->account.username, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
-						if(send(session->media.video_rtcp_fd, sbuf, protected, 0) < 0) {
+						if(sendto(session->media.video_rtcp_fd, sbuf, protected, 0, &server_addr, sizeof(server_addr)) < 0) {
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTCP video packet... %s (len=%d)...\n",
 								session->account.username, strerror(errno), protected);
 						}
 					}
 				} else {
 					/* Forward the message to the peer */
-					if(send(session->media.video_rtcp_fd, buf, len, 0) < 0) {
+					if(sendto(session->media.video_rtcp_fd, buf, len, 0, &server_addr, sizeof(server_addr)) < 0) {
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTCP video packet... %s (len=%d)...\n",
 							session->account.username, strerror(errno), len);
 					}
@@ -1884,6 +1913,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 					session->media.audio_ssrc, session->media.audio_ssrc_peer);
 				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+				server_addr.sin_port = htons(session->media.remote_audio_rtcp_port);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1895,14 +1925,14 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 							session->account.username, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
-						if(send(session->media.audio_rtcp_fd, sbuf, protected, 0) < 0) {
+						if(sendto(session->media.audio_rtcp_fd, sbuf, protected, 0, &server_addr, sizeof(server_addr)) < 0) {
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTCP audio packet... %s (len=%d)...\n",
 								session->account.username, strerror(errno), protected);
 						}
 					}
 				} else {
 					/* Forward the message to the peer */
-					if(send(session->media.audio_rtcp_fd, buf, len, 0) < 0) {
+					if(sendto(session->media.audio_rtcp_fd, buf, len, 0, &server_addr, sizeof(server_addr)) < 0) {
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTCP audio packet... %s (len=%d)...\n",
 							session->account.username, strerror(errno), len);
 					}
@@ -4525,6 +4555,7 @@ static void janus_sip_connect_sockets(janus_sip_session *session, struct sockadd
 	}
 
 	/* Connect peers (FIXME This pretty much sucks right now) */
+	/*
 	if(session->media.remote_audio_rtp_port) {
 		server_addr->sin_port = htons(session->media.remote_audio_rtp_port);
 		if(connect(session->media.audio_rtp_fd, (struct sockaddr *)server_addr, sizeof(struct sockaddr)) == -1) {
@@ -4553,7 +4584,7 @@ static void janus_sip_connect_sockets(janus_sip_session *session, struct sockadd
 			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 		}
 	}
-
+	*/
 }
 
 static void janus_sip_media_cleanup(janus_sip_session *session) {

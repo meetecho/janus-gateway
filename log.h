@@ -11,8 +11,8 @@
  * \ref core
  */
 
-#ifndef _JANUS_LOG_H
-#define _JANUS_LOG_H
+#ifndef JANUS_LOG_H
+#define JANUS_LOG_H
 
 #include <stdio.h>
 #include <glib.h>

@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "mutex.h"
 #include "ip-utils.h"
+#include "utils.h"
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
@@ -262,8 +263,9 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		if(uri_parts[2] == NULL) {
 			/* No port? Use 3478 by default */
 			instance->port = 3478;
-		} else {
-			instance->port = atoi(uri_parts[2]);
+		} else if(janus_string_to_uint16(uri_parts[2], &instance->port) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid TURN instance port: %s (falling back to 3478)\n", uri_parts[2]);
+			instance->port = 3478;
 		}
 		g_strfreev(uri_parts);
 		g_strfreev(parts);

@@ -514,6 +514,22 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 							}
 						}
 					}
+				} else if(!strcasecmp(a->name, "rtpmap")) {
+					if(a->value) {
+						int ptype = atoi(a->value);
+						if(ptype > -1) {
+							char *cr = strchr(a->value, '/');
+							if(cr != NULL) {
+								cr++;
+								uint32_t clock_rate = 0;
+								if(janus_string_to_uint32(cr, &clock_rate) == 0) {
+									if(stream->clock_rates == NULL)
+										stream->clock_rates = g_hash_table_new(NULL, NULL);
+									g_hash_table_insert(stream->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+								}
+							}
+						}
+					}
 				}
 #ifdef HAVE_SCTP
 				else if(!strcasecmp(a->name, "sctpmap")) {
@@ -612,7 +628,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 	if(handle == NULL)
 		return -2;
 	janus_ice_component *component = NULL;
-	if(strstr(candidate, "end-of-candidates")) {
+	if(strlen(candidate) == 0 || strstr(candidate, "end-of-candidates")) {
 		/* FIXME Should we do something with this? */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] end-of-candidates received\n", handle->handle_id);
 		return 0;
@@ -650,7 +666,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 				return res;
 			}
 			freeaddrinfo(info);
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
 				handle->handle_id, rip, janus_network_address_string_from_buffer(&addr_buf));
 			g_strlcpy(rip, janus_network_address_string_from_buffer(&addr_buf), sizeof(rip));
 		}
@@ -1073,8 +1089,12 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->value && (strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000"))) {
 				int ptype = atoi(a->value);
-				JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
-				purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));
+				if(ptype < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid payload type (%d)\n", ptype);
+				} else {
+					JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
+					purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));
+				}
 			}
 			tempA = tempA->next;
 		}
@@ -1365,8 +1385,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			a = janus_sdp_attribute_create("ssrc-group", "FID %"SCNu32" %"SCNu32, stream->video_ssrc, stream->video_ssrc_rtx);
 			m->attributes = g_list_append(m->attributes, a);
 		}
-		if(m->type == JANUS_SDP_AUDIO &&
-				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+		if(m->type == JANUS_SDP_AUDIO) {
+			a = janus_sdp_attribute_create("msid", "janus janusa0");
+			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusa0", stream->audio_ssrc);
@@ -1375,8 +1396,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusa0", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
-		} else if(m->type == JANUS_SDP_VIDEO &&
-				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+		} else if(m->type == JANUS_SDP_VIDEO) {
+			a = janus_sdp_attribute_create("msid", "janus janusv0");
+			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janus", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", stream->video_ssrc);

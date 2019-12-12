@@ -244,6 +244,14 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 void janus_pp_g711_close(void) {
 	/* Flush and close file */
 	if(wav_file != NULL) {
+		/* Update the header */
+		fseek(wav_file, 0, SEEK_END);
+		uint32_t size = ftell(wav_file) - 8;
+		fseek(wav_file, 4, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, wav_file);
+		size += 8;
+		fseek(wav_file, 40, SEEK_SET);
+		fwrite(&size, sizeof(uint32_t), 1, wav_file);
 		fflush(wav_file);
 		fclose(wav_file);
 	}

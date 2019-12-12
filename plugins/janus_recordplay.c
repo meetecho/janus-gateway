@@ -12,7 +12,8 @@
  * features: it allows you to record a message you send with WebRTC in
  * the format defined in recorded.c (MJR recording) and subsequently
  * replay this recording (or other previously recorded) through WebRTC
- * as well.
+ * as well. For more information on how Janus implements recordings
+ * natively and the MJR format, refer to the \ref recordings documentation.
  *
  * This application aims at showing how easy recording frames sent by
  * a peer is, and how this recording can be re-used directly, without
@@ -38,8 +39,8 @@
  * 		[12345678]
  * 		name = My videoroom recording
  * 		date = 2014-10-14 17:11:26
- * 		audio = mcu-audio.mjr
- * 		video = mcu-video.mjr
+ * 		audio = videoroom-audio.mjr
+ * 		video = videoroom-video.mjr
  *
  * \section recplayapi Record&Play API
  *
@@ -292,6 +293,7 @@ const char *janus_recordplay_get_author(void);
 const char *janus_recordplay_get_package(void);
 void janus_recordplay_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
+json_t *janus_recordplay_handle_admin_message(json_t *message);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -316,6 +318,7 @@ static janus_plugin janus_recordplay_plugin =
 
 		.create_session = janus_recordplay_create_session,
 		.handle_message = janus_recordplay_handle_message,
+		.handle_admin_message = janus_recordplay_handle_admin_message,
 		.setup_media = janus_recordplay_setup_media,
 		.incoming_rtp = janus_recordplay_incoming_rtp,
 		.incoming_rtcp = janus_recordplay_incoming_rtcp,
@@ -1052,6 +1055,46 @@ plugin_response:
 
 }
 
+json_t *janus_recordplay_handle_admin_message(json_t *message) {
+	/* Some requests (e.g., 'update') can be handled via Admin API */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *response = NULL;
+
+	JANUS_VALIDATE_JSON_OBJECT(message, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto admin_response;
+	json_t *request = json_object_get(message, "request");
+	const char *request_text = json_string_value(request);
+	if(!strcasecmp(request_text, "update")) {
+		/* Update list of available recordings, scanning the folder again */
+		janus_recordplay_update_recordings_list();
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "recordplay", json_string("ok"));
+		goto admin_response;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+admin_response:
+		{
+			if(!response) {
+				/* Prepare JSON error event */
+				response = json_object();
+				json_object_set_new(response, "recordplay", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+
+}
+
 void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_RECORDPLAY_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -1150,9 +1193,6 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		/* Process this packet: don't save if it's not the SSRC/layer we wanted to handle */
 		gboolean save = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 			buf, len, session->ssrc, session->rid, session->recording->vcodec, &session->context);
-		/* Do we need to drop this? */
-		if(!save)
-			return;
 		if(session->sim_context.need_pli) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
@@ -1161,6 +1201,9 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
 			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
 		}
+		/* Do we need to drop this? */
+		if(!save)
+			return;
 		/* If we got here, update the RTP header and save the packet */
 		janus_rtp_header_update(header, &session->context, TRUE, 0);
 		if(session->recording->vcodec == JANUS_VIDEOCODEC_VP8) {
@@ -1207,8 +1250,10 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_object_set_new(event, "recordplay", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("slow_link"));
+	json_object_set_new(result, "media", json_string(video ? "video" : "audio"));
+	if(video)
+		json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	/* What is uplink for the server is downlink for the client, so turn the tables */
-	json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
 	json_object_set_new(event, "result", result);
 	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event, NULL);
