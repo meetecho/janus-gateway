@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.8.0] - 2019-12-12
+
+- Added changelog file to the repo and docs (thanks @oscarvadillog!)
+- Added new category of plugins for modular logging (stdout and file still there, and part of the core)
+- Removed option to enable rtx (now always supported, when negotiated)
+- Added gzip compression helper method to the core utils
+- Fixed RTSP SETUP issues when url contains query string parameters
+- Added option to gzip events when using the Sample Event Handler
+- Streamlined janus.js (thanks @oscarvadillog!)
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.7.6] - 2019-11-27
 
 - Split SDP lines when parsing on line feed only, and trim carriage feed instead (\n instead of \r\n)
