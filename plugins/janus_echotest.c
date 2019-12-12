@@ -650,6 +650,15 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		char *label = packet->label;
 		char *buf = packet->buffer;
 		uint16_t len = packet->length;
+		if(packet->binary) {
+			JANUS_LOG(LOG_VERB, "Got a binary DataChannel message (label=%s, %d bytes) to bounce back\n", label, len);
+			/* Save the frame if we're recording */
+			janus_recorder_save_frame(session->drc, buf, len);
+			/* Binary data, shoot back as it is */
+			gateway->relay_data(handle, packet);
+			return;
+		}
+		/* Text data */
 		char *text = g_malloc(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
@@ -664,6 +673,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		/* Prepare the packet and send it back */
 		janus_plugin_data r = {
 			.label = label,
+			.binary = FALSE,
 			.buffer = reply,
 			.length = strlen(reply)
 		};
