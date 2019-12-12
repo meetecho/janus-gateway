@@ -204,54 +204,55 @@ static int janus_gelfevh_send(char *message) {
 		/* Check if we need to compress the data */
 		int len = 0;
 		char *buf;
-		char compressed_text[8192];
-		size_t compressed_len = 0;
 		if(compress) {
+			char compressed_text[8192];
+			size_t compressed_len = 0;
 			compressed_len = janus_gzip_compress(compression,
 				message, strlen(message),
 				compressed_text, sizeof(compressed_text));
 			if(compressed_len == 0) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(message));
 				/* Sending message uncompressed*/
-				len = strlen(message);
-				buf = message;
 			} else {
-				len = strlen(compressed_text);
-				buf = compressed_text;
+				JANUS_LOG(LOG_WARN, "Size of compressed message: %zu", strlen(compressed_text));
+				int n = write(sockfd, compressed_text, strlen(compressed_text));
+				if(n < 0) {
+					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
+					return -1;
+				}
 			}
 		} else {
 			len = strlen(message);
 			buf = message;
-		}
-		int total = len / max_gelf_msg_len + 1;
-		if (total > MAX_GELF_CHUNKS) {
-			JANUS_LOG(LOG_WARN, "Sending UDP message failed, Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
-			return -1;
-		}
-
-		int offset = 0;
-		char *rnd = randstring(8);
-		for (int i = 0; i < total; i++) {
-			int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
-			// prepend the necessary headers (imitate TCP)
-			char chunk[bytesToSend + 12];
-			chunk[0] = 0x78;
-			chunk[1] = 0x01;
-			memcpy(chunk + 2, rnd, 8);
-			chunk[10] = (char)i;
-			chunk[11] = (char)total;
-			char *head = chunk;
-			memcpy(head+12, buf, bytesToSend);
-			buf += bytesToSend;
-			int n = write(sockfd, head, bytesToSend + 12);
-			if(n < 0) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
+			int total = len / max_gelf_msg_len + 1;
+			if (total > MAX_GELF_CHUNKS) {
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed, Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 				return -1;
 			}
-			offset += bytesToSend;
-			bzero(chunk, bytesToSend + 12);
+			int offset = 0;
+			char *rnd = randstring(8);
+			for (int i = 0; i < total; i++) {
+				int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
+				// prepend the necessary headers (imitate TCP)
+				char chunk[bytesToSend + 12];
+				chunk[0] = 0x78;
+				chunk[1] = 0x01;
+				memcpy(chunk + 2, rnd, 8);
+				chunk[10] = (char)i;
+				chunk[11] = (char)total;
+				char *head = chunk;
+				memcpy(head+12, buf, bytesToSend);
+				buf += bytesToSend;
+				int n = write(sockfd, head, bytesToSend + 12);
+				if(n < 0) {
+					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
+					return -1;
+				}
+				offset += bytesToSend;
+				bzero(chunk, bytesToSend + 12);
+			}
+			g_free(rnd);
 		}
-		g_free(rnd);
 	}
 	return 1;
 }
