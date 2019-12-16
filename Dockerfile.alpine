@@ -15,11 +15,13 @@ ARG JANUS_TRANSPORT_MQTT=--disable-mqtt
 ARG JANUS_TRANSPORT_UNIX_SOCKET=--disable-unix-sockets
 
 ARG JANUS_PLUGIN_AUDIOBRIDGE=--disable-plugin-audiobridge
-ARG JANUS_PLUGIN_ECHOTEST=--enable-plugin-echotest
+ARG JANUS_PLUGIN_DUKTAPE=--disable-plugin-duktape
+ARG JANUS_PLUGIN_ECHOTEST=--disable-plugin-echotest
+ARG JANUS_PLUGIN_LUA=--disable-plugin-lua
 ARG JANUS_PLUGIN_RECORDPLAY=--disable-plugin-recordplay
 ARG JANUS_PLUGIN_SIP=--disable-plugin-sip
-ARG JANUS_PLUGIN_NOSIP=--disable-plugin-nosip
 ARG JANUS_PLUGIN_SIPRE=--disable-plugin-sipre
+ARG JANUS_PLUGIN_NOSIP=--disable-plugin-nosip
 ARG JANUS_PLUGIN_STREAMING=--disable-plugin-streaming
 ARG JANUS_PLUGIN_TEXTROOM=--disable-plugin-textroom
 ARG JANUS_PLUGIN_VIDEOCALL=--disable-plugin-videocall
@@ -36,9 +38,10 @@ COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabb
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \
     autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
-    curl libogg libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev popt-dev \
+    curl libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev \
+    popt-dev xmlto openssl-dev \
   && apk add --no-cache \
-    libnice jansson glib libogg ffmpeg libc6-compat xmlto openssl-dev gettext \
+    libnice jansson glib libogg ffmpeg libc6-compat libconfig libtool libsrtp \
   # INSTALL USRSCTP
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && cd usrsctp-$USRSCTP_VERSION \
@@ -104,13 +107,15 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
     $JANUS_PLUGIN_ECHOTEST \
     $JANUS_PLUGIN_RECORDPLAY \
     $JANUS_PLUGIN_SIP \
-    $JANUS_PLUGIN_NOSIP \
     $JANUS_PLUGIN_SIPRE \
+    $JANUS_PLUGIN_NOSIP \
     $JANUS_PLUGIN_STREAMING \
     $JANUS_PLUGIN_TEXTROOM \
     $JANUS_PLUGIN_VIDEOCALL \
     $JANUS_PLUGIN_VIDEOROOM \
     $JANUS_PLUGIN_VOICEMAIL \
+    $JANUS_PLUGIN_DUKTAPE \
+    $JANUS_PLUGIN_LUA \
   && make \
   && make configs \
   && make install \
