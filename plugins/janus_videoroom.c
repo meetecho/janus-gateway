@@ -3540,6 +3540,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(audio_handle > 0) {
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
+			if(audio_rtcp_port > 0)
+				json_object_set_new(rtp_stream, "audio_rtcp", json_integer(audio_rtcp_port));
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -3559,6 +3561,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(video_handle[0] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
 				json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+				if(video_rtcp_port > 0)
+					json_object_set_new(rtp_stream, "video_rtcp", json_integer(video_rtcp_port));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
