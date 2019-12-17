@@ -1,0 +1,131 @@
+FROM alpine:3.7
+MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
+
+ARG USRSCTP_VERSION=0.9.3.0
+
+ARG JANUS_BORINGSSL=--enable-boringssl
+ARG JANUS_POST_PROCESSING=--disable-post-processing
+ARG JANUS_DATA_CHANNELS=--disable-data-channels
+ARG JANUS_DOCS=--disable-docs
+
+ARG JANUS_TRANSPORT_REST=--disable-rest
+ARG JANUS_TRANSPORT_WEBSOCKET=--disable-websockets
+ARG JANUS_TRANSPORT_RABBIT_MQ=--enable-rabbitmq
+ARG JANUS_TRANSPORT_MQTT=--disable-mqtt
+ARG JANUS_TRANSPORT_UNIX_SOCKET=--disable-unix-sockets
+
+ARG JANUS_PLUGIN_AUDIOBRIDGE=--disable-plugin-audiobridge
+ARG JANUS_PLUGIN_DUKTAPE=--disable-plugin-duktape
+ARG JANUS_PLUGIN_ECHOTEST=--enable-plugin-echotest
+ARG JANUS_PLUGIN_LUA=--disable-plugin-lua
+ARG JANUS_PLUGIN_RECORDPLAY=--disable-plugin-recordplay
+ARG JANUS_PLUGIN_SIP=--disable-plugin-sip
+ARG JANUS_PLUGIN_SIPRE=--disable-plugin-sipre
+ARG JANUS_PLUGIN_NOSIP=--disable-plugin-nosip
+ARG JANUS_PLUGIN_STREAMING=--disable-plugin-streaming
+ARG JANUS_PLUGIN_TEXTROOM=--disable-plugin-textroom
+ARG JANUS_PLUGIN_VIDEOCALL=--disable-plugin-videocall
+ARG JANUS_PLUGIN_VIDEOROOM=--disable-plugin-videoroom
+ARG JANUS_PLUGIN_VOICEMAIL=--disable-plugin-voicemail
+
+WORKDIR /root
+
+COPY . janus-gateway
+COPY launch_janus.sh /launch_janus.sh
+COPY conf/janus.cfg /usr/local/etc/janus/janus.cfg
+COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabbitmq.cfg
+
+RUN apk add --update --no-cache --virtual .build-dependencies \
+    git build-base ca-certificates libnice-dev m4 automake \
+    autoconf file cmake linux-headers libsrtp-dev gengetopt-dev libogg-dev go \
+    curl libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev \
+    popt-dev xmlto openssl-dev \
+  && apk add --no-cache \
+    libnice jansson glib libogg ffmpeg libc6-compat libconfig libtool libsrtp \
+  # INSTALL USRSCTP
+  && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
+  && cd usrsctp-$USRSCTP_VERSION \
+  && ./bootstrap \
+  && ./configure --prefix=/usr \
+  && make \
+  && make install \
+  && cd \
+  # INSTALL BORRING SSL
+  && git clone --depth 1 https://boringssl.googlesource.com/boringssl boringssl \
+  && cd boringssl \
+  && sed -i s/" -Werror"//g CMakeLists.txt \
+  && mkdir -p build \
+  && cd build \
+  && cmake -DCMAKE_CXX_FLAGS="-lrt" .. \
+  && make \
+  && cd .. \
+  && mkdir -p /opt/boringssl \
+  && cp -R include /opt/boringssl/ \
+  && mkdir -p /opt/boringssl/lib \
+  && cp build/ssl/libssl.a /opt/boringssl/lib/ \
+  && cp build/crypto/libcrypto.a /opt/boringssl/lib/ \
+  # INSTALL RABBITMQ-C
+  && git clone --depth 1 https://github.com/alanxz/rabbitmq-c rabbitmq-c \
+  && cd rabbitmq-c \
+  && git submodule init \
+  && git submodule update \
+  && mkdir -p build \
+  && cd build \
+  && cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_C_FLAGS="$CFLAGS" \
+    -DENABLE_SSL_SUPPORT=ON \
+    -DBUILD_TESTS=OFF \
+    -DBUILD_EXAMPLES=OFF \
+    -DBUILD_TOOLS=OFF \
+    -DBUILD_TOOLS_DOCS=OFF \
+    -DBUILD_API_DOCS=OFF \
+    -DBUILD_SHARED_LIBS=ON \
+    -DBUILD_STATIC_LIBS=ON \
+    .. \
+  && make \
+  && make install \
+  && cd \
+  # INSTALL JANUS GATEWAY
+  && cd janus-gateway \
+  && sh autogen.sh \
+  && ./configure --prefix=/usr/local \
+    # Janus configuration
+    $JANUS_BORINGSSL \
+    $JANUS_POST_PROCESSING \
+    $JANUS_DATA_CHANNELS \
+    $JANUS_DOCS \
+    # Transport configuration
+    --disable-rest \
+    $JANUS_TRANSPORT_WEBSOCKET \
+    $JANUS_TRANSPORT_RABBIT_MQ \
+    $JANUS_TRANSPORT_MQTT \
+    $JANUS_TRANSPORT_UNIX_SOCKET \
+    # Plugins configuration
+    $JANUS_PLUGIN_AUDIOBRIDGE \
+    $JANUS_PLUGIN_ECHOTEST \
+    $JANUS_PLUGIN_RECORDPLAY \
+    $JANUS_PLUGIN_SIP \
+    $JANUS_PLUGIN_SIPRE \
+    $JANUS_PLUGIN_NOSIP \
+    $JANUS_PLUGIN_STREAMING \
+    $JANUS_PLUGIN_TEXTROOM \
+    $JANUS_PLUGIN_VIDEOCALL \
+    $JANUS_PLUGIN_VIDEOROOM \
+    $JANUS_PLUGIN_VOICEMAIL \
+    $JANUS_PLUGIN_DUKTAPE \
+    $JANUS_PLUGIN_LUA \
+  && make \
+  && make configs \
+  && make install \
+  # CLEAN CONTAINER
+  && cd \
+  && apk del --purge .build-dependencies \
+  && rm -rf usrsctp-$USRSCTP_VERSION \
+    boringssl \
+    janus-gateway \
+    rabbitmq-c \
+    /var/cache/apk/*
+
+ENTRYPOINT ["/launch_janus.sh"]
