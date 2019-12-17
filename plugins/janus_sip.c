@@ -948,10 +948,11 @@ typedef struct janus_sip_media {
 	int text_rtp_fd;
 	int local_text_rtp_port, remote_text_rtp_port;
 	guint32 text_ssrc, text_ssrc_peer;
-	int text_pt;
+	int text_pt, text_red_pt;
 	const char *text_pt_name;
 	uint16_t text_seq;
 	int64_t text_ts, text_last_activity;
+	GQueue *text_red_prev;
 	srtp_t text_srtp_in, text_srtp_out;
 	srtp_policy_t text_remote_policy, text_local_policy;
 	gboolean text_send;
@@ -992,6 +993,19 @@ typedef struct janus_sip_session {
 	char *hangup_reason_header;
 	GList *incoming_header_prefixes;
 } janus_sip_session;
+
+typedef struct janus_sip_red_text {
+	uint32_t timestamp;
+	char *buffer;
+	uint16_t length;
+} janus_sip_red_text;
+static void janus_sip_red_text_free(janus_sip_red_text *red) {
+	if(red == NULL)
+		return;
+	g_free(red->buffer);
+	g_free(red);
+}
+
 static GHashTable *sessions;
 static GHashTable *identities;
 static GHashTable *callids;
@@ -1371,6 +1385,21 @@ static void janus_sip_media_reset(janus_sip_session *session) {
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
 	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
+	session->media.has_text = FALSE;
+	session->media.text_rtp_fd = -1;
+	session->media.local_text_rtp_port = 0;
+	session->media.remote_text_rtp_port = 0;
+	session->media.text_ssrc = 0;
+	session->media.text_ssrc_peer = 0;
+	session->media.text_pt = -1;
+	session->media.text_red_pt = -1;
+	session->media.text_seq = 0;
+	session->media.text_ts = 0;
+	session->media.text_last_activity = 0;
+	session->media.text_send = TRUE;
+	if(session->media.text_red_prev != NULL)
+		g_queue_free_full(session->media.text_red_prev, (GDestroyNotify)janus_sip_red_text_free);
+	session->media.text_red_prev = NULL;
 	janus_rtp_switching_context_reset(&session->media.context);
 }
 
@@ -1450,7 +1479,8 @@ static json_t *janus_sip_get_incoming_headers(const sip_t *sip, const janus_sip_
 static void janus_sip_sdp_text2application(janus_sip_session *session, janus_sdp_mline *m) {
 	if(session == NULL || m == NULL || m->type != JANUS_SDP_TEXT)
 		return;
-	JANUS_LOG(LOG_WARN, "Replacing m=text with m=application\n");
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Replacing m=text with m=application\n",
+		session->account.username);
 	m->type = JANUS_SDP_APPLICATION;
 	g_free(m->type_str);
 	m->type_str = g_strdup("application");
@@ -1465,15 +1495,25 @@ static void janus_sip_sdp_text2application(janus_sip_session *session, janus_sdp
 	m->fmts = g_list_append(m->fmts, g_strdup("webrtc-datachannel"));
 	/* Look for the T.140 payload type before getting rid of attributes */
 	GList *temp = m->attributes;
+	int text_pt = -1, text_red_pt = -1;
 	while(temp) {
 		janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
-		if(a && a->value && strstr(a->value, "t140/1000")) {
-			session->media.text_pt = atoi(a->value);
-			JANUS_LOG(LOG_WARN, "T-140 payload type is %d\n", session->media.text_pt);
+		if(a && a->value) {
+			if(strstr(a->value, "t140/1000")) {
+				text_pt = atoi(a->value);
+				JANUS_LOG(LOG_VERB, "[SIP-%s] T-140 payload type is %d\n",
+					session->account.username, text_pt);
+			} else if(strstr(a->value, "red/1000")) {
+				text_red_pt = atoi(a->value);
+				JANUS_LOG(LOG_VERB, "[SIP-%s] T-140(red) payload type is %d\n",
+					session->account.username, text_red_pt);
+			}
 		}
 		janus_sdp_attribute_destroy(a);
 		temp = temp->next;
 	}
+	session->media.text_pt = text_pt;
+	session->media.text_red_pt = text_red_pt;
 	g_list_free(m->attributes);
 	m->attributes = NULL;
 	janus_sdp_attribute *a = janus_sdp_attribute_create("sctp-port", "5000");
@@ -2005,7 +2045,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.text_ssrc = 0;
 	session->media.text_ssrc_peer = 0;
 	session->media.text_pt = -1;
-	session->media.text_pt_name = NULL;
+	session->media.text_red_pt = -1;
 	session->media.text_seq = 0;
 	session->media.text_ts = 0;
 	session->media.text_last_activity = 0;
@@ -2415,9 +2455,9 @@ void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean
 	}
 	if(!janus_sip_call_is_established(session))
 		return;
-	if(!session->media.has_text || session->media.text_rtp_fd == -1)
+	if(buf == NULL || len < 1 || !session->media.has_text || session->media.text_rtp_fd == -1)
 		return;
-	/* TODO If T.140 is involved, relay the real-time text chunk */
+	/* If T.140 is involved, relay the real-time text chunk */
 	if(session->media.text_ssrc == 0) {
 		session->media.text_ssrc = janus_random_uint32();
 		JANUS_LOG(LOG_VERB, "[SIP-%s] Generating SSRC for real-time text: %"SCNu32"\n",
@@ -2425,12 +2465,14 @@ void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean
 	}
 	JANUS_LOG(LOG_HUGE, "[SIP-%s] Have real-time text to relay (%d bytes)\n",
 		session->account.username, len);
+	/* Should we use red or t140? */
+	gboolean red = (session->media.text_red_pt != -1);
 	/* Create an RTP packet to send */
 	char buffer[1500];
 	memset(buffer, 0, sizeof(buffer));
 	janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 	rtp->version = 2;
-	rtp->type = session->media.text_pt;
+	rtp->type = red ? session->media.text_red_pt : session->media.text_pt;
 	rtp->ssrc = htonl(session->media.text_ssrc);
 	session->media.text_seq++;
 	rtp->seq_number = htons(session->media.text_seq);
@@ -2439,13 +2481,65 @@ void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean
 		session->media.text_ts = now;
 	if(session->media.text_last_activity == 0)
 		session->media.text_last_activity = session->media.text_ts;
-	rtp->timestamp = htonl((now - session->media.text_ts)/1000);
+	uint32_t timestamp = (now - session->media.text_ts)/1000;
+	rtp->timestamp = htonl(timestamp);
 	/* Marker bit should be 1 if this came after a bit of inactivity */
 	rtp->markerbit = ((now - session->media.text_last_activity) >= G_USEC_PER_SEC);
 	session->media.text_last_activity = now;
 	/* Add the payload */
-	memcpy(buffer+RTP_HEADER_SIZE, buf, len);
-	len += RTP_HEADER_SIZE;
+	if(!red) {
+		/* Append the T.140 block as is */
+		memcpy(buffer+RTP_HEADER_SIZE, buf, len);
+		len += RTP_HEADER_SIZE;
+	} else {
+		/* Prepare the red packet */
+		char *index = buffer+RTP_HEADER_SIZE;
+		if(session->media.text_red_prev == NULL)
+			session->media.text_red_prev = g_queue_new();
+		/* Add the redundant generations headers */
+		janus_sip_red_text *prev2 = (janus_sip_red_text *)g_queue_pop_head(session->media.text_red_prev),
+			*prev1 = (janus_sip_red_text *)g_queue_pop_head(session->media.text_red_prev);
+		uint32_t red_header = 0x80000000 + (session->media.text_pt << 24) +
+			((prev2 ? (timestamp - prev2->timestamp) : (timestamp+200)) << 10) + (prev2 ? prev2->length : 0);
+		red_header = htonl(red_header);
+		memcpy(index, &red_header, sizeof(red_header));
+		index += 4;
+		red_header = 0x80000000 + (session->media.text_pt << 24) +
+			((prev1 ? (timestamp - prev1->timestamp) : (timestamp+100)) << 10) + (prev1 ? prev1->length : 0);
+		red_header = htonl(red_header);
+		memcpy(index, &red_header, sizeof(red_header));
+		index += 4;
+		/* Last block has the follow bit set to 0 */
+		*index = session->media.text_pt;
+		index++;
+		/* Now copy all the payloads */
+		if(prev2 != NULL && prev2->length != 0) {
+			memcpy(index, prev2->buffer, prev2->length);
+			index += prev2->length;
+		}
+		if(prev1 != NULL && prev1->length != 0) {
+			memcpy(index, prev1->buffer, prev1->length);
+			index += prev1->length;
+		}
+		memcpy(index, buf, len);
+		index += len;
+		/* Update the queue of old packets */
+		janus_sip_red_text_free(prev2);
+		prev2 = prev1;
+		if(prev2 == NULL) {
+			prev2 = g_malloc0(sizeof(janus_sip_red_text));
+			prev2->timestamp = -100;
+		}
+		g_queue_push_tail(session->media.text_red_prev, prev2);
+		prev1 = g_malloc(sizeof(janus_sip_red_text));
+		prev1->timestamp = timestamp;
+		prev1->buffer = g_malloc(len);
+		memcpy(prev1->buffer, buf, len);
+		prev1->length = len;
+		g_queue_push_tail(session->media.text_red_prev, prev1);
+		/* Update the overall length for the new RTP packet */
+		len = (index-buffer);
+	}
 	/* Is SRTP involved? */
 	if(session->media.has_srtp_local_text) {
 		int protected = len;
@@ -3316,9 +3410,12 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0")) {
-				/* TODO Replace m=application with m=text and negotiate t140 */
+				/* Replace m=application with m=text and negotiate t140 */
 				JANUS_LOG(LOG_VERB, "Going to negotiate real-time text...\n");
 				session->media.has_text = TRUE;	/* FIXME Maybe we need a better way to signal this */
+				/* By default we negotiate T.140 with redundancy */
+				session->media.text_pt = 98;
+				session->media.text_red_pt = 99;
 			}
 			if(janus_sip_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -5165,6 +5262,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(session->media.text_pt > -1) {
 				session->media.text_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.text_pt);
 				JANUS_LOG(LOG_VERB, "Detected text codec: %d (%s)\n", session->media.text_pt, session->media.text_pt_name);
+				if(session->media.text_red_pt > -1)
+					JANUS_LOG(LOG_VERB, "  -- Detected redundancy for text codec as well: %d\n", session->media.text_red_pt);
 			}
 			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			if(update && !session->media.earlymedia && !session->media.update) {
@@ -5671,7 +5770,25 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 				} else if(m->type == JANUS_SDP_VIDEO) {
 					session->media.video_pt = pt;
 				} else {
-					session->media.text_pt = pt;
+					/* Did we end up with t140 or red? */
+					int t140_pt = janus_sdp_get_codec_pt(sdp, "t140");
+					int red_pt = janus_sdp_get_codec_pt(sdp, "t140-red");
+					if(t140_pt == pt) {
+						/* Plain T.140 */
+						JANUS_LOG(LOG_HUGE, "Plain T.140: %d\n", t140_pt);
+						session->media.text_pt = t140_pt;
+						session->media.text_red_pt = -1;
+					} else if(red_pt == pt) {
+						/* T.140 with redundancy */
+						JANUS_LOG(LOG_HUGE, "T.140 with redundancy: %d --> %d\n", red_pt, t140_pt);
+						session->media.text_pt = t140_pt;
+						session->media.text_red_pt = red_pt;
+					} else {
+						/* T.140 with redundancy */
+						JANUS_LOG(LOG_HUGE, "Neither T.140 nor red...\n");
+						session->media.text_pt = -1;
+						session->media.text_red_pt = -1;
+					}
 				}
 			}
 		}
@@ -5728,7 +5845,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_TEXT || m->type == JANUS_SDP_APPLICATION) {
-			/* If it's m=application, turn in m=text*/
+			/* If it's m=application, turn in m=text */
 			m->type = JANUS_SDP_TEXT;
 			g_free(m->type_str);
 			m->type_str = g_strdup("text");
@@ -5741,6 +5858,8 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 			m->fmts = NULL;
 			g_list_free(m->ptypes);
 			m->ptypes = NULL;
+			if(session->media.text_red_pt != -1)
+				m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_red_pt));
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(session->media.text_pt));
 			/* Get rid of all datachannel attributes */
 			GList *temp = m->attributes;
@@ -5751,9 +5870,16 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 			}
 			g_list_free(m->attributes);
 			m->attributes = NULL;
-			if(session->media.text_pt == -1)
-				session->media.text_pt = 98;
-			janus_sdp_attribute *a = janus_sdp_attribute_create("rtpmap", "%d t140/1000", session->media.text_pt);
+			janus_sdp_attribute *a = NULL;
+			if(session->media.text_pt != -1) {
+				/* Negotiate red as well */
+				a = janus_sdp_attribute_create("rtpmap", "%d red/1000", session->media.text_red_pt);
+				m->attributes = g_list_append(m->attributes, a);
+				a = janus_sdp_attribute_create("fmtp", "%d %d/%d/%d", session->media.text_red_pt,
+					session->media.text_pt, session->media.text_pt, session->media.text_pt);
+				m->attributes = g_list_append(m->attributes, a);
+			}
+			a = janus_sdp_attribute_create("rtpmap", "%d t140/1000", session->media.text_pt);
 			m->attributes = g_list_append(m->attributes, a);
 			if(session->media.has_srtp_local_text) {
 				char *profile = NULL;
@@ -5778,7 +5904,25 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 				} else if(m->type == JANUS_SDP_VIDEO) {
 					session->media.video_pt = pt;
 				} else {
-					session->media.text_pt = pt;
+					/* Did we end up with t140 or red? */
+					int t140_pt = janus_sdp_get_codec_pt(sdp, "t140");
+					int red_pt = janus_sdp_get_codec_pt(sdp, "t140-red");
+					if(t140_pt == pt) {
+						/* Plain T.140 */
+						JANUS_LOG(LOG_WARN, "Plain T.140: %d\n", t140_pt);
+						session->media.text_pt = t140_pt;
+						session->media.text_red_pt = -1;
+					} else if(red_pt == pt) {
+						/* T.140 with redundancy */
+						JANUS_LOG(LOG_WARN, "T.140 with redundancy: %d --> %d\n", red_pt, t140_pt);
+						session->media.text_pt = t140_pt;
+						session->media.text_red_pt = red_pt;
+					} else {
+						/* T.140 with redundancy */
+						JANUS_LOG(LOG_WARN, "Neither T.140 nor red...\n");
+						session->media.text_pt = -1;
+						session->media.text_red_pt = -1;
+					}
 				}
 			}
 		}
@@ -6450,8 +6594,74 @@ static void *janus_sip_relay_thread(void *data) {
 					/* TODO Should we add recordings for real-time text? */
 					JANUS_LOG(LOG_HUGE, "[SIP-%s] Got real-time text (%d bytes)\n",
 						session->account.username, plen);
-					/* Relay to application via datachannels */
-					gateway->relay_data(session->handle, NULL, FALSE, payload, plen);
+					/* Are we using plain T.140 or red? */
+					if(header->type == session->media.text_pt) {
+						/* T.140, relay to application via datachannels as is */
+						gateway->relay_data(session->handle, NULL, FALSE, payload, plen);
+					} else if(header->type == session->media.text_red_pt) {
+						/* red, decapsulate first */
+						JANUS_LOG(LOG_HUGE, "[SIP-%s] t140/red (%d bytes)\n",
+							session->account.username, plen);
+						int gens = 0;
+						uint32_t red_block;
+						uint8_t follow = 0, block_pt = 0;
+						uint16_t ts_offset = 0, block_len = 0;
+						GList *lengths = NULL;
+						/* Parse the header first */
+						while(payload != NULL && plen > 0) {
+							/* Go through the header for the different generations */
+							gens++;
+							follow = ((*payload) & 0x80) >> 7;
+							block_pt = (*payload) & 0x7F;
+							if(follow && plen > 3) {
+								/* Read the rest of the header */
+								memcpy(&red_block, payload, sizeof(red_block));
+								red_block = ntohl(red_block);
+								ts_offset = (red_block & 0x00FFFC00) >> 10;
+								block_len = (red_block & 0x000003FF);
+								JANUS_LOG(LOG_HUGE, "[SIP-%s]   [%d] %u, %u, %"SCNu16", %"SCNu16"\n",
+									session->account.username, gens,
+									follow, block_pt, ts_offset, block_len);
+								lengths = g_list_append(lengths, GUINT_TO_POINTER(block_len));
+								payload += 4;
+								plen -= 4;
+							} else {
+								/* Header parsed */
+								JANUS_LOG(LOG_HUGE, "[SIP-%s]   [%d] %u, %u\n",
+									session->account.username, gens, follow, block_pt);
+								payload++;
+								plen--;
+								break;
+							}
+						}
+						/* Go through the blocks, iterating on the lengths */
+						if(lengths != NULL) {
+							gens = 0;
+							uint16_t length = 0;
+							GList *temp = lengths;
+							while(temp != NULL) {
+								gens++;
+								length = GPOINTER_TO_UINT(temp->data);
+								if(length > plen) {
+									JANUS_LOG(LOG_WARN, "[SIP-%s] Broken red payload:\n", session->account.username);
+									payload = NULL;
+									break;
+								}
+								if(length > 0) {
+									/* TODO Redundant data, we should keep this... */
+									payload += length;
+									plen -= length;
+								}
+								temp = temp->next;
+							}
+							g_list_free(lengths);
+						}
+						if(payload != NULL && plen > 0) {
+							/* Primary data, relay the T.140 block to application via datachannels */
+							if(payload != NULL && plen > 0)
+								gateway->relay_data(session->handle, NULL, FALSE, payload, plen);
+						}
+					}
 					continue;
 				}
 			}

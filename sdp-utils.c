@@ -679,6 +679,10 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 		text = TRUE;
 		format = "t140/1000";
 		format2 = "T140/1000";
+	} else if(!strcasecmp(codec, "t140-red")) {
+		text = TRUE;
+		format = "red/1000";
+		format2 = "RED/1000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -752,6 +756,8 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "isac32";
 					if(strstr(a->value, "t140") || strstr(a->value, "T140"))
 						return "t140";
+					if(strstr(a->value, "red/1000") || strstr(a->value, "RED/1000"))
+						return "t140-red";
 					if(strstr(a->value, "telephone-event/8000") || strstr(a->value, "telephone-event/8000"))
 						return "dtmf";
 					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", a->value);
@@ -790,6 +796,8 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return "H264/90000";
 	if(!strcasecmp(codec, "t140"))
 		return "t140/1000";
+	if(!strcasecmp(codec, "t140-red"))
+		return "red/1000";
 	JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 	return NULL;
 }
