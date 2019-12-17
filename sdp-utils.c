@@ -192,6 +192,8 @@ janus_sdp_mtype janus_sdp_parse_mtype(const char *type) {
 		return JANUS_SDP_VIDEO;
 	if(!strcasecmp(type, "application"))
 		return JANUS_SDP_APPLICATION;
+	if(!strcasecmp(type, "text"))
+		return JANUS_SDP_TEXT;
 	return JANUS_SDP_OTHER;
 }
 
@@ -203,6 +205,8 @@ const char *janus_sdp_mtype_str(janus_sdp_mtype type) {
 			return "video";
 		case JANUS_SDP_APPLICATION:
 			return "application";
+		case JANUS_SDP_TEXT:
+			return "text";
 		case JANUS_SDP_OTHER:
 		default:
 			break;
@@ -633,7 +637,7 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 	if(sdp == NULL || codec == NULL)
 		return -1;
 	/* Check the format string (note that we only parse what browsers can negotiate) */
-	gboolean video = FALSE;
+	gboolean video = FALSE, text = FALSE;
 	const char *format = NULL, *format2 = NULL;
 	if(!strcasecmp(codec, "opus")) {
 		format = "opus/48000/2";
@@ -671,6 +675,10 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 		video = TRUE;
 		format = "h264/90000";
 		format2 = "H264/90000";
+	} else if(!strcasecmp(codec, "t140")) {
+		text = TRUE;
+		format = "t140/1000";
+		format2 = "T140/1000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -679,7 +687,9 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 	GList *ml = sdp->m_lines;
 	while(ml) {
 		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
-		if((!video && m->type != JANUS_SDP_AUDIO) || (video && m->type != JANUS_SDP_VIDEO)) {
+		if((!video && !text && m->type != JANUS_SDP_AUDIO) ||
+				(video && !text && m->type != JANUS_SDP_VIDEO) ||
+				(!video && text && m->type != JANUS_SDP_TEXT)) {
 			ml = ml->next;
 			continue;
 		}
@@ -740,6 +750,8 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "isac16";
 					if(strstr(a->value, "isac/32") || strstr(a->value, "ISAC/32"))
 						return "isac32";
+					if(strstr(a->value, "t140") || strstr(a->value, "T140"))
+						return "t140";
 					if(strstr(a->value, "telephone-event/8000") || strstr(a->value, "telephone-event/8000"))
 						return "dtmf";
 					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", a->value);
@@ -776,6 +788,8 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return "VP9/90000";
 	if(!strcasecmp(codec, "h264"))
 		return "H264/90000";
+	if(!strcasecmp(codec, "t140"))
+		return "t140/1000";
 	JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 	return NULL;
 }

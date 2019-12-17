@@ -194,7 +194,7 @@ $(document).ready(function() {
 										if(event === 'registered') {
 											Janus.log("Successfully registered as " + result["username"] + "!");
 											$('#you').removeClass('hide').show().text("Registered as '" + result["username"] + "'");
-											// TODO Enable buttons to call now
+											// Enable buttons to call now
 											if(!registered) {
 												registered = true;
 												masterId = result["master_id"];
@@ -210,6 +210,7 @@ $(document).ready(function() {
 												  .unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
+											sipcall.peer = result["username"];
 											var doAudio = true, doVideo = true;
 											var offerlessInvite = false;
 											if(jsep !== null && jsep !== undefined) {
@@ -258,7 +259,7 @@ $(document).ready(function() {
 															sipcallAction(
 																{
 																	jsep: jsep,
-																	media: { audio: doAudio, video: doVideo },
+																	media: { audio: doAudio, video: doVideo, data: !offerlessInvite },
 																	success: function(jsep) {
 																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
 																		Janus.debug(jsep);
@@ -501,6 +502,116 @@ $(document).ready(function() {
 										$('#remotevideo').removeClass('hide').show();
 									}
 								},
+								ondataopen: function(data) {
+									Janus.log("The DataChannel is available!");
+									$('#texts').removeClass('hide').show();
+									// We'll store the history of local and remote messages
+									// in an array, in case we need to edit those again
+									sipcall.localMessages = [];
+									sipcall.remoteMessages = [];
+									// The "typing" remote text is in a separate string instead
+									sipcall.remoteText = "";
+									// Prepare the input area
+									$('#datasend').removeAttr('disabled')
+										.keypress(function(event) {
+											Janus.warn(event);
+											if(event.which == 13) {
+												// Enter key was pressed, send a line separator code
+												var array = new Uint8Array(3);
+												array[0] = 226;
+												array[1] = 128;
+												array[2] = 168;
+												sipcall.data({ data: array });
+												// Now push the text to the local messages and empty the input
+												sipcall.localMessages.push({
+													timestamp: new Date(),
+													text: $(this).val()
+												});
+												$(this).val('');
+												// Update the contents of the chatbox
+												updateRealtimeChat(sipcall);
+												return;
+											}
+											var array = new Uint8Array(1);
+											array[0] = event.keyCode;
+											sipcall.data({ data: array });
+										}).keydown(function(event) {
+											Janus.warn(event);
+											if(event.which == 8) {
+												// Backspace pressed, send the related code
+												var array = new Uint8Array(1);
+												array[0] = event.keyCode;
+												sipcall.data({ data: array });
+												// Delete in our input as well
+												if($(this).val().length > 0) {
+													var text = $(this).val().slice(0, -1);
+													$(this).focus().val('').val(text);
+												} else {
+													// Empty input, start editing previously completed message
+													var text = "";
+													if(sipcall.localMessages.length > 0) {
+														text = sipcall.localMessages.pop().text;
+													}
+													$(this).focus().val('').val(text);
+													// Update the contents of the chatbox
+													updateRealtimeChat(sipcall);
+												}
+												return false;
+											}
+											// Prevent cursor positioning
+											var text = $(this).val();
+											$(this).focus().val('').val(text);
+										}).live("click", function(event) {
+											// Prevent cursor positioning
+											var text = $(this).val();
+											$(this).focus().val('').val(text);
+										});
+								},
+								ondata: function(data) {
+									Janus.debug("We got data from the DataChannel!", data);
+									// Parse the text, and update the string
+									var array = new Uint8Array(data);
+									var str = "";
+									for(var i=0, len=array.length; i<len; ++i) {
+										if(array[i] === 8) {
+											// Backspace
+											str = decodeURIComponent(str);
+											sipcall.remoteText += str;
+											str = "";
+											if(sipcall.remoteText.length > 0) {
+												sipcall.remoteText = sipcall.remoteText.slice(0, -1);
+												// Update the typing text
+												updateRealtimeChat(sipcall, true);
+											} else {
+												// User wasn't typing, start editing previously completed message
+												if(sipcall.remoteMessages.length > 0) {
+													str = sipcall.remoteMessages.pop().text;
+												}
+												sipcall.remoteText = str;
+												// Update the contents of the chatbox
+												updateRealtimeChat(sipcall);
+											}
+											continue;
+										} else if(array[i] === 226 && (len-i > 2) && array[i+1] === 128 && array[i+2] === 168) {
+											// Line separator, push the current text to the remote messages
+											sipcall.remoteMessages.push({
+												timestamp: new Date(),
+												sender: sipcall.peer,
+												text: sipcall.remoteText
+											});
+											sipcall.remoteText = "";
+											// Update the contents of the chatbox
+											updateRealtimeChat(sipcall);
+											i += 2;
+											continue;
+										}
+										str += ( "%" + pad(array[i].toString(16)));
+									}
+									str = decodeURIComponent(str);
+									sipcall.remoteText += str;
+									// Update the typing text
+									updateRealtimeChat(sipcall, true);
+								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#myvideo').remove();
@@ -508,7 +619,14 @@ $(document).ready(function() {
 									$('#remotevideo').remove();
 									$('#videos .no-video-container').remove();
 									$('#videos').hide();
+									$('#texts').hide();
+									$('#messages').empty();
+									$('#datasend').attr('disabled', true).val('');
 									$('#dtmf').parent().html("Remote UA");
+									delete sipcall.peer;
+									delete sipcall.localMessages;
+									delete sipcall.remoteMessages;
+									delete sipcall.remoteText;
 								}
 							});
 					},
@@ -736,6 +854,7 @@ function doCall(ev) {
 	actuallyDoCall(handle, $('#peer' + suffix).val(), doVideo);
 }
 function actuallyDoCall(handle, uri, doVideo, referId) {
+	handle.peer = uri;
 	handle.createOffer(
 		{
 			media: {
@@ -869,7 +988,7 @@ function addHelper(helperCreated) {
 			success: function(pluginHandle) {
 				helpers[helperId].sipcall = pluginHandle;
 				Janus.log("[Helper #" + helperId + "] Plugin attached! (" + helpers[helperId].sipcall.getPlugin() + ", id=" + helpers[helperId].sipcall.getId() + ")");
-				// TODO Send the "register"
+				// Send the "register"
 				helpers[helperId].sipcall.send({
 					message: {
 						request: "register",
@@ -1000,7 +1119,7 @@ function addHelper(helperCreated) {
 										sipcallAction(
 											{
 												jsep: jsep,
-												media: { audio: doAudio, video: doVideo },
+												media: { audio: doAudio, video: doVideo, data: !offerlessInvite },
 												success: function(jsep) {
 													Janus.debug("[Helper #" + helperId + "] Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
 													Janus.debug(jsep);
@@ -1263,4 +1382,38 @@ function addHelper(helperCreated) {
 			}
 		});
 
+}
+
+// Helper to update the real-time chat content (both completed and ongoing messages)
+function updateRealtimeChat(handle, onlyTyping) {
+	if(!onlyTyping) {
+		// Prepare a list of messages and sort them by timestamp
+		var messages = [];
+		for(var lm of handle.localMessages)
+			messages.push(lm);
+		for(var rm of handle.remoteMessages)
+			messages.push(rm);
+		messages.sort(function(a, b) {
+			return a.timestamp-b.timestamp;
+		});
+		// Add all messages
+		$('#messages').empty();
+		for(var m of messages) {
+			$('#messages').append(
+				'<p>[' + m.timestamp.toLocaleTimeString() + '] <b>' +
+				(m.sender ? m.sender : 'You') + ':</b> <span>' + m.text + '</span></p>'
+			);
+		}
+	}
+	// Add a line for the "currently typing" text
+	if($('#typing').length === 0) {
+		$('#messages').append('<p><b>' + handle.peer + ' typing:</b> <span id="typing"></span>');
+		$('#messages').get(0).scrollTop = $('#messages').get(0).scrollHeight;
+	}
+	$('#typing').html(handle.remoteText);
+}
+
+// Helper to pad strings when parsing T.140 blocks for real-time text
+function pad(n) {
+	return n.length < 2 ? "0" + n : n;
 }
