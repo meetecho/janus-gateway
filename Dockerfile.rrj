@@ -75,23 +75,6 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && ./configure --prefix=/usr \
   && make \
   && make install \
-  #&& mkdir -p build \
-  #&& cd build \
-  #&& cmake \
-  #  -DCMAKE_INSTALL_PREFIX=/usr \
-  #  -DCMAKE_INSTALL_LIBDIR=lib \
-  #  -DCMAKE_C_FLAGS="$CFLAGS" \
-  #  -DENABLE_SSL_SUPPORT=ON \
-  #  -DBUILD_TESTS=OFF \
-  #  -DBUILD_EXAMPLES=OFF \
-  #  -DBUILD_TOOLS=OFF \
-  #  -DBUILD_TOOLS_DOCS=OFF \
-  #  -DBUILD_API_DOCS=OFF \
-  #  -DBUILD_SHARED_LIBS=ON \
-  #  -DBUILD_STATIC_LIBS=ON \
-  #  .. \
-  #&& make \
-  #&& make install \
   && cd \
   # INSTALL JANUS GATEWAY
   && cd janus-gateway \
