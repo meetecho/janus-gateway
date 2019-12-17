@@ -2,6 +2,7 @@ FROM alpine:3.7
 MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
 
 ARG USRSCTP_VERSION=0.9.3.0
+ARG RABBITC_VERSION=2ca1774
 
 ARG JANUS_BORINGSSL=--enable-boringssl
 ARG JANUS_POST_PROCESSING=--disable-post-processing
@@ -32,8 +33,8 @@ WORKDIR /root
 
 COPY . janus-gateway
 COPY launch_janus.sh /launch_janus.sh
-COPY conf/janus.cfg /usr/local/etc/janus/janus.cfg
-COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabbitmq.cfg
+COPY conf/janus.jcfg /usr/local/etc/janus/janus.jcfg
+COPY conf/janus.transport.rabbitmq.jcfg /usr/local/etc/janus/janus.transport.rabbitmq.jcfg
 
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \
@@ -41,7 +42,7 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
     curl libtool ffmpeg-dev glib-dev jansson-dev libconfig-dev \
     popt-dev xmlto openssl-dev \
   && apk add --no-cache \
-    libnice jansson glib libogg ffmpeg libc6-compat libconfig libtool libsrtp \
+    libnice jansson glib libogg ffmpeg libc6-compat libconfig libtool libsrtp libssl1.0 \
   # INSTALL USRSCTP
   && curl -L https://github.com/sctplab/usrsctp/archive/$USRSCTP_VERSION.tar.gz | tar zx \
   && cd usrsctp-$USRSCTP_VERSION \
@@ -65,27 +66,32 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
   && cp build/ssl/libssl.a /opt/boringssl/lib/ \
   && cp build/crypto/libcrypto.a /opt/boringssl/lib/ \
   # INSTALL RABBITMQ-C
-  && git clone --depth 1 https://github.com/alanxz/rabbitmq-c rabbitmq-c \
+  && git clone https://github.com/alanxz/rabbitmq-c rabbitmq-c \
   && cd rabbitmq-c \
+  && git checkout $RABBITC_VERSION \
   && git submodule init \
   && git submodule update \
-  && mkdir -p build \
-  && cd build \
-  && cmake \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_INSTALL_LIBDIR=lib \
-    -DCMAKE_C_FLAGS="$CFLAGS" \
-    -DENABLE_SSL_SUPPORT=ON \
-    -DBUILD_TESTS=OFF \
-    -DBUILD_EXAMPLES=OFF \
-    -DBUILD_TOOLS=OFF \
-    -DBUILD_TOOLS_DOCS=OFF \
-    -DBUILD_API_DOCS=OFF \
-    -DBUILD_SHARED_LIBS=ON \
-    -DBUILD_STATIC_LIBS=ON \
-    .. \
+  && autoreconf -i \
+  && ./configure --prefix=/usr \
   && make \
   && make install \
+  #&& mkdir -p build \
+  #&& cd build \
+  #&& cmake \
+  #  -DCMAKE_INSTALL_PREFIX=/usr \
+  #  -DCMAKE_INSTALL_LIBDIR=lib \
+  #  -DCMAKE_C_FLAGS="$CFLAGS" \
+  #  -DENABLE_SSL_SUPPORT=ON \
+  #  -DBUILD_TESTS=OFF \
+  #  -DBUILD_EXAMPLES=OFF \
+  #  -DBUILD_TOOLS=OFF \
+  #  -DBUILD_TOOLS_DOCS=OFF \
+  #  -DBUILD_API_DOCS=OFF \
+  #  -DBUILD_SHARED_LIBS=ON \
+  #  -DBUILD_STATIC_LIBS=ON \
+  #  .. \
+  #&& make \
+  #&& make install \
   && cd \
   # INSTALL JANUS GATEWAY
   && cd janus-gateway \
@@ -97,7 +103,7 @@ RUN apk add --update --no-cache --virtual .build-dependencies \
     $JANUS_DATA_CHANNELS \
     $JANUS_DOCS \
     # Transport configuration
-    --disable-rest \
+    $JANUS_TRANSPORT_REST \
     $JANUS_TRANSPORT_WEBSOCKET \
     $JANUS_TRANSPORT_RABBIT_MQ \
     $JANUS_TRANSPORT_MQTT \
