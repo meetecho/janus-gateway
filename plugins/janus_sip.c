@@ -3374,12 +3374,6 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
-			if(strstr(msg_sdp, "m=application")) {
-				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
-				error_code = JANUS_SIP_ERROR_MISSING_SDP;
-				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
-				goto error;
-			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			/* Clean up SRTP stuff from before first, in case it's still needed */
@@ -3676,7 +3670,7 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(strstr(msg_sdp, "m=application") && !strstr(msg_sdp, "m=application 0")) {
-				/* TODO Replace m=application with m=text and negotiate t140 */
+				/* Replace m=application with m=text and negotiate t140 */
 				JANUS_LOG(LOG_VERB, "Going to negotiate real-time text...\n");
 				session->media.has_text = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
@@ -3813,7 +3807,6 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdperror);
 				goto error;
 			}
-			/* TODO Replace m=application with m=text and negotiate t140, if there's datachannels */
 
 			if(session->status == janus_sip_call_status_incall_reinvited && offer) {
 				/* We have re-INVITE in progress */
