@@ -5,8 +5,8 @@ ARG USRSCTP_VERSION=0.9.3.0
 ARG RABBITC_VERSION=2ca1774
 
 ARG JANUS_BORINGSSL=--enable-boringssl
-ARG JANUS_POST_PROCESSING=--enable-post-processing
-ARG JANUS_DATA_CHANNELS=--enable-data-channels
+ARG JANUS_POST_PROCESSING=--disable-post-processing
+ARG JANUS_DATA_CHANNELS=--disable-data-channels
 ARG JANUS_DOCS=--disable-docs
 
 ARG JANUS_TRANSPORT_REST=--disable-rest
@@ -17,7 +17,7 @@ ARG JANUS_TRANSPORT_UNIX_SOCKET=--disable-unix-sockets
 
 ARG JANUS_PLUGIN_AUDIOBRIDGE=--disable-plugin-audiobridge
 ARG JANUS_PLUGIN_DUKTAPE=--disable-plugin-duktape
-ARG JANUS_PLUGIN_ECHOTEST=--disable-plugin-echotest
+ARG JANUS_PLUGIN_ECHOTEST=--enable-plugin-echotest
 ARG JANUS_PLUGIN_LUA=--disable-plugin-lua
 ARG JANUS_PLUGIN_RECORDPLAY=--disable-plugin-recordplay
 ARG JANUS_PLUGIN_SIP=--disable-plugin-sip
@@ -33,8 +33,8 @@ WORKDIR /root
 
 COPY . janus-gateway
 COPY launch_janus.sh /launch_janus.sh
-COPY conf/janus.cfg /usr/local/etc/janus/janus.cfg
-COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabbitmq.cfg
+COPY conf/janus.jcfg /usr/local/etc/janus/janus.jcfg
+COPY conf/janus.transport.rabbitmq.jcfg /usr/local/etc/janus/janus.transport.rabbitmq.jcfg
 
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \

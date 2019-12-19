@@ -1,0 +1,23 @@
+general: {
+	configs_folder = "/usr/local/etc/janus"
+	plugins_folder = "/usr/local/lib/janus/plugins"
+	transports_folder = "/usr/local/lib/janus/transports"
+	debug_level = $JANUS_DEBUG_LEVEL
+	debug_timestamps = true
+	debug_colors = true
+	admin_secret = "$JANUS_ADMIN_SECRET"
+	server_name = "$JANUS_SERVER_NAME"
+}
+
+media: {
+	max_nack_queue = 10000
+	rtp_port_range = "$JANUS_RTP_RANGE"
+}
+
+plugins: {
+	disable = "$JANUS_PLUGIN_DISABLE"
+}
+
+transports: {
+	disable = "$JANUS_TRANSPORT_DISABLE"
+}
