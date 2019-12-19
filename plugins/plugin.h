@@ -540,8 +540,14 @@ struct janus_plugin_rtp_extensions {
 	/*! \brief Whether the encoder detected voice activity (part of audio-level extension)
 	 * @note Browsers apparently always set this to 1, so it's unreliable and should be ignored */
 	gboolean audio_level_vad;
-	/*! \brief Video orientation bit-mask (0 0 0 0 C F R1 R0); -1 means no extension */
-	int8_t video_orientation;
+	/*! \brief Video orientation rotation (0, 90, 180, 270); -1 means no extension */
+	int16_t video_rotation;
+	/*! \brief Whether the video orientation extension says this is the back camera
+	 * @note Will be ignored if no rotation value is set */
+	gboolean video_back_camera;
+	/*! \brief Whether the video orientation extension says it's flipped horizontally
+	 * @note Will be ignored if no rotation value is set */
+	gboolean video_flipped;
 };
 /*! \brief Helper method to initialise/reset the RTP extensions field
  * @note This is important because each of the supported extensions may

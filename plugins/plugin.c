@@ -41,7 +41,9 @@ void janus_plugin_rtp_extensions_reset(janus_plugin_rtp_extensions *extensions) 
 		/* By extensions are not added to packets */
 		extensions->audio_level = -1;
 		extensions->audio_level_vad = FALSE;
-		extensions->video_orientation = -1;
+		extensions->video_rotation = -1;
+		extensions->video_back_camera = FALSE;
+		extensions->video_flipped = FALSE;
 	}
 }
 void janus_plugin_rtp_reset(janus_plugin_rtp *packet) {

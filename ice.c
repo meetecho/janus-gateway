@@ -2480,7 +2480,15 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
 					if(janus_rtp_header_extension_parse_video_orientation(buf, buflen,
 							stream->videoorientation_ext_id, &c, &f, &r1, &r0) == 0) {
-						rtp.extensions.video_orientation = (c<<3) + (f<<2) + (r1<<1) + r0;
+						rtp.extensions.video_rotation = 0;
+						if(r1 && r0)
+							rtp.extensions.video_rotation = 270;
+						else if(r1)
+							rtp.extensions.video_rotation = 180;
+						else if(r0)
+							rtp.extensions.video_rotation = 90;
+						rtp.extensions.video_back_camera = c;
+						rtp.extensions.video_flipped = f;
 					}
 				}
 				/* Pass the packet to the plugin */
@@ -4378,17 +4386,38 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 			}
 		}
 		/* Check if the plugin (or source) included other extensions */
-		if(packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) {
+		if(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) {
 			/* Add audio-level extension */
 			*index = (handle->stream->audiolevel_ext_id << 4);
 			*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
 			index += 2;
 			extlen += 2;
 		}
-		if(packet->extensions.video_orientation != -1 && handle->stream->videoorientation_ext_id > 0) {
+		if(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) {
 			/* Add video-orientation extension */
 			*index = (handle->stream->videoorientation_ext_id << 4);
-			*(index+1) = packet->extensions.video_orientation;
+			gboolean c = packet->extensions.video_back_camera,
+				f = packet->extensions.video_flipped, r1 = FALSE, r0 = FALSE;
+			switch(packet->extensions.video_rotation) {
+				case 270:
+					r1 = TRUE;
+					r0 = TRUE;
+					break;
+				case 180:
+					r1 = TRUE;
+					r0 = FALSE;
+					break;
+				case 90:
+					r1 = FALSE;
+					r0 = TRUE;
+					break;
+				case 0:
+				default:
+					r1 = FALSE;
+					r0 = FALSE;
+					break;
+			}
+			*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
 			index += 2;
 			extlen += 2;
 		}
