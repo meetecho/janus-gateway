@@ -407,6 +407,7 @@ int janus_pidfile_create(const char *file) {
 	if(pidf == NULL) {
 		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
 		close(pidfd);
+		pidfd = -1;
 		return -1;
 	}
 	/* Try locking the PID file */
@@ -418,6 +419,7 @@ int janus_pidfile_create(const char *file) {
 			JANUS_LOG(LOG_FATAL, "Error locking PID file (lock held by unknown PID?)\n");
 		}
 		fclose(pidf);
+		pidf = NULL;
 		return -1;
 	}
 	/* Write the PID */
