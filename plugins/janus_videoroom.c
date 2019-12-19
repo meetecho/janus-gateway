@@ -1539,6 +1539,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	uint32_t ssrc[3];
 	uint32_t timestamp;
 	uint16_t seq_number;
+	/* Extensions to add, if any */
+	janus_plugin_rtp_extensions extensions;
 	/* The following are only relevant if we're doing VP9 SVC*/
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
@@ -4298,7 +4300,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pkt) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
@@ -4313,12 +4315,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 	}
 	janus_videoroom *videoroom = participant->room;
 
-	gboolean video = packet->video;
-	char *buf = packet->buffer;
-	uint16_t len = packet->length;
+	gboolean video = pkt->video;
+	char *buf = pkt->buffer;
+	uint16_t len = pkt->length;
 	/* In case this is an audio packet and we're doing talk detection, check the audio level extension */
 	if(!video && videoroom->audiolevel_event && participant->audio_active) {
-		int level = packet->extensions.audio_level;
+		int level = pkt->extensions.audio_level;
 		if(level != -1) {
 			participant->audio_dBov_sum += level;
 			participant->audio_active_packets++;
@@ -4503,6 +4505,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		janus_videoroom_rtp_relay_packet packet;
 		packet.data = rtp;
 		packet.length = len;
+		packet.extensions = pkt->extensions;
 		packet.is_rtp = TRUE;
 		packet.is_video = video;
 		packet.svc = FALSE;
@@ -6620,9 +6623,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 				packet->data->markerbit = 1;
 			}
 			if(gateway != NULL) {
-				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
-				janus_plugin_rtp_extensions_reset(&rtp.extensions);
-				/* FIXME Add extensions we parsed, e.g., audio level and video orientation */
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
+					.extensions = packet->extensions };
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			if(override_mark_bit && !has_marker_bit) {
@@ -6679,9 +6681,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			}
 			/* Send the packet */
 			if(gateway != NULL) {
-				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
-				janus_plugin_rtp_extensions_reset(&rtp.extensions);
-				/* FIXME Add extensions we parsed, e.g., audio level and video orientation */
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
+					.extensions = packet->extensions };
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -6696,9 +6697,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			janus_rtp_header_update(packet->data, &subscriber->context, TRUE, 4500);
 			/* Send the packet */
 			if(gateway != NULL) {
-				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
-				janus_plugin_rtp_extensions_reset(&rtp.extensions);
-				/* FIXME Add extensions we parsed, e.g., audio level and video orientation */
+				janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
+					.extensions = packet->extensions };
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -6715,9 +6715,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		janus_rtp_header_update(packet->data, &subscriber->context, FALSE, 960);
 		/* Send the packet */
 		if(gateway != NULL) {
-			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
-			janus_plugin_rtp_extensions_reset(&rtp.extensions);
-			/* FIXME Add extensions we parsed, e.g., audio level and video orientation */
+			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
+				.extensions = packet->extensions };
 			gateway->relay_rtp(session->handle, &rtp);
 		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
