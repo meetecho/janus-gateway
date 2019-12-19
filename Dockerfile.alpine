@@ -33,8 +33,8 @@ WORKDIR /root
 
 COPY . janus-gateway
 COPY launch_janus.sh /launch_janus.sh
-COPY conf/janus.cfg /usr/local/etc/janus/janus.cfg
-COPY conf/janus.transport.rabbitmq.cfg /usr/local/etc/janus/janus.transport.rabbitmq.cfg
+COPY conf/janus.jcfg /usr/local/etc/janus/janus.jcfg
+COPY conf/janus.transport.rabbitmq.jcfg /usr/local/etc/janus/janus.transport.rabbitmq.jcfg
 
 RUN apk add --update --no-cache --virtual .build-dependencies \
     git build-base ca-certificates libnice-dev m4 automake \
