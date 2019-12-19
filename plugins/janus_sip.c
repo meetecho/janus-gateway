@@ -6126,7 +6126,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_root = su_root_create(session->stack);
 	session->stack->subscriptions = NULL;
 	janus_mutex_init(&session->stack->smutex);
-	su_home_init(session->stack->s_home);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
 	char sips_url[128];
