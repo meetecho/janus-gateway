@@ -285,7 +285,7 @@
 		"event" : "incomingcall",
 		"username" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>",
-		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
+		"referred_by" : "<SIP URI header conveying the identity of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
@@ -568,7 +568,7 @@
 		"event" : "transfer",
 		"refer_id" : <unique ID, internal to Janus, of this referral>,
 		"refer_to" : "<SIP URI to call>",
-		"referred_by" : "<SIP URI of the transferor; optional>",
+		"referred_by" : "<SIP URI SIP URI header conveying the identity of the transferor; optional>",
 		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
@@ -4521,8 +4521,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "headers", headers);
 			}
 			char *referred_by = NULL;
-			if(sip->sip_referred_by && sip->sip_referred_by->b_url) {
-				char *rby_text = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
+			if(sip->sip_referred_by) {
+				char *rby_text = sip_header_as_string(session->stack->s_home, sip->sip_referred_by);
 				referred_by = g_strdup(rby_text);
 				su_free(session->stack->s_home, rby_text);
 				json_object_set_new(calling, "referred_by", json_string(referred_by));
@@ -4596,7 +4596,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			refer_to = url_as_string(session->stack->s_home, sip->sip_refer_to->r_url);
 			sip->sip_refer_to->r_url->url_headers = url_headers;
 			if(sip->sip_referred_by != NULL)
-				referred_by = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
+				referred_by = sip_header_as_string(session->stack->s_home, sip->sip_referred_by);
 			else if(sip->sip_from != NULL)
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 			JANUS_LOG(LOG_VERB, "Incoming REFER: %s (by %s, headers: %s)\n",
