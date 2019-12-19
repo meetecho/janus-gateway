@@ -1,5 +1,5 @@
 general: {
-	enable = true
+	enabled = true
 	host = "$RABBIT_HOST"
 	port = $RABBIT_PORT
 	username = "$RABBIT_USER"
@@ -10,7 +10,7 @@ general: {
 }
 
 admin: {
-	admin_enable = $RABBIT_ADMIN_ENABLE
+	admin_enabled = $RABBIT_ADMIN_ENABLE
 	to_janus_admin = "$RABBIT_ADMIN_QUEUE_TO"
 	from_janus_admin = "$RABBIT_ADMIN_QUEUE_FROM"
 }
