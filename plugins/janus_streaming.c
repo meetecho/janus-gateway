@@ -7483,7 +7483,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(!session->data)
 			return;
 		if(gateway != NULL)
-			gateway->relay_data(session->handle, NULL, packet->textdata, (char *)packet->data, packet->length);
+			gateway->relay_data(session->handle, NULL, NULL, packet->textdata, (char *)packet->data, packet->length);
 	}
 
 	return;

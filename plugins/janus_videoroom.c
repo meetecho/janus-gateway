@@ -1090,7 +1090,7 @@ json_t *janus_videoroom_handle_admin_message(json_t *message);
 void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_videoroom_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+void janus_videoroom_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len);
 void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -4639,7 +4639,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 	}
 }
 
-void janus_videoroom_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len) {
+void janus_videoroom_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 	if(buf == NULL || len <= 0)
@@ -6755,7 +6755,7 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 	if(gateway != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to viewer\n",
 			packet->textdata ? "text" : "binary", packet->length);
-		gateway->relay_data(session->handle, NULL, packet->textdata, (char *)packet->data, packet->length);
+		gateway->relay_data(session->handle, NULL, NULL, packet->textdata, (char *)packet->data, packet->length);
 	}
 	return;
 }

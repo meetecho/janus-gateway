@@ -301,6 +301,7 @@ uint16_t rtp_range_max = 0;
 typedef struct janus_ice_queued_packet {
 	char *data;
 	char *label;
+	char *protocol;
 	gint length;
 	gint type;
 	gboolean control;
@@ -456,6 +457,7 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	}
 	g_free(pkt->data);
 	g_free(pkt->label);
+	g_free(pkt->protocol);
 	g_free(pkt);
 }
 
@@ -2791,6 +2793,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							pkt->control = FALSE;
 							pkt->retransmission = TRUE;
 							pkt->label = NULL;
+							pkt->protocol = NULL;
 							pkt->added = janus_get_monotonic_time();
 							/* What to send and how depends on whether we're doing RFC4588 or not */
 							if(!video || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
@@ -2874,14 +2877,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	}
 }
 
-void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length) {
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *protocol, gboolean textdata, char *buffer, int length) {
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
-		plugin->incoming_data(handle->app_handle, label, textdata, buffer, length);
+		plugin->incoming_data(handle->app_handle, label, protocol, textdata, buffer, length);
 }
 
 
@@ -4270,7 +4273,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			}
 			component->noerrorlog = FALSE;
 			/* TODO Support binary data */
-			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->type == JANUS_ICE_PACKET_TEXT, pkt->data, pkt->length);
+			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->protocol,
+				pkt->type == JANUS_ICE_PACKET_TEXT, pkt->data, pkt->length);
 #endif
 		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
 			/* SCTP data to push */
@@ -4326,6 +4330,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
+	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -4366,6 +4371,7 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
+	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 	if(rtcp_buf != buf) {
@@ -4401,7 +4407,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 }
 
 #ifdef HAVE_SCTP
-void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buf, int len) {
+void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
@@ -4414,6 +4420,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textda
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = label ? g_strdup(label) : NULL;
+	pkt->protocol = protocol ? g_strdup(protocol) : NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
@@ -4433,6 +4440,7 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
+	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 #endif

@@ -502,8 +502,10 @@ $(document).ready(function() {
 										$('#remotevideo').removeClass('hide').show();
 									}
 								},
-								ondataopen: function(data) {
-									Janus.log("The DataChannel is available!");
+								ondataopen: function(label, protocol) {
+									Janus.log("The DataChannel is available! " + label + " (protocol=" + protocol + ")");
+									if(sipcall.localMessages)
+										return;
 									$('#texts').removeClass('hide').show();
 									// We'll store the history of local and remote messages
 									// in an array, in case we need to edit those again
@@ -511,17 +513,22 @@ $(document).ready(function() {
 									sipcall.remoteMessages = [];
 									// The "typing" remote text is in a separate string instead
 									sipcall.remoteText = "";
+									// Send the BOM
+									var array = new Uint8Array(3);
+									array[0] = 239;
+									array[1] = 187;
+									array[2] = 191;
+									sipcall.data({ data: array, label: "RTT", protocol: "t140" });
 									// Prepare the input area
 									$('#datasend').removeAttr('disabled')
 										.keypress(function(event) {
-											Janus.warn(event);
 											if(event.which == 13) {
 												// Enter key was pressed, send a line separator code
 												var array = new Uint8Array(3);
 												array[0] = 226;
 												array[1] = 128;
 												array[2] = 168;
-												sipcall.data({ data: array });
+												sipcall.data({ data: array, label: "RTT", protocol: "t140" });
 												// Now push the text to the local messages and empty the input
 												sipcall.localMessages.push({
 													timestamp: new Date(),
@@ -534,14 +541,13 @@ $(document).ready(function() {
 											}
 											var array = new Uint8Array(1);
 											array[0] = event.keyCode;
-											sipcall.data({ data: array });
+											sipcall.data({ data: array, label: "RTT", protocol: "t140" });
 										}).keydown(function(event) {
-											Janus.warn(event);
 											if(event.which == 8) {
 												// Backspace pressed, send the related code
 												var array = new Uint8Array(1);
 												array[0] = event.keyCode;
-												sipcall.data({ data: array });
+												sipcall.data({ data: array, label: "RTT", protocol: "t140" });
 												// Delete in our input as well
 												if($(this).val().length > 0) {
 													var text = $(this).val().slice(0, -1);
@@ -860,6 +866,8 @@ function actuallyDoCall(handle, uri, doVideo, referId) {
 			media: {
 				audioSend: true, audioRecv: true,		// We DO want audio
 				videoSend: doVideo, videoRecv: doVideo	// We MAY want video
+				// Should you want to negotiate support for real-time text
+				// as well, all you need to do is pass data:true here
 			},
 			success: function(jsep) {
 				Janus.debug("Got SDP!");

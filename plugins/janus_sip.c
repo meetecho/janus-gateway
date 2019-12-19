@@ -653,7 +653,7 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 void janus_sip_setup_media(janus_plugin_session *handle);
 void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+void janus_sip_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len);
 void janus_sip_hangup_media(janus_plugin_session *handle);
 void janus_sip_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_sip_query_session(janus_plugin_session *handle);
@@ -1517,6 +1517,9 @@ static void janus_sip_sdp_text2application(janus_sip_session *session, janus_sdp
 	g_list_free(m->attributes);
 	m->attributes = NULL;
 	janus_sdp_attribute *a = janus_sdp_attribute_create("sctp-port", "5000");
+	m->attributes = g_list_append(m->attributes, a);
+	/* FIXME Send a dcmap attribute as well, to specify the subprotocol and a label */
+	a = janus_sdp_attribute_create("dcmap", "1 label=\"RTT\";subprotocol=\"t140\"");
 	m->attributes = g_list_append(m->attributes, a);
 }
 
@@ -2447,7 +2450,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	}
 }
 
-void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len) {
+void janus_sip_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed)) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -2457,6 +2460,14 @@ void janus_sip_incoming_data(janus_plugin_session *handle, char *label, gboolean
 		return;
 	if(buf == NULL || len < 1 || !session->media.has_text || session->media.text_rtp_fd == -1)
 		return;
+	if(label == NULL || strcmp(label, "RTT")) {
+		JANUS_LOG(LOG_WARN, "Unknown data channel with label '%s', ignoring...\n", label);
+		return;
+	}
+	if(protocol == NULL || strcmp(protocol, "t140")) {
+		JANUS_LOG(LOG_WARN, "Unsupported datachannel subprotocol '%s', ignoring...\n", protocol);
+		return;
+	}
 	/* If T.140 is involved, relay the real-time text chunk */
 	if(session->media.text_ssrc == 0) {
 		session->media.text_ssrc = janus_random_uint32();
@@ -5902,17 +5913,17 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 					int red_pt = janus_sdp_get_codec_pt(sdp, "t140-red");
 					if(t140_pt == pt) {
 						/* Plain T.140 */
-						JANUS_LOG(LOG_WARN, "Plain T.140: %d\n", t140_pt);
+						JANUS_LOG(LOG_HUGE, "Plain T.140: %d\n", t140_pt);
 						session->media.text_pt = t140_pt;
 						session->media.text_red_pt = -1;
 					} else if(red_pt == pt) {
 						/* T.140 with redundancy */
-						JANUS_LOG(LOG_WARN, "T.140 with redundancy: %d --> %d\n", red_pt, t140_pt);
+						JANUS_LOG(LOG_HUGE, "T.140 with redundancy: %d --> %d\n", red_pt, t140_pt);
 						session->media.text_pt = t140_pt;
 						session->media.text_red_pt = red_pt;
 					} else {
 						/* T.140 with redundancy */
-						JANUS_LOG(LOG_WARN, "Neither T.140 nor red...\n");
+						JANUS_LOG(LOG_HUGE, "Neither T.140 nor red...\n");
 						session->media.text_pt = -1;
 						session->media.text_red_pt = -1;
 					}
@@ -6590,7 +6601,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Are we using plain T.140 or red? */
 					if(header->type == session->media.text_pt) {
 						/* T.140, relay to application via datachannels as is */
-						gateway->relay_data(session->handle, NULL, FALSE, payload, plen);
+						gateway->relay_data(session->handle, (char *)"RTT", (char *)"t140", FALSE, payload, plen);
 					} else if(header->type == session->media.text_red_pt) {
 						/* red, decapsulate first */
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] t140/red (%d bytes)\n",
@@ -6652,7 +6663,7 @@ static void *janus_sip_relay_thread(void *data) {
 						if(payload != NULL && plen > 0) {
 							/* Primary data, relay the T.140 block to application via datachannels */
 							if(payload != NULL && plen > 0)
-								gateway->relay_data(session->handle, NULL, FALSE, payload, plen);
+								gateway->relay_data(session->handle, (char *)"RTT", (char *)"t140", FALSE, payload, plen);
 						}
 					}
 					continue;

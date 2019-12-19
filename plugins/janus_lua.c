@@ -217,7 +217,7 @@ json_t *janus_lua_handle_admin_message(json_t *message);
 void janus_lua_setup_media(janus_plugin_session *handle);
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_lua_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len);
 void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_lua_hangup_media(janus_plugin_session *handle);
 void janus_lua_destroy_session(janus_plugin_session *handle, int *error);
@@ -944,7 +944,7 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the data packet */
-	janus_core->relay_data(session->handle, NULL, TRUE, (char *)payload, len);
+	janus_core->relay_data(session->handle, NULL, NULL, TRUE, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -978,7 +978,7 @@ static int janus_lua_method_relaybinarydata(lua_State *s) {
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the data packet */
-	janus_core->relay_data(session->handle, NULL, FALSE, (char *)payload, len);
+	janus_core->relay_data(session->handle, NULL, NULL, FALSE, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -1921,7 +1921,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	}
 }
 
-void janus_lua_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len) {
+void janus_lua_incoming_data(janus_plugin_session *handle, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
@@ -2095,7 +2095,7 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to session %"SCNu32"\n",
 			packet->textdata ? "text" : "binary", packet->length, session->id);
-		janus_core->relay_data(session->handle, NULL, packet->textdata, (char *)packet->data, packet->length);
+		janus_core->relay_data(session->handle, NULL, NULL, packet->textdata, (char *)packet->data, packet->length);
 	}
 	return;
 }
