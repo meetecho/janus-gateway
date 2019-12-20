@@ -3965,8 +3965,8 @@ gint main(int argc, char *argv[])
 				g_hash_table_insert(loggers_so, (gpointer)janus_logger->get_package(), event);
 			}
 		}
+		closedir(dir);
 	}
-	closedir(dir);
 	if(disabled_loggers != NULL)
 		g_strfreev(disabled_loggers);
 	disabled_loggers = NULL;
