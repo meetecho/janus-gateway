@@ -1172,6 +1172,7 @@ typedef struct janus_streaming_session {
 	gint64 last_spatial_layer[2];
 	int temporal_layer, target_temporal_layer;
 	gboolean stopping;
+	volatile gint renegotiating;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1341,6 +1342,7 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 #define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_CANT_SWITCH			458
 #define JANUS_STREAMING_ERROR_CANT_RECORD			459
+#define JANUS_STREAMING_ERROR_INVALID_STATE			460
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
@@ -4113,6 +4115,16 @@ static void *janus_streaming_handler(void *data) {
 			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
 			if(do_restart) {
 				/* User asked for an ICE restart: provide a new offer */
+				if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
+					/* Already triggered a renegotiation, and still waiting for an answer */
+					janus_mutex_unlock(&mp->mutex);
+					JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %"SCNu64"\n", session->mountpoint->id);
+					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+					g_snprintf(error_cause, 512, "Already renegotiating mountpoint %"SCNu64, session->mountpoint->id);
+					janus_refcount_decrease(&mp->ref);
+					goto error;
+				}
+				janus_refcount_decrease(&mp->ref);
 				JANUS_LOG(LOG_VERB, "Request to perform an ICE restart on mountpoint/stream %"SCNu64" subscription\n", id_value);
 				session->sdp_version++;	/* This needs to be increased when it changes */
 				goto done;
@@ -4121,12 +4133,33 @@ static void *janus_streaming_handler(void *data) {
 				if(session->mountpoint != mp) {
 					/* Already watching something else */
 					janus_mutex_unlock(&mp->mutex);
+					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Already watching mountpoint %"SCNu64"\n", session->mountpoint->id);
-					error_code = JANUS_STREAMING_ERROR_CANT_SWITCH;
+					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Already watching mountpoint %"SCNu64, session->mountpoint->id);
 					goto error;
 				} else {
-					/* Simple renegotiation */
+					/* Make sure it's not an API error */
+					if(!session->started) {
+						/* Can't be a renegotiation, PeerConnection isn't up yet */
+						janus_mutex_unlock(&mp->mutex);
+						JANUS_LOG(LOG_ERR, "Already watching mountpoint %"SCNu64"\n", session->mountpoint->id);
+						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+						g_snprintf(error_cause, 512, "Already watching mountpoint %"SCNu64, session->mountpoint->id);
+						janus_refcount_decrease(&mp->ref);
+						goto error;
+					}
+					if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
+						/* Already triggered a renegotiation, and still waiting for an answer */
+						janus_mutex_unlock(&mp->mutex);
+						JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %"SCNu64"\n", session->mountpoint->id);
+						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+						g_snprintf(error_cause, 512, "Already renegotiating mountpoint %"SCNu64, session->mountpoint->id);
+						janus_refcount_decrease(&mp->ref);
+						goto error;
+					}
+					/* Simple renegotiation, remove the extra uneeded reference */
+					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_VERB, "Request to update mountpoint/stream %"SCNu64" subscription (no restart)\n", id_value);
 					session->sdp_version++;	/* This needs to be increased when it changes */
 					goto done;
@@ -4646,6 +4679,7 @@ done:
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (%s):\n%s\n",
 				do_restart ? "renegotiation occurring" : "but we really don't care", msg_sdp_type, msg_sdp);
 		}
+		g_atomic_int_set(&session->renegotiating, 0);
 
 		/* Prepare JSON event */
 		json_t *jsep = json_pack("{ssss}", "type", sdp_type, "sdp", sdp);
