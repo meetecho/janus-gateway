@@ -178,7 +178,6 @@ typedef struct janus_mqtt_set_add_transaction_user_property_user_data {
 
 /* Transport client methods */
 void janus_mqtt_client_connected(void *context, char *cause);
-void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode);
 void janus_mqtt_client_connection_lost(void *context, char *cause);
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message);
 int janus_mqtt_client_connect(janus_mqtt_context *ctx);
@@ -207,6 +206,7 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 int janus_mqtt_client_get_response_code(MQTTAsync_failureData *response);
 #ifdef MQTTVERSION_5
 /* MQTT v5 interface callbacks */
+void janus_mqtt_client_disconnected5(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode);
 void janus_mqtt_client_connect_failure5(void *context, MQTTAsync_failureData5 *response);
 void janus_mqtt_client_reconnect_success5(void *context, MQTTAsync_successData5 *response);
 void janus_mqtt_client_reconnect_failure5(void *context, MQTTAsync_failureData5 *response);
@@ -669,7 +669,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		goto error;
 	}
 
-	if(MQTTAsync_setDisconnected(ctx->client, ctx, janus_mqtt_client_disconnected) != MQTTASYNC_SUCCESS) {
+#ifdef MQTTVERSION_5
+	if(MQTTAsync_setDisconnected(ctx->client, ctx, janus_mqtt_client_disconnected5) != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error setting up disconnected callback...\n");
 		goto error;
 	}
@@ -683,6 +684,12 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error setting up message arrived callback...\n");
 		goto error;
 	}
+#else
+	if(MQTTAsync_setCallbacks(ctx->client, ctx, janus_mqtt_client_connection_lost, janus_mqtt_client_message_arrived, NULL) != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error callbacks...\n");
+		goto error;
+	}
+#endif
 
 	/* Connecting to the broker */
 	int rc = janus_mqtt_client_connect(ctx);
@@ -977,7 +984,8 @@ void janus_mqtt_client_connected(void *context, char *cause) {
 	}
 }
 
-void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode) {
+#ifdef MQTTVERSION_5
+void janus_mqtt_client_disconnected5(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode) {
 	const char *reasonCodeStr = MQTTReasonCode_toString(reasonCode);
 	JANUS_LOG(LOG_INFO, "Disconnected from MQTT broker: %s\n", reasonCodeStr);
 
@@ -989,6 +997,7 @@ void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, e
 		ctx->gateway->notify_event(&janus_mqtt_transport_, mqtt_session, info);
 	}
 }
+#endif
 
 void janus_mqtt_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT connection lost cause of %s. Reconnecting...\n", cause);
@@ -1065,7 +1074,6 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	}
 #else
 	options.cleansession = ctx->connect.cleansession;
-	options.onSuccess = janus_mqtt_client_connect_success;
 	options.onFailure = janus_mqtt_client_connect_failure;
 #endif
 
