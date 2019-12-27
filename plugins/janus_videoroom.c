@@ -1525,7 +1525,7 @@ typedef struct janus_videoroom_subscriber {
 	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with plain
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
-	gint64 last_spatial_layer[2];
+	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
 	volatile gint destroyed;
 	janus_refcount ref;
