@@ -420,6 +420,10 @@ Janus.randomString = function(len) {
 
 
 function Janus(gatewayCallbacks) {
+	gatewayCallbacks = gatewayCallbacks || {};
+	gatewayCallbacks.success = (typeof gatewayCallbacks.success == "function") ? gatewayCallbacks.success : Janus.noop;
+	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
+	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(!Janus.initDone) {
 		gatewayCallbacks.error("Library not initialized");
 		return {};
@@ -429,10 +433,6 @@ function Janus(gatewayCallbacks) {
 		return {};
 	}
 	Janus.log("Library initialized: " + Janus.initDone);
-	gatewayCallbacks = gatewayCallbacks || {};
-	gatewayCallbacks.success = (typeof gatewayCallbacks.success == "function") ? gatewayCallbacks.success : Janus.noop;
-	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
-	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(!gatewayCallbacks.server) {
 		gatewayCallbacks.error("Invalid server url");
 		return {};
