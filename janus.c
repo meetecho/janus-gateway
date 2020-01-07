@@ -4750,8 +4750,8 @@ gint main(int argc, char *argv[])
 					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 				}
 			}
+			closedir(dir);
 		}
-		closedir(dir);
 		if(disabled_eventhandlers != NULL)
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
