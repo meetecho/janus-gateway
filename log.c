@@ -154,7 +154,19 @@ static void *janus_log_thread(void *ctx) {
 			fputs(b->str, stdout);
 		if(janus_log_file)
 			fputs(b->str, janus_log_file);
+		if(external_loggers != NULL) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, external_loggers);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_logger *l = value;
+				if(l == NULL)
+					continue;
+				l->incoming_logline(b->timestamp, b->str);
+			}
+		}
 	}
+	janus_log_set_loggers(NULL);
 	if(janus_log_console)
 		fflush(stdout);
 	if(janus_log_file)

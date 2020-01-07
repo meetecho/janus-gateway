@@ -460,7 +460,6 @@ static void janus_termination_handler(void) {
 	/* Close the logger */
 	janus_log_destroy();
 	/* Get rid of external loggers too, if any */
-	janus_log_set_loggers(NULL);
 	if(loggers != NULL && g_hash_table_size(loggers) > 0) {
 		g_hash_table_foreach(loggers, janus_logger_close, NULL);
 		g_hash_table_destroy(loggers);
