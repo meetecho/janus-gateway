@@ -460,7 +460,6 @@ static void janus_termination_handler(void) {
 	/* Close the logger */
 	janus_log_destroy();
 	/* Get rid of external loggers too, if any */
-	janus_log_set_loggers(NULL);
 	if(loggers != NULL && g_hash_table_size(loggers) > 0) {
 		g_hash_table_foreach(loggers, janus_logger_close, NULL);
 		g_hash_table_destroy(loggers);
@@ -522,7 +521,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len);
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, gboolean textdata, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
@@ -2369,11 +2368,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve public address");
 				goto jsondone;
 			}
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			const char *public_ip_addr = janus_network_address_string_from_buffer(&addr_buf);
 			gint64 end = janus_get_monotonic_time();
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "public_ip", json_string(public_ip));
+			json_object_set_new(reply, "public_ip", json_string(public_ip_addr));
 			json_object_set_new(reply, "public_port", json_integer(public_port));
 			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
@@ -3552,7 +3551,7 @@ void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, ch
 	janus_ice_relay_rtcp(handle, video, buf, len);
 }
 
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len) {
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, gboolean textdata, char *buf, int len) {
 	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped) || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
@@ -3560,7 +3559,7 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, 
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 #ifdef HAVE_SCTP
-	janus_ice_relay_data(handle, label, buf, len);
+	janus_ice_relay_data(handle, label, textdata, buf, len);
 #else
 	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
 #endif
@@ -3871,7 +3870,7 @@ gint main(int argc, char *argv[])
 	DIR *dir = NULL;
 	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
 	gchar **disabled_loggers = NULL;
-	path = EVENTDIR;
+	path = LOGGERDIR;
 	item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -3965,8 +3964,8 @@ gint main(int argc, char *argv[])
 				g_hash_table_insert(loggers_so, (gpointer)janus_logger->get_package(), event);
 			}
 		}
+		closedir(dir);
 	}
-	closedir(dir);
 	if(disabled_loggers != NULL)
 		g_strfreev(disabled_loggers);
 	disabled_loggers = NULL;
@@ -4750,8 +4749,8 @@ gint main(int argc, char *argv[])
 					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 				}
 			}
+			closedir(dir);
 		}
-		closedir(dir);
 		if(disabled_eventhandlers != NULL)
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;

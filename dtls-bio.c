@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    OpenSSL BIO agent writer
  * \details  OpenSSL BIO that writes packets to a libnice agent.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
@@ -73,7 +73,7 @@ static BIO_METHOD *BIO_janus_dtls_agent_method(void) {
 #endif
 }
 
-BIO *BIO_janus_dtls_agent_new(struct janus_dtls_srtp *dtls) {
+BIO *BIO_janus_dtls_agent_new(void *dtls) {
 	BIO* bio = BIO_new(BIO_janus_dtls_agent_method());
 	if(bio == NULL) {
 		return NULL;
@@ -110,7 +110,7 @@ static int janus_dtls_bio_agent_free(BIO *bio) {
 #endif
 	return 1;
 }
-	
+
 static int janus_dtls_bio_agent_write(BIO *bio, const char *in, int inl) {
 	JANUS_LOG(LOG_HUGE, "janus_dtls_bio_agent_write: %p, %d\n", in, inl);
 	/* Forward data to the write BIO */

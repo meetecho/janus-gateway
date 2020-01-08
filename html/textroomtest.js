@@ -74,7 +74,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to text room plugin
+						// Attach to TextRoom plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.textroom",
