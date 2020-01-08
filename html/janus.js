@@ -327,7 +327,7 @@ Janus.init = function(options) {
 			for(var s in Janus.sessions) {
 				if(Janus.sessions[s] && Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
+					Janus.sessions[s].destroy({unload: true, notifyDestroyed: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -949,16 +949,12 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
-		var asyncRequest = true;
-		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
-			asyncRequest = (callbacks.asyncRequest === true);
+		var unload = (callbacks.unload === true);
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
-		var cleanupHandles = false;
-		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
-			cleanupHandles = (callbacks.cleanupHandles === true);
-		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
+		var cleanupHandles = (callbacks.cleanupHandles === true);
+		Janus.log("Destroying session " + sessionId + " (unload=" + unload + ")");
 		if(!sessionId) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
@@ -1018,9 +1014,23 @@ function Janus(gatewayCallbacks) {
 			ws.send(JSON.stringify(request));
 			return;
 		}
+		if(unload) {
+			// We're unloading the page, use sendBeacon instead
+			navigator.sendBeacon(server + "/" + sessionId, JSON.stringify(request));
+			Janus.log("Destroyed session:");
+			Janus.debug(json);
+			sessionId = null;
+			connected = false;
+			if(json["janus"] !== "success") {
+				Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+			}
+			callbacks.success();
+			if(notifyDestroyed)
+				gatewayCallbacks.destroyed();
+			return;
+		}
 		Janus.httpAPICall(server + "/" + sessionId, {
 			verb: 'POST',
-			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			withCredentials: withCredentials,
 			body: request,
 			success: function(json) {
@@ -1548,13 +1558,8 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
-		var asyncRequest = true;
-		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
-			asyncRequest = (callbacks.asyncRequest === true);
-		var noRequest = true;
-		if(callbacks.noRequest !== undefined && callbacks.noRequest !== null)
-			noRequest = (callbacks.noRequest === true);
-		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
+		var noRequest = (callbacks.noRequest === true);
+		Janus.log("Destroying handle " + handleId + " (only-locally=" + noRequest + ")");
 		cleanupWebrtc(handleId);
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || pluginHandle.detached) {
@@ -1589,7 +1594,6 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.httpAPICall(server + "/" + sessionId + "/" + handleId, {
 			verb: 'POST',
-			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			withCredentials: withCredentials,
 			body: request,
 			success: function(json) {
