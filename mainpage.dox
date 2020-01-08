@@ -3244,9 +3244,15 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td>Debian/Ubuntu</td>
- * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé </a></td>
+ * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé</a></td>
  * 		<td><a href="http://projects.ag-projects.com/projects/documentation/wiki/Repositories">AG Projects Repo</a></td>
  *		<td>Debian Jessie, Ubuntu Trusty and Ubuntu Xenial</td>
+ * </tr>
+ * <tr>
+ * 		<td>Snap</td>
+ * 		<td><a href="https://github.com/RSATom">Sergey Radionov</a></td>
+ * 		<td><a href="https://github.com/RSATom/janus-gateway-snap">janus-gateway-snap</a></td>
+ *		<td>Helper repo for build Janus WebRTC Server on build.snapcraft.io</td>
  * </tr>
  * </table>
  * <br/>
