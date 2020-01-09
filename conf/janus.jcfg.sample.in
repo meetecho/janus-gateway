@@ -149,7 +149,7 @@ general: {
 		"/opt/janus/lib",
 		"/opt/janus/lib32",
 		"/opt/janus/lib64",
-		"/opt/janus/sbin",
+		"/opt/janus/sbin"
 	]
 }
 
