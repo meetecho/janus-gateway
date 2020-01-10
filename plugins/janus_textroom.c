@@ -901,9 +901,11 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 		if(string_ids) {
 			JANUS_LOG(LOG_INFO, "TextRoom will use alphanumeric IDs, not numeric\n");
 		}
-		/* Iterate on all rooms */
-		rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
-			(GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
+	}
+	/* Iterate on all rooms */
+	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
+	if(config != NULL) {
 		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
@@ -1893,7 +1895,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(reply, "participants", list);
 		}
 	} else if(!strcasecmp(request_text, "allowed")) {
-		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing textroom room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing TextRoom room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, allowed_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
@@ -2013,7 +2015,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_LOG(LOG_VERB, "TextRoom room allowed list updated\n");
 		}
 	} else if(!strcasecmp(request_text, "kick")) {
-		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing textroom room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing TextRoom room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, kick_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
@@ -2116,7 +2118,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(reply, "textbridge", json_string("success"));
 		}
 	} else if(!strcasecmp(request_text, "announcement")) {
-		JANUS_LOG(LOG_VERB, "Attempt to send a textroom announcement\n");
+		JANUS_LOG(LOG_VERB, "Attempt to send a TextRoom announcement\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, announcement_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
