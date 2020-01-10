@@ -373,7 +373,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(10000), *start = buffer;
+	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
