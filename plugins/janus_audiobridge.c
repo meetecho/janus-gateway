@@ -2402,7 +2402,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				continue;
 			}
 			json_t *rl = json_object();
-			json_object_set_new(rl, "room", json_integer(room->room_id));
+			json_object_set_new(rl, "room", string_ids ? json_integer(room->room_id_str) : json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
