@@ -749,6 +749,18 @@ static struct janus_json_parameter roomstr_parameters[] = {
 static struct janus_json_parameter roomstropt_parameters[] = {
 	{"room", JSON_STRING, 0}
 };
+static struct janus_json_parameter id_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter idopt_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter idstr_parameters[] = {
+	{"id", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter idstropt_parameters[] = {
+	{"id", JSON_STRING, 0}
+};
 static struct janus_json_parameter create_parameters[] = {
 	{"description", JSON_STRING, 0},
 	{"secret", JSON_STRING, 0},
@@ -781,21 +793,15 @@ static struct janus_json_parameter allowed_parameters[] = {
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"allowed", JSON_ARRAY, 0}
 };
-static struct janus_json_parameter kick_parameters[] = {
-	{"secret", JSON_STRING, 0},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
-};
-static struct janus_json_parameter mute_parameters[] = {
-	{"secret", JSON_STRING, 0},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+static struct janus_json_parameter secret_parameters[] = {
+	{"secret", JSON_STRING, 0}
 };
 static struct janus_json_parameter join_parameters[] = {
 	{"display", JSON_STRING, 0},
 	{"token", JSON_STRING, 0},
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
@@ -1488,7 +1494,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			/* Create the audio bridge room */
+			/* Create the AudioBridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
@@ -1817,7 +1823,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 	json_t *response = NULL;
 
 	if(!strcasecmp(request_text, "create")) {
-		/* Create a new audiobridge */
+		/* Create a new AudioBridge */
 		JANUS_LOG(LOG_VERB, "Creating a new AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
 			error_code, error_cause, TRUE,
@@ -1914,7 +1920,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				goto prepare_response;
 			}
 		}
-		/* Create the audio bridge room */
+		/* Create the AudioBridge room */
 		janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
 		/* Generate a random ID, if needed */
 		gboolean room_id_allocated = FALSE;
@@ -2106,7 +2112,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_mutex_unlock(&rooms_mutex);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "edit")) {
-		JANUS_LOG(LOG_VERB, "Attempt to edit an existing audiobridge room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to edit an existing AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
@@ -2248,7 +2254,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		JANUS_LOG(LOG_VERB, "Audiobridge room edited\n");
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
-		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audiobridge room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
@@ -2442,7 +2448,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_object_set_new(response, "exists", room_exists ? json_true() : json_false());
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "allowed")) {
-		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing audiobridge room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing AudioBridge room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, allowed_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
@@ -2563,8 +2569,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		JANUS_LOG(LOG_VERB, "Audiobridge room allowed list updated\n");
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "mute") || !strcasecmp(request_text, "unmute")) {
-		JANUS_LOG(LOG_VERB, "Attempt to mute a participant from an existing audiobridge room\n");
-		JANUS_VALIDATE_JSON_OBJECT(root, mute_parameters,
+		JANUS_LOG(LOG_VERB, "Attempt to mute a participant from an existing AudioBridge room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
@@ -2575,6 +2581,17 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		} else {
 			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		}
@@ -2720,8 +2737,8 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		janus_refcount_decrease(&audiobridge->ref);
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "kick")) {
-		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing audiobridge room\n");
-		JANUS_VALIDATE_JSON_OBJECT(root, kick_parameters,
+		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing AudioBridge room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
@@ -2732,6 +2749,17 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		} else {
 			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, idstr_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		}
@@ -3899,6 +3927,17 @@ static void *janus_audiobridge_handler(void *data) {
 					JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 			} else {
 				JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			}
+			if(error_code != 0)
+				goto error;
+			if(!string_ids) {
+				JANUS_VALIDATE_JSON_OBJECT(root, idopt_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			} else {
+				JANUS_VALIDATE_JSON_OBJECT(root, idstropt_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 			}
