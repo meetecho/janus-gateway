@@ -968,7 +968,26 @@ function Janus(gatewayCallbacks) {
 		}
 		if(!connected) {
 			Janus.warn("Is the server down? (connected=false)");
+			sessionId = null;
 			callbacks.success();
+			return;
+		}
+		if(unload) {
+			// We're unloading the page: use sendBeacon for HTTP instead,
+			// or just close the WebSocket connection if we're using that
+			if(websockets) {
+				ws.onclose = null;
+				ws.close();
+				ws = null;
+			} else {
+				navigator.sendBeacon(server + "/" + sessionId, JSON.stringify(request));
+			}
+			Janus.log("Destroyed session:");
+			sessionId = null;
+			connected = false;
+			callbacks.success();
+			if(notifyDestroyed)
+				gatewayCallbacks.destroyed();
 			return;
 		}
 		// No need to destroy all handles first, Janus will do that itself
@@ -1012,21 +1031,6 @@ function Janus(gatewayCallbacks) {
 			ws.addEventListener('error', onUnbindError);
 
 			ws.send(JSON.stringify(request));
-			return;
-		}
-		if(unload) {
-			// We're unloading the page, use sendBeacon instead
-			navigator.sendBeacon(server + "/" + sessionId, JSON.stringify(request));
-			Janus.log("Destroyed session:");
-			Janus.debug(json);
-			sessionId = null;
-			connected = false;
-			if(json["janus"] !== "success") {
-				Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
-			}
-			callbacks.success();
-			if(notifyDestroyed)
-				gatewayCallbacks.destroyed();
 			return;
 		}
 		Janus.httpAPICall(server + "/" + sessionId, {
