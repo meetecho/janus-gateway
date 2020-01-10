@@ -972,6 +972,12 @@ function Janus(gatewayCallbacks) {
 			callbacks.success();
 			return;
 		}
+		// No need to destroy all handles first, Janus will do that itself
+		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
+		if(token)
+			request["token"] = token;
+		if(apisecret)
+			request["apisecret"] = apisecret;
 		if(unload) {
 			// We're unloading the page: use sendBeacon for HTTP instead,
 			// or just close the WebSocket connection if we're using that
@@ -990,12 +996,6 @@ function Janus(gatewayCallbacks) {
 				gatewayCallbacks.destroyed();
 			return;
 		}
-		// No need to destroy all handles first, Janus will do that itself
-		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
-		if(token)
-			request["token"] = token;
-		if(apisecret)
-			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
 
