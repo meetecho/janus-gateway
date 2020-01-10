@@ -357,7 +357,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(10000), *start = buffer;
+	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
@@ -426,6 +426,14 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				while(tot > 0) {
 					memcpy(&psize, buffer, 2);
 					psize = ntohs(psize);
+					if((frameLen + psize) >= numBytes) {
+						JANUS_LOG(LOG_ERR, "Invalid size %u + %"SCNu16" (exceeds buffer size)\n", frameLen, psize);
+						/* Done, we'll wait for the next video data to write the frame */
+						if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+							break;
+						tmp = tmp->next;
+						continue;
+					}
 					buffer += 2;
 					tot -= 2;
 					/* Now we have a single NAL */
