@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.8.1] - 2020-01-13
+
+- Added binary data support to data channels
+- Fixed segfault at startup if event handlers or loggers directory couldn't be opened (thanks @kazzmir!)
+- Fixed potential segfault when closing logging at shutdown
+- Allowed RTCP ports to be picked randomly using 0, in Streaming plugin
+- Fixed occasional memory leak when destroying mountpoints in Streaming plugin
+- Fixed memory leak in SIP plugin
+- Updated 'referred_by' field to contain the value of SIP referred-by header, and not just the URI (thanks @pawnnail!)
+- Don't keep TextRoom plugin loaded if data channels were not compiled
+- Removed SIPre plugin from the repo
+- Fixed late initialization of janus.js constructor callbacks
+- Changed janus.js to use sendBeacon instead of XHR when closing/refreshing page
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.8.0] - 2019-12-12
 
 - Added changelog file to the repo and docs (thanks @oscarvadillog!)
