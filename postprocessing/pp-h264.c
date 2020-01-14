@@ -137,8 +137,9 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 	if(faststart)
 		av_dict_set(&options, "movflags", "+faststart", 0);
 
-	if(avio_open2(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE, NULL, &options) < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
+	int res = avio_open2(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE, NULL, &options);
+	if(res < 0) {
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
 		return -1;
 	}
 	if(avformat_write_header(fctx, &options) < 0) {

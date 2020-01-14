@@ -155,8 +155,9 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 #endif
 	//~ fctx->timestamp = 0;
 	//~ if(url_fopen(&fctx->pb, fctx->filename, URL_WRONLY) < 0) {
-	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
+	int res = avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE);
+	if(res < 0) {
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
 		return -1;
 	}
 	//~ memset(&parameters, 0, sizeof(AVFormatParameters));
