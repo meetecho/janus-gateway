@@ -235,12 +235,12 @@ void janus_mqtt_client_subscribe_success_impl(void *context);
 void janus_mqtt_client_subscribe_failure_impl(void *context, int rc);
 void janus_mqtt_client_admin_subscribe_success_impl(void *context);
 void janus_mqtt_client_admin_subscribe_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_janus_success_impl(void *context);
-void janus_mqtt_client_publish_janus_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_admin_success_impl(void *context);
-void janus_mqtt_client_publish_admin_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_status_success_impl(void *context);
-void janus_mqtt_client_publish_status_failure_impl(void *context, int rc);
+void janus_mqtt_client_publish_janus_success_impl(char *topic);
+void janus_mqtt_client_publish_janus_failure_impl(int rc);
+void janus_mqtt_client_publish_admin_success_impl(char *topic);
+void janus_mqtt_client_publish_admin_failure_impl(int rc);
+void janus_mqtt_client_publish_status_success_impl(char *topic);
+void janus_mqtt_client_publish_status_failure_impl(int rc);
 
 /* We only handle a single client */
 static janus_mqtt_context *context_ = NULL;
@@ -1429,67 +1429,63 @@ int janus_mqtt_client_publish_message5(janus_mqtt_context *ctx, char *payload, g
 #endif
 
 void janus_mqtt_client_publish_janus_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_janus_success_impl(context);
+	janus_mqtt_client_publish_janus_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_janus_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_janus_success_impl(context);
+	janus_mqtt_client_publish_janus_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_janus_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", ctx->publish.topic);
+void janus_mqtt_client_publish_janus_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_janus_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_janus_failure_impl(context, rc);
+	janus_mqtt_client_publish_janus_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_janus_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_janus_failure_impl(context, rc);
+	janus_mqtt_client_publish_janus_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_janus_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+void janus_mqtt_client_publish_janus_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing, return code: %d\n", rc);
 }
 
 void janus_mqtt_client_publish_admin_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_admin_success_impl(context);
+	janus_mqtt_client_publish_admin_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_admin_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_admin_success_impl(context);
+	janus_mqtt_client_publish_admin_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_admin_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", ctx->admin.publish.topic);
+void janus_mqtt_client_publish_admin_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_admin_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_admin_failure_impl(context, rc);
+	janus_mqtt_client_publish_admin_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_admin_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_admin_failure_impl(context, rc);
+	janus_mqtt_client_publish_admin_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_admin_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->admin.publish.topic, rc);
+void janus_mqtt_client_publish_admin_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to admin topic, return code: %d\n", rc);
 }
 
 int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payload) {
@@ -1519,35 +1515,33 @@ int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payl
 }
 
 void janus_mqtt_client_publish_status_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_status_success_impl(context);
+	janus_mqtt_client_publish_status_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_status_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_status_success_impl(context);
+	janus_mqtt_client_publish_status_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_status_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to status MQTT topic: %s\n", ctx->status.topic);
+void janus_mqtt_client_publish_status_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to status MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_status_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_status_failure_impl(context, rc);
+	janus_mqtt_client_publish_status_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_status_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_status_failure_impl(context, rc);
+	janus_mqtt_client_publish_status_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_status_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to status MQTT topic: %s, return code: %d\n", ctx->status.topic, rc);
+void janus_mqtt_client_publish_status_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to status topic, return code: %d\n", rc);
 }
 
 void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
