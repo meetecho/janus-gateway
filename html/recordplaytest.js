@@ -82,7 +82,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to echo test plugin
+						// Attach to Record&Play plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.recordplay",

@@ -20,6 +20,8 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 
+#include <zlib.h>
+
 #include "utils.h"
 #include "debug.h"
 
@@ -100,7 +102,7 @@ int janus_string_to_uint8(const char *str, uint8_t *num) {
 	if(val < 0 || val > UINT8_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 int janus_string_to_uint16(const char *str, uint16_t *num) {
@@ -110,7 +112,7 @@ int janus_string_to_uint16(const char *str, uint16_t *num) {
 	if(val < 0 || val > UINT16_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 int janus_string_to_uint32(const char *str, uint32_t *num) {
@@ -120,7 +122,7 @@ int janus_string_to_uint32(const char *str, uint32_t *num) {
 	if(val < 0 || val > UINT32_MAX)
 		return -ERANGE;
 	*num = val;
-	return errno;
+	return 0;
 }
 
 void janus_flags_reset(janus_flags *flags) {
@@ -1023,3 +1025,43 @@ inline void janus_set4(guint8 *data,size_t i,guint32 val) {
 	data[i+1] = (guint8)(val>>16);
 	data[i]   = (guint8)(val>>24);
 }
+
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen) {
+	if(text == NULL || tlen < 1 || compressed == NULL || zlen < 1)
+		return -1;
+	if(compression < 0 || compression > 9) {
+		JANUS_LOG(LOG_WARN, "Invalid compression factor %d, falling back to default compression...\n", compression);
+		compression = Z_DEFAULT_COMPRESSION;
+	}
+
+	/* Initialize the deflater, and clarify we need gzip */
+	z_stream zs;
+	zs.zalloc = Z_NULL;
+	zs.zfree = Z_NULL;
+	zs.opaque = Z_NULL;
+	zs.next_in = (Bytef *)text;
+	zs.avail_in = (uInt)tlen+1;
+	zs.next_out = (Bytef *)compressed;
+	zs.avail_out = (uInt)zlen;
+	int res = deflateInit2(&zs, compression, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+	if(res != Z_OK) {
+		JANUS_LOG(LOG_ERR, "deflateInit error: %d\n", res);
+		return 0;
+	}
+	/* Deflate the string */
+	res = deflate(&zs, Z_FINISH);
+	if(res != Z_STREAM_END) {
+		JANUS_LOG(LOG_ERR, "deflate error: %d\n", res);
+		return 0;
+	}
+	res = deflateEnd(&zs);
+	if(res != Z_OK) {
+		JANUS_LOG(LOG_ERR, "deflateEnd error: %d\n", res);
+		return 0;
+	}
+
+	/* Done, return the size of the compressed data */
+	return zs.total_out;
+}
+#endif

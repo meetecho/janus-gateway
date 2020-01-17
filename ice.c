@@ -294,8 +294,9 @@ uint16_t rtp_range_max = 0;
 
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
-#define JANUS_ICE_PACKET_DATA	2
-#define JANUS_ICE_PACKET_SCTP	3
+#define JANUS_ICE_PACKET_TEXT	2
+#define JANUS_ICE_PACKET_BINARY	3
+#define JANUS_ICE_PACKET_SCTP	4
 /* Janus enqueued (S)RTP/(S)RTCP packet to send */
 typedef struct janus_ice_queued_packet {
 	char *data;
@@ -423,7 +424,7 @@ uint janus_get_slowlink_threshold(void) {
 }
 
 /* Period, in milliseconds, to refer to for sending TWCC feedback */
-#define DEFAULT_TWCC_PERIOD		1000
+#define DEFAULT_TWCC_PERIOD		200
 static uint twcc_period = DEFAULT_TWCC_PERIOD;
 void janus_set_twcc_period(uint period) {
 	twcc_period = period;
@@ -438,16 +439,6 @@ uint janus_get_twcc_period(void) {
 	return twcc_period;
 }
 
-
-/* RFC4588 support */
-static gboolean rfc4588_enabled = FALSE;
-void janus_set_rfc4588_enabled(gboolean enabled) {
-	rfc4588_enabled = enabled;
-	JANUS_LOG(LOG_VERB, "RFC4588 support is %s\n", rfc4588_enabled ? "enabled" : "disabled");
-}
-gboolean janus_is_rfc4588_enabled(void) {
-	return rfc4588_enabled;
-}
 
 static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 	if(pkt == NULL) {
@@ -1464,6 +1455,9 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	if(stream->rtx_payload_types != NULL)
 		g_hash_table_destroy(stream->rtx_payload_types);
 	stream->rtx_payload_types = NULL;
+	if(stream->clock_rates != NULL)
+		g_hash_table_destroy(stream->clock_rates);
+	stream->clock_rates = NULL;
 	g_free(stream->audio_codec);
 	stream->audio_codec = NULL;
 	g_free(stream->video_codec);
@@ -2527,7 +2521,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen,
 						(video && rtx) ? TRUE : FALSE,
 						(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)),
-						retransmissions_disabled
+						retransmissions_disabled, stream->clock_rates
 				);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
@@ -2880,14 +2874,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	}
 }
 
-void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *buffer, int length) {
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length) {
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
-		plugin->incoming_data(handle->app_handle, label, buffer, length);
+		plugin->incoming_data(handle->app_handle, label, textdata, buffer, length);
 }
 
 
@@ -3569,7 +3563,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
 	/* Audio */
-	if(stream && stream->component && stream->component->out_stats.audio.packets > 0) {
+	if(stream && stream->audio_send && stream->component && stream->component->out_stats.audio.packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
@@ -3628,7 +3622,7 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
 	}
 	/* Now do the same for video */
-	if(stream && stream->component && stream->component->out_stats.video[0].packets > 0) {
+	if(stream && stream->video_send && stream->component && stream->component->out_stats.video[0].packets > 0) {
 		/* Create a SR/SDES compound */
 		int srlen = 28;
 		int sdeslen = 16;
@@ -4184,11 +4178,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->audio_first_rtp_ts = timestamp;
 							}
-							/* Let's check if this was G.711: in case we may need to change the timestamp base */
+							/* Let's check if this is not Opus: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 							int pt = header->type;
-							if((pt == 0 || pt == 8 || pt == 9) && rtcp_ctx && (rtcp_ctx->tb == 48000))
-								rtcp_ctx->tb = 8000;
+							uint32_t clock_rate = stream->clock_rates ?
+								GPOINTER_TO_UINT(g_hash_table_lookup(stream->clock_rates, GINT_TO_POINTER(pt))) : 48000;
+							if(rtcp_ctx->tb != clock_rate)
+								rtcp_ctx->tb = clock_rate;
 						} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 							component->out_stats.video[0].packets++;
 							component->out_stats.video[0].bytes += pkt->length;
@@ -4257,7 +4253,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					}
 				}
 			}
-		} else if(pkt->type == JANUS_ICE_PACKET_DATA) {
+		} else if(pkt->type == JANUS_ICE_PACKET_TEXT || pkt->type == JANUS_ICE_PACKET_BINARY) {
 			/* Data */
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
 				janus_ice_free_queued_packet(pkt);
@@ -4273,7 +4269,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				return G_SOURCE_CONTINUE;
 			}
 			component->noerrorlog = FALSE;
-			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->data, pkt->length);
+			/* TODO Support binary data */
+			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->type == JANUS_ICE_PACKET_TEXT, pkt->data, pkt->length);
 #endif
 		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
 			/* SCTP data to push */
@@ -4404,7 +4401,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 }
 
 #ifdef HAVE_SCTP
-void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int len) {
+void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buf, int len) {
 	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
@@ -4412,7 +4409,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int 
 	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
-	pkt->type = JANUS_ICE_PACKET_DATA;
+	pkt->type = textdata ? JANUS_ICE_PACKET_TEXT : JANUS_ICE_PACKET_BINARY;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;

@@ -25,6 +25,9 @@ transportsheader_HEADERS = transports/transport.h
 eventsheaderdir = $(includedir)/janus/events
 eventsheader_HEADERS = events/eventhandler.h
 
+loggersheaderdir = $(includedir)/janus/loggers
+loggersheader_HEADERS = loggers/logger.h
+
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.jcfg.sample
 
@@ -36,6 +39,9 @@ transport_LTLIBRARIES = $(NULL)
 
 eventdir = $(libdir)/janus/events
 event_LTLIBRARIES = $(NULL)
+
+loggerdir = $(libdir)/janus/loggers
+logger_LTLIBRARIES = $(NULL)
 
 SUBDIRS = html
 dist_html_DATA = README.md
@@ -65,6 +71,7 @@ jsmodules_DATA = html/janus.js
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]eventdir[@]|$(eventdir)|;\
+	    s|[@]loggerdir[@]|$(loggerdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|; \
@@ -131,6 +138,7 @@ janus_SOURCES = \
 	transports/transport.h \
 	transports/transport.c \
 	events/eventhandler.h \
+	loggers/logger.h \
 	$(NULL)
 
 janus_CFLAGS = \
@@ -139,6 +147,7 @@ janus_CFLAGS = \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DEVENTDIR=\"$(eventdir)\" \
+	-DLOGGERDIR=\"$(loggerdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -356,6 +365,29 @@ EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
 endif
 
 ##
+# Loggers
+##
+
+loggers_cflags = \
+	$(AM_CFLAGS) \
+	$(LOGGERS_CFLAGS) \
+	$(NULL)
+
+loggers_libadd = \
+	$(LOGGERS_LIBS) \
+	$(NULL)
+
+if ENABLE_JSONLOGGER
+logger_LTLIBRARIES += loggers/libjanus_jsonlog.la
+loggers_libjanus_jsonlog_la_SOURCES = loggers/janus_jsonlog.c
+loggers_libjanus_jsonlog_la_CFLAGS = $(loggers_cflags)
+loggers_libjanus_jsonlog_la_LDFLAGS = $(loggers_ldflags)
+loggers_libjanus_jsonlog_la_LIBADD = $(loggers_libadd)
+conf_DATA += conf/janus.logger.jsonlog.jcfg.sample
+EXTRA_DIST += conf/janus.logger.jsonlog.jcfg.sample
+endif
+
+##
 # Plugins
 ##
 
@@ -413,16 +445,6 @@ plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LI
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.jcfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.jcfg.sample
-endif
-
-if ENABLE_PLUGIN_SIPRE
-plugin_LTLIBRARIES += plugins/libjanus_sipre.la
-plugins_libjanus_sipre_la_SOURCES = plugins/janus_sipre.c
-plugins_libjanus_sipre_la_CFLAGS = $(plugins_cflags) $(LIBRE_CFLAGS)
-plugins_libjanus_sipre_la_LDFLAGS = $(plugins_ldflags) $(LIBRE_LDFLAGS) $(LIBRE_LIBS)
-plugins_libjanus_sipre_la_LIBADD = $(plugins_libadd) $(LIBRE_LIBADD)
-conf_DATA += conf/janus.plugin.sipre.jcfg.sample
-EXTRA_DIST += conf/janus.plugin.sipre.jcfg.sample
 endif
 
 if ENABLE_PLUGIN_NOSIP
@@ -554,6 +576,7 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
 	log.c \
+	utils.c \
 	version.c \
 	$(NULL)
 
@@ -580,6 +603,7 @@ mjr2pcap_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/mjr2pcap.c \
 	log.c \
+	utils.c \
 	$(NULL)
 
 mjr2pcap_CFLAGS = \

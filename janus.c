@@ -63,6 +63,9 @@ static GHashTable *transports_so = NULL;
 static GHashTable *eventhandlers = NULL;
 static GHashTable *eventhandlers_so = NULL;
 
+static GHashTable *loggers = NULL;
+static GHashTable *loggers_so = NULL;
+
 static GHashTable *plugins = NULL;
 static GHashTable *plugins_so = NULL;
 
@@ -141,6 +144,10 @@ static struct janus_json_parameter ans_parameters[] = {
 	{"accept", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter queryhandler_parameters[] = {
+	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request", JSON_OBJECT, 0}
+};
+static struct janus_json_parameter querylogger_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
@@ -289,7 +296,6 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
-	json_object_set_new(info, "rfc-4588", janus_is_rfc4588_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
@@ -367,6 +373,27 @@ static json_t *janus_info(const char *transaction) {
 		}
 	}
 	json_object_set_new(info, "events", e_data);
+	/* Available external loggers */
+	json_t *l_data = json_object();
+	if(loggers && g_hash_table_size(loggers) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, loggers);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_logger *l = value;
+			if(l == NULL) {
+				continue;
+			}
+			json_t *logger = json_object();
+			json_object_set_new(logger, "name", json_string(l->get_name()));
+			json_object_set_new(logger, "author", json_string(l->get_author()));
+			json_object_set_new(logger, "description", json_string(l->get_description()));
+			json_object_set_new(logger, "version_string", json_string(l->get_version_string()));
+			json_object_set_new(logger, "version", json_integer(l->get_version()));
+			json_object_set_new(l_data, l->get_package(), logger);
+		}
+	}
+	json_object_set_new(info, "loggers", l_data);
 	/* Available plugins */
 	json_t *p_data = json_object();
 	if(plugins && g_hash_table_size(plugins) > 0) {
@@ -432,6 +459,15 @@ static void janus_termination_handler(void) {
 	janus_pidfile_remove();
 	/* Close the logger */
 	janus_log_destroy();
+	/* Get rid of external loggers too, if any */
+	if(loggers != NULL && g_hash_table_size(loggers) > 0) {
+		g_hash_table_foreach(loggers, janus_logger_close, NULL);
+		g_hash_table_destroy(loggers);
+	}
+	if(loggers_so != NULL && g_hash_table_size(loggers_so) > 0) {
+		g_hash_table_foreach(loggers_so, janus_loggerso_close, NULL);
+		g_hash_table_destroy(loggers_so);
+	}
 	/* If we're daemonizing, we send an error code to the parent */
 	if(daemonize) {
 		int code = 1;
@@ -485,7 +521,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp, gboolean restart);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len);
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, gboolean textdata, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
 void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
@@ -2076,6 +2112,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
+		} else if(!strcasecmp(message_text, "query_logger")) {
+			/* Contact a logger and expect a response */
+			JANUS_VALIDATE_JSON_OBJECT(root, querylogger_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *logger = json_object_get(root, "logger");
+			const char *logger_value = json_string_value(logger);
+			janus_logger *l = g_hash_table_lookup(loggers, logger_value);
+			if(l == NULL) {
+				/* No such handler... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Invalid logger");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, error_cause);
+				goto jsondone;
+			}
+			if(l->handle_request == NULL) {
+				/* Handler doesn't implement the hook... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Logger doesn't support queries");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, error_cause);
+				goto jsondone;
+			}
+			json_t *query = json_object_get(root, "request");
+			json_t *response = l->handle_request(query);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "response", response ? response : json_object());
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
 		} else if(!strcasecmp(message_text, "custom_event")) {
 			/* Enqueue a custom "external" event to notify via event handlers */
 			JANUS_VALIDATE_JSON_OBJECT(root, customevent_parameters,
@@ -2298,11 +2368,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 					JANUS_ERROR_UNKNOWN, (char *)"Could not resolve public address");
 				goto jsondone;
 			}
-			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			const char *public_ip_addr = janus_network_address_string_from_buffer(&addr_buf);
 			gint64 end = janus_get_monotonic_time();
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
-			json_object_set_new(reply, "public_ip", json_string(public_ip));
+			json_object_set_new(reply, "public_ip", json_string(public_ip_addr));
 			json_object_set_new(reply, "public_port", json_integer(public_port));
 			json_object_set_new(reply, "elapsed", json_integer(end-start));
 			/* Send the success reply */
@@ -3041,6 +3111,22 @@ void janus_eventhandlerso_close(gpointer key, gpointer value, gpointer user_data
 }
 
 
+/* Loggers */
+void janus_logger_close(gpointer key, gpointer value, gpointer user_data) {
+	janus_logger *logger = (janus_logger *)value;
+	if(!logger)
+		return;
+	logger->destroy();
+}
+
+void janus_loggerso_close(gpointer key, gpointer value, gpointer user_data) {
+	void *logger = (janus_logger *)value;
+	if(!logger)
+		return;
+	//~ dlclose(logger);
+}
+
+
 /* Plugins */
 void janus_plugin_close(gpointer key, gpointer value, gpointer user_data) {
 	janus_plugin *plugin = (janus_plugin *)value;
@@ -3222,10 +3308,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			}
 		}
 		if(ice_handle->agent == NULL) {
-			if(janus_is_rfc4588_enabled()) {
-				/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
-				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
-			}
+			/* We still need to configure the WebRTC stuff: negotiate RFC4588 by default */
+			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			janus_mutex_lock(&ice_handle->mutex);
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, 1) < 0) {
@@ -3467,7 +3551,7 @@ void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, ch
 	janus_ice_relay_rtcp(handle, video, buf, len);
 }
 
-void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, char *buf, int len) {
+void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, gboolean textdata, char *buf, int len) {
 	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped) || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
@@ -3475,7 +3559,7 @@ void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *label, 
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 #ifdef HAVE_SCTP
-	janus_ice_relay_data(handle, label, buf, len);
+	janus_ice_relay_data(handle, label, textdata, buf, len);
 #else
 	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
 #endif
@@ -3661,6 +3745,7 @@ gint main(int argc, char *argv[])
 	janus_config_category *config_transports = janus_config_get_create(config, NULL, janus_config_type_category, "transports");
 	janus_config_category *config_plugins = janus_config_get_create(config, NULL, janus_config_type_category, "plugins");
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
+	janus_config_category *config_loggers = janus_config_get_create(config, NULL, janus_config_type_category, "loggers");
 
 	/* Check if we need to log to console and/or file */
 	gboolean use_stdout = TRUE;
@@ -3768,9 +3853,123 @@ gint main(int argc, char *argv[])
 		/* We close stdin/stdout/stderr when initializing the logger */
 	}
 
+	/* Was a custom instance name provided? */
+	if(args_info.server_name_given) {
+		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
+	}
+	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "server_name");
+	if(item && item->value) {
+		server_name = g_strdup(item->value);
+	}
+
 	/* Initialize logger */
 	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
 		exit(1);
+	/* Check if there are external loggers we need to load as well */
+	const char *path = NULL;
+	DIR *dir = NULL;
+	/* External loggers are usually disabled by default: they need to be enabled in the configuration */
+	gchar **disabled_loggers = NULL;
+	path = LOGGERDIR;
+	item = janus_config_get(config, config_general, janus_config_type_item, "loggers_folder");
+	if(item && item->value)
+		path = (char *)item->value;
+	JANUS_LOG(LOG_INFO, "Logger plugins folder: %s\n", path);
+	dir = opendir(path);
+	if(!dir) {
+		/* Not really fatal, we don't care and go on anyway: loggers are not fundamental */
+		JANUS_LOG(LOG_FATAL, "\tCouldn't access logger plugins folder...\n");
+	} else {
+		/* Any loggers to ignore? */
+		item = janus_config_get(config, config_loggers, janus_config_type_item, "disable");
+		if(item && item->value)
+			disabled_loggers = g_strsplit(item->value, ",", -1);
+		/* Open the shared objects */
+		struct dirent *eventent = NULL;
+		char eventpath[1024];
+		while((eventent = readdir(dir))) {
+			int len = strlen(eventent->d_name);
+			if (len < 4) {
+				continue;
+			}
+			if (strcasecmp(eventent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
+				continue;
+			}
+			/* Check if this logger has been disabled in the configuration file */
+			if(disabled_loggers != NULL) {
+				gchar *index = disabled_loggers[0];
+				if(index != NULL) {
+					int i=0;
+					gboolean skip = FALSE;
+					while(index != NULL) {
+						while(isspace(*index))
+							index++;
+						if(strlen(index) && !strcmp(index, eventent->d_name)) {
+							JANUS_LOG(LOG_WARN, "Logger plugin '%s' has been disabled, skipping...\n", eventent->d_name);
+							skip = TRUE;
+							break;
+						}
+						i++;
+						index = disabled_loggers[i];
+					}
+					if(skip)
+						continue;
+				}
+			}
+			JANUS_LOG(LOG_INFO, "Loading logger plugin '%s'...\n", eventent->d_name);
+			memset(eventpath, 0, 1024);
+			g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
+			void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
+			if (!event) {
+				JANUS_LOG(LOG_ERR, "\tCouldn't load logger plugin '%s': %s\n", eventent->d_name, dlerror());
+			} else {
+				create_l *create = (create_l*) dlsym(event, "create");
+				const char *dlsym_error = dlerror();
+				if (dlsym_error) {
+					JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+					continue;
+				}
+				janus_logger *janus_logger = create();
+				if(!janus_logger) {
+					JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
+					continue;
+				}
+				/* Are all the mandatory methods and callbacks implemented? */
+				if(!janus_logger->init || !janus_logger->destroy ||
+						!janus_logger->get_api_compatibility ||
+						!janus_logger->get_version ||
+						!janus_logger->get_version_string ||
+						!janus_logger->get_description ||
+						!janus_logger->get_package ||
+						!janus_logger->get_name ||
+						!janus_logger->incoming_logline) {
+					JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this logger plugin...\n");
+					continue;
+				}
+				if(janus_logger->get_api_compatibility() < JANUS_LOGGER_API_VERSION) {
+					JANUS_LOG(LOG_ERR, "The '%s' logger plugin was compiled against an older version of the API (%d < %d), skipping it: update it to enable it again\n",
+						janus_logger->get_package(), janus_logger->get_api_compatibility(), JANUS_LOGGER_API_VERSION);
+					continue;
+				}
+				janus_logger->init(server_name ? server_name : JANUS_SERVER_NAME, configs_folder);
+				JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_logger->get_version(), janus_logger->get_version_string());
+				JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_logger->get_package(), janus_logger->get_name());
+				JANUS_LOG(LOG_VERB, "\t   %s\n", janus_logger->get_description());
+				JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_logger->get_api_compatibility());
+				if(loggers == NULL)
+					loggers = g_hash_table_new(g_str_hash, g_str_equal);
+				g_hash_table_insert(loggers, (gpointer)janus_logger->get_package(), janus_logger);
+				if(loggers_so == NULL)
+					loggers_so = g_hash_table_new(g_str_hash, g_str_equal);
+				g_hash_table_insert(loggers_so, (gpointer)janus_logger->get_package(), event);
+			}
+		}
+		closedir(dir);
+	}
+	if(disabled_loggers != NULL)
+		g_strfreev(disabled_loggers);
+	disabled_loggers = NULL;
+	janus_log_set_loggers(loggers);
 
 	JANUS_PRINT("---------------------------------------------------\n");
 	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Server) v%s\n", janus_version_string);
@@ -3805,7 +4004,7 @@ gint main(int argc, char *argv[])
 		janus_config_add(config, config_general, janus_config_item_create("pid_file", pidfile));
 	} else {
 		/* Check if the configuration file is saying anything about this */
-		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "pid_file");
+		item = janus_config_get(config, config_general, janus_config_type_item, "pid_file");
 		if(item && item->value)
 			pidfile = item->value;
 	}
@@ -3820,7 +4019,7 @@ gint main(int argc, char *argv[])
 		janus_config_add(config, config_general, janus_config_item_create("debug_level", debug));
 	} else {
 		/* No command line directive on logging, try the configuration file */
-		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "debug_level");
+		item = janus_config_get(config, config_general, janus_config_type_item, "debug_level");
 		if(item && item->value) {
 			int temp_level = atoi(item->value);
 			if(temp_level == 0 && strcmp(item->value, "0")) {
@@ -3844,9 +4043,6 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.debug_locks_given) {
 		janus_config_add(config, config_general, janus_config_item_create("debug_locks", "yes"));
-	}
-	if(args_info.server_name_given) {
-		janus_config_add(config, config_general, janus_config_item_create("server_name", args_info.server_name_arg));
 	}
 	if(args_info.session_timeout_given) {
 		char st[20];
@@ -3945,9 +4141,6 @@ gint main(int argc, char *argv[])
 		g_snprintf(tp, 20, "%d", args_info.twcc_period_arg);
 		janus_config_add(config, config_media, janus_config_item_create("twcc_period", tp));
 	}
-	if(args_info.rfc_4588_given) {
-		janus_config_add(config, config_media, janus_config_item_create("rfc_4588", "yes"));
-	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add(config, config_media, janus_config_item_create("rtp_port_range", args_info.rtp_port_range_arg));
 	}
@@ -3958,7 +4151,7 @@ gint main(int argc, char *argv[])
 
 	/* Logging/debugging */
 	JANUS_PRINT("Debug/log level is %d\n", janus_log_level);
-	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "debug_timestamps");
+	item = janus_config_get(config, config_general, janus_config_type_item, "debug_timestamps");
 	if(item && item->value)
 		janus_log_timestamps = janus_is_true(item->value);
 	JANUS_PRINT("Debug/log timestamps are %s\n", janus_log_timestamps ? "enabled" : "disabled");
@@ -4047,12 +4240,6 @@ gint main(int argc, char *argv[])
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
-
-	/* Was a custom instance name provided? */
-	item = janus_config_get(config, config_general, janus_config_type_item, "server_name");
-	if(item && item->value) {
-		server_name = g_strdup(item->value);
-	}
 
 	/* Check if a custom session timeout value was specified */
 	item = janus_config_get(config, config_general, janus_config_type_item, "session_timeout");
@@ -4340,11 +4527,6 @@ gint main(int argc, char *argv[])
 			janus_set_twcc_period(tp);
 		}
 	}
-	/* RFC4588 support */
-	item = janus_config_get(config, config_media, janus_config_type_item, "rfc_4588");
-	if(item && item->value) {
-		janus_set_rfc4588_enabled(janus_is_true(item->value));
-	}
 
 	/* Setup OpenSSL stuff */
 	const char *server_pem;
@@ -4428,8 +4610,8 @@ gint main(int argc, char *argv[])
 	g_thread_pool_set_max_idle_time(120 * 1000);
 
 	/* Load event handlers */
-	const char *path = NULL;
-	DIR *dir = NULL;
+	path = NULL;
+	dir = NULL;
 	/* Event handlers are disabled by default, though: they need to be enabled in the configuration */
 	item = janus_config_get(config, config_events, janus_config_type_item, "broadcast");
 	gboolean enable_events = FALSE;
@@ -4567,8 +4749,8 @@ gint main(int argc, char *argv[])
 					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 				}
 			}
+			closedir(dir);
 		}
-		closedir(dir);
 		if(disabled_eventhandlers != NULL)
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;

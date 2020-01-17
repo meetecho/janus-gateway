@@ -5,7 +5,8 @@
  * \details   Implementation of a simple buffered logger designed to remove
  * I/O wait from threads that may be sensitive to such delays. Buffers are
  * saved and reused to reduce allocation calls. The logger output can then
- * be printed to stdout and/or a log file.
+ * be printed to stdout and/or a log file. If external loggers are added
+ * to the core, the logger output is passed to those as well.
  *
  * \ingroup core
  * \ref core
@@ -16,11 +17,14 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "utils.h"
+#include "loggers/logger.h"
 
 #define THREAD_NAME "log"
 
 typedef struct janus_log_buffer janus_log_buffer;
 struct janus_log_buffer {
+	int64_t timestamp;
 	size_t allocated;
 	janus_log_buffer *next;
 	/* str is grown by allocating beyond the struct */
@@ -32,6 +36,8 @@ struct janus_log_buffer {
 static gboolean janus_log_console = TRUE;
 static char *janus_log_filepath = NULL;
 static FILE *janus_log_file = NULL;
+
+static GHashTable *external_loggers = NULL;
 
 static volatile gint initialized = 0;
 static gint stopping = 0;
@@ -109,6 +115,17 @@ static void *janus_log_thread(void *ctx) {
 					fputs(b->str, stdout);
 				if(janus_log_file)
 					fputs(b->str, janus_log_file);
+				if(external_loggers != NULL) {
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, external_loggers);
+					while(g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_logger *l = value;
+						if(l == NULL)
+							continue;
+						l->incoming_logline(b->timestamp, b->str);
+					}
+				}
 			}
 			g_mutex_lock(&lock);
 			while (head) {
@@ -137,7 +154,19 @@ static void *janus_log_thread(void *ctx) {
 			fputs(b->str, stdout);
 		if(janus_log_file)
 			fputs(b->str, janus_log_file);
+		if(external_loggers != NULL) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, external_loggers);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_logger *l = value;
+				if(l == NULL)
+					continue;
+				l->incoming_logline(b->timestamp, b->str);
+			}
+		}
 	}
+	janus_log_set_loggers(NULL);
 	if(janus_log_console)
 		fflush(stdout);
 	if(janus_log_file)
@@ -160,6 +189,7 @@ void janus_vprintf(const char *format, ...) {
 	int len;
 	va_list ap, ap2;
 	janus_log_buffer *b = janus_log_getbuf();
+	b->timestamp = janus_get_real_time();
 
 	va_start(ap, format);
 	va_copy(ap2, ap);
@@ -226,6 +256,14 @@ int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 	}
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
 	return 0;
+}
+
+void janus_log_set_loggers(GHashTable *loggers) {
+	g_mutex_lock(&lock);
+	external_loggers = loggers;
+	if(external_loggers != NULL)
+		g_print("Adding %d external loggers\n", g_hash_table_size(external_loggers));
+	g_mutex_unlock(&lock);
 }
 
 void janus_log_destroy(void) {

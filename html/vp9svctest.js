@@ -79,7 +79,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to video room test plugin
+						// Attach to VideoRoom plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",

@@ -7,7 +7,8 @@
  * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
  * check the \ref DEPS before attempting a compilation. If you are
  * interested in how to compile, install and use Janus,
- * checkout the \ref README information. A \ref FAQ page is also available.
+ * checkout the \ref README information. A \ref FAQ page is also available,
+ * as well as an overview on \ref CHANGELOG.
  *
  * \par A general purpose WebRTC server
  * The Janus WebRTC Server has been conceived as a <tt>general purpose</tt>
@@ -43,9 +44,14 @@
  * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page. Event handler
  * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
- * page if you're interested in creating your own. Janus also supports
- * \ref recordings out of the box, so check the related documentation
- * to know more about how that works.
+ * page if you're interested in creating your own. For what concerns logging,
+ * out of the box Janus supports printing the output to \c stdout and saving
+ * to a local file, but logging can also be extended via additional plugins:
+ * refer to the \ref loggerapi for more details, and to learn how to write
+ * your own.
+ *
+ * Janus also supports \ref recordings out of the box, so check the
+ * related documentation to know more about how that works.
  *
  * Finally, some information on how to deploy Janus and your web
  * applications that want to make use of it are provided in the \ref deploy
@@ -60,7 +66,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Server © 2014-2019 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2020 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -96,6 +102,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
@@ -3237,9 +3244,15 @@ ldd janus | grep asan
  * </tr>
  * <tr>
  * 		<td>Debian/Ubuntu</td>
- * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé </a></td>
+ * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé</a></td>
  * 		<td><a href="http://projects.ag-projects.com/projects/documentation/wiki/Repositories">AG Projects Repo</a></td>
  *		<td>Debian Jessie, Ubuntu Trusty and Ubuntu Xenial</td>
+ * </tr>
+ * <tr>
+ * 		<td>Snap</td>
+ * 		<td><a href="https://github.com/RSATom">Sergey Radionov</a></td>
+ * 		<td><a href="https://github.com/RSATom/janus-gateway-snap">janus-gateway-snap</a></td>
+ *		<td>Helper repo for build Janus WebRTC Server on build.snapcraft.io</td>
  * </tr>
  * </table>
  * <br/>
@@ -3464,7 +3477,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Server © 2014-2019 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Server © 2014-2020 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -3490,6 +3503,7 @@ ldd janus | grep asan
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b zlib: https://zlib.net/ (gzip compression utility)
  * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
@@ -3505,6 +3519,32 @@ ldd janus | grep asan
  * <a href="https://janus.conf.meetecho.com/support">contact us</a>.
  *
  *  \verbinclude COPYING
+ */
+
+/*! \page CHANGELOG Tagged versions and Changelog
+ * There are different tagged versions on the Janus repository. We usually
+ * tag a new version any time a breaking change and/or a set of comprehensive
+ * changes and fixes is going to be merged/applied to Janus, and so the
+ * Changelog below can act as a simple and quick summary of which changes
+ * are available in each version.
+ *
+ * It's very important to point out, though, that tagged version are \b NOT
+ * to be considered \b stable versions. This is a common misunderstanding.
+ * The only version we consider \b stable is \b master as it's the only
+ * branch where we continuously provide fixes and enhancements: this is
+ * particularly important in the WebRTC world, where it's not uncommon to
+ * see features breaking overnight due to changes in how browsers and other
+ * WebRTC devices implement things. As such, again, a tagged version is
+ * \b only a way to take a snapshot of where Janus was at a specific point
+ * in time, and before a more or less major change occurred. While you're
+ * free to stick to tagged versions for your deployments (e.g., because
+ * that's how provisioning is usually done in your company), please notice
+ * we will ignore issues and reports addressing any other branch that is
+ * not master: due to lack of time and resources, we simply cannot go and
+ * investigate issues we may have fixed already, so if you're experiencing
+ * issues, make sure you can replicate them on master as well first.
+ *
+ *  \verbinclude CHANGELOG.md
  */
 
 /*! \page FAQ Frequently Asked Questions
@@ -3624,7 +3664,8 @@ ldd janus | grep asan
  *    - Presentation on Janus and SIP at <a href="https://www.youtube.com/watch?v=beHHL0Ew5xY">OpenSIPS 2019</a>;
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
- *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>. \n\n
+ *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
+ *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
@@ -4110,6 +4151,21 @@ ldd janus | grep asan
  * \details The eventhandler.h header specifies the API a plugin needs to
  * implement and make available in order to receive events from Janus.
  * \ingroup eventhandlers
+ */
+
+/*! \defgroup loggers Loggers
+ * \brief Logger plugins available out of the box
+ * \details In order to showcase how different plugins can handle log lines
+ * originated by the Janus core or any of its plugins, a sample plugin
+ * implementation is provided out of the box. The API for writing a new
+ * logger plugin is specified in the \ref loggerapi section.
+ */
+
+/*! \defgroup loggerapi Logger API
+ * \brief Logger API (aka, how to write your own logger plugin)
+ * \details The logger.h header specifies the API a plugin needs to
+ * implement and make available in order to receive log lines from Janus.
+ * \ingroup loggers
  */
 
 /*! \defgroup tools Tools and utilities
