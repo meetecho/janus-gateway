@@ -460,7 +460,6 @@ static void janus_termination_handler(void) {
 	/* Close the logger */
 	janus_log_destroy();
 	/* Get rid of external loggers too, if any */
-	janus_log_set_loggers(NULL);
 	if(loggers != NULL && g_hash_table_size(loggers) > 0) {
 		g_hash_table_foreach(loggers, janus_logger_close, NULL);
 		g_hash_table_destroy(loggers);
@@ -3965,8 +3964,8 @@ gint main(int argc, char *argv[])
 				g_hash_table_insert(loggers_so, (gpointer)janus_logger->get_package(), event);
 			}
 		}
+		closedir(dir);
 	}
-	closedir(dir);
 	if(disabled_loggers != NULL)
 		g_strfreev(disabled_loggers);
 	disabled_loggers = NULL;
@@ -4750,8 +4749,8 @@ gint main(int argc, char *argv[])
 					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 				}
 			}
+			closedir(dir);
 		}
-		closedir(dir);
 		if(disabled_eventhandlers != NULL)
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;

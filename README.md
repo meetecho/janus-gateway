@@ -194,7 +194,7 @@ Since Janus requires configuration files for both the core and its modules in or
 
 	make configs
 
-Remember to only do this once, or otherwise a subsequent `make configs` will overwrite any configuration file you may have modified in themeanwhile.
+Remember to only do this once, or otherwise a subsequent `make configs` will overwrite any configuration file you may have modified in the meanwhile.
 
 If you've installed the above libraries but are not interested, for instance, in Data Channels, WebSockets, MQTT and/or RabbitMQ, you can disable them when configuring:
 
@@ -235,7 +235,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.8.1
+	janus 0.8.2
 
 	Usage: janus [OPTIONS]...
 
