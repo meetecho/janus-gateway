@@ -327,7 +327,7 @@ Janus.init = function(options) {
 			for(var s in Janus.sessions) {
 				if(Janus.sessions[s] && Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({asyncRequest: false, notifyDestroyed: false});
+					Janus.sessions[s].destroy({unload: true, notifyDestroyed: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -420,6 +420,10 @@ Janus.randomString = function(len) {
 
 
 function Janus(gatewayCallbacks) {
+	gatewayCallbacks = gatewayCallbacks || {};
+	gatewayCallbacks.success = (typeof gatewayCallbacks.success == "function") ? gatewayCallbacks.success : Janus.noop;
+	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
+	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(!Janus.initDone) {
 		gatewayCallbacks.error("Library not initialized");
 		return {};
@@ -429,10 +433,6 @@ function Janus(gatewayCallbacks) {
 		return {};
 	}
 	Janus.log("Library initialized: " + Janus.initDone);
-	gatewayCallbacks = gatewayCallbacks || {};
-	gatewayCallbacks.success = (typeof gatewayCallbacks.success == "function") ? gatewayCallbacks.success : Janus.noop;
-	gatewayCallbacks.error = (typeof gatewayCallbacks.error == "function") ? gatewayCallbacks.error : Janus.noop;
-	gatewayCallbacks.destroyed = (typeof gatewayCallbacks.destroyed == "function") ? gatewayCallbacks.destroyed : Janus.noop;
 	if(!gatewayCallbacks.server) {
 		gatewayCallbacks.error("Invalid server url");
 		return {};
@@ -949,16 +949,12 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
-		var asyncRequest = true;
-		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
-			asyncRequest = (callbacks.asyncRequest === true);
+		var unload = (callbacks.unload === true);
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
 			notifyDestroyed = (callbacks.notifyDestroyed === true);
-		var cleanupHandles = false;
-		if(callbacks.cleanupHandles !== undefined && callbacks.cleanupHandles !== null)
-			cleanupHandles = (callbacks.cleanupHandles === true);
-		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
+		var cleanupHandles = (callbacks.cleanupHandles === true);
+		Janus.log("Destroying session " + sessionId + " (unload=" + unload + ")");
 		if(!sessionId) {
 			Janus.warn("No session to destroy");
 			callbacks.success();
@@ -972,6 +968,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(!connected) {
 			Janus.warn("Is the server down? (connected=false)");
+			sessionId = null;
 			callbacks.success();
 			return;
 		}
@@ -981,6 +978,24 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret)
 			request["apisecret"] = apisecret;
+		if(unload) {
+			// We're unloading the page: use sendBeacon for HTTP instead,
+			// or just close the WebSocket connection if we're using that
+			if(websockets) {
+				ws.onclose = null;
+				ws.close();
+				ws = null;
+			} else {
+				navigator.sendBeacon(server + "/" + sessionId, JSON.stringify(request));
+			}
+			Janus.log("Destroyed session:");
+			sessionId = null;
+			connected = false;
+			callbacks.success();
+			if(notifyDestroyed)
+				gatewayCallbacks.destroyed();
+			return;
+		}
 		if(websockets) {
 			request["session_id"] = sessionId;
 
@@ -1020,7 +1035,6 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.httpAPICall(server + "/" + sessionId, {
 			verb: 'POST',
-			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			withCredentials: withCredentials,
 			body: request,
 			success: function(json) {
@@ -1400,7 +1414,7 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private method to create a data channel
-	function createDataChannel(handleId, dclabel, incoming, pendingText) {
+	function createDataChannel(handleId, dclabel, incoming, pendingData) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
@@ -1421,9 +1435,10 @@ function Janus(gatewayCallbacks) {
 				// Any pending messages to send?
 				if(config.dataChannel[label].pending && config.dataChannel[label].pending.length > 0) {
 					Janus.log("Sending pending messages on <" + label + ">:", config.dataChannel[label].pending.length);
-					for(var text of config.dataChannel[label].pending) {
-						Janus.log("Sending string on data channel <" + label + ">: " + text);
-						config.dataChannel[label].send(text);
+					for(var data of config.dataChannel[label].pending) {
+						Janus.log("Sending data on data channel <" + label + ">");
+						Janus.debug(data);
+						config.dataChannel[label].send(data);
 					}
 					config.dataChannel[label].pending = [];
 				}
@@ -1437,7 +1452,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(!incoming) {
 			// FIXME Add options (ordered, maxRetransmits, etc.)
-			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, {ordered:false});
+			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, {ordered: true});
 		} else {
 			// The channel was created by Janus
 			config.dataChannel[dclabel] = incoming;
@@ -1447,8 +1462,8 @@ function Janus(gatewayCallbacks) {
 		config.dataChannel[dclabel].onclose = onDataChannelStateChange;
 		config.dataChannel[dclabel].onerror = onDataChannelError;
 		config.dataChannel[dclabel].pending = [];
-		if(pendingText)
-			config.dataChannel[dclabel].pending.push(pendingText);
+		if(pendingData)
+			config.dataChannel[dclabel].pending.push(pendingData);
 	}
 
 	// Private method to send a data channel message
@@ -1463,26 +1478,27 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		var text = callbacks.text;
-		if(!text) {
-			Janus.warn("Invalid text");
-			callbacks.error("Invalid text");
+		var data = callbacks.text || callbacks.data;
+		if(!data) {
+			Janus.warn("Invalid data");
+			callbacks.error("Invalid data");
 			return;
 		}
 		var label = callbacks.label ? callbacks.label : Janus.dataChanDefaultLabel;
 		if(!config.dataChannel[label]) {
 			// Create new data channel and wait for it to open
-			createDataChannel(handleId, label, false, text);
+			createDataChannel(handleId, label, false, data);
 			callbacks.success();
 			return;
 		}
 		if(config.dataChannel[label].readyState !== "open") {
-			config.dataChannel[label].pending.push(text);
+			config.dataChannel[label].pending.push(data);
 			callbacks.success();
 			return;
 		}
-		Janus.log("Sending string on data channel <" + label + ">: " + text);
-		config.dataChannel[label].send(text);
+		Janus.log("Sending data on data channel <" + label + ">");
+		Janus.debug(data);
+		config.dataChannel[label].send(data);
 		callbacks.success();
 	}
 
@@ -1546,13 +1562,8 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
-		var asyncRequest = true;
-		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
-			asyncRequest = (callbacks.asyncRequest === true);
-		var noRequest = true;
-		if(callbacks.noRequest !== undefined && callbacks.noRequest !== null)
-			noRequest = (callbacks.noRequest === true);
-		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
+		var noRequest = (callbacks.noRequest === true);
+		Janus.log("Destroying handle " + handleId + " (only-locally=" + noRequest + ")");
 		cleanupWebrtc(handleId);
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || pluginHandle.detached) {
@@ -1587,7 +1598,6 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.httpAPICall(server + "/" + sessionId + "/" + handleId, {
 			verb: 'POST',
-			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			withCredentials: withCredentials,
 			body: request,
 			success: function(json) {
