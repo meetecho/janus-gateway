@@ -1525,7 +1525,7 @@ typedef struct janus_videoroom_subscriber {
 	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with plain
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
-	gint64 last_spatial_layer[2];
+	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1732,7 +1732,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	/* Do we need to bind to a port for RTCP? */
 	int fd = -1;
 	uint16_t local_rtcp_port = 0;
-	if(!is_data && rtcp_port > -1) {
+	if(!is_data && rtcp_port > 0) {
 		fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 		if(fd < 0) {
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
@@ -3536,6 +3536,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(audio_handle > 0) {
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
+			if(audio_rtcp_port > 0)
+				json_object_set_new(rtp_stream, "audio_rtcp", json_integer(audio_rtcp_port));
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -3555,6 +3557,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(video_handle[0] > 0) {
 				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
 				json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+				if(video_rtcp_port > 0)
+					json_object_set_new(rtp_stream, "video_rtcp", json_integer(video_rtcp_port));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -5246,6 +5250,19 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				}
+				janus_mutex_lock(&sessions_mutex);
+				session = janus_videoroom_lookup_session(msg->handle);
+				if(!session) {
+					janus_mutex_unlock(&sessions_mutex);
+					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+					janus_videoroom_message_free(msg);
+					continue;
+				}
+				if(g_atomic_int_get(&session->destroyed)) {
+					janus_mutex_unlock(&sessions_mutex);
+					janus_videoroom_message_free(msg);
+					continue;
+				}
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = json_integer_value(feed);
 				json_t *pvt = json_object_get(root, "private_id");
@@ -5265,6 +5282,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				}
@@ -5275,6 +5293,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				}
@@ -5284,6 +5303,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				} else {
@@ -5298,6 +5318,7 @@ static void *janus_videoroom_handler(void *data) {
 							JANUS_LOG(LOG_ERR, "Unauthorized (this room requires a valid private_id)\n");
 							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 							g_snprintf(error_cause, 512, "Unauthorized (this room requires a valid private_id)");
+							janus_mutex_unlock(&sessions_mutex);
 							janus_mutex_unlock(&videoroom->mutex);
 							goto error;
 						}
@@ -5331,6 +5352,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "Can't offer an SDP with no audio, video or data\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 						g_snprintf(error_cause, 512, "Can't offer an SDP with no audio, video or data");
+						janus_mutex_unlock(&sessions_mutex);
 						goto error;
 					}
 					subscriber->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
@@ -5372,6 +5394,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_refcount_decrease(&owner->session->ref);
 						janus_refcount_decrease(&owner->ref);
 					}
+					janus_mutex_unlock(&sessions_mutex);
 					event = json_object();
 					json_object_set_new(event, "videoroom", json_string("attached"));
 					json_object_set_new(event, "room", json_integer(subscriber->room_id));
