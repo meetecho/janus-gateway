@@ -965,10 +965,10 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 }
 
 #ifdef HAVE_SCTP
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
-	janus_sctp_send_data(dtls->sctp, label, buf, len);
+	janus_sctp_send_data(dtls->sctp, label, textdata, buf, len);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
@@ -982,7 +982,7 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	return res;
 }
 
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, char *buf, int len) {
+void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len) {
 	if(dtls == NULL || buf == NULL || len < 1)
 		return;
 	janus_ice_component *component = (janus_ice_component *)dtls->component;
@@ -1000,7 +1000,7 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, char *buf, int l
 		JANUS_LOG(LOG_ERR, "No handle...\n");
 		return;
 	}
-	janus_ice_incoming_data(handle, label, buf, len);
+	janus_ice_incoming_data(handle, label, textdata, buf, len);
 }
 #endif
 

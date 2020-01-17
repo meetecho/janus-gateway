@@ -290,7 +290,7 @@ struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session 
 void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len);
+void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
 void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
@@ -812,7 +812,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 	}
 }
 
-void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, char *buf, int len) {
+void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -830,15 +830,12 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *label, ch
 			return;
 		if(buf == NULL || len <= 0)
 			return;
-		char *text = g_malloc(len+1);
-		memcpy(text, buf, len);
-		*(text+len) = '\0';
-		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+		JANUS_LOG(LOG_VERB, "Got a %s DataChannel message (%d bytes) to forward\n",
+			textdata ? "text" : "binary", len);
 		/* Save the frame if we're recording */
 		janus_recorder_save_frame(session->drc, buf, len);
 		/* Forward the packet to the peer */
-		gateway->relay_data(peer->handle, label, text, strlen(text));
-		g_free(text);
+		gateway->relay_data(peer->handle, label, textdata, buf, len);
 	}
 }
 
