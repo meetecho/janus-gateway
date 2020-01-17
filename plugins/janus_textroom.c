@@ -836,6 +836,12 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 
+#ifndef HAVE_SCTP
+	/* Data channels not supported, no point loading this plugin */
+	JANUS_LOG(LOG_WARN, "Data channels support not compiled, disabling TextRoom plugin\n");
+	return -1;
+#endif
+
 	/* Read configuration */
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_TEXTROOM_PACKAGE);

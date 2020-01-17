@@ -1128,8 +1128,8 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		int srtpsuite, char *srtpcrypto, int threads,
-		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
-		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
+		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
+		gboolean dovideo, gboolean dovideortcp, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 			gboolean simulcast, uint16_t vport2, uint16_t vport3, gboolean svc, gboolean dovskew, int rtp_collision,
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean textdata, gboolean buffermsg);
 /* Helper to create a file/ondemand live source */
@@ -1169,9 +1169,10 @@ typedef struct janus_streaming_session {
 	/* The following are only relevant the mountpoint is VP9-SVC, and are not to be confused with VP8
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
-	gint64 last_spatial_layer[2];
+	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
 	gboolean stopping;
+	volatile gint renegotiating;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1341,6 +1342,7 @@ static void janus_streaming_rtcp_remb_send(janus_streaming_rtp_source *source) {
 #define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_CANT_SWITCH			458
 #define JANUS_STREAMING_ERROR_CANT_RECORD			459
+#define JANUS_STREAMING_ERROR_INVALID_STATE			460
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
@@ -1527,11 +1529,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				if(doaudio && artcpport != NULL && artcpport->value != NULL &&
-						(janus_string_to_uint16(artcpport->value, &audio_rtcp_port) < 0 || audio_rtcp_port == 0)) {
+						(janus_string_to_uint16(artcpport->value, &audio_rtcp_port) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid audio RTCP port...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
+				gboolean doaudiortcp = (artcpport != NULL && artcpport->value != NULL);
 				if(doaudio && aiface) {
 					if(!ifas) {
 						JANUS_LOG(LOG_ERR, "Skipping 'rtp' stream '%s', it relies on network configuration but network device information is unavailable...\n", cat->name);
@@ -1555,11 +1558,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				if(dovideo && vrtcpport != NULL && vrtcpport->value != NULL &&
-						(janus_string_to_uint16(vrtcpport->value, &video_rtcp_port) < 0 || video_rtcp_port == 0)) {
+						(janus_string_to_uint16(vrtcpport->value, &video_rtcp_port) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid video RTCP port...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
+				gboolean dovideortcp = (vrtcpport != NULL && vrtcpport->value != NULL);
 				if(dovideo && vport2 != NULL && vport2->value != NULL &&
 						(janus_string_to_uint16(vport2->value, &video_port2) < 0 || video_port2 == 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid simulcast port...\n", cat->name);
@@ -1650,7 +1654,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						ssuite && ssuite->value ? atoi(ssuite->value) : 0,
 						scrypto && scrypto->value ? (char *)scrypto->value : NULL,
 						(threads && threads->value) ?  atoi(threads->value) : 0,
-						doaudio,
+						doaudio, doaudiortcp,
 						amcast ? (char *)amcast->value : NULL,
 						doaudio && aiface && aiface->value ? &audio_iface : NULL,
 						(aport && aport->value) ? audio_port : 0,
@@ -1659,7 +1663,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
 						doaskew,
-						dovideo,
+						dovideo, dovideortcp,
 						vmcast ? (char *)vmcast->value : NULL,
 						dovideo && viface && viface->value ? &video_iface : NULL,
 						(vport && vport->value) ? video_port : 0,
@@ -2373,8 +2377,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *threads = json_object_get(root, "threads");
 			json_t *ssuite = json_object_get(root, "srtpsuite");
 			json_t *scrypto = json_object_get(root, "srtpcrypto");
-			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
-			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			gboolean doaudio = audio ? json_is_true(audio) : FALSE, doaudiortcp = FALSE;
+			gboolean dovideo = video ? json_is_true(video) : FALSE, dovideortcp = FALSE;
 			gboolean dodata = data ? json_is_true(data) : FALSE;
 			gboolean doaskew = FALSE, dovskew = FALSE, dosvc = FALSE;
 			if(!doaudio && !dovideo && !dodata) {
@@ -2404,8 +2408,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				json_t *audioport = json_object_get(root, "audioport");
 				aport = json_integer_value(audioport);
 				json_t *audiortcpport = json_object_get(root, "audiortcpport");
-				if(audiortcpport)
+				if(audiortcpport) {
+					doaudiortcp = TRUE;
 					artcpport = json_integer_value(audiortcpport);
+				}
 				json_t *audiopt = json_object_get(root, "audiopt");
 				acodec = json_integer_value(audiopt);
 				json_t *audiortpmap = json_object_get(root, "audiortpmap");
@@ -2443,8 +2449,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				json_t *videoport = json_object_get(root, "videoport");
 				vport = json_integer_value(videoport);
 				json_t *videortcpport = json_object_get(root, "videortcpport");
-				if(videortcpport)
+				if(videortcpport) {
+					dovideortcp = TRUE;
 					vrtcpport = json_integer_value(videortcpport);
+				}
 				json_t *videopt = json_object_get(root, "videopt");
 				vcodec = json_integer_value(videopt);
 				json_t *videortpmap = json_object_get(root, "videortpmap");
@@ -2561,8 +2569,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					ssuite ? json_integer_value(ssuite) : 0,
 					scrypto ? (char *)json_string_value(scrypto) : NULL,
 					threads ? json_integer_value(threads) : 0,
-					doaudio, amcast, &audio_iface, aport, artcpport, acodec, artpmap, afmtp, doaskew,
-					dovideo, vmcast, &video_iface, vport, vrtcpport, vcodec, vrtpmap, vfmtp, bufferkf,
+					doaudio, doaudiortcp, amcast, &audio_iface, aport, artcpport, acodec, artpmap, afmtp, doaskew,
+					dovideo, dovideortcp, vmcast, &video_iface, vport, vrtcpport, vcodec, vrtpmap, vfmtp, bufferkf,
 					simulcast, vport2, vport3, dosvc, dovskew,
 					rtpcollision ? json_integer_value(rtpcollision) : 0,
 					dodata, &data_iface, dport, textdata, buffermsg);
@@ -4110,6 +4118,16 @@ static void *janus_streaming_handler(void *data) {
 			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
 			if(do_restart) {
 				/* User asked for an ICE restart: provide a new offer */
+				if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
+					/* Already triggered a renegotiation, and still waiting for an answer */
+					janus_mutex_unlock(&mp->mutex);
+					JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %"SCNu64"\n", session->mountpoint->id);
+					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+					g_snprintf(error_cause, 512, "Already renegotiating mountpoint %"SCNu64, session->mountpoint->id);
+					janus_refcount_decrease(&mp->ref);
+					goto error;
+				}
+				janus_refcount_decrease(&mp->ref);
 				JANUS_LOG(LOG_VERB, "Request to perform an ICE restart on mountpoint/stream %"SCNu64" subscription\n", id_value);
 				session->sdp_version++;	/* This needs to be increased when it changes */
 				goto done;
@@ -4118,12 +4136,33 @@ static void *janus_streaming_handler(void *data) {
 				if(session->mountpoint != mp) {
 					/* Already watching something else */
 					janus_mutex_unlock(&mp->mutex);
+					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Already watching mountpoint %"SCNu64"\n", session->mountpoint->id);
-					error_code = JANUS_STREAMING_ERROR_CANT_SWITCH;
+					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Already watching mountpoint %"SCNu64, session->mountpoint->id);
 					goto error;
 				} else {
-					/* Simple renegotiation */
+					/* Make sure it's not an API error */
+					if(!session->started) {
+						/* Can't be a renegotiation, PeerConnection isn't up yet */
+						janus_mutex_unlock(&mp->mutex);
+						JANUS_LOG(LOG_ERR, "Already watching mountpoint %"SCNu64"\n", session->mountpoint->id);
+						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+						g_snprintf(error_cause, 512, "Already watching mountpoint %"SCNu64, session->mountpoint->id);
+						janus_refcount_decrease(&mp->ref);
+						goto error;
+					}
+					if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
+						/* Already triggered a renegotiation, and still waiting for an answer */
+						janus_mutex_unlock(&mp->mutex);
+						JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %"SCNu64"\n", session->mountpoint->id);
+						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
+						g_snprintf(error_cause, 512, "Already renegotiating mountpoint %"SCNu64, session->mountpoint->id);
+						janus_refcount_decrease(&mp->ref);
+						goto error;
+					}
+					/* Simple renegotiation, remove the extra uneeded reference */
+					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_VERB, "Request to update mountpoint/stream %"SCNu64" subscription (no restart)\n", id_value);
 					session->sdp_version++;	/* This needs to be increased when it changes */
 					goto done;
@@ -4647,6 +4686,7 @@ done:
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (%s):\n%s\n",
 				do_restart ? "renegotiation occurring" : "but we really don't care", msg_sdp_type, msg_sdp);
 		}
+		g_atomic_int_set(&session->renegotiating, 0);
 
 		/* Prepare JSON event */
 		json_t *jsep = json_pack("{ssss}", "type", sdp_type, "sdp", sdp);
@@ -4957,8 +4997,8 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		int srtpsuite, char *srtpcrypto, int threads,
-		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
-		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
+		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
+		gboolean dovideo, gboolean dovideortcp, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 			gboolean simulcast, uint16_t vport2, uint16_t vport3, gboolean svc, gboolean dovskew, int rtp_collision,
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean textdata, gboolean buffermsg) {
 	char tempname[255];
@@ -5011,11 +5051,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			return NULL;
 		}
 		aport = janus_streaming_get_fd_port(audio_fd);
-		if(artcpport > 0) {
+		if(doaudiortcp) {
 			audio_rtcp_fd = janus_streaming_create_fd(artcpport, amcast ? inet_addr(amcast) : INADDR_ANY, aiface,
-				"Audio", "audio", name ? name : tempname, FALSE);
+				"Audio", "audio", name ? name : tempname, artcpport == 0);
 			if(audio_rtcp_fd < 0) {
-				JANUS_LOG(LOG_ERR, "Can't bind to port %d for audio RTCP...\n", aport+1);
+				JANUS_LOG(LOG_ERR, "Can't bind to port %d for audio RTCP...\n", artcpport);
 				if(audio_fd > -1)
 					close(audio_fd);
 				janus_mutex_lock(&mountpoints_mutex);
@@ -5023,6 +5063,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				janus_mutex_unlock(&mountpoints_mutex);
 				return NULL;
 			}
+			artcpport = janus_streaming_get_fd_port(audio_rtcp_fd);
 		}
 	}
 	int video_fd[3] = {-1, -1, -1};
@@ -5042,9 +5083,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			return NULL;
 		}
 		vport = janus_streaming_get_fd_port(video_fd[0]);
-		if(vrtcpport > 0) {
+		if(dovideortcp) {
 			video_rtcp_fd = janus_streaming_create_fd(vrtcpport, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-				"Video", "video", name ? name : tempname, FALSE);
+				"Video", "video", name ? name : tempname, vrtcpport == 0);
 			if(video_rtcp_fd < 0) {
 				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video RTCP...\n", vrtcpport);
 				if(audio_fd > -1)
@@ -5058,6 +5099,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				janus_mutex_unlock(&mountpoints_mutex);
 				return NULL;
 			}
+			vrtcpport = janus_streaming_get_fd_port(video_rtcp_fd);
 		}
 		if(simulcast) {
 			if(vport2 > 0) {
