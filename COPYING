@@ -404,14 +404,6 @@ where to find the applicable terms.
 form of a separately written license, or stated as exceptions;
 the above requirements apply either way.
 
-If you modify this Program, or any covered work, by linking or combining
-it with OpenSSL (or a modified version of that library), containing
-parts covered by the terms of OpenSSL License, the licensors of this
-Program grant you additional permission to convey the resulting work.
-Corresponding Source for a  non-source form of such a combination shall
-include the source code for the parts of openssl used as well as that of
-the covered work.
-
   8. Termination.
 
   You may not propagate or modify a covered work except as expressly
@@ -680,3 +672,15 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <http://www.gnu.org/philosophy/why-not-lgpl.html>.
+
+========================================================================
+
+Exception by Meetecho s.r.l.:
+
+If you modify this Program, or any covered work, by linking or combining
+it with OpenSSL (or a modified version of that library), containing
+parts covered by the terms of OpenSSL License, the licensors of this
+Program grant you additional permission to convey the resulting work.
+Corresponding Source for a non-source form of such a combination shall
+include the source code for the parts of OpenSSL used as well as that of
+the covered work.

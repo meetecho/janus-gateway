@@ -75,7 +75,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to Voice Mail test plugin
+						// Attach to VoiceMail plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.voicemail",
@@ -104,7 +104,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',

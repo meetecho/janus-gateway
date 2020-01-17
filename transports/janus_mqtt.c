@@ -368,10 +368,21 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	}
 
 	janus_config_item *keep_alive_interval_item = janus_config_get(config, config_general, janus_config_type_item, "keep_alive_interval");
-	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ? atoi(keep_alive_interval_item->value) : 20;
+	keep_alive_interval_item = janus_config_get(config, config_general, janus_config_type_item, "keep_alive_interval");
+	ctx->connect.keep_alive_interval = (keep_alive_interval_item && keep_alive_interval_item->value) ?
+		atoi(keep_alive_interval_item->value) : 20;
+	if(ctx->connect.keep_alive_interval < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid keep-alive value: %s (falling back to default)\n", keep_alive_interval_item->value);
+		ctx->connect.keep_alive_interval = 20;
+	}
 
 	janus_config_item *cleansession_item = janus_config_get(config, config_general, janus_config_type_item, "cleansession");
-	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ? atoi(cleansession_item->value) : 0;
+	ctx->connect.cleansession = (cleansession_item && cleansession_item->value) ?
+		atoi(cleansession_item->value) : 0;
+	if(ctx->connect.cleansession < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid clean-session value: %s (falling back to default)\n", cleansession_item->value);
+		ctx->connect.cleansession = 0;
+	}
 
 	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 	if(enabled_item == NULL) {
@@ -395,6 +406,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 			janus_config_item *qos_item = janus_config_get(config, config_general, janus_config_type_item, "subscribe_qos");
 			ctx->subscribe.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+			if(ctx->subscribe.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid subscribe-qos value: %s (falling back to default)\n", qos_item->value);
+				ctx->subscribe.qos = 1;
+			}
 		}
 
 		/* Publish configuration */
@@ -408,6 +423,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 			janus_config_item *qos_item = janus_config_get(config, config_general, janus_config_type_item, "publish_qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+			if(ctx->publish.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid publish-qos value: %s (falling back to default)\n", qos_item->value);
+				ctx->publish.qos = 1;
+			}
 		}
 	} else {
 		janus_mqtt_api_enabled_ = FALSE;
@@ -417,7 +436,12 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Disconnect configuration */
 	janus_config_item *disconnect_timeout_item = janus_config_get(config, config_general, janus_config_type_item, "disconnect_timeout");
-	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : 100;
+	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ?
+		atoi(disconnect_timeout_item->value) : 100;
+	if(ctx->disconnect.timeout < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid disconnect-timeout value: %s (falling back to default)\n", disconnect_timeout_item->value);
+		ctx->disconnect.timeout = 100;
+	}
 
 	/* Admin configuration */
 	janus_config_item *admin_enabled_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
@@ -442,6 +466,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 			janus_config_item *qos_item = janus_config_get(config, config_admin, janus_config_type_item, "subscribe_qos");
 			ctx->admin.subscribe.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+			if(ctx->admin.subscribe.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid subscribe-qos value: %s (falling back to default)\n", qos_item->value);
+				ctx->admin.subscribe.qos = 1;
+			}
 		}
 
 		/* Admin publish configuration */
@@ -455,6 +483,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 			janus_config_item *qos_item = janus_config_get(config, config_admin, janus_config_type_item, "publish_qos");
 			ctx->admin.publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
+			if(ctx->admin.publish.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid publish-qos value: %s (falling back to default)\n", qos_item->value);
+				ctx->admin.publish.qos = 1;
+			}
 		}
 	} else {
 		janus_mqtt_admin_api_enabled_ = FALSE;
@@ -487,6 +519,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		janus_config_item *status_qos_item = janus_config_get(config, config_status, janus_config_type_item, "qos");
 		if(status_qos_item && status_qos_item->value) {
 			ctx->status.qos = atoi(status_qos_item->value);
+			if(ctx->status.qos < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid status-qos value: %s (disabling)\n", status_qos_item->value);
+				ctx->status.qos = 0;
+			}
 		}
 
 		janus_config_item *status_retain_item = janus_config_get(config, config_status, janus_config_type_item, "retain");

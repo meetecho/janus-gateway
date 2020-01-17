@@ -626,15 +626,19 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 }
 
 
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled) {
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len,
+		gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled,
+		GHashTable *clock_rates) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
-	/* First of all, let's check if this is G.711: in case we may need to change the timestamp base */
+	/* First of all, let's check if we need to change the timestamp base */
 	janus_rtp_header *rtp = (janus_rtp_header *)packet;
 	int pt = rtp->type;
-	if((pt == 0 || pt == 8) && (ctx->tb == 48000))
-		ctx->tb = 8000;
+	uint32_t clock_rate = clock_rates ?
+		GPOINTER_TO_UINT(g_hash_table_lookup(clock_rates, GINT_TO_POINTER(pt))) : 0;
+	if(clock_rate > 0 && ctx->tb != clock_rate)
+		ctx->tb = clock_rate;
 	/* Now parse this RTP packet header and update the rtcp_context instance */
 	uint16_t seq_number = ntohs(rtp->seq_number);
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)

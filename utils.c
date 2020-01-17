@@ -20,6 +20,8 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 
+#include <zlib.h>
+
 #include "utils.h"
 #include "debug.h"
 
@@ -91,6 +93,36 @@ guint64 *janus_uint64_dup(guint64 num) {
 	guint64 *numdup = g_malloc(sizeof(guint64));
 	*numdup = num;
 	return numdup;
+}
+
+int janus_string_to_uint8(const char *str, uint8_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long int val = strtol(str, 0, 10);
+	if(val < 0 || val > UINT8_MAX)
+		return -ERANGE;
+	*num = val;
+	return 0;
+}
+
+int janus_string_to_uint16(const char *str, uint16_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long int val = strtol(str, 0, 10);
+	if(val < 0 || val > UINT16_MAX)
+		return -ERANGE;
+	*num = val;
+	return 0;
+}
+
+int janus_string_to_uint32(const char *str, uint32_t *num) {
+	if(str == NULL || num == NULL)
+		return -EINVAL;
+	long long int val = strtoll(str, 0, 10);
+	if(val < 0 || val > UINT32_MAX)
+		return -ERANGE;
+	*num = val;
+	return 0;
 }
 
 void janus_flags_reset(janus_flags *flags) {
@@ -827,9 +859,7 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 
 /* Helper method to parse a VP9 RTP video frame and get some SVC-related info:
  * notice that this only works with VP9, right now, on an experimental basis */
-int janus_vp9_parse_svc(char *buffer, int len, int *found,
-		int *spatial_layer, int *temporal_layer,
-		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
+int janus_vp9_parse_svc(char *buffer, int len, gboolean *found, janus_vp9_svc_info *info) {
 	if(!buffer || len < 8)
 		return -1;
 	/* VP9 depay: */
@@ -846,7 +876,7 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 	if(!lbit) {
 		/* No Layer indices present, no need to go on */
 		if(found)
-			*found = 0;
+			*found = FALSE;
 		return 0;
 	}
 	/* Move to the next octet and see what's there */
@@ -875,24 +905,20 @@ int janus_vp9_parse_svc(char *buffer, int len, int *found,
 		uint8_t ubit = (vp9pd & 0x10) >> 4;
 		int slid = (vp9pd & 0x0E) >> 1;
 		uint8_t dbit = (vp9pd & 0x01);
-		JANUS_LOG(LOG_HUGE, "Parsed Layer indices: Temporal: %d (%u), Spatial: %d (%u)\n",
-			tlid, ubit, slid, dbit);
-		if(temporal_layer)
-			*temporal_layer = tlid;
-		if(spatial_layer)
-			*spatial_layer = slid;
-		if(p)
-			*p = pbit;
-		if(d)
-			*d = dbit;
-		if(u)
-			*u = ubit;
-		if(b)
-			*b = bbit;
-		if(e)
-			*e = ebit;
+		JANUS_LOG(LOG_HUGE, "%s Mode, Layer indices: Temporal: %d (u=%u), Spatial: %d (d=%u)\n",
+			fbit ? "Flexible" : "Non-flexible", tlid, ubit, slid, dbit);
+		if(info) {
+			info->temporal_layer = tlid;
+			info->spatial_layer = slid;
+			info->fbit = fbit;
+			info->pbit = pbit;
+			info->dbit = dbit;
+			info->ubit = ubit;
+			info->bbit = bbit;
+			info->ebit = ebit;
+		}
 		if(found)
-			*found = 1;
+			*found = TRUE;
 		/* Go on, just to get to the SS, if available (which we currently ignore anyway) */
 		buffer++;
 		len--;
@@ -999,3 +1025,43 @@ inline void janus_set4(guint8 *data,size_t i,guint32 val) {
 	data[i+1] = (guint8)(val>>16);
 	data[i]   = (guint8)(val>>24);
 }
+
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen) {
+	if(text == NULL || tlen < 1 || compressed == NULL || zlen < 1)
+		return -1;
+	if(compression < 0 || compression > 9) {
+		JANUS_LOG(LOG_WARN, "Invalid compression factor %d, falling back to default compression...\n", compression);
+		compression = Z_DEFAULT_COMPRESSION;
+	}
+
+	/* Initialize the deflater, and clarify we need gzip */
+	z_stream zs;
+	zs.zalloc = Z_NULL;
+	zs.zfree = Z_NULL;
+	zs.opaque = Z_NULL;
+	zs.next_in = (Bytef *)text;
+	zs.avail_in = (uInt)tlen+1;
+	zs.next_out = (Bytef *)compressed;
+	zs.avail_out = (uInt)zlen;
+	int res = deflateInit2(&zs, compression, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+	if(res != Z_OK) {
+		JANUS_LOG(LOG_ERR, "deflateInit error: %d\n", res);
+		return 0;
+	}
+	/* Deflate the string */
+	res = deflate(&zs, Z_FINISH);
+	if(res != Z_STREAM_END) {
+		JANUS_LOG(LOG_ERR, "deflate error: %d\n", res);
+		return 0;
+	}
+	res = deflateEnd(&zs);
+	if(res != Z_OK) {
+		JANUS_LOG(LOG_ERR, "deflateEnd error: %d\n", res);
+		return 0;
+	}
+
+	/* Done, return the size of the compressed data */
+	return zs.total_out;
+}
+#endif
