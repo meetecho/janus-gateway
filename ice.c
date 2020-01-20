@@ -1586,10 +1586,18 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 	guint sl_lost_recently = (lost >= sl_lost_last_count) ? (lost - sl_lost_last_count) : 0;
 	if(slowlink_threshold > 0 && sl_lost_recently >= slowlink_threshold) {
 		/* Tell the plugin */
+		janus_plugin_slowlink_data_t *slowlink_data = (janus_plugin_slowlink_data_t*)calloc(1, sizeof(janus_plugin_slowlink_data_t));
+		if(slowlink_data != NULL){
+			if(video)
+			slowlink_data->lost_video = sl_lost_recently;
+			else
+			slowlink_data->lost_audio = sl_lost_recently;
+		}
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
 				!g_atomic_int_get(&handle->destroyed))
-			plugin->slow_link(handle->app_handle, uplink, video);
+			//send to videocaster stats
+			plugin->slow_link(handle->app_handle, uplink, video, slowlink_data);
 		/* Notify the user/application too */
 		janus_session *session = (janus_session *)handle->session;
 		if(session != NULL) {

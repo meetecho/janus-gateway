@@ -211,6 +211,10 @@ static janus_plugin janus_echotest_plugin =
 		.query_session = NULL, 			\
 		## __VA_ARGS__ }
 
+typedef struct janus_plugin_slowlink_data_t {
+  guint lost_video;
+  guint lost_audio;
+}janus_plugin_slowlink_data_t;
 
 /*! \brief Callbacks to contact the Janus core */
 typedef struct janus_callbacks janus_callbacks;
@@ -323,7 +327,7 @@ struct janus_plugin {
 	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
 	 * or downlink (peer to Janus)
 	 * @param[in] video Whether this is related to an audio or a video stream */
-	void (* const slow_link)(janus_plugin_session *handle, int uplink, int video);
+	void (* const slow_link)(janus_plugin_session *handle, int uplink, int video, janus_plugin_slowlink_data_t *slowlink_data);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
