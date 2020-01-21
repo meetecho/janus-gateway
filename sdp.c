@@ -286,7 +286,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(a->name) {
+			if(a->name && a->value) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
