@@ -49,6 +49,7 @@
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
+int lock_debug = 0;
 
 int working = 0;
 
