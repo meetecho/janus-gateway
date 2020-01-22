@@ -124,6 +124,8 @@ general: {
 		# you can configure an array of folders that Janus should prevent
 		# creating files in. By default no folder is protected, unless the
 		# 'protected_folder' property below is uncommented and configured.
+		# Notice that at the moment this only covers attempts to start
+		# an .mjr recording and pcap/text2pcap packet captures.
 	protected_folders = [
 		"/bin",
 		"/boot",
@@ -139,7 +141,7 @@ general: {
 		"/sys",
 		"/usr",
 		"/var",
-			# We add what is usually the folders Janus is installed too
+			# We add what are usually the folders Janus is installed to
 			# as well: we don't just put "/opt/janus" because that would
 			# include folders like "/opt/janus/share" that is where
 			# recordings might be saved to by some plugins
