@@ -5364,6 +5364,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					error->code, error->message ? error->message : "??");
 				janus_refcount_decrease(&live_rtp->ref);	/* This is for the helper thread */
 				janus_streaming_mountpoint_destroy(live_rtp);
+				g_free(helper);
 				return NULL;
 			}
 			live_rtp->threads = g_list_append(live_rtp->threads, helper);
