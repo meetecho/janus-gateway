@@ -269,8 +269,6 @@ void *janus_events_thread(void *data) {
 	while(eventsenabled) {
 		/* Any event in queue? */
 		event = g_async_queue_pop(events);
-		if(event == NULL)
-			continue;
 		if(event == &exit_event)
 			break;
 
