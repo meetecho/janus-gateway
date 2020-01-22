@@ -7572,8 +7572,6 @@ static void *janus_streaming_helper_thread(void *data) {
 	janus_streaming_rtp_relay_packet *pkt = NULL;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mp->destroyed)) {
 		pkt = g_async_queue_pop(helper->queued_packets);
-		if(pkt == NULL)
-			continue;
 		if(pkt == &exit_packet)
 			break;
 		janus_mutex_lock(&helper->mutex);
