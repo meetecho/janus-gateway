@@ -981,8 +981,7 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 	if(participant->outbuf != NULL) {
 		while(g_async_queue_length(participant->outbuf) > 0) {
 			janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);
-			if(pkt)
-				g_free(pkt->data);
+			g_free(pkt->data);
 			g_free(pkt);
 		}
 		g_async_queue_unref(participant->outbuf);
