@@ -1477,7 +1477,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Adding audio room '%s'\n", cat->name);
+			JANUS_LOG(LOG_VERB, "Adding AudioBridge room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
 			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 			janus_config_item *sampling = janus_config_get(config, cat, janus_config_type_item, "sampling_rate");
@@ -1490,7 +1490,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
 			if(sampling == NULL || sampling->value == NULL) {
-				JANUS_LOG(LOG_ERR, "Can't add the audio room, missing mandatory information...\n");
+				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
 				cl = cl->next;
 				continue;
 			}
@@ -1499,8 +1499,26 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
-			if(!string_ids)
+			if(!string_ids) {
 				audiobridge->room_id = g_ascii_strtoull(room_num, NULL, 0);
+				if(audiobridge->room_id == 0) {
+					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, invalid ID 0...\n");
+					g_free(audiobridge);
+					cl = cl->next;
+					continue;
+				}
+			}
+			/* Let's make sure the room doesn't exist already */
+			janus_mutex_lock(&rooms_mutex);
+			if(g_hash_table_lookup(rooms, string_ids ? (gpointer)room_num : (gpointer)&audiobridge->room_id) != NULL) {
+				/* It does... */
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, room %s already exists...\n", room_num);
+				g_free(audiobridge);
+				cl = cl->next;
+				continue;
+			}
+			janus_mutex_unlock(&rooms_mutex);
 			audiobridge->room_id_str = g_strdup(room_num);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -1573,7 +1591,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->rtp_udp_sock = -1;
 			janus_mutex_init(&audiobridge->rtp_mutex);
 			janus_refcount_init(&audiobridge->ref, janus_audiobridge_room_free);
-			JANUS_LOG(LOG_VERB, "Created audiobridge: %s (%s, %s, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created AudioBridge room: %s (%s, %s, secret: %s, pin: %s)\n",
 				audiobridge->room_id_str, audiobridge->room_name,
 				audiobridge->is_private ? "private" : "public",
 				audiobridge->room_secret ? audiobridge->room_secret : "no secret",
@@ -2030,7 +2048,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		g_hash_table_insert(rooms,
 			string_ids ? (gpointer)g_strdup(audiobridge->room_id_str) : (gpointer)janus_uint64_dup(audiobridge->room_id),
 			audiobridge);
-		JANUS_LOG(LOG_VERB, "Created audiobridge: %s (%s, %s, secret: %s, pin: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created AudioBridge: %s (%s, %s, secret: %s, pin: %s)\n",
 			audiobridge->room_id_str, audiobridge->room_name,
 			audiobridge->is_private ? "private" : "public",
 			audiobridge->room_secret ? audiobridge->room_secret : "no secret",

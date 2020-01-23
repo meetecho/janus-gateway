@@ -913,7 +913,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Adding text room '%s'\n", cat->name);
+			JANUS_LOG(LOG_VERB, "Adding TextRoom room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
 			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
@@ -924,8 +924,26 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
-			if(!string_ids)
+			if(!string_ids) {
 				textroom->room_id = g_ascii_strtoull(room_num, NULL, 0);
+				if(textroom->room_id == 0) {
+					JANUS_LOG(LOG_ERR, "Can't add the TextRoom room, invalid ID 0...\n");
+					g_free(textroom);
+					cl = cl->next;
+					continue;
+				}
+			}
+			/* Let's make sure the room doesn't exist already */
+			janus_mutex_lock(&rooms_mutex);
+			if(g_hash_table_lookup(rooms, string_ids ? (gpointer)room_num : (gpointer)&textroom->room_id) != NULL) {
+				/* It does... */
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Can't add the TextRoom room, room %s already exists...\n", room_num);
+				g_free(textroom);
+				cl = cl->next;
+				continue;
+			}
+			janus_mutex_unlock(&rooms_mutex);
 			textroom->room_id_str = g_strdup(room_num);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -954,7 +972,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			textroom->destroyed = 0;
 			janus_mutex_init(&textroom->mutex);
 			janus_refcount_init(&textroom->ref, janus_textroom_room_free);
-			JANUS_LOG(LOG_VERB, "Created textroom: %s (%s, %s, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s)\n",
 				textroom->room_id_str, textroom->room_name,
 				textroom->is_private ? "private" : "public",
 				textroom->room_secret ? textroom->room_secret : "no secret",
@@ -2387,7 +2405,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		g_hash_table_insert(rooms,
 			string_ids ? (gpointer)g_strdup(textroom->room_id_str) : (gpointer)janus_uint64_dup(textroom->room_id),
 			textroom);
-		JANUS_LOG(LOG_VERB, "Created textroom: %s (%s, %s, secret: %s, pin: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s)\n",
 			textroom->room_id_str, textroom->room_name,
 			textroom->is_private ? "private" : "public",
 			textroom->room_secret ? textroom->room_secret : "no secret",

@@ -2044,7 +2044,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Adding video room '%s'\n", cat->name);
+			JANUS_LOG(LOG_VERB, "Adding VideoRoom room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
 			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
@@ -2073,7 +2073,26 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
-			videoroom->room_id = g_ascii_strtoull(room_num, NULL, 0);
+			if(!string_ids) {
+				videoroom->room_id = g_ascii_strtoull(room_num, NULL, 0);
+				if(videoroom->room_id == 0) {
+					JANUS_LOG(LOG_ERR, "Can't add the VideoRoom room, invalid ID 0...\n");
+					g_free(videoroom);
+					cl = cl->next;
+					continue;
+				}
+			}
+			/* Let's make sure the room doesn't exist already */
+			janus_mutex_lock(&rooms_mutex);
+			if(g_hash_table_lookup(rooms, string_ids ? (gpointer)room_num : (gpointer)&videoroom->room_id) != NULL) {
+				/* It does... */
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Can't add the VideoRoom room, room %s already exists...\n", room_num);
+				g_free(videoroom);
+				cl = cl->next;
+				continue;
+			}
+			janus_mutex_unlock(&rooms_mutex);
 			videoroom->room_id_str = g_strdup(room_num);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -2227,7 +2246,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			/* Compute a list of the supported codecs for the summary */
 			char audio_codecs[100], video_codecs[100];
 			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
-			JANUS_LOG(LOG_VERB, "Created videoroom: %s (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created VideoRoom: %s (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 				videoroom->room_id_str, videoroom->room_name,
 				videoroom->is_private ? "private" : "public",
 				audio_codecs, video_codecs,
@@ -3036,7 +3055,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* Compute a list of the supported codecs for the summary */
 		char audio_codecs[100], video_codecs[100];
 		janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), "|");
-		JANUS_LOG(LOG_VERB, "Created videoroom: %s (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created VideoRoom: %s (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 			videoroom->room_id_str, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
 			audio_codecs, video_codecs,
