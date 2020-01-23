@@ -3747,6 +3747,18 @@ gint main(int argc, char *argv[])
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
 	janus_config_category *config_loggers = janus_config_get_create(config, NULL, janus_config_type_category, "loggers");
 
+	/* Check if there are folders to protect */
+	janus_config_array *pfs = janus_config_get(config, config_general, janus_config_type_array, "protected_folders");
+	if(pfs && pfs->list) {
+		GList *item = pfs->list;
+		while(item) {
+			janus_config_item *pf = (janus_config_item *)item->data;
+			if(pf && pf->type == janus_config_type_item && pf->name == NULL && pf->value != NULL)
+				janus_protected_folder_add(pf->value);
+			item = item->next;
+		}
+	}
+
 	/* Check if we need to log to console and/or file */
 	gboolean use_stdout = TRUE;
 	if(args_info.disable_stdout_given) {
@@ -5111,6 +5123,8 @@ gint main(int argc, char *argv[])
 
 	if(janus_ice_get_static_event_loops() > 0)
 		janus_ice_stop_static_event_loops();
+
+	janus_protected_folders_clear();
 
 #ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */

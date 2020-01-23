@@ -5707,97 +5707,87 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -5;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
-		/* Find the Transport header and parse it */
-		char *header = strstr(curldata->buffer, "Transport:");
-		if(header == NULL)
-			header = strstr(curldata->buffer, "transport:");
-		if(header != NULL) {
-			char *end = strchr(header, '\r');
-			if(end != NULL)
-				*end = '\0';
-			end = strchr(header, '\n');
-			if(end != NULL)
-				*end = '\0';
-			/* Iterate on all params */
-			char *p = header, param[100], *pi = NULL;
-			int read = 0;
-			gboolean first = TRUE;
-			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
-				if(first) {
-					/* Skip */
-					first = FALSE;
-				} else {
-					pi = param;
-					while(*pi == ' ')
-						pi++;
-					char name[50], value[50];
-					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
-						if(!strcasecmp(name, "ssrc")) {
-							/* Take note of the video SSRC */
-							uint32_t ssrc = strtol(value, NULL, 16);
-							JANUS_LOG(LOG_VERB, "  -- SSRC (video): %"SCNu32"\n", ssrc);
-							source->video_ssrc = ssrc;
-						} else if(!strcasecmp(name, "source")) {
-							/* If we got an address via c-line, replace it */
-							g_snprintf(vhost, sizeof(vhost), "%s", value);
-							JANUS_LOG(LOG_VERB, "  -- Source (video): %s\n", vhost);
-						} else if(!strcasecmp(name, "server_port")) {
-							/* Take note of the server port */
-							char *dash = NULL;
-							vsport = strtol(value, &dash, 10);
-							vsport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-							JANUS_LOG(LOG_VERB, "  -- RTP port (video): %d\n", vsport);
-							JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %d\n", vsport_rtcp);
+		/* Parse the RTSP message: we may need Transport and Session */
+		gboolean success = TRUE;
+		gchar **parts = g_strsplit(curldata->buffer, "\n", -1);
+		if(parts) {
+			int index = 0;
+			char *line = NULL, *cr = NULL;
+			while(success && (line = parts[index]) != NULL) {
+				cr = strchr(line, '\r');
+				if(cr != NULL)
+					*cr = '\0';
+				if(*line == '\0') {
+					if(cr != NULL)
+						*cr = '\r';
+					index++;
+					continue;
+				}
+				if(strlen(line) < 3) {
+					JANUS_LOG(LOG_ERR, "Invalid RTSP line (%zu bytes): %s\n", strlen(line), line);
+					success = FALSE;
+					break;
+				}
+				/* Check if this is a Transport or Session header, and if so parse it */
+				gboolean is_transport = (strstr(line, "Transport:") == line || strstr(line, "transport:") == line);
+				gboolean is_session = (strstr(line, "Session:") == line || strstr(line, "session:") == line);
+				if(is_transport || is_session) {
+					/* There is, iterate on all params */
+					char *p = line, param[100], *pi = NULL;
+					int read = 0;
+					gboolean first = TRUE;
+					while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+						if(first) {
+							/* Skip */
+							first = FALSE;
+						} else {
+							pi = param;
+							while(*pi == ' ')
+								pi++;
+							char name[50], value[50];
+							if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+								if(is_transport) {
+									if(!strcasecmp(name, "ssrc")) {
+										/* Take note of the video SSRC */
+										uint32_t ssrc = strtol(value, NULL, 16);
+										JANUS_LOG(LOG_VERB, "  -- SSRC (video): %"SCNu32"\n", ssrc);
+										source->video_ssrc = ssrc;
+									} else if(!strcasecmp(name, "source")) {
+										/* If we got an address via c-line, replace it */
+										g_snprintf(vhost, sizeof(vhost), "%s", value);
+										JANUS_LOG(LOG_VERB, "  -- Source (video): %s\n", vhost);
+									} else if(!strcasecmp(name, "server_port")) {
+										/* Take note of the server port */
+										char *dash = NULL;
+										vsport = strtol(value, &dash, 10);
+										vsport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
+										JANUS_LOG(LOG_VERB, "  -- RTP port (video): %d\n", vsport);
+										JANUS_LOG(LOG_VERB, "  -- RTCP port (video): %d\n", vsport_rtcp);
+									}
+								} else if(is_session) {
+									if(!strcasecmp(name, "timeout")) {
+										/* Take note of the timeout, for keep-alives */
+										ka_timeout = atoi(value);
+										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
+									}
+								}
+							}
 						}
+						/* Move to the next param */
+						p += read;
+						if(*p != ';')
+							break;
+						while(*p == ';')
+							p++;
 					}
 				}
-				/* Move to the next param */
-				p += read;
-				if(*p != ';')
-					break;
-				while(*p == ';')
-					p++;
+				if(cr != NULL)
+					*cr = '\r';
+				index++;
 			}
-		}
-		/* Find the Session header and parse it */
-		header = strstr(curldata->buffer, "Session:");
-		if(header == NULL)
-			header = strstr(curldata->buffer, "session:");
-		if(header != NULL) {
-			char *end = strchr(header, '\r');
-			if(end != NULL)
-				*end = '\0';
-			end = strchr(header, '\n');
-			if(end != NULL)
-				*end = '\0';
-			/* Iterate on all params */
-			char *p = header, param[100], *pi = NULL;
-			int read = 0;
-			gboolean first = TRUE;
-			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
-				if(first) {
-					/* Skip */
-					first = FALSE;
-				} else {
-					pi = param;
-					while(*pi == ' ')
-						pi++;
-					char name[50], value[50];
-					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
-						if(!strcasecmp(name, "timeout")) {
-							/* Take note of the timeout, for keep-alives */
-							ka_timeout = atoi(value);
-							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
-						}
-					}
-				}
-				/* Move to the next param */
-				p += read;
-				if(*p != ';')
-					break;
-				while(*p == ';')
-					p++;
-			}
+			if(cr != NULL)
+				*cr = '\r';
+			g_strfreev(parts);
 		}
 #ifdef HAVE_LIBCURL
 #if CURL_AT_LEAST_VERSION(7, 62, 0)
@@ -5890,97 +5880,87 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			return -6;
 		}
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n", curldata->buffer);
-		/* Find the Transport header and parse it */
-		char *header = strstr(curldata->buffer, "Transport:");
-		if(header == NULL)
-			header = strstr(curldata->buffer, "transport:");
-		if(header != NULL) {
-			char *end = strchr(header, '\r');
-			if(end != NULL)
-				*end = '\0';
-			end = strchr(header, '\n');
-			if(end != NULL)
-				*end = '\0';
-			/* Iterate on all params */
-			char *p = header, param[100], *pi = NULL;
-			int read = 0;
-			gboolean first = TRUE;
-			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
-				if(first) {
-					/* Skip */
-					first = FALSE;
-				} else {
-					pi = param;
-					while(*pi == ' ')
-						pi++;
-					char name[50], value[50];
-					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
-						if(!strcasecmp(name, "ssrc")) {
-							/* Take note of the audio SSRC */
-							uint32_t ssrc = strtol(value, NULL, 16);
-							JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
-							source->audio_ssrc = ssrc;
-						} else if(!strcasecmp(name, "source")) {
-							/* If we got an address via c-line, replace it */
-							g_snprintf(ahost, sizeof(ahost), "%s", value);
-							JANUS_LOG(LOG_VERB, "  -- Source (audio): %s\n", ahost);
-						} else if(!strcasecmp(name, "server_port")) {
-							/* Take note of the server port */
-							char *dash = NULL;
-							asport = strtol(value, &dash, 10);
-							asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
-							JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", vsport);
-							JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", vsport_rtcp);
+		/* Parse the RTSP message: we may need Transport and Session */
+		gboolean success = TRUE;
+		gchar **parts = g_strsplit(curldata->buffer, "\n", -1);
+		if(parts) {
+			int index = 0;
+			char *line = NULL, *cr = NULL;
+			while(success && (line = parts[index]) != NULL) {
+				cr = strchr(line, '\r');
+				if(cr != NULL)
+					*cr = '\0';
+				if(*line == '\0') {
+					if(cr != NULL)
+						*cr = '\r';
+					index++;
+					continue;
+				}
+				if(strlen(line) < 3) {
+					JANUS_LOG(LOG_ERR, "Invalid RTSP line (%zu bytes): %s\n", strlen(line), line);
+					success = FALSE;
+					break;
+				}
+				/* Check if this is a Transport or Session header, and if so parse it */
+				gboolean is_transport = (strstr(line, "Transport:") == line || strstr(line, "transport:") == line);
+				gboolean is_session = (strstr(line, "Session:") == line || strstr(line, "session:") == line);
+				if(is_transport || is_session) {
+					/* There is, iterate on all params */
+					char *p = line, param[100], *pi = NULL;
+					int read = 0;
+					gboolean first = TRUE;
+					while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
+						if(first) {
+							/* Skip */
+							first = FALSE;
+						} else {
+							pi = param;
+							while(*pi == ' ')
+								pi++;
+							char name[50], value[50];
+							if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
+								if(is_transport) {
+									if(!strcasecmp(name, "ssrc")) {
+										/* Take note of the audio SSRC */
+										uint32_t ssrc = strtol(value, NULL, 16);
+										JANUS_LOG(LOG_VERB, "  -- SSRC (audio): %"SCNu32"\n", ssrc);
+										source->audio_ssrc = ssrc;
+									} else if(!strcasecmp(name, "source")) {
+										/* If we got an address via c-line, replace it */
+										g_snprintf(ahost, sizeof(ahost), "%s", value);
+										JANUS_LOG(LOG_VERB, "  -- Source (audio): %s\n", ahost);
+									} else if(!strcasecmp(name, "server_port")) {
+										/* Take note of the server port */
+										char *dash = NULL;
+										asport = strtol(value, &dash, 10);
+										asport_rtcp = dash ? strtol(++dash, NULL, 10) : 0;
+										JANUS_LOG(LOG_VERB, "  -- RTP port (audio): %d\n", asport);
+										JANUS_LOG(LOG_VERB, "  -- RTCP port (audio): %d\n", asport_rtcp);
+									}
+								} else if(is_session) {
+									if(!strcasecmp(name, "timeout")) {
+										/* Take note of the timeout, for keep-alives */
+										ka_timeout = atoi(value);
+										JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", ka_timeout);
+									}
+								}
+							}
 						}
+						/* Move to the next param */
+						p += read;
+						if(*p != ';')
+							break;
+						while(*p == ';')
+							p++;
 					}
 				}
-				/* Move to the next param */
-				p += read;
-				if(*p != ';')
-					break;
-				while(*p == ';')
-					p++;
+				if(cr != NULL)
+					*cr = '\r';
+				index++;
 			}
-		}
-		/* Find the Session header and parse it */
-		header = strstr(curldata->buffer, "Session:");
-		if(header == NULL)
-			header = strstr(curldata->buffer, "session:");
-		if(header != NULL) {
-			char *end = strchr(header, '\r');
-			if(end != NULL)
-				*end = '\0';
-			end = strchr(header, '\n');
-			if(end != NULL)
-				*end = '\0';
-			/* Iterate on all params */
-			char *p = header, param[100], *pi = NULL;
-			int read = 0;
-			gboolean first = TRUE;
-			while(sscanf(p, "%99[^;]%n", param, &read) == 1) {
-				if(first) {
-					/* Skip */
-					first = FALSE;
-				} else {
-					pi = param;
-					while(*pi == ' ')
-						pi++;
-					char name[50], value[50];
-					if(sscanf(pi, "%49[a-zA-Z_0-9]=%49s", name, value) == 2) {
-						if(!strcasecmp(name, "timeout")) {
-							/* Take note of the timeout, for keep-alives */
-							ka_timeout = atoi(value);
-							JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (audio): %d\n", ka_timeout);
-						}
-					}
-				}
-				/* Move to the next param */
-				p += read;
-				if(*p != ';')
-					break;
-				while(*p == ';')
-					p++;
-			}
+			if(cr != NULL)
+				*cr = '\r';
+			g_strfreev(parts);
 		}
 		/* If we don't have a host yet (no c-line, no source in Transport), use the server address */
 		if(strlen(ahost) == 0 || !strcmp(ahost, "0.0.0.0")) {

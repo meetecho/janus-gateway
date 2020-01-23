@@ -117,6 +117,42 @@ general: {
 		# e.g., to look at unencrypted live traffic with a browser. By
 		# default it is obviously disabled, as WebRTC mandates encryption.
 	#no_webrtc_encryption = true
+
+		# Janus provides ways via its API to specify custom paths to save
+		# files to (e.g., recordings, pcap captures and the like). In order
+		# to avoid people can mess with folders they're not supposed to,
+		# you can configure an array of folders that Janus should prevent
+		# creating files in. By default no folder is protected, unless the
+		# 'protected_folder' property below is uncommented and configured.
+		# Notice that at the moment this only covers attempts to start
+		# an .mjr recording and pcap/text2pcap packet captures.
+	protected_folders = [
+		"/bin",
+		"/boot",
+		"/dev",
+		"/etc",
+		"/initrd",
+		"/lib",
+		"/lib32",
+		"/lib64",
+		"/proc",
+		"/root",
+		"/sbin",
+		"/sys",
+		"/usr",
+		"/var",
+			# We add what are usually the folders Janus is installed to
+			# as well: we don't just put "/opt/janus" because that would
+			# include folders like "/opt/janus/share" that is where
+			# recordings might be saved to by some plugins
+		"/opt/janus/bin",
+		"/opt/janus/etc",
+		"/opt/janus/include",
+		"/opt/janus/lib",
+		"/opt/janus/lib32",
+		"/opt/janus/lib64",
+		"/opt/janus/sbin"
+	]
 }
 
 # Certificate and key to use for DTLS (and passphrase if needed). If missing,

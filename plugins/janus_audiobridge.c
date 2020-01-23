@@ -3445,6 +3445,12 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	/* Notify all other participants that there's a new boy in town */
 	janus_mutex_lock(&rooms_mutex);
 	janus_audiobridge_room *audiobridge = participant->room;
+	if(audiobridge == NULL) {
+		/* No room..? Shouldn't happen */
+		janus_mutex_unlock(&rooms_mutex);
+		JANUS_LOG(LOG_WARN, "PeerConnection created, but AudioBridge participant not in a room...\n");
+		return;
+	}
 	janus_mutex_lock(&audiobridge->mutex);
 	json_t *list = json_array();
 	json_t *pl = json_object();
