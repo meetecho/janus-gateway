@@ -465,31 +465,20 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
 
-static uint min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
-void janus_set_min_nack_queue(uint mnq) {
+static uint16_t min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
+void janus_set_min_nack_queue(uint16_t mnq) {
 	min_nack_queue = mnq < DEFAULT_MAX_NACK_QUEUE ? mnq : DEFAULT_MAX_NACK_QUEUE;
 	if(min_nack_queue == 0)
 		JANUS_LOG(LOG_VERB, "Disabling NACK queue\n");
 	else
 		JANUS_LOG(LOG_VERB, "Setting min NACK queue to %dms\n", min_nack_queue);
 }
-uint janus_get_min_nack_queue(void) {
+uint16_t janus_get_min_nack_queue(void) {
 	return min_nack_queue;
 }
 /* Helper to clean old NACK packets in the buffer when they exceed the queue time limit */
 static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboolean audio, gboolean video) {
 	if(stream && stream->component) {
-		/* Check the current RTT, to see if we need to update the size of the queue: we take
-		 * the highest RTT (audio or video) and add 100ms just to be conservative */
-		uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
-			video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
-		uint nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
-		if(nack_queue_ms > DEFAULT_MAX_NACK_QUEUE)
-			nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
-		else if(nack_queue_ms < min_nack_queue)
-			nack_queue_ms = min_nack_queue;
-		if(stream->nack_queue_ms < nack_queue_ms)
-			stream->nack_queue_ms = nack_queue_ms;
 		janus_ice_component *component = stream->component;
 		if(audio && component->audio_retransmit_buffer) {
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->audio_retransmit_buffer);
@@ -2758,9 +2747,27 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				if (janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
+				uint32_t rtt = rtcp_ctx ? rtcp_ctx->rtt : 0;
+				if(janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
 					/* Drop the packet if the parsing function returns with an error */
 					return;
+				}
+				if(rtcp_ctx && rtcp_ctx->rtt != rtt) {
+					/* Check the current RTT, to see if we need to update the size of the queue: we take
+					 * the highest RTT (audio or video) and add 100ms just to be conservative */
+					uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
+						video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
+					uint16_t nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
+					if(nack_queue_ms > DEFAULT_MAX_NACK_QUEUE)
+						nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
+					else if(nack_queue_ms < min_nack_queue)
+						nack_queue_ms = min_nack_queue;
+					uint16_t mavg = rtt ? ((7*stream->nack_queue_ms + nack_queue_ms)/8) : nack_queue_ms;
+					if(mavg > DEFAULT_MAX_NACK_QUEUE)
+						mavg = DEFAULT_MAX_NACK_QUEUE;
+					else if(mavg < min_nack_queue)
+						mavg = min_nack_queue;
+					stream->nack_queue_ms = mavg;
 				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
 

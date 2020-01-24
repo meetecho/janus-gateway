@@ -124,10 +124,10 @@ gboolean janus_ice_is_full_trickle_enabled(void);
 gboolean janus_ice_is_ipv6_enabled(void);
 /*! \brief Method to modify the min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @param[in] mnq The new min NACK value */
-void janus_set_min_nack_queue(uint mnq);
+void janus_set_min_nack_queue(uint16_t mnq);
 /*! \brief Method to get the current min NACK value (i.e., the minimum time window of packets per handle to store for retransmissions)
  * @returns The current min NACK value */
-uint janus_get_min_nack_queue(void);
+uint16_t janus_get_min_nack_queue(void);
 /*! \brief Method to modify the no-media event timer (i.e., the number of seconds where no media arrives before Janus notifies this)
  * @param[in] timer The new timer value, in seconds */
 void janus_set_no_media_timer(uint timer);
@@ -387,7 +387,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
 	janus_rtcp_context *video_rtcp_ctx[3];
 	/*! \brief Size of the NACK queue (in ms), dynamically updated per the RTT */
-	uint nack_queue_ms;
+	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
 	GHashTable *rtx_nacked[3];
 	/*! \brief First received audio NTP timestamp */
