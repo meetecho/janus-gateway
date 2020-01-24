@@ -13,3 +13,4 @@ option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
 option "format" f "Specifies the output format (overrides the format from the destination)" string values="opus", "wav", "webm", "mp4", "srt" optional
 option "faststart" t "For mp4 files write the MOOV atom at the head of the file" flag off
+option "audioskew" S "Time threshold to trigger an audio skew compensation, disabled if 0 (default=0)" int typestr="milliseconds" optional

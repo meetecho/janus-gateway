@@ -53,6 +53,7 @@ typedef struct janus_pp_rtp_header_extension {
 } janus_pp_rtp_header_extension;
 
 typedef struct janus_pp_frame_packet {
+	janus_pp_rtp_header *header; /* Pointer to RTP header */
 	int version;	/* Version of the .mjr file (2=has timestamps) */
 	uint32_t p_ts;	/* Packet timestamp as saved by Janus (if available) */
 	uint16_t seq;	/* RTP Sequence number */
