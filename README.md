@@ -13,7 +13,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
-* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.13 suggested, master recommended)
+* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.15 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
@@ -36,6 +36,7 @@ A couple of plugins depend on a few more libraries:
 Additionally, you'll need the following libraries and tools:
 
 * [GLib](http://library.gnome.org/devel/glib/)
+* [zlib](https://zlib.net/)
 * [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
 * [gengetopt](http://www.gnu.org/software/gengetopt/)
 
@@ -193,7 +194,7 @@ Since Janus requires configuration files for both the core and its modules in or
 
 	make configs
 
-Remember to only do this once, or otherwise a subsequent `make configs` will overwrite any configuration file you may have modified in themeanwhile.
+Remember to only do this once, or otherwise a subsequent `make configs` will overwrite any configuration file you may have modified in the meanwhile.
 
 If you've installed the above libraries but are not interested, for instance, in Data Channels, WebSockets, MQTT and/or RabbitMQ, you can disable them when configuring:
 
@@ -234,7 +235,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.7.5
+	janus 0.8.2
 
 	Usage: janus [OPTIONS]...
 
@@ -246,6 +247,8 @@ or on the command line:
                                   (default=none)
 	-N, --disable-stdout          Disable stdout based logging  (default=off)
 	-L, --log-file=path           Log to the specified file (default=stdout only)
+	-H  --cwd-path                Working directory for Janus daemon process
+	                              (default=/)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
@@ -278,8 +281,6 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-R, --rfc-4588                Whether to enable RFC4588 retransmissions
-                                  support or not  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
                                   for retransmissions
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
@@ -291,7 +292,7 @@ or on the command line:
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-B, --twcc-period=number      How often (in ms) to send TWCC feedback back to
-                                  senders, if negotiated (default=1s)
+                                  senders, if negotiated (default=200ms)
 	-n, --server-name=name        Public name of this Janus instance
                                   (default=MyJanusInstance)
 	-s, --session-timeout=number  Session timeout value, in seconds (default=60)

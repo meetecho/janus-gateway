@@ -93,10 +93,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_vp8_simulcast_descriptor_update(copy_payload, plen, &vp8_context, TRUE);
 
 	/* VP9 targets */
-	uint8_t pbit = 0, dbit = 0, ubit = 0, bbit = 0, ebit = 0;
-	int found = 0, spatial_layer = 0, temporal_layer = 0;
+	int found = 0;
+	janus_vp9_svc_info info;
 	janus_vp9_is_keyframe(payload, plen);
-	janus_vp9_parse_svc(payload, plen, &found, &spatial_layer, &temporal_layer, &pbit, &dbit, &ubit, &bbit, &ebit);
+	janus_vp9_parse_svc(payload, plen, &found, &info);
 
 	/* Free resources */
 

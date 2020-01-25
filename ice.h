@@ -146,12 +146,6 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
-/*! \brief Method to enable or disable the RFC4588 support negotiation
- * @param[in] enabled The new timer value, in seconds */
-void janus_set_rfc4588_enabled(gboolean enabled);
-/*! \brief Method to check whether the RFC4588 support is enabled
- * @returns TRUE if it's enabled, FALSE otherwise */
-gboolean janus_is_rfc4588_enabled(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
@@ -378,6 +372,8 @@ struct janus_ice_stream {
 	GList *video_payload_types;
 	/*! \brief Mapping of rtx payload types to actual media-related packet types */
 	GHashTable *rtx_payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
 	/*! \brief RTP payload types of this stream */
 	gint audio_payload_type, video_payload_type, video_rtx_payload_type;
 	/*! \brief Codecs used by this stream */
@@ -598,15 +594,17 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 /*! \brief Core SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] label The label of the data channel to use
+ * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int len);
+void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buf, int len);
 /*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] label The label of the data channel the message is from
+ * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
-void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *buffer, int length);
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length);
 /*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)

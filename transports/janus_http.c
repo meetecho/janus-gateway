@@ -125,6 +125,7 @@ typedef struct janus_http_msg {
 	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
 	json_t *response;					/* The response from the core */
+	volatile gint timeout;				/* Whether the request to the core timed out */
 } janus_http_msg;
 static GHashTable *messages = NULL;
 static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
@@ -766,10 +767,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 		} else {
-			int wsport = 8088;
+			uint16_t wsport = 8088;
 			item = janus_config_get(config, config_general, janus_config_type_item, "port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 8088;
+			}
 			const char *interface = NULL;
 			item = janus_config_get(config, config_general, janus_config_type_item, "interface");
 			if(item && item->value)
@@ -812,10 +815,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				int swsport = 8089;
+				uint16_t swsport = 8089;
 				item = janus_config_get(config, config_general, janus_config_type_item, "secure_port");
-				if(item && item->value)
-					swsport = atoi(item->value);
+				if(item && item->value && janus_string_to_uint16(item->value, &swsport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+					swsport = 8089;
+				}
 				const char *interface = NULL;
 				item = janus_config_get(config, config_general, janus_config_type_item, "secure_interface");
 				if(item && item->value)
@@ -855,10 +860,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 		} else {
-			int wsport = 7088;
+			uint16_t wsport = 7088;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
+			if(item && item->value && janus_string_to_uint16(item->value, &wsport) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+				wsport = 7088;
+			}
 			const char *interface = NULL;
 			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_interface");
 			if(item && item->value)
@@ -883,10 +890,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			if(!server_key) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				int swsport = 7889;
+				uint16_t swsport = 7889;
 				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_port");
-				if(item && item->value)
-					swsport = atoi(item->value);
+				if(item && item->value && janus_string_to_uint16(item->value, &swsport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid port (%s), falling back to default\n", item->value);
+					swsport = 7889;
+				}
 				const char *interface = NULL;
 				item = janus_config_get(config, config_admin, janus_config_type_item, "admin_secure_interface");
 				if(item && item->value)
@@ -1051,6 +1060,11 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		janus_mutex_unlock(&messages_mutex);
 		if(!msg->connection) {
 			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
+			json_decref(message);
+			return -1;
+		}
+		if(g_atomic_int_get(&msg->timeout)) {
+			JANUS_LOG(LOG_ERR, "Request timed out...\n");
 			json_decref(message);
 			return -1;
 		}
@@ -1484,8 +1498,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || !res)
+		if(msg->got_response || !res) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #else
@@ -1497,8 +1513,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || res == ETIMEDOUT) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #endif
@@ -1737,8 +1755,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_wait_until(&msg->wait_cond, &msg->wait_mutex, wakeup);
-		if(msg->got_response || !res)
+		if(msg->got_response || !res) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #else
@@ -1750,8 +1770,10 @@ parsingdone:
 	janus_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
 		int res = janus_condition_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		if(msg->got_response || res == ETIMEDOUT)
+		if(msg->got_response || res == ETIMEDOUT) {
+			g_atomic_int_set(&msg->timeout, !msg->got_response);
 			break;
+		}
 	}
 	janus_mutex_unlock(&msg->wait_mutex);
 #endif

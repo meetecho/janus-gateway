@@ -505,12 +505,26 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 						if(sscanf(a->value, "%d apt=%d", &rtx_ptype, &ptype) != 2) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse fmtp/apt attribute...\n", handle->handle_id);
 						} else {
-							if(janus_is_rfc4588_enabled()) {
-								rtx = TRUE;
-								janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
-								if(stream->rtx_payload_types == NULL)
-									stream->rtx_payload_types = g_hash_table_new(NULL, NULL);
-								g_hash_table_insert(stream->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+							rtx = TRUE;
+							janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX);
+							if(stream->rtx_payload_types == NULL)
+								stream->rtx_payload_types = g_hash_table_new(NULL, NULL);
+							g_hash_table_insert(stream->rtx_payload_types, GINT_TO_POINTER(ptype), GINT_TO_POINTER(rtx_ptype));
+						}
+					}
+				} else if(!strcasecmp(a->name, "rtpmap")) {
+					if(a->value) {
+						int ptype = atoi(a->value);
+						if(ptype > -1) {
+							char *cr = strchr(a->value, '/');
+							if(cr != NULL) {
+								cr++;
+								uint32_t clock_rate = 0;
+								if(janus_string_to_uint32(cr, &clock_rate) == 0) {
+									if(stream->clock_rates == NULL)
+										stream->clock_rates = g_hash_table_new(NULL, NULL);
+									g_hash_table_insert(stream->clock_rates, GINT_TO_POINTER(ptype), GUINT_TO_POINTER(clock_rate));
+								}
 							}
 						}
 					}
@@ -650,7 +664,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 				return res;
 			}
 			freeaddrinfo(info);
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] mDNS address (%s) resolved: %s\n",
 				handle->handle_id, rip, janus_network_address_string_from_buffer(&addr_buf));
 			g_strlcpy(rip, janus_network_address_string_from_buffer(&addr_buf), sizeof(rip));
 		}
@@ -1073,8 +1087,12 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->value && (strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000"))) {
 				int ptype = atoi(a->value);
-				JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
-				purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));
+				if(ptype < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid payload type (%d)\n", ptype);
+				} else {
+					JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
+					purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));
+				}
 			}
 			tempA = tempA->next;
 		}

@@ -1,0 +1,16 @@
+# This configures the JSON-based file logger. This is a very simple logger
+# with no particular advantage over the existing, integrated, logging
+# functionality Janus provides, and so it's configuration is quite basic
+# as well: it's here mostly to provide a reference implementation for
+# developers willing to provide additional, and more complex, external loggers.
+
+general: {
+	enabled = false		# By default the module is not enabled
+
+	json = "indented"	# Since this logger simply writes each log line as
+						# a JSON object to a file, you can configure whether
+						# the JSON log lines should be indented (default),
+						# plain (no indentation) or compact (no indentation and no spaces)
+
+	filename = "/tmp/janus-log.json"	# Filename to save to
+}

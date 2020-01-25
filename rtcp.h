@@ -408,8 +408,11 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] rfc4588_pkt True if this is a RTX packet
  * @param[in] rfc4588_enabled True if this packet comes from a RTX enabled stream
  * @param[in] retransmissions_disabled True if retransmissions are not supported at all for this stream
+ * @param[in] clock_rates Mapping between payload types and clock rates, if available
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len, gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled);
+int janus_rtcp_process_incoming_rtp(janus_rtcp_context *ctx, char *packet, int len,
+	gboolean rfc4588_pkt, gboolean rfc4588_enabled, gboolean retransmissions_disabled,
+	GHashTable *clock_rates);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report

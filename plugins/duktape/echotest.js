@@ -173,11 +173,16 @@ function hangupMedia(id) {
 	}
 }
 
-function incomingData(id, buf, len) {
+function incomingTextData(id, buf, len) {
 	// Relaying RTP/RTCP in JavaScript makes no sense, but just for fun
 	// we handle data channel messages ourselves to manipulate them
 	var edit = "[" + name + "] --> " + buf;
-	relayData(id, edit, edit.length);
+	relayTextData(id, edit, edit.length);
+}
+
+function incomingBinaryData(id, buf, len) {
+	// If the data we're getting is binary, send it back as it is
+	relayBinaryData(id, buf, len);
 }
 
 function resumeScheduler() {
