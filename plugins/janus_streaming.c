@@ -5364,6 +5364,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					error->code, error->message ? error->message : "??");
 				janus_refcount_decrease(&live_rtp->ref);	/* This is for the helper thread */
 				janus_streaming_mountpoint_destroy(live_rtp);
+				g_free(helper);
 				return NULL;
 			}
 			live_rtp->threads = g_list_append(live_rtp->threads, helper);
@@ -7571,8 +7572,6 @@ static void *janus_streaming_helper_thread(void *data) {
 	janus_streaming_rtp_relay_packet *pkt = NULL;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mp->destroyed)) {
 		pkt = g_async_queue_pop(helper->queued_packets);
-		if(pkt == NULL)
-			continue;
 		if(pkt == &exit_packet)
 			break;
 		janus_mutex_lock(&helper->mutex);

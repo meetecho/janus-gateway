@@ -964,10 +964,6 @@ static void *janus_mqttevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get event from queue */
 		event = g_async_queue_pop(events);
-		if(event == NULL) {
-			/* There was nothing in the queue */
-			continue;
-		}
 		if(event == &exit_event) {
 			break;
 		}
