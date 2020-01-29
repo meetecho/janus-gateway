@@ -9,7 +9,7 @@ dist: bionic
 
 env:
   global:
-    - JANUS_COMMON_OPTS="--prefix=/opt/janus --disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
+    - JANUS_COMMON_OPTS="--disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
   jobs:
     - JANUS_CONFIG_OPTS="" LIBCURL=YES DATACHANNELS=YES
     - JANUS_CONFIG_OPTS="--disable-data-channels" LIBCURL=YES DATACHANNELS=NO
