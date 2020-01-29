@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/meetecho/janus-gateway.svg?branch=master)](https://travis-ci.org/meetecho/janus-gateway)
+
 Janus WebRTC Server
 ===================
 
