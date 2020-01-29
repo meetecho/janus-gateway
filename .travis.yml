@@ -11,12 +11,13 @@ env:
   global:
     - JANUS_COMMON_OPTS="--prefix=/opt/janus --disable-docs --enable-post-processing --enable-plugin-lua --enable-plugin-duktape --enable-json-logger"
   jobs:
-    - JANUS_CONFIG_OPTS="" LIBCURL=YES
-    - JANUS_CONFIG_OPTS="--disable-data-channels" LIBCURL=YES
-    - JANUS_CONFIG_OPTS="--disable-turn-rest-api --disable-sample-event-handler" LIBCURL=NO
+    - JANUS_CONFIG_OPTS="" LIBCURL=YES DATACHANNELS=YES
+    - JANUS_CONFIG_OPTS="--disable-data-channels" LIBCURL=YES DATACHANNELS=NO
+    - JANUS_CONFIG_OPTS="--disable-turn-rest-api --disable-sample-event-handler" LIBCURL=NO DATACHANNELS=YES
 
 git:
   quiet: true
+  depth: 1
 
 addons:
   apt:
@@ -53,12 +54,12 @@ before_script:
   - pushd libnice && ./autogen.sh && ./configure --prefix=/usr --disable-gtk-doc --disable-gtk-doc-html --disable-gupnp && make -j$(nproc) && sudo make install && popd
   - git clone -b 2_2_x_throttle https://github.com/cisco/libsrtp.git libsrtp
   - pushd libsrtp && ./configure --prefix=/usr --enable-openssl && make -j$(nproc) shared_library && sudo make install && popd
-  - git clone -b master https://github.com/sctplab/usrsctp usrsctp
-  - pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs && make -j$(nproc) && sudo make install && popd
+  - if [ $DATACHANNELS = YES ]; then git clone -b master https://github.com/sctplab/usrsctp usrsctp; fi
+  - if [ $DATACHANNELS = YES ]; pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs && make -j$(nproc) && sudo make install && popd; fi
   - git clone -b v3.2-stable https://github.com/warmcat/libwebsockets.git libwebsockets
   - pushd libwebsockets && mkdir -p build && pushd build && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF .. && make -j$(nproc) && sudo make install && popd && popd
   - git clone -b master https://github.com/alanxz/rabbitmq-c rabbitmq-c
-  - pushd rabbitmq-c && git submodule update --init && mkdir build && pushd build && cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF .. && sudo cmake --build . --target install -- -j$(nproc) && popd && popd
+  - pushd rabbitmq-c && mkdir build && pushd build && cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF .. && sudo cmake --build . --target install -- -j$(nproc) && popd && popd
   - git clone -b master https://github.com/eclipse/paho.mqtt.c.git paho.mqtt.c
   - pushd paho.mqtt.c && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE && make -j$(nproc) && sudo make install && popd
 
