@@ -23,7 +23,6 @@ addons:
     update: true
     packages:
       - autoconf
-      - automake
       - cmake
       - gengetopt
       - gtk-doc-tools
@@ -45,10 +44,8 @@ addons:
       - libopus-dev
       - libsofia-sip-ua-dev
       - libssl-dev
-      - libtool
       - libvorbis-dev
       - openssl
-      - pkg-config
 
 before_script:
   - if [ $LIBCURL = YES ]; then sudo apt-get -y install libcurl4-openssl-dev; fi
