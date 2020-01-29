@@ -55,7 +55,7 @@ before_script:
   - git clone -b 2_2_x_throttle https://github.com/cisco/libsrtp.git libsrtp
   - pushd libsrtp && ./configure --prefix=/usr --enable-openssl && make -j$(nproc) shared_library && sudo make install && popd
   - if [ $DATACHANNELS = YES ]; then git clone -b master https://github.com/sctplab/usrsctp usrsctp; fi
-  - if [ $DATACHANNELS = YES ]; pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs && make -j$(nproc) && sudo make install && popd; fi
+  - if [ $DATACHANNELS = YES ]; then pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs && make -j$(nproc) && sudo make install && popd; fi
   - git clone -b v3.2-stable https://github.com/warmcat/libwebsockets.git libwebsockets
   - pushd libwebsockets && mkdir -p build && pushd build && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF .. && make -j$(nproc) && sudo make install && popd && popd
   - git clone -b master https://github.com/alanxz/rabbitmq-c rabbitmq-c
