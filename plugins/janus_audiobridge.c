@@ -565,7 +565,7 @@ room-<unique room ID>: {
 	"request" : "<mute|unmute, whether to mute or unmute >",
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
-	"id" : <unique numeric ID of the participant to kick>
+	"id" : <unique numeric ID of the participant to mute|unmute>
 }
 \endverbatim
  *
