@@ -2,10 +2,14 @@
  * \author Mirko Brankovic <mirkobrankovic@gmail.com>
  * \copyright GNU General Public License v3
  * \brief  Janus GelfEventHandler plugin
- * \details  This is a event handler plugin for Janus, which 
- * handles events coming from the Janus core or one of the plugins. 
- * This specific plugin forwards every event it receives
- * to a Gelf server via TCP/UDP.
+ * \details  This is a GELF event handler plugin for Janus, which is suppose 
+ * to send json events to GELF (Graylog logger), Necessary headers are prepended.
+ * For sending, you can use TCP which is not recomanded in case there will be
+ * a lot of messages. There is also UDP support, but you need to limit the payload 
+ * size with max_message_len + remember to leave space for 12 bytes for special 
+ * headers. UDP messages will be chunked automatically.
+ * There is also compression available for UDP protocol, to save network bandwith
+ * for cpu sacrifice. This is not available for TCP due to GELF limitations
  *
  * \ingroup eventhandlers
  * \ref eventhandlers
@@ -121,9 +125,9 @@ static struct janus_json_parameter tweak_parameters[] = {
 };
 /* Error codes (for the tweaking via Admin API */
 #define JANUS_GELFEVH_ERROR_INVALID_REQUEST		411
-#define JANUS_GELFEVH_ERROR_MISSING_ELEMENT 	412
-#define JANUS_GELFEVH_ERROR_INVALID_ELEMENT 	413
-#define JANUS_GELFEVH_ERROR_UNKNOWN_ERROR 		499
+#define JANUS_GELFEVH_ERROR_MISSING_ELEMENT		412
+#define JANUS_GELFEVH_ERROR_INVALID_ELEMENT		413
+#define JANUS_GELFEVH_ERROR_UNKNOWN_ERROR		499
 
 /* Plugin implementation */
 static char *randstring(size_t length) {
@@ -160,7 +164,7 @@ static void janus_gelfevh_connect(void) {
 	freeaddrinfo(res);
 
     if((sockfd = socket(AF_INET, janus_gelfevh_socket_type, 0)) < 0 ) {
-		JANUS_LOG(LOG_ERR, "Socket creation failed");
+		JANUS_LOG(LOG_ERR, "Socket creation failed: %s", strerror(errno));
 		return;
 	}
 
@@ -182,24 +186,24 @@ static int janus_gelfevh_send(char *message) {
 		JANUS_LOG(LOG_WARN, "Message is NULL, not sending to Gelf!\n");
 		return -1;
 	}
-	//TCP
+	/* TCP */
 	if(janus_gelfevh_socket_type == 1) {
 		unsigned int out_bytes = 0;
 		while (out_bytes < strlen(message)+1) {
 			int n = write(sockfd, message, strlen(message) + 1);
 			if (n < 0){
-				JANUS_LOG(LOG_WARN, "Unable to send message! \n");
+				JANUS_LOG(LOG_WARN, "Unable to send message: %s\n", strerror(errno));
 				close(sockfd);
 				return -1;
-			} else if (n == 0) { // connection closed!
-				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side! \n");
+			} else if (n == 0) {
+				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: \n", strerror(errno));
 				close(sockfd);
 				return -2;
 			} else {
 				out_bytes += n;
 			}
 		}
-	// UDP chunking with headers
+	/* UDP chunking with headers */
 	} else {
 		/* Check if we need to compress the data */
 		int len = strlen(message);
@@ -212,7 +216,7 @@ static int janus_gelfevh_send(char *message) {
 				compressed_text, sizeof(compressed_text));
 			if(compressed_len == 0) {
 				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(message));
-				/* Sending message uncompressed*/
+				/* Sending message uncompressed */
 			} else {
 				len = compressed_len;
 				buf = compressed_text;
@@ -224,7 +228,7 @@ static int janus_gelfevh_send(char *message) {
 			JANUS_LOG(LOG_WARN, "Gelf allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 			return -1;
 		}
-		// do we need to chunk the message
+		/* do we need to chunk the message */
 		if(total == 1) {
 			int n = write(sockfd, buf, len);
 			if(n < 0) {
@@ -237,7 +241,7 @@ static int janus_gelfevh_send(char *message) {
 			char *rnd = randstring(8);
 			for (int i = 0; i < total; i++) {
 				int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
-				// prepend the necessary headers (imitate TCP)
+				/* prepend the necessary headers (imitate TCP) */
 				char chunk[bytesToSend + 12];
 				chunk[0] = 0x1e;
 				chunk[1] = 0x0f;
@@ -292,7 +296,7 @@ int janus_gelfevh_init(const char *config_path) {
 		janus_config_item *item;
 		item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
-			JANUS_LOG(LOG_WARN, "Gelf event handler disabled (Janus API)\n");
+			JANUS_LOG(LOG_WARN, "GELF event handler disabled (Janus API)\n");
 			goto done;
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "backend");
@@ -608,6 +612,6 @@ static void *janus_gelfevh_handler(void *data) {
 		g_free(event_text);
 		output = NULL;
 	}
-	JANUS_LOG(LOG_VERB, "Leaving Gelf Event handler thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
 	return NULL;
 }
