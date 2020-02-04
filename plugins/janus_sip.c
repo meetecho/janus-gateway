@@ -4744,7 +4744,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "notify", json_string(sip->sip_event->o_type));
 			const tagi_t *t = tl_find(tags, nutag_substate);
 			if(t != NULL) {
-				enum nua_substate substate = (enum nua_substate)(t ? t->t_value : 0);
+				enum nua_substate substate = (enum nua_substate)(t->t_value);
 				json_object_set_new(result, "substate", json_string(nua_substate_name(substate)));
 			}
 			if(sip->sip_content_type != NULL)
