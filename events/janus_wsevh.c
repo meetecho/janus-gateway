@@ -485,7 +485,7 @@ static void *janus_wsevh_thread(void *data) {
 			if(reconnect_retries > 0) {
 				/* Wait a few seconds before retrying */
 				gint64 now = janus_get_monotonic_time();
-				if((now-disconnected) < reconnect_retries*G_USEC_PER_SEC) {
+				if((now-disconnected) < (gint64)reconnect_retries*G_USEC_PER_SEC) {
 					/* Try again later */
 					g_usleep(100000);
 					continue;

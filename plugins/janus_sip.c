@@ -2960,7 +2960,8 @@ static void *janus_sip_handler(void *data) {
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			if(session->account.registration_status < janus_sip_registration_status_registered) {
+			if(session->account.registration_status != janus_sip_registration_status_registered &&
+					session->account.registration_status != janus_sip_registration_status_disabled) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -3014,7 +3015,8 @@ static void *janus_sip_handler(void *data) {
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			if(session->account.registration_status < janus_sip_registration_status_registered) {
+			if(session->account.registration_status != janus_sip_registration_status_registered &&
+					session->account.registration_status != janus_sip_registration_status_disabled) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -4742,7 +4744,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "notify", json_string(sip->sip_event->o_type));
 			const tagi_t *t = tl_find(tags, nutag_substate);
 			if(t != NULL) {
-				enum nua_substate substate = (enum nua_substate)(t ? t->t_value : 0);
+				enum nua_substate substate = (enum nua_substate)(t->t_value);
 				json_object_set_new(result, "substate", json_string(nua_substate_name(substate)));
 			}
 			if(sip->sip_content_type != NULL)
@@ -4762,7 +4764,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_options:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			/* Stack responds automatically to OPTIONS request unless OPTIONS is 
+			/* Stack responds automatically to OPTIONS request unless OPTIONS is
 			 * included in the set of application methods, set by NUTAG_APPL_METHOD(). */
 			break;
 	/* Responses */
