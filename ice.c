@@ -563,7 +563,7 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 
 
 /* Internal method for relaying RTCP messages, optionally filtering them in case they come from plugins */
-void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp);
+void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *packet, gboolean filter_rtcp);
 
 
 /* Map of active plugin sessions */
@@ -2463,12 +2463,40 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
 					}
 				}
-				/* Pass the data to the responsible plugin */
+				/* Prepare the data to pass to the responsible plugin */
+				janus_plugin_rtp rtp = { .video = video, .buffer = buf, .length = buflen };
+				janus_plugin_rtp_extensions_reset(&rtp.extensions);
+				/* Parse RTP extensions before involving the plugin */
+				if(stream->audiolevel_ext_id != -1) {
+					gboolean vad = FALSE;
+					int level = -1;
+					if(janus_rtp_header_extension_parse_audio_level(buf, buflen,
+							stream->audiolevel_ext_id, &vad, &level) == 0) {
+						rtp.extensions.audio_level = level;
+						rtp.extensions.audio_level_vad = vad;
+					}
+				}
+				if(stream->videoorientation_ext_id != -1) {
+					gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
+					if(janus_rtp_header_extension_parse_video_orientation(buf, buflen,
+							stream->videoorientation_ext_id, &c, &f, &r1, &r0) == 0) {
+						rtp.extensions.video_rotation = 0;
+						if(r1 && r0)
+							rtp.extensions.video_rotation = 270;
+						else if(r1)
+							rtp.extensions.video_rotation = 180;
+						else if(r0)
+							rtp.extensions.video_rotation = 90;
+						rtp.extensions.video_back_camera = c;
+						rtp.extensions.video_flipped = f;
+					}
+				}
+				/* Pass the packet to the plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
-					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
+					plugin->incoming_rtp(handle->app_handle, &rtp);
 				/* Restore the header for the stats (plugins may have messed with it) */
 				*header = backup;
 				/* Update stats (overall data received, and data received in the last second) */
@@ -2638,7 +2666,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						janus_rtcp_fix_ssrc(NULL, nackbuf, res, 1,
 							video ? stream->video_ssrc : stream->audio_ssrc,
 							video ? stream->video_ssrc_peer[vindex] : stream->audio_ssrc_peer);
-						janus_ice_relay_rtcp_internal(handle, video, nackbuf, res, FALSE);
+						janus_plugin_rtcp rtcp = { .video = video, .buffer = nackbuf, .length = res };
+						janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 					}
 					/* Update stats */
 					component->nack_sent_recent_cnt += nacks_count;
@@ -2854,11 +2883,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					return;
 				}
 
+				janus_plugin_rtcp rtcp = { .video = video, .buffer = buf, .length = buflen };
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
-					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
+					plugin->incoming_rtcp(handle->app_handle, &rtcp);
 			}
 		}
 		return;
@@ -2877,11 +2907,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length) {
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
+	janus_plugin_data data = { .label = label, .binary = !textdata, .buffer = buffer, .length = length };
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
-		plugin->incoming_data(handle->app_handle, label, textdata, buffer, length);
+		plugin->incoming_data(handle->app_handle, &data);
 }
 
 
@@ -3548,7 +3579,8 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
 				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
-			janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, len, FALSE);
+			janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = len };
+			janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 			if(packets_to_process != packets) {
 				g_queue_free(packets_to_process);
 			}
@@ -3597,7 +3629,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->audio_ssrc);
 		/* Enqueue it, we'll send it later */
-		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
+		janus_plugin_rtcp rtcp = { .video = FALSE, .buffer = rtcpbuf, .length = srlen+sdeslen };
+		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
 		janus_slow_link_update(stream->component, handle, FALSE, TRUE, lost);
@@ -3616,7 +3649,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_rtcp_report_block(stream->audio_rtcp_ctx, &rr->rb[0]);
 		rr->rb[0].ssrc = htonl(stream->audio_ssrc_peer);
 		/* Enqueue it, we'll send it later */
-		janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, 32, FALSE);
+		janus_plugin_rtcp rtcp = { .video = FALSE, .buffer = rtcpbuf, .length = 32 };
+		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE);
 		janus_slow_link_update(stream->component, handle, FALSE, FALSE, lost);
@@ -3656,7 +3690,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		janus_rtcp_sdes_cname((char *)sdes, sdeslen, "janus", 5);
 		sdes->chunk.ssrc = htonl(stream->video_ssrc);
 		/* Enqueue it, we'll send it later */
-		janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
+		janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = srlen+sdeslen };
+		janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		/* Check if we detected too many losses, and send a slowlink event in case */
 		guint lost = janus_rtcp_context_get_lost_all(rtcp_ctx, TRUE);
 		janus_slow_link_update(stream->component, handle, TRUE, TRUE, lost);
@@ -3679,7 +3714,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 				janus_rtcp_report_block(stream->video_rtcp_ctx[vindex], &rr->rb[0]);
 				rr->rb[0].ssrc = htonl(stream->video_ssrc_peer[vindex]);
 				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, 32, FALSE);
+				janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = 32 };
+				janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 			}
 		}
 		/* Check if we detected too many losses, and send a slowlink event in case */
@@ -4310,74 +4346,162 @@ static void janus_ice_queue_packet(janus_ice_handle *handle, janus_ice_queued_pa
 	}
 }
 
-void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
-	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
+void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
+	if(!handle || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
+			!janus_is_rtp(packet->buffer, packet->length))
 		return;
-	if((!video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
-			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
+	if((!packet->video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
+			|| (packet->video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
+	uint16_t totlen = RTP_HEADER_SIZE;
+	/* Check how large the payload is */
+	int plen = 0;
+	char *payload = janus_rtp_payload(packet->buffer, packet->length, &plen);
+	if(payload != NULL)
+		totlen += plen;
+	/* We need to strip extensions, here, and add those that need to be there manually */
+	uint16_t extlen = 0;
+	char extensions[50];
+	janus_rtp_header *header = (janus_rtp_header *)packet->buffer;
+	int origext = header->extension;
+	header->extension = 0;
+	/* Add core and plugin extensions, if any */
+	if(handle->stream->mid_ext_id > 0) {
+		header->extension = 1;
+		memset(extensions, 0, sizeof(extensions));
+		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
+		extheader->type = htons(0xBEDE);
+		extheader->length = 0;
+		/* Iterate on all extensions we need */
+		char *index = extensions + 4;
+		/* Check if we need to add the mid extension */
+		if(handle->stream->mid_ext_id > 0) {
+			char *mid = packet->video ? handle->video_mid : handle->audio_mid;
+			if(mid != NULL) {
+				size_t midlen = strlen(mid) & 0x0F;
+				*index = (handle->stream->mid_ext_id << 4) + (midlen ? midlen-1 : 0);
+				memcpy(index+1, mid, midlen);
+				index += (midlen + 1);
+				extlen += (midlen + 1);
+			}
+		}
+		/* Check if the plugin (or source) included other extensions */
+		if(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) {
+			/* Add audio-level extension */
+			*index = (handle->stream->audiolevel_ext_id << 4);
+			*(index+1) = (packet->extensions.audio_level_vad << 7) + (packet->extensions.audio_level & 0x7F);
+			index += 2;
+			extlen += 2;
+		}
+		if(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0) {
+			/* Add video-orientation extension */
+			*index = (handle->stream->videoorientation_ext_id << 4);
+			gboolean c = packet->extensions.video_back_camera,
+				f = packet->extensions.video_flipped, r1 = FALSE, r0 = FALSE;
+			switch(packet->extensions.video_rotation) {
+				case 270:
+					r1 = TRUE;
+					r0 = TRUE;
+					break;
+				case 180:
+					r1 = TRUE;
+					r0 = FALSE;
+					break;
+				case 90:
+					r1 = FALSE;
+					r0 = TRUE;
+					break;
+				case 0:
+				default:
+					r1 = FALSE;
+					r0 = FALSE;
+					break;
+			}
+			*(index+1) = (c<<3) + (f<<2) + (r1<<1) + r0;
+			index += 2;
+			extlen += 2;
+		}
+		/* Calculate the whole length */
+		uint16_t words = extlen/4;
+		if(extlen%4 != 0)
+			words++;
+		extheader->length = htons(words);
+		/* Update lengths (taking into account the RFC5285 header) */
+		extlen = 4 + (words*4);
+		totlen += extlen;
+	}
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(len+SRTP_MAX_TAG_LEN);
-	memcpy(pkt->data, buf, len);
-	pkt->length = len;
-	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+	pkt->data = g_malloc(totlen + SRTP_MAX_TAG_LEN);
+	/* RTP header first */
+	memcpy(pkt->data, packet->buffer, RTP_HEADER_SIZE);
+	/* Then RTP extensions, if any */
+	if(extlen > 0)
+		memcpy(pkt->data + RTP_HEADER_SIZE, extensions, extlen);
+	/* Finally the RTP payload, if available */
+	if(payload != NULL && plen > 0)
+		memcpy(pkt->data + RTP_HEADER_SIZE + extlen, payload, plen);
+	pkt->length = totlen;
+	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
+	/* Restore the extension flag to what the plugin set it to */
+	header->extension = origext;
 }
 
-void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
-	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
+void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, janus_plugin_rtcp *packet, gboolean filter_rtcp) {
+	if(!handle || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
+			!janus_is_rtcp(packet->buffer, packet->length))
 		return;
 	/* We use this internal method to check whether we need to filter RTCP (e.g., to make
 	 * sure we don't just forward any SR/RR from peers/plugins, but use our own) or it has
 	 * already been done, and so this is actually a packet added by the ICE send thread */
-	char *rtcp_buf = buf;
-	int rtcp_len = len;
+	char *rtcp_buf = packet->buffer;
+	int rtcp_len = packet->length;
 	if(filter_rtcp) {
 		/* FIXME Strip RR/SR/SDES/NACKs/etc. */
 		janus_ice_stream *stream = handle->stream;
 		if(stream == NULL)
 			return;
-		rtcp_buf = janus_rtcp_filter(buf, len, &rtcp_len);
+		rtcp_buf = janus_rtcp_filter(packet->buffer, packet->length, &rtcp_len);
 		if(rtcp_buf == NULL || rtcp_len < 1)
 			return;
 		/* Fix all SSRCs before enqueueing, as we need to use the ones for this media
 		 * leg. Note that this is only needed for RTCP packets coming from plugins: the
 		 * ones created by the core already have the right SSRCs in the right place */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
-			video ? stream->video_ssrc : stream->audio_ssrc,
-			video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
+			packet->video ? stream->video_ssrc : stream->audio_ssrc,
+			packet->video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 		janus_rtcp_fix_ssrc(NULL, rtcp_buf, rtcp_len, 1,
-			video ? stream->video_ssrc : stream->audio_ssrc,
-			video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
+			packet->video ? stream->video_ssrc : stream->audio_ssrc,
+			packet->video ? stream->video_ssrc_peer[0] : stream->audio_ssrc_peer);
 	}
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
 	pkt->data = g_malloc(rtcp_len+SRTP_MAX_TAG_LEN+4);
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
-	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+	pkt->type = packet->video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
 	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
-	if(rtcp_buf != buf) {
+	if(rtcp_buf != packet->buffer) {
 		/* We filtered the original packet, deallocate it */
 		g_free(rtcp_buf);
 	}
 }
 
-void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
-	janus_ice_relay_rtcp_internal(handle, video, buf, len, TRUE);
+void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
+	janus_ice_relay_rtcp_internal(handle, packet, TRUE);
 	/* If this is a PLI and we're simulcasting, send a PLI on other layers as well */
-	if(janus_rtcp_has_pli(buf, len)) {
+	if(janus_rtcp_has_pli(packet->buffer, packet->length)) {
 		janus_ice_stream *stream = handle->stream;
 		if(stream == NULL)
 			return;
@@ -4387,7 +4511,8 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 			janus_rtcp_pli((char *)&plibuf, 12);
 			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
 				stream->video_ssrc, stream->video_ssrc_peer[1]);
-			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+			janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
+			janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		}
 		if(stream->video_ssrc_peer[2]) {
 			char plibuf[12];
@@ -4395,25 +4520,41 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 			janus_rtcp_pli((char *)&plibuf, 12);
 			janus_rtcp_fix_ssrc(NULL, plibuf, sizeof(plibuf), 1,
 				stream->video_ssrc, stream->video_ssrc_peer[2]);
-			janus_ice_relay_rtcp_internal(handle, 1, plibuf, sizeof(plibuf), FALSE);
+			janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = plibuf, .length = sizeof(plibuf) };
+			janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
 		}
 	}
 }
 
+void janus_ice_send_pli(janus_ice_handle *handle) {
+	char rtcpbuf[12];
+	memset(rtcpbuf, 0, 12);
+	janus_rtcp_pli((char *)&rtcpbuf, 12);
+	janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = 12 };
+	janus_ice_relay_rtcp(handle, &rtcp);
+}
+
+void janus_ice_send_remb(janus_ice_handle *handle, uint32_t bitrate) {
+	char rtcpbuf[24];
+	janus_rtcp_remb((char *)&rtcpbuf, 24, bitrate);
+	janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = 24 };
+	janus_ice_relay_rtcp(handle, &rtcp);
+}
+
 #ifdef HAVE_SCTP
-void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buf, int len) {
-	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
+void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet) {
+	if(!handle || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL || packet->length < 1)
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = g_malloc(sizeof(janus_ice_queued_packet));
-	pkt->data = g_malloc(len);
-	memcpy(pkt->data, buf, len);
-	pkt->length = len;
-	pkt->type = textdata ? JANUS_ICE_PACKET_TEXT : JANUS_ICE_PACKET_BINARY;
+	pkt->data = g_malloc(packet->length);
+	memcpy(pkt->data, packet->buffer, packet->length);
+	pkt->length = packet->length;
+	pkt->type = packet->binary ? JANUS_ICE_PACKET_BINARY : JANUS_ICE_PACKET_TEXT;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;
-	pkt->label = label ? g_strdup(label) : NULL;
+	pkt->label = packet->label ? g_strdup(packet->label) : NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
 }
