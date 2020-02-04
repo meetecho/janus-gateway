@@ -237,8 +237,6 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.8.2
-
 	Usage: janus [OPTIONS]...
 
 	-h, --help                    Print help and exit
