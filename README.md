@@ -281,8 +281,8 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
-                                  for retransmissions
+	-Q, --min-nack-queue=number   Minimum size of the NACK queue (in ms) per user
+                                  for retransmissions, no matter the RTT
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this

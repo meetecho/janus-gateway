@@ -459,21 +459,22 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	g_free(pkt);
 }
 
-/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=500ms) */
-#define DEFAULT_MAX_NACK_QUEUE	500
+/* Minimum and maximum value, in milliseconds, for the NACK queue/retransmissions (default=200ms/1000ms) */
+#define DEFAULT_MIN_NACK_QUEUE	200
+#define DEFAULT_MAX_NACK_QUEUE	1000
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
 
-static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
-void janus_set_max_nack_queue(uint mnq) {
-	max_nack_queue = mnq;
-	if(max_nack_queue == 0)
+static uint16_t min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
+void janus_set_min_nack_queue(uint16_t mnq) {
+	min_nack_queue = mnq < DEFAULT_MAX_NACK_QUEUE ? mnq : DEFAULT_MAX_NACK_QUEUE;
+	if(min_nack_queue == 0)
 		JANUS_LOG(LOG_VERB, "Disabling NACK queue\n");
 	else
-		JANUS_LOG(LOG_VERB, "Setting max NACK queue to %dms\n", max_nack_queue);
+		JANUS_LOG(LOG_VERB, "Setting min NACK queue to %dms\n", min_nack_queue);
 }
-uint janus_get_max_nack_queue(void) {
-	return max_nack_queue;
+uint16_t janus_get_min_nack_queue(void) {
+	return min_nack_queue;
 }
 /* Helper to clean old NACK packets in the buffer when they exceed the queue time limit */
 static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboolean audio, gboolean video) {
@@ -481,7 +482,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboo
 		janus_ice_component *component = stream->component;
 		if(audio && component->audio_retransmit_buffer) {
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->audio_retransmit_buffer);
-			while(p && (!now || (now - p->created >= (gint64)max_nack_queue*1000))) {
+			while(p && (!now || (now - p->created >= (gint64)stream->nack_queue_ms*1000))) {
 				/* Packet is too old, get rid of it */
 				g_queue_pop_head(component->audio_retransmit_buffer);
 				/* Remove from hashtable too */
@@ -495,7 +496,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream, gboo
 		}
 		if(video && component->video_retransmit_buffer) {
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(component->video_retransmit_buffer);
-			while(p && (!now || (now - p->created >= (gint64)max_nack_queue*1000))) {
+			while(p && (!now || (now - p->created >= (gint64)stream->nack_queue_ms*1000))) {
 				/* Packet is too old, get rid of it */
 				g_queue_pop_head(component->video_retransmit_buffer);
 				/* Remove from hashtable too */
@@ -2775,9 +2776,27 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx[vindex] : stream->audio_rtcp_ctx;
-				if (janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
+				uint32_t rtt = rtcp_ctx ? rtcp_ctx->rtt : 0;
+				if(janus_rtcp_parse(rtcp_ctx, buf, buflen) < 0) {
 					/* Drop the packet if the parsing function returns with an error */
 					return;
+				}
+				if(rtcp_ctx && rtcp_ctx->rtt != rtt) {
+					/* Check the current RTT, to see if we need to update the size of the queue: we take
+					 * the highest RTT (audio or video) and add 100ms just to be conservative */
+					uint32_t audio_rtt = janus_rtcp_context_get_rtt(stream->audio_rtcp_ctx),
+						video_rtt = janus_rtcp_context_get_rtt(stream->video_rtcp_ctx[0]);
+					uint16_t nack_queue_ms = (audio_rtt > video_rtt ? audio_rtt : video_rtt) + 100;
+					if(nack_queue_ms > DEFAULT_MAX_NACK_QUEUE)
+						nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
+					else if(nack_queue_ms < min_nack_queue)
+						nack_queue_ms = min_nack_queue;
+					uint16_t mavg = rtt ? ((7*stream->nack_queue_ms + nack_queue_ms)/8) : nack_queue_ms;
+					if(mavg > DEFAULT_MAX_NACK_QUEUE)
+						mavg = DEFAULT_MAX_NACK_QUEUE;
+					else if(mavg < min_nack_queue)
+						mavg = min_nack_queue;
+					stream->nack_queue_ms = mavg;
 				}
 				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Got %s RTCP (%d bytes)\n", handle->handle_id, video ? "video" : "audio", buflen);
 
@@ -3375,6 +3394,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	stream->audio_payload_type = -1;
 	stream->video_payload_type = -1;
 	stream->video_rtx_payload_type = -1;
+	stream->nack_queue_ms = min_nack_queue;
 	/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 	stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 	if(audio) {
@@ -4149,7 +4169,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				}
 				/* Before encrypting, check if we need to copy the unencrypted payload (e.g., for rtx/90000) */
 				janus_rtp_packet *p = NULL;
-				if(max_nack_queue > 0 && !pkt->retransmission && pkt->type == JANUS_ICE_PACKET_VIDEO && component->do_video_nacks &&
+				if(stream->nack_queue_ms > 0 && !pkt->retransmission && pkt->type == JANUS_ICE_PACKET_VIDEO && component->do_video_nacks &&
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 					/* Save the packet for retransmissions that may be needed later: start by
 					 * making room for two more bytes to store the original sequence number */
@@ -4256,7 +4276,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						if(rtcp_ctx)
 							g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
 					}
-					if(max_nack_queue > 0 && !pkt->retransmission) {
+					if(stream->nack_queue_ms > 0 && !pkt->retransmission) {
 						/* Save the packet for retransmissions that may be needed later */
 						if((pkt->type == JANUS_ICE_PACKET_AUDIO && !component->do_audio_nacks) ||
 								(pkt->type == JANUS_ICE_PACKET_VIDEO && !component->do_video_nacks)) {

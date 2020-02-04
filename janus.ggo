@@ -20,7 +20,7 @@ option "libnice-debug" l "Whether to enable libnice debugging or not" flag off
 option "full-trickle" f "Do full-trickle instead of half-trickle" flag off
 option "ice-lite" I "Whether to enable the ICE Lite mode or not" flag off
 option "ice-tcp" T "Whether to enable ICE-TCP or not (warning: only works with ICE Lite)" flag off
-option "max-nack-queue" q "Maximum size of the NACK queue (in ms) per user for retransmissions" int typestr="number" optional
+option "min-nack-queue" Q "Minimum size of the NACK queue (in ms) per user for retransmissions, no matter the RTT" int typestr="number" optional
 option "no-media-timer" t "Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this" int typestr="number" optional
 option "slowlink-threshold" W "Number of lost packets (per s) that should trigger a 'slowlink' Janus API event to users" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional

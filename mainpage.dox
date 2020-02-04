@@ -2271,7 +2271,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * the reference counters in Janus on the fly (useful if you're experiencing
  * memory leaks in the Janus structures and want to investigate them);
  * - \c set_libnice_debug: selectively enable/disable libnice debugging;
- * - \c set_max_nack_queue: change the value of the max NACK queue window;
+ * - \c set_min_nack_queue: change the value of the min NACK queue window;
  * - \c set_no_media_timer: change the value of the no-media timer property;
  * - \c set_slowlink_threshold: change the value of the slowlink-threshold property.
  *

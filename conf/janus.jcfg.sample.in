@@ -167,8 +167,8 @@ certificates: {
 }
 
 # Media-related stuff: you can configure whether if you want
-# to enable IPv6 support, the maximum size of the NACK queue (in
-# milliseconds, defaults to 500ms) for retransmissions, the range of
+# to enable IPv6 support, the minimum size of the NACK queue (in ms,
+# defaults to 200ms) for retransmissions no matter the RTT, the range of
 # ports to use for RTP and RTCP (by default, no range is envisaged), the
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
@@ -184,7 +184,7 @@ certificates: {
 # you should pick a reasonable trade-off (usually 2*max expected RTT).
 media: {
 	#ipv6 = true
-	#max_nack_queue = 500
+	#min_nack_queue = 500
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
