@@ -2,12 +2,12 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus SIP plugin
- * \details Check the \ref sipsofia for more details.
+ * \details Check the \ref sip for more details.
  *
  * \ingroup plugins
  * \ref plugins
  *
- * \page sipsofia SIP plugin documentation
+ * \page sip SIP plugin documentation
  * This is a simple SIP plugin for Janus, allowing WebRTC peers
  * to register at a SIP server (e.g., Asterisk) and call SIP user agents
  * through a Janus instance. Specifically, when attaching to the plugin peers
@@ -285,7 +285,7 @@
 		"event" : "incomingcall",
 		"username" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>",
-		"referred_by" : "<SIP URI of the transferor, if this is a transfer; optional>",
+		"referred_by" : "<SIP URI header conveying the identity of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
@@ -568,7 +568,7 @@
 		"event" : "transfer",
 		"refer_id" : <unique ID, internal to Janus, of this referral>,
 		"refer_to" : "<SIP URI to call>",
-		"referred_by" : "<SIP URI of the transferor; optional>",
+		"referred_by" : "<SIP URI SIP URI header conveying the identity of the transferor; optional>",
 		"replaces" : "<call-ID of the call this transfer is supposed to replace; optional, and only present for attended transfers>",
 		"headers" : "<object with key/value strings; custom headers extracted from SIP event based on incoming_header_prefix defined in register request; optional>"
 	}
@@ -1985,7 +1985,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		if(session->master == NULL) {
 			/* This is the master, remove it from the list */
 			g_hash_table_remove(masters, GUINT_TO_POINTER(session->master_id));
-			/* TODO Remove the helper sessions */
+			/* Remove the helper sessions */
 			janus_mutex_lock(&session->mutex);
 			GList *temp = NULL;
 			while(session->helpers != NULL) {
@@ -1993,7 +1993,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 				session->helpers = g_list_remove_link(session->helpers, temp);
 				janus_sip_session *helper = (janus_sip_session *)temp->data;
 				if(helper != NULL && helper->handle != NULL) {
-					/* TODO Get rid of this helper */
+					/* Get rid of this helper */
 					janus_refcount_decrease(&session->ref);
 					janus_refcount_decrease(&helper->ref);
 					gateway->end_session(helper->handle);
@@ -2536,7 +2536,7 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "No such master session (%"SCNu32")", master_id);
 					goto error;
 				}
-				/* TODO Add this session as an helper for the master */
+				/* Add this session as an helper for the master */
 				janus_refcount_increase(&session->ref);
 				janus_refcount_increase(&ms->ref);
 				session->helper = TRUE;
@@ -4375,7 +4375,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Busy... maybe a helper can help?\n");
 				janus_sip_session *helper = NULL;
 				janus_mutex_lock(&session->mutex);
-				/* TODO Find a free helper */
+				/* Find a free helper */
 				GList *temp = session->helpers;
 				while(temp != NULL) {
 					helper = (janus_sip_session *)temp->data;
@@ -4521,8 +4521,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "headers", headers);
 			}
 			char *referred_by = NULL;
-			if(sip->sip_referred_by && sip->sip_referred_by->b_url) {
-				char *rby_text = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
+			if(sip->sip_referred_by) {
+				char *rby_text = sip_header_as_string(session->stack->s_home, (const sip_header_t *)sip->sip_referred_by);
 				referred_by = g_strdup(rby_text);
 				su_free(session->stack->s_home, rby_text);
 				json_object_set_new(calling, "referred_by", json_string(referred_by));
@@ -4596,7 +4596,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			refer_to = url_as_string(session->stack->s_home, sip->sip_refer_to->r_url);
 			sip->sip_refer_to->r_url->url_headers = url_headers;
 			if(sip->sip_referred_by != NULL)
-				referred_by = url_as_string(session->stack->s_home, sip->sip_referred_by->b_url);
+				referred_by = sip_header_as_string(session->stack->s_home, (const sip_header_t *)sip->sip_referred_by);
 			else if(sip->sip_from != NULL)
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 			JANUS_LOG(LOG_VERB, "Incoming REFER: %s (by %s, headers: %s)\n",
@@ -5111,7 +5111,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						session->helpers = g_list_remove_link(session->helpers, temp);
 						janus_sip_session *helper = (janus_sip_session *)temp->data;
 						if(helper != NULL && helper->handle != NULL) {
-							/* TODO Get rid of this helper */
+							/* Get rid of this helper */
 							janus_refcount_decrease(&session->ref);
 							janus_refcount_decrease(&helper->ref);
 							gateway->end_session(helper->handle);
@@ -5836,7 +5836,7 @@ static void *janus_sip_relay_thread(void *data) {
 
 			if(session->media.remote_video_ip && inet_aton(session->media.remote_video_ip, &video_server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 				/* Note that gethostbyname() may block waiting for response if it triggers on the wire request.*/
-				struct hostent *host = gethostbyname(session->media.remote_audio_ip);	/* ...resolve name */
+				struct hostent *host = gethostbyname(session->media.remote_video_ip);	/* ...resolve name */
 				if(!host) {
 					JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_video_ip);
 					have_video_server_ip = FALSE;
@@ -6126,7 +6126,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_root = su_root_create(session->stack);
 	session->stack->subscriptions = NULL;
 	janus_mutex_init(&session->stack->smutex);
-	su_home_init(session->stack->s_home);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
 	char sips_url[128];

@@ -15,13 +15,11 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
-#include "dtls.h"
-
 /*! \brief OpenSSL BIO agent writer initialization */
 int janus_dtls_bio_agent_init(void);
 
 /*! \brief OpenSSL BIO agent writer constructor */
-BIO *BIO_janus_dtls_agent_new(struct janus_dtls_srtp *dtls);
+BIO *BIO_janus_dtls_agent_new(void *dtls);
 
 /*! \brief Set the MTU for the BIO agent writer
  * \note The default starting MTU is 1472, in case fragmentation is needed

@@ -323,7 +323,7 @@ events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
- 
+
 if ENABLE_WSEVH
 event_LTLIBRARIES += events/libjanus_wsevh.la
 events_libjanus_wsevh_la_SOURCES = events/janus_wsevh.c
@@ -455,16 +455,6 @@ plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LI
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.jcfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.jcfg.sample
-endif
-
-if ENABLE_PLUGIN_SIPRE
-plugin_LTLIBRARIES += plugins/libjanus_sipre.la
-plugins_libjanus_sipre_la_SOURCES = plugins/janus_sipre.c
-plugins_libjanus_sipre_la_CFLAGS = $(plugins_cflags) $(LIBRE_CFLAGS)
-plugins_libjanus_sipre_la_LDFLAGS = $(plugins_ldflags) $(LIBRE_LDFLAGS) $(LIBRE_LIBS)
-plugins_libjanus_sipre_la_LIBADD = $(plugins_libadd) $(LIBRE_LIBADD)
-conf_DATA += conf/janus.plugin.sipre.jcfg.sample
-EXTRA_DIST += conf/janus.plugin.sipre.jcfg.sample
 endif
 
 if ENABLE_PLUGIN_NOSIP

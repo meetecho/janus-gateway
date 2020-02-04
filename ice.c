@@ -294,8 +294,9 @@ uint16_t rtp_range_max = 0;
 
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
-#define JANUS_ICE_PACKET_DATA	2
-#define JANUS_ICE_PACKET_SCTP	3
+#define JANUS_ICE_PACKET_TEXT	2
+#define JANUS_ICE_PACKET_BINARY	3
+#define JANUS_ICE_PACKET_SCTP	4
 /* Janus enqueued (S)RTP/(S)RTCP packet to send */
 typedef struct janus_ice_queued_packet {
 	char *data;
@@ -2873,14 +2874,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 	}
 }
 
-void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *buffer, int length) {
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length) {
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin && plugin->incoming_data && handle->app_handle &&
 			!g_atomic_int_get(&handle->app_handle->stopped) &&
 			!g_atomic_int_get(&handle->destroyed))
-		plugin->incoming_data(handle->app_handle, label, buffer, length);
+		plugin->incoming_data(handle->app_handle, label, textdata, buffer, length);
 }
 
 
@@ -4252,7 +4253,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					}
 				}
 			}
-		} else if(pkt->type == JANUS_ICE_PACKET_DATA) {
+		} else if(pkt->type == JANUS_ICE_PACKET_TEXT || pkt->type == JANUS_ICE_PACKET_BINARY) {
 			/* Data */
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)) {
 				janus_ice_free_queued_packet(pkt);
@@ -4268,7 +4269,8 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				return G_SOURCE_CONTINUE;
 			}
 			component->noerrorlog = FALSE;
-			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->data, pkt->length);
+			/* TODO Support binary data */
+			janus_dtls_wrap_sctp_data(component->dtls, pkt->label, pkt->type == JANUS_ICE_PACKET_TEXT, pkt->data, pkt->length);
 #endif
 		} else if(pkt->type == JANUS_ICE_PACKET_SCTP) {
 			/* SCTP data to push */
@@ -4399,7 +4401,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 }
 
 #ifdef HAVE_SCTP
-void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int len) {
+void janus_ice_relay_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buf, int len) {
 	if(!handle || handle->queued_packets == NULL || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
@@ -4407,7 +4409,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *label, char *buf, int 
 	pkt->data = g_malloc(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
-	pkt->type = JANUS_ICE_PACKET_DATA;
+	pkt->type = textdata ? JANUS_ICE_PACKET_TEXT : JANUS_ICE_PACKET_BINARY;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
 	pkt->retransmission = FALSE;

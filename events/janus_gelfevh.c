@@ -35,7 +35,7 @@
 /* Plugin information */
 #define JANUS_GELFEVH_VERSION			1
 #define JANUS_GELFEVH_VERSION_STRING 	"0.0.1"
-#define JANUS_GELFEVH_DESCRIPTION 		"This is a simple event handler plugin for Janus, which forwards events via TCP/UDP to GELF server."
+#define JANUS_GELFEVH_DESCRIPTION 		"This is event handler plugin for Janus, which forwards events via TCP/UDP to GELF server."
 #define JANUS_GELFEVH_NAME 				"JANUS GelfEventHandler plugin"
 #define JANUS_GELFEVH_AUTHOR 			"Meetecho s.r.l."
 #define JANUS_GELFEVH_PACKAGE			"janus.eventhandler.gelfevh"
@@ -609,7 +609,7 @@ static void *janus_gelfevh_handler(void *data) {
 		}
 		/* Done, let's unref the event */
 		json_decref(output);
-		g_free(event_text);
+`		g_free(event_text);
 		output = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
