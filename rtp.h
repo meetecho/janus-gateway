@@ -208,10 +208,17 @@ int janus_rtp_header_extension_parse_framemarking(char *buf, int len, int id, ja
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
- * @param[out] transSeqNum transport wide sequence number
+ * @param[out] transSeqNum Variable to read the transport wide sequence number in
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
-	uint16_t *transSeqNum);
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum);
+
+/*! \brief Helper to set a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] transSeqNum Transport wide sequence number to set
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum);
 
 /*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
  * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)

@@ -414,6 +414,8 @@ struct janus_ice_stream {
 	gboolean do_transport_wide_cc;
 	/*! \brief Transport wide cc rtp ext ID */
 	gint transport_wide_cc_ext_id;
+	/*! \brief Last sent transport wide seq num */
+	guint16 transport_wide_cc_out_seq_num;
 	/*! \brief Last received transport wide seq num */
 	guint32 transport_wide_cc_last_seq_num;
 	/*! \brief Last transport wide seq num sent on feedback */

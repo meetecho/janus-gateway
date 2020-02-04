@@ -303,11 +303,24 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	if(ext == NULL)
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
-	if (val_len < 2 || val_len > len-(ext-buf)-1) {
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
 		return -3;
-	}
 	memcpy(transSeqNum, ext+1, sizeof(uint16_t));
 	*transSeqNum = ntohs(*transSeqNum);
+	return 0;
+}
+
+int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
+		return -3;
+	transSeqNum = htons(transSeqNum);
+	memcpy(ext+1, &transSeqNum, sizeof(uint16_t));
 	return 0;
 }
 

@@ -1175,6 +1175,9 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			}
 			g_list_free(ids);
 		}
+		/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+		a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", video_pt);
+		m->attributes = g_list_append(m->attributes, a);
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 	if(do_video) {
@@ -1505,10 +1508,10 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->attributes = g_list_append(am->attributes, a);
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
-						/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
-						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-						am->attributes = g_list_append(am->attributes, a);
 					}
+					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+					am->attributes = g_list_append(am->attributes, a);
 				}
 			}
 			/* Add the extmap attributes, if needed */
