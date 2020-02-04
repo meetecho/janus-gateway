@@ -157,22 +157,25 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 		return NULL;
 
 	/* Copy given filename or generate a random one */
-	if (filename == NULL) {
+	if(filename == NULL) {
 		g_snprintf(newname, sizeof(newname),
 		    "janus-text2pcap-%"SCNu32".%s", janus_random_uint32(), text ? "txt" : "pcap");
 	} else {
 		g_strlcpy(newname, filename, sizeof(newname));
 	}
 
-	if(dir != NULL) {
-		/* Create the directory, if needed */
-		if(janus_mkdir(dir, 0755) < 0) {
-			JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
-			return NULL;
-		}
-		fname = g_strdup_printf("%s/%s", dir, newname);
-	} else {
-		fname = g_strdup(newname);
+	/* Create the directory, if needed */
+	if(dir != NULL && janus_mkdir(dir, 0755) < 0) {
+		JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
+		return NULL;
+	}
+
+	/* Make sure we can write to the target folder */
+	fname = (dir ? g_strdup_printf("%s/%s", dir, newname) : g_strdup(newname));
+	if(janus_is_folder_protected(fname)) {
+		JANUS_LOG(LOG_ERR, "Target capture path '%s' is in protected folder...\n", fname);
+		g_free(fname);
+		return NULL;
 	}
 
 	/* Try opening the file now */

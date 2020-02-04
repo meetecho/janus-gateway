@@ -24,6 +24,7 @@
 
 #include "utils.h"
 #include "debug.h"
+#include "mutex.h"
 
 #if __MACH__
 #include "mach_gettime.h"
@@ -447,6 +448,58 @@ int janus_pidfile_remove(void) {
 	g_free(pidfile);
 	return 0;
 }
+
+/* Protected folders management */
+static GList *protected_folders = NULL;
+static janus_mutex pf_mutex = JANUS_MUTEX_INITIALIZER;
+
+void janus_protected_folder_add(const char *folder) {
+	if(folder == NULL)
+		return;
+	janus_mutex_lock(&pf_mutex);
+	protected_folders = g_list_append(protected_folders, g_strdup(folder));
+	janus_mutex_unlock(&pf_mutex);
+}
+
+gboolean janus_is_folder_protected(const char *path) {
+	/* We need a valid pathname (can't start with a space, we don't trim) */
+	if(path == NULL || *path == ' ')
+		return TRUE;
+	/* Resolve the pathname to its real path first */
+	char resolved[PATH_MAX+1];
+	resolved[0] = '\0';
+	if(realpath(path, resolved) == NULL && errno != ENOENT) {
+		JANUS_LOG(LOG_ERR, "Error resolving path '%s'... %d (%s)\n",
+			path, errno, strerror(errno));
+		return TRUE;
+	}
+	/* Traverse the list of protected folders to see if any match */
+	janus_mutex_lock(&pf_mutex);
+	if(protected_folders == NULL) {
+		/* No protected folder in the list */
+		janus_mutex_unlock(&pf_mutex);
+		return FALSE;
+	}
+	gboolean protected = FALSE;
+	GList *temp = protected_folders;
+	while(temp) {
+		char *folder = (char *)temp->data;
+		if(folder && (strstr(resolved, folder) == resolved)) {
+			protected = TRUE;
+			break;
+		}
+		temp = temp->next;
+	}
+	janus_mutex_unlock(&pf_mutex);
+	return protected;
+}
+
+void janus_protected_folders_clear(void) {
+	janus_mutex_lock(&pf_mutex);
+	g_list_free_full(protected_folders, (GDestroyNotify)g_free);
+	janus_mutex_unlock(&pf_mutex);
+}
+
 
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
 	/* Longest possible combination is "a non-empty boolean" plus one for null char */

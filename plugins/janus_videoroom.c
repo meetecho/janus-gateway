@@ -5254,12 +5254,14 @@ static void *janus_videoroom_handler(void *data) {
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
 					janus_mutex_unlock(&sessions_mutex);
+					janus_mutex_unlock(&videoroom->mutex);
 					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 					janus_videoroom_message_free(msg);
 					continue;
 				}
 				if(g_atomic_int_get(&session->destroyed)) {
 					janus_mutex_unlock(&sessions_mutex);
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_videoroom_message_free(msg);
 					continue;
 				}

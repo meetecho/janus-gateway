@@ -10,6 +10,7 @@
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
+int lock_debug = 0;
 
 /* This is to avoid linking with openSSL */
 int RAND_bytes(uint8_t *key, int len) {

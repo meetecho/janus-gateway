@@ -523,8 +523,6 @@ static void *janus_rabbitmqevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 
 		event = g_async_queue_pop(events);
-		if(event == NULL)
-			continue;
 		if(event == &exit_event)
 			break;
 		count = 0;
