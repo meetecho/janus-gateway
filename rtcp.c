@@ -168,7 +168,9 @@ static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 
 /* Helper to handle an incoming transport-cc feedback: triggered by a call to janus_rtcp_fix_ssrc a valid context pointer */
 static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp_fb *twcc, int total) {
-	if(ctx == NULL || twcc == NULL || total < 16)
+	if(ctx == NULL || twcc == NULL || total < 20)
+		return;
+	if(!janus_rtcp_check_fci((janus_rtcp_header *)twcc, total, 4))
 		return;
 	/* Parse the header first */
 	uint8_t *data = (uint8_t *)twcc->fci;
@@ -185,7 +187,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 	JANUS_LOG(LOG_HUGE, "[TWCC] seq=%"SCNu16", psc=%"SCNu16", ref=%"SCNu32", fbpc=%"SCNu8"\n",
 		base_seq, status_count, reference, fb_pkt);
 	/* Now traverse the feedback: packet chunks first, and then recv deltas */
-	total -= 16;
+	total -= 20;
 	data += 8;
 	int psc = status_count;
 	uint16_t chunk = 0;
@@ -228,6 +230,10 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		}
 		total -= 2;
 		data += 2;
+	}
+	if(psc > 0) {
+		/* Incomplete feedback? Drop... */
+		return;
 	}
 	/* Iterate on all recv deltas */
 	JANUS_LOG(LOG_HUGE, "[TWCC] Recv Deltas (%d/%"SCNu16"):\n", g_list_length(list), status_count);
