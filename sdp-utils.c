@@ -1011,6 +1011,9 @@ janus_sdp *janus_sdp_new(const char *name, const char *address) {
 	return sdp;
 }
 
+static int janus_sdp_id_compare(gconstpointer a, gconstpointer b) {
+	return GPOINTER_TO_INT(a) - GPOINTER_TO_INT(b);
+}
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) {
 	/* This method has a variable list of arguments, telling us what we should offer */
 	va_list args;
@@ -1022,6 +1025,8 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	const char *audio_codec = NULL, *video_codec = NULL, *audio_fmtp = NULL;
 	int audio_pt = 111, video_pt = 96;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
+	GHashTable *audio_extmaps = NULL, *audio_extids = NULL,
+		*video_extmaps = NULL, *video_extids = NULL;
 	int property = va_arg(args, int);
 	while(property != JANUS_SDP_OA_DONE) {
 		if(property == JANUS_SDP_OA_AUDIO) {
@@ -1052,6 +1057,45 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			h264_fmtp = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_DATA_LEGACY) {
 			data_legacy = va_arg(args, gboolean);
+		} else if(property == JANUS_SDP_OA_AUDIO_EXTENSION || property == JANUS_SDP_OA_VIDEO_EXTENSION) {
+			char *extmap = va_arg(args, char *);
+			int id = va_arg(args, int);
+			if(extmap != NULL && id > 0 && id < 15) {
+				if(audio_extmaps == NULL)
+					audio_extmaps = g_hash_table_new(g_str_hash, g_str_equal);
+				if(audio_extids == NULL)
+					audio_extids = g_hash_table_new(NULL, NULL);
+				if(video_extmaps == NULL)
+					video_extmaps = g_hash_table_new(g_str_hash, g_str_equal);
+				if(video_extids == NULL)
+					video_extids = g_hash_table_new(NULL, NULL);
+				/* Make sure the extmap and ID have not been added already */
+				char *audio_extmap = g_hash_table_lookup(audio_extids, GINT_TO_POINTER(id));
+				char *video_extmap = g_hash_table_lookup(video_extids, GINT_TO_POINTER(id));
+				if((property == JANUS_SDP_OA_VIDEO_EXTENSION && audio_extmap != NULL && strcasecmp(audio_extmap, extmap)) ||
+						(property == JANUS_SDP_OA_AUDIO_EXTENSION && video_extmap != NULL && strcasecmp(video_extmap, extmap))) {
+					JANUS_LOG(LOG_WARN, "Ignoring duplicate extension %d (already added: %s)\n",
+						id, audio_extmap ? audio_extmap : video_extmap);
+				} else {
+					if(property == JANUS_SDP_OA_AUDIO_EXTENSION) {
+						if(g_hash_table_lookup(audio_extmaps, extmap) != NULL) {
+							JANUS_LOG(LOG_WARN, "Ignoring duplicate audio extension %s (already added: %d)\n",
+								extmap, GPOINTER_TO_INT(g_hash_table_lookup(audio_extmaps, extmap)));
+						} else {
+							g_hash_table_insert(audio_extmaps, extmap, GINT_TO_POINTER(id));
+							g_hash_table_insert(audio_extids, GINT_TO_POINTER(id), extmap);
+						}
+					} else {
+						if(g_hash_table_lookup(video_extmaps, extmap) != NULL) {
+							JANUS_LOG(LOG_WARN, "Ignoring duplicate video extension %s (already added: %d)\n",
+								extmap, GPOINTER_TO_INT(g_hash_table_lookup(video_extmaps, extmap)));
+						} else {
+							g_hash_table_insert(video_extmaps, extmap, GINT_TO_POINTER(id));
+							g_hash_table_insert(video_extids, GINT_TO_POINTER(id), extmap);
+						}
+					}
+				}
+			}
 		} else {
 			JANUS_LOG(LOG_WARN, "Unknown property %d for preparing SDP answer, ignoring...\n", property);
 		}
@@ -1063,6 +1107,14 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	if(do_audio && audio_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported audio codec '%s', can't prepare an offer\n", audio_codec);
 		va_end(args);
+		if(audio_extmaps != NULL)
+			g_hash_table_destroy(audio_extmaps);
+		if(audio_extids != NULL)
+			g_hash_table_destroy(audio_extids);
+		if(video_extmaps != NULL)
+			g_hash_table_destroy(video_extmaps);
+		if(video_extids != NULL)
+			g_hash_table_destroy(video_extids);
 		return NULL;
 	}
 	if(video_codec == NULL)
@@ -1071,6 +1123,14 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	if(do_video && video_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported video codec '%s', can't prepare an offer\n", video_codec);
 		va_end(args);
+		if(audio_extmaps != NULL)
+			g_hash_table_destroy(audio_extmaps);
+		if(audio_extids != NULL)
+			g_hash_table_destroy(audio_extids);
+		if(video_extmaps != NULL)
+			g_hash_table_destroy(video_extmaps);
+		if(video_extids != NULL)
+			g_hash_table_destroy(video_extids);
 		return NULL;
 	}
 #ifndef HAVE_SCTP
@@ -1101,6 +1161,23 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp", "%d %s", audio_pt, audio_fmtp);
 			m->attributes = g_list_append(m->attributes, a);
 		}
+		/* Check if we need to add audio extensions to the SDP */
+		if(audio_extids != NULL) {
+			GList *ids = g_list_sort(g_hash_table_get_keys(audio_extids), janus_sdp_id_compare), *iter = ids;
+			while(iter) {
+				char *extmap = g_hash_table_lookup(audio_extids, iter->data);
+				if(extmap != NULL) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+					janus_sdp_attribute_add_to_mline(m, a);
+				}
+				iter = iter->next;
+			}
+			g_list_free(ids);
+		}
+		/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated */
+		a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", audio_pt);
+		m->attributes = g_list_append(m->attributes, a);
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 	if(do_video) {
@@ -1127,6 +1204,20 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 			a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", video_pt);
 			m->attributes = g_list_append(m->attributes, a);
 		}
+		/* Check if we need to add audio extensions to the SDP */
+		if(video_extids != NULL) {
+			GList *ids = g_list_sort(g_hash_table_get_keys(video_extids), janus_sdp_id_compare), *iter = ids;
+			while(iter) {
+				char *extmap = g_hash_table_lookup(video_extids, iter->data);
+				if(extmap != NULL) {
+					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
+						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+					janus_sdp_attribute_add_to_mline(m, a);
+				}
+				iter = iter->next;
+			}
+			g_list_free(ids);
+		}
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
 	if(do_data) {
@@ -1145,6 +1236,14 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 		}
 		offer->m_lines = g_list_append(offer->m_lines, m);
 	}
+	if(audio_extmaps != NULL)
+		g_hash_table_destroy(audio_extmaps);
+	if(audio_extids != NULL)
+		g_hash_table_destroy(audio_extids);
+	if(video_extmaps != NULL)
+		g_hash_table_destroy(video_extmaps);
+	if(video_extids != NULL)
+		g_hash_table_destroy(video_extids);
 
 	/* Done */
 	va_end(args);
@@ -1409,10 +1508,10 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						am->attributes = g_list_append(am->attributes, a);
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
-						/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
-						a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
-						am->attributes = g_list_append(am->attributes, a);
 					}
+					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
+					am->attributes = g_list_append(am->attributes, a);
 				}
 			}
 			/* Add the extmap attributes, if needed */

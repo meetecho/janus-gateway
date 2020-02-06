@@ -142,12 +142,15 @@ int janus_rtp_header_extension_get_id(const char *sdp, const char *extension);
 const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id);
 
 /*! \brief Helper to parse a ssrc-audio-level RTP extension (https://tools.ietf.org/html/rfc6464)
+ * @note Browsers apparently always set the VAD to 1, so it's unreliable and should be ignored:
+ * only use this method if you're interested in the audio-level value itself.
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
+ * @param[out] vad Whether the encoder thinks there's voice activity
  * @param[out] level The level value in dBov (0=max, 127=min)
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level);
+int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, gboolean *vad, int *level);
 
 /*! \brief Helper to parse a video-orientation RTP extension (http://www.3gpp.org/ftp/Specs/html-info/26114.htm)
  * @param[in] buf The packet data
@@ -205,10 +208,17 @@ int janus_rtp_header_extension_parse_framemarking(char *buf, int len, int id, ja
  * @param[in] buf The packet data
  * @param[in] len The packet data length in bytes
  * @param[in] id The extension ID to look for
- * @param[out] transSeqNum transport wide sequence number
+ * @param[out] transSeqNum Variable to read the transport wide sequence number in
  * @returns 0 if found, -1 otherwise */
-int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id,
-	uint16_t *transSeqNum);
+int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int id, uint16_t *transSeqNum);
+
+/*! \brief Helper to set a transport wide sequence number (https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] transSeqNum Transport wide sequence number to set
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum);
 
 /*! \brief Helper to replace the ID of an RTP extension with a different one (e.g.,
  * to turn a repaired-rtp-stream-id into a rtp-stream-id after a successful rtx)
