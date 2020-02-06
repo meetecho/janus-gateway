@@ -10,6 +10,7 @@
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
+int lock_debug = 0;
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Sanity Checks */

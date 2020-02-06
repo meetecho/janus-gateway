@@ -154,6 +154,19 @@ int janus_pidfile_create(const char *file);
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
 
+/*! \brief Add a folder to the protected list (meaning we won't create
+ * files there, like recordings or pcap dumps)
+ * @param folder Folder to protect */
+void janus_protected_folder_add(const char *folder);
+
+/*! \brief Check if the path points to a protected folder
+ * @param path Path we need to check
+ * @returns TRUE if the folder is protected, and FALSE otherwise */
+gboolean janus_is_folder_protected(const char *path);
+
+/*! \brief Cleanup the list of protected folder */
+void janus_protected_folders_clear(void);
+
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type

@@ -30,4 +30,4 @@ DEPS_CFLAGS="$(pkg-config --cflags glib-2.0)"
 
 # Libraries to link in with fuzzers
 DEPS_LIB="-Wl,-Bstatic $(pkg-config --libs glib-2.0 jansson) -pthread -Wl,-Bdynamic"
-DEPS_LIB_SHARED="$(pkg-config --libs glib-2.0 jansson zlib) -pthread"
+DEPS_LIB_SHARED="$(pkg-config --libs glib-2.0 jansson zlib) -pthread -lm"

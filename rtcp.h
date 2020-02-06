@@ -276,6 +276,9 @@ typedef struct rtcp_context
 	double in_media_link_quality;
 	double out_link_quality;
 	double out_media_link_quality;
+
+	/* TODO Incoming transport-wide CC feedback*/
+
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
 

@@ -748,8 +748,6 @@ void *janus_rmq_out_thread(void *data) {
 	while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
 		/* We send messages from here as well, not only notifications */
 		janus_rabbitmq_response *response = g_async_queue_pop(rmq_client->messages);
-		if(response == NULL)
-			continue;
 		if(response == &exit_message)
 			break;
 		if(!rmq_client->destroy && !g_atomic_int_get(&stopping) && response->payload) {
