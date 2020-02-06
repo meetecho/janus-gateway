@@ -1,5 +1,7 @@
 Janus WebRTC Server
 ===================
+[![Build Status](https://travis-ci.org/meetecho/janus-gateway.svg?branch=master)](https://travis-ci.org/meetecho/janus-gateway)
+[![Coverity Scan Build Status](https://scan.coverity.com/projects/13265/badge.svg)](https://scan.coverity.com/projects/meetecho-janus-gateway)
 
 Janus is an open source, general purpose, WebRTC server designed and developed by [Meetecho](http://www.meetecho.com). This version of the server is tailored for Linux systems, although it can be compiled for, and installed on, MacOS machines as well. Windows is not supported, but if that's a requirement, Janus is known to work in the "Windows Subsystem for Linux" on Windows 10.
 
@@ -235,8 +237,6 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.8.2
-
 	Usage: janus [OPTIONS]...
 
 	-h, --help                    Print help and exit
@@ -281,8 +281,8 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
-	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
-                                  for retransmissions
+	-Q, --min-nack-queue=number   Minimum size of the NACK queue (in ms) per user
+                                  for retransmissions, no matter the RTT
 	-t, --no-media-timer=number   Time (in s) that should pass with no media
                                   (audio or video) being received before Janus
                                   notifies you about this
