@@ -233,6 +233,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 	}
 	if(psc > 0) {
 		/* Incomplete feedback? Drop... */
+		g_list_free(list);
 		return;
 	}
 	/* Iterate on all recv deltas */
