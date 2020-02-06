@@ -324,8 +324,6 @@ static void *janus_jsonlog_thread(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get a log line from the queue */
 		jline = g_async_queue_pop(loglines);
-		if(jline == NULL)
-			continue;
 		if(jline == &exit_line)
 			break;
 

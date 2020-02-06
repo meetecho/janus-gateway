@@ -588,6 +588,7 @@ janus_pp_rec_CFLAGS = \
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
 
 BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
@@ -604,6 +605,7 @@ janus_pp_unperc_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/janus-pp-unperc.c \
 	log.c \
+	utils.c \
 	$(NULL)
 
 janus_pp_unperc_CFLAGS = \

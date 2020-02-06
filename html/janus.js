@@ -2909,8 +2909,10 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		if(!config.volume[stream])
 			config.volume[stream] = { value: 0 };
-		// Start getting the volume, if getStats is supported
-		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+		// Start getting the volume, if audioLevel in getStats is supported (apparently
+		// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
+		if(config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 			if(remote && !config.remoteStream) {
 				Janus.warn("Remote stream unavailable");
 				return 0;
@@ -2923,16 +2925,13 @@ function Janus(gatewayCallbacks) {
 				config.volume[stream].timer = setInterval(function() {
 					config.pc.getStats()
 						.then(function(stats) {
-							var results = stats.result();
-							for(var i=0; i<results.length; i++) {
-								var res = results[i];
-								if(res.type == 'ssrc') {
-									if(remote && res.stat('audioOutputLevel'))
-										config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
-									else if(!remote && res.stat('audioInputLevel'))
-										config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
-								}
-							}
+							stats.forEach(function (res) {
+								if(!res || res.kind !== "audio")
+									return;
+								if((remote && !res.remoteSource) || (!remote && res.type !== "media-source"))
+									return;
+								config.volume[stream].value = (res.audioLevel ? res.audioLevel : 0);
+							});
 						});
 				}, 200);
 				return 0;	// We don't have a volume to return yet

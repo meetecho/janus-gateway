@@ -9,18 +9,18 @@
  * unavailable to \c janus-pp-rec for processing. This tool allows you
  * to decrypt that content, in case you have access to the key, so that
  * a plain .mjr file can be generated and processed to a media file.
- * 
+ *
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the key as a base-64 encoded string, the path to the .mjr source file
  * you want to decrypt, and the path to the destination file, e.g.:
- * 
+ *
 \verbatim
 ./janus-pp-unperc base64-key /path/to/source.mjr /path/to/destination.mjr
-\endverbatim 
- * 
+\endverbatim
+ *
  * An attempt to specify an invalid key or to process a non-PERC recording
  * will result in an error since.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -133,6 +133,7 @@ static const char *frame_header = "MEETECHO";
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
+int lock_debug = 0;
 
 int working = 0;
 
@@ -156,7 +157,7 @@ int main(int argc, char *argv[])
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
-	
+
 	/* Evaluate arguments */
 	if(argc != 4) {
 		JANUS_LOG(LOG_INFO, "Usage: %s key source.mjr destination.mjr\n", argv[0]);

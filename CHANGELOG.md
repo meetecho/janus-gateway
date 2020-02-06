@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.8.2] - 2020-02-04
+
+- Added Travis CI integration (thanks @fippo for kickstarting it!)
+- New configuration property to add protected folders not to save recordings and pcap captures to
+- Fixed rare race condition when joining and destroying a VideoRoom session
+- Improved parsing of headers in RTSP messages (thanks @kefir266!)
+- Fixed segfault in AudioBridge when leaving a room before PeerConnection is ready
+- Fixed '500' errors being sent in response to incoming OPTIONS in the SIP plugin (thanks @ycherniavskyi!)
+- Fixed helpers not being able to send SUBSCRIBE requests in SIP plugin
+- Added option to fix audio skew compensation, if present, to janus-pp-rec
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.8.1] - 2020-01-13
 
 - Added binary data support to data channels
