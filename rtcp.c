@@ -189,14 +189,14 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 	/* Now traverse the feedback: packet chunks first, and then recv deltas */
 	total -= 20;
 	data += 8;
-	int psc = status_count;
+	uint16_t psc = status_count;
 	uint16_t chunk = 0;
 	uint8_t t = 0, ss = 0, s = 0, length = 0;
 	/* Iterate on all packet chunks */
 	JANUS_LOG(LOG_HUGE, "[TWCC] Chunks:\n");
-	int num = 0;
+	uint16_t num = 0;
 	GList *list = NULL;
-	while(psc > 0 && total > 0) {
+	while(psc > 0 && total > 1) {
 		num++;
 		memcpy(&chunk, data, sizeof(uint16_t));
 		chunk = ntohs(chunk);
@@ -205,7 +205,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 			/* Run length */
 			s = (chunk & 0x6000) >> 13;
 			length = (chunk & 0x1FFF);
-			JANUS_LOG(LOG_HUGE, "  [%d] t=run-length, s=%s, l=%"SCNu16"\n", num,
+			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=run-length, s=%s, l=%"SCNu8"\n", num,
 				janus_rtp_packet_status_description(s), length);
 			while(length > 0 && psc > 0) {
 				list = g_list_append(list, GUINT_TO_POINTER(s));
@@ -216,7 +216,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 			/* Status vector */
 			ss = (chunk & 0x4000) >> 14;
 			length = (s ? 7 : 14);
-			JANUS_LOG(LOG_HUGE, "  [%d] t=status-vector, ss=%s, l=%"SCNu16"\n", num,
+			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=status-vector, ss=%s, l=%"SCNu8"\n", num,
 				s ? "2-bit" : "bit", length);
 			while(length > 0 && psc > 0) {
 				if(!ss)
@@ -262,7 +262,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		}
 		delta_us = delta*250;
 		/* Print summary */
-		JANUS_LOG(LOG_HUGE, "  [%02d][%"SCNu16"] %s (%"SCNu32"us)\n", num, base_seq+num-1,
+		JANUS_LOG(LOG_HUGE, "  [%02"SCNu16"][%"SCNu16"] %s (%"SCNu32"us)\n", num, base_seq+num-1,
 			janus_rtp_packet_status_description(s), delta_us);
 		iter = iter->next;
 	}
