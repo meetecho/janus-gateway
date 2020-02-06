@@ -194,8 +194,8 @@ const char *janus_nosip_get_package(void);
 void janus_nosip_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_nosip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_nosip_setup_media(janus_plugin_session *handle);
-void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_nosip_hangup_media(janus_plugin_session *handle);
 void janus_nosip_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_nosip_query_session(janus_plugin_session *handle);
@@ -990,7 +990,7 @@ void janus_nosip_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_nosip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -1000,6 +1000,9 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
+		gboolean video = packet->video;
+		char *buf = packet->buffer;
+		uint16_t len = packet->length;
 		/* Forward to our NoSIP peer */
 		if((video && !session->media.video_send) || (!video && !session->media.audio_send)) {
 			/* Dropping packet, peer doesn't want to receive it */
@@ -1067,7 +1070,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 	}
 }
 
-void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_nosip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
@@ -1076,6 +1079,9 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
+		gboolean video = packet->video;
+		char *buf = packet->buffer;
+		uint16_t len = packet->length;
 		/* Forward to our NoSIP peer */
 		if((video && session->media.has_video && session->media.video_rtcp_fd != -1) ||
 				(!video && session->media.has_audio && session->media.audio_rtcp_fd != -1)) {
@@ -1619,9 +1625,7 @@ static void *janus_nosip_handler(void *data) {
 						}
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
-						char buf[12];
-						janus_rtcp_pli((char *)&buf, 12);
-						gateway->relay_rtcp(session->handle, 1, buf, 12);
+						gateway->send_pli(session->handle);
 					}
 				}
 			} else {
@@ -2368,7 +2372,9 @@ static void *janus_nosip_relay_thread(void *data) {
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
-					gateway->relay_rtp(session->handle, video, buffer, bytes);
+					janus_plugin_rtp rtp = { .video = video, .buffer = buffer, .length = bytes };
+					janus_plugin_rtp_extensions_reset(&rtp.extensions);
+					gateway->relay_rtp(session->handle, &rtp);
 					continue;
 				} else {
 					/* Audio or Video RTCP */
@@ -2389,7 +2395,8 @@ static void *janus_nosip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Relay to browser */
-					gateway->relay_rtcp(session->handle, video, buffer, bytes);
+					janus_plugin_rtcp rtcp = { .video = video, .buffer = buffer, bytes };
+					gateway->relay_rtcp(session->handle, &rtcp);
 					continue;
 				}
 			}
