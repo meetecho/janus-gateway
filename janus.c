@@ -425,6 +425,7 @@ static json_t *janus_info(const char *transaction) {
 int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
+char *janus_log_global_prefix = NULL;
 int lock_debug = 0;
 #ifdef REFCOUNT_DEBUG
 int refcount_debug = 1;
@@ -3810,6 +3811,11 @@ gint main(int argc, char *argv[])
 	janus_config_category *config_events = janus_config_get_create(config, NULL, janus_config_type_category, "events");
 	janus_config_category *config_loggers = janus_config_get_create(config, NULL, janus_config_type_category, "loggers");
 
+	/* Any log prefix? */
+	janus_config_array *lp = janus_config_get(config, config_general, janus_config_type_item, "log_prefix");
+	if(lp && lp->value)
+		janus_log_global_prefix = g_strdup(lp->value);
+
 	/* Check if there are folders to protect */
 	janus_config_array *pfs = janus_config_get(config, config_general, janus_config_type_array, "protected_folders");
 	if(pfs && pfs->list) {
@@ -5203,6 +5209,7 @@ gint main(int argc, char *argv[])
 	}
 	janus_mutex_unlock(&counters_mutex);
 #endif
+	g_clear_pointer(&janus_log_global_prefix, g_free);
 
 	JANUS_PRINT("Bye!\n");
 

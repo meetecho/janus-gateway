@@ -18,6 +18,11 @@ general: {
 	#debug_timestamps = true				# Whether to show a timestamp for each log line
 	#debug_colors = false					# Whether colors should be disabled in the log
 	#debug_locks = true						# Whether to enable debugging of locks (very verbose!)
+	#log_prefix = "[janus] "				# In case you want log lines to be prefixed by some
+											# custom text, you can use the 'log_prefix' property.
+											# It supports terminal colors, meaning something like
+											# "[\x1b[32mjanus\x1b[0m] " would show a green "janus"
+											# string in square brackets (assuming debug_colors=true).
 
 		# This is what you configure if you want to launch Janus as a daemon
 	#daemonize = true						# Whether Janus should run as a daemon
