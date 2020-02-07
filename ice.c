@@ -4394,7 +4394,9 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	int origext = header->extension;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
-	if(handle->stream->mid_ext_id > 0) {
+	if((packet->video && handle->stream->transport_wide_cc_ext_id > 0) || handle->stream->mid_ext_id > 0 ||
+			(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) ||
+			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0)) {
 		header->extension = 1;
 		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
