@@ -208,7 +208,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 			JANUS_LOG(LOG_HUGE, "  [%"SCNu16"] t=run-length, s=%s, l=%"SCNu8"\n", num,
 				janus_rtp_packet_status_description(s), length);
 			while(length > 0 && psc > 0) {
-				list = g_list_append(list, GUINT_TO_POINTER(s));
+				list = g_list_prepend(list, GUINT_TO_POINTER(s));
 				length--;
 				psc--;
 			}
@@ -223,7 +223,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 					s = (chunk & (1 << (length-1))) ? janus_rtp_packet_status_smalldelta : janus_rtp_packet_status_notreceived;
 				else
 					s = (chunk & (3 << (2*length-2))) >> (2*length-2);
-				list = g_list_append(list, GUINT_TO_POINTER(s));
+				list = g_list_prepend(list, GUINT_TO_POINTER(s));
 				length--;
 				psc--;
 			}
@@ -236,6 +236,7 @@ static void janus_rtcp_incoming_transport_cc(janus_rtcp_context *ctx, janus_rtcp
 		g_list_free(list);
 		return;
 	}
+	list = g_list_reverse(list);
 	/* Iterate on all recv deltas */
 	JANUS_LOG(LOG_HUGE, "[TWCC] Recv Deltas (%d/%"SCNu16"):\n", g_list_length(list), status_count);
 	num = 0;
