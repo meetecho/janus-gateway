@@ -3064,7 +3064,7 @@ gdb bt
  * Once you've installed libasan, reconfigure Janus like this:
  *
  \verbatim
-CFLAGS="-fsanitize=address -fno-omit-frame-pointer" LDFLAGS="-lasan" ./configure --prefix=/opt/janus
+CFLAGS="-O1 -g3 -ggdb3 -fno-omit-frame-pointer -fsanitize=address -fno-sanitize-recover=all -fsanitize-address-use-after-scope" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
  \endverbatim
  *
  * Of course you're free to add whatever additional configuration parameter
