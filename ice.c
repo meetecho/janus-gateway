@@ -2351,8 +2351,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->ssrc = htonl(packet_ssrc);
 					if(plen > 0) {
 						memcpy(&header->seq_number, payload, 2);
-						/* Finally, remove the original sequence number from the payload: rather than moving
-						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
+						/* Finally, remove the original sequence number from the payload: move the whole
+						 * payload back two bytes rather than shifting the header forward (avoid misaligned access) */
 						buflen -= 2;
 						plen -= 2;
 						memmove(payload, payload+2, plen);
