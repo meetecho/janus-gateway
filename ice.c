@@ -2355,10 +2355,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
 						buflen -= 2;
 						plen -= 2;
-						size_t hsize = payload-buf;
-						memmove(buf+2, buf, hsize);
-						buf += 2;
-						payload +=2;
+						memmove(payload, payload+2, plen);
 						header = (janus_rtp_header *)buf;
 						if(stream->rid_ext_id > 1 && stream->ridrtx_ext_id > 1) {
 							/* Replace the 'repaired' extension ID as well with the 'regular' one */
