@@ -806,8 +806,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 		janus_ice_tcp_enabled = FALSE;
 #else
 		if(!janus_ice_lite_enabled) {
-			JANUS_LOG(LOG_WARN, "ICE-TCP only works in libnice if you enable ICE Lite too: disabling ICE-TCP support\n");
-			janus_ice_tcp_enabled = FALSE;
+			JANUS_LOG(LOG_WARN, "You may experience problems when having ICE-TCP enabled without having ICE Lite enabled too in libnice\n");
 		}
 #endif
 	}
