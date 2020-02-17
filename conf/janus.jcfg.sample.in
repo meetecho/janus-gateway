@@ -205,8 +205,8 @@ media: {
 # users) rather than the default half-trickle (Janus supports trickle
 # candidates from users, but sends its own within the SDP), and whether
 # it should work in ICE-Lite mode (by default it doesn't). Finally,
-# you can also enable ICE-TCP support (beware that it currently *only*
-# works if you enable ICE Lite as well), choose which interfaces should
+# you can also enable ICE-TCP support (beware that this may lead to problems
+# if you do not enable ICE Lite as well), choose which interfaces should
 # be used for gathering candidates, and enable or disable the
 # internal libnice debugging, if needed.
 nat: {
