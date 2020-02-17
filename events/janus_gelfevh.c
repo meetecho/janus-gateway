@@ -145,7 +145,7 @@ static char *randstring(size_t length) {
 	return randomString;
 }
 
-static void janus_gelfevh_connect(void) {
+static int janus_gelfevh_connect(void) {
 	struct addrinfo *res = NULL;
 	janus_network_address addr;
 	janus_network_address_string_buffer addr_buf;
@@ -157,14 +157,14 @@ static void janus_gelfevh_connect(void) {
 		if(res)
 			freeaddrinfo(res);
 		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", backend);
-		return;
+		return -1;
 	}
 	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
     if((sockfd = socket(AF_INET, janus_gelfevh_socket_type, 0)) < 0 ) {
 		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
-		return;
+		return -1;
 	}
 
 	memset(&servaddr, 0, sizeof(servaddr));
@@ -174,10 +174,11 @@ static void janus_gelfevh_connect(void) {
 	servaddr.sin_addr.s_addr = inet_addr(host);
 
 	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-		JANUS_LOG(LOG_WARN, "Connect to GELF host failed\n");
-		return;
+		JANUS_LOG(LOG_ERR, "Connect to GELF host failed\n");
+		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "Connected to GELF backend: [%s:%s]\n", host, port);
+	return 1;
 }
 
 static int janus_gelfevh_send(char *message) {
@@ -197,7 +198,7 @@ static int janus_gelfevh_send(char *message) {
 			} else if (n == 0) {
 				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
 				close(sockfd);
-				return -2;
+				return -1;
 			} else {
 				out_bytes += n;
 			}
@@ -354,6 +355,11 @@ done:
 	}
 	JANUS_LOG(LOG_VERB, "GELF event handler configured: %s:%s\n", backend, port);
 
+	/* Check if connection failed. Error is logged in janus_gelfevh_connect function */
+	if (janus_gelfevh_connect() < 0 ) {
+		return -1;
+	}
+
 	/* Initialize the events queue */
 	events = g_async_queue_new_full((GDestroyNotify) janus_gelfevh_event_free);
 	janus_mutex_init(&evh_mutex);
@@ -369,7 +375,6 @@ done:
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_GELFEVH_NAME);
-	janus_gelfevh_connect();
 	return 0;
 }
 
