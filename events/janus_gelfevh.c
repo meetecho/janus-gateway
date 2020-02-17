@@ -2,8 +2,8 @@
  * \author Mirko Brankovic <mirkobrankovic@gmail.com>
  * \copyright GNU General Public License v3
  * \brief  Janus GelfEventHandler plugin
- * \details  This is a GELF event handler plugin for Janus, which is suppose 
- * to send json events to GELF (Graylog logger), Necessary headers are prepended.
+ * \details  This is a GELF event handler plugin for Janus, which is supposed 
+ * to send json events to GELF (Graylog logger). Necessary headers are prepended.
  * For sending, you can use TCP which is not recomanded in case there will be
  * a lot of messages. There is also UDP support, but you need to limit the payload 
  * size with max_message_len + remember to leave space for 12 bytes for special 
