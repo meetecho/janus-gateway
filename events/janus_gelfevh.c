@@ -163,7 +163,7 @@ static void janus_gelfevh_connect(void) {
 	freeaddrinfo(res);
 
     if((sockfd = socket(AF_INET, janus_gelfevh_socket_type, 0)) < 0 ) {
-		JANUS_LOG(LOG_ERR, "Socket creation failed: %s", strerror(errno));
+		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
 		return;
 	}
 
@@ -195,7 +195,7 @@ static int janus_gelfevh_send(char *message) {
 				close(sockfd);
 				return -1;
 			} else if (n == 0) {
-				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: \n", strerror(errno));
+				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
 				close(sockfd);
 				return -2;
 			} else {
@@ -531,9 +531,9 @@ plugin_response:
 /* Thread to handle incoming events */
 static void *janus_gelfevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining GelfEventHandler handler thread\n");
-	json_t *event = NULL, *output = NULL;
+	json_t *event = NULL;
+	json_t *output = json_object();
 	static char *event_text = NULL;
-	const char *short_message = NULL;
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		event = g_async_queue_pop(events);
@@ -545,7 +545,8 @@ static void *janus_gelfevh_handler(void *data) {
 		/* Handle event */
 		while(TRUE) {
 			/* Add custom fields */
-			short_message = janus_events_type_to_name(json_object_get(event, "type"));
+			int type = json_integer_value(json_object_get(event, "type"));
+			const char *short_message = janus_events_type_to_name(type);
 			json_t *microtimestamp = json_object_get(event, "timestamp");
 			if(microtimestamp && json_is_integer(microtimestamp)) {
 				double created_timestamp = (double)json_integer_value(microtimestamp) / 1000000;
@@ -566,13 +567,13 @@ static void *janus_gelfevh_handler(void *data) {
 			/* Just convert to string... */
 			event_text = json_dumps(output, json_format);
 			if(janus_gelfevh_send(event_text) < 0) {
-				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?");
+				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", event_text);
 			}
 			break;
 		}
 		/* Done, let's unref the event */
 		json_decref(output);
-`		g_free(event_text);
+		g_free(event_text);
 		output = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
