@@ -210,6 +210,7 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_nanomsg_event_handler=no])
                AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
                      [enable_gelf_event_handler=no])
+                     
               ],
               [])
 
