@@ -537,8 +537,6 @@ plugin_response:
 static void *janus_gelfevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining GelfEventHandler handler thread\n");
 	json_t *event = NULL;
-	json_t *output = json_object();
-	static char *event_text = NULL;
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		event = g_async_queue_pop(events);
@@ -550,6 +548,8 @@ static void *janus_gelfevh_handler(void *data) {
 		/* Handle event */
 		while(TRUE) {
 			/* Add custom fields */
+			json_t *output = json_object();
+
 			int type = json_integer_value(json_object_get(event, "type"));
 			const char *short_message = janus_events_type_to_name(type);
 			json_t *microtimestamp = json_object_get(event, "timestamp");
@@ -567,19 +567,16 @@ static void *janus_gelfevh_handler(void *data) {
 			json_object_set(output, "version", json_string("1.1"));
 			json_object_set(output, "level", json_object_get(event, "type"));
 			json_object_set(output, "short_message", json_string(short_message));
-			json_object_set(output, "full_message", json_object_get(event, "event"));
+			json_object_set(output, "full_message", event);
 
-			/* Just convert to string... */
-			event_text = json_dumps(output, json_format);
-			if(janus_gelfevh_send(event_text) < 0) {
-				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", event_text);
+			if(janus_gelfevh_send(json_dumps(output, json_format)) < 0) {
+				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", json_dumps(output, json_format));
 			}
+			json_decref(output);
+			output = NULL;
+
 			break;
 		}
-		/* Done, let's unref the event */
-		json_decref(output);
-		g_free(event_text);
-		output = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Leaving GELF Event handler thread\n");
 	return NULL;
