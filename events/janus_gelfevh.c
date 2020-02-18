@@ -567,7 +567,7 @@ static void *janus_gelfevh_handler(void *data) {
 			json_object_set(output, "version", json_string("1.1"));
 			json_object_set(output, "level", json_object_get(event, "type"));
 			json_object_set(output, "short_message", json_string(short_message));
-			json_object_set(output, "full_message", json_object_get(event, "event"));
+			json_object_set(output, "full_message", event);
 
 			if(janus_gelfevh_send(json_dumps(output, json_format)) < 0) {
 				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", json_dumps(output, json_format));
