@@ -11,6 +11,7 @@
 # want to only bind to IPv4 addresses (e.g., because your system does not
 # support IPv6), you should set the web server 'ip' property to '0.0.0.0'.
 general: {
+	#events = true					# Whether to notify event handlers about transport events (default=true)
 	json = "indented"				# Whether the JSON messages should be indented (default),
 									# plain (no indentation) or compact (no indentation and no spaces)
 	base_path = "/janus"			# Base path to bind to in the web server (plain HTTP only)
