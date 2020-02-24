@@ -5,6 +5,7 @@
 general: {
 	enabled = false					# Whether to enable the Unix Sockets interface
 									# for Janus API clients
+	#events = true					# Whether to notify event handlers about transport events (default=true)
 	json = "indented"				# Whether the JSON messages should be indented (default),
 									# plain (no indentation) or compact (no indentation and no spaces)
 	#path = "/path/to/ux-janusapi"	# Path to bind to (Janus API)

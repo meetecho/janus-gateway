@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.9.0] - 2020-02-21
+
+- Refactored core-plugin callbacks
+- Added RTP extensions termination
+- Removed requirement to enable ICE Lite to use ICE-TCP, even though it may cause issues (thanks @sjkummer!)
+- Added support for transport-wide CC on outgoing streams (feedback still unused, though)
+- Dynamically update NACK queue size depending on RTT
+- Fixed risk of RTP header memory misalignment when dealing with rtx packets
+- Users muted in AudioBridge by an admin are now notified as well (thanks @klanjabrik!)
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.8.2] - 2020-02-04
 
 - Added Travis CI integration (thanks @fippo for kickstarting it!)
