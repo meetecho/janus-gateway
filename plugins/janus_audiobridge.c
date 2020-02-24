@@ -2724,9 +2724,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			g_hash_table_iter_init(&iter, audiobridge->participants);
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_audiobridge_participant *p = value;
-				if(p == participant) {
-					continue;	/* Skip the new participant itself */
-				}
 				JANUS_LOG(LOG_VERB, "Notifying participant %s (%s)\n", p->user_id_str, p->display ? p->display : "??");
 				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -2737,7 +2734,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
-			json_object_set_new(info, "event", json_string("muted"));
+			json_object_set_new(info, "event", json_string(request_text));
 			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(info, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
 			gateway->notify_event(&janus_audiobridge_plugin, session ? session->handle : NULL, info);

@@ -798,8 +798,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 		janus_ice_tcp_enabled = FALSE;
 #else
 		if(!janus_ice_lite_enabled) {
-			JANUS_LOG(LOG_WARN, "ICE-TCP only works in libnice if you enable ICE Lite too: disabling ICE-TCP support\n");
-			janus_ice_tcp_enabled = FALSE;
+			JANUS_LOG(LOG_WARN, "You may experience problems when having ICE-TCP enabled without having ICE Lite enabled too in libnice\n");
 		}
 #endif
 	}
@@ -2351,14 +2350,11 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					header->ssrc = htonl(packet_ssrc);
 					if(plen > 0) {
 						memcpy(&header->seq_number, payload, 2);
-						/* Finally, remove the original sequence number from the payload: rather than moving
-						 * the whole payload back two bytes, we shift the header forward (less bytes to move) */
+						/* Finally, remove the original sequence number from the payload: move the whole
+						 * payload back two bytes rather than shifting the header forward (avoid misaligned access) */
 						buflen -= 2;
 						plen -= 2;
-						size_t hsize = payload-buf;
-						memmove(buf+2, buf, hsize);
-						buf += 2;
-						payload +=2;
+						memmove(payload, payload+2, plen);
 						header = (janus_rtp_header *)buf;
 						if(stream->rid_ext_id > 1 && stream->ridrtx_ext_id > 1) {
 							/* Replace the 'repaired' extension ID as well with the 'regular' one */
@@ -3528,7 +3524,7 @@ static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstp
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	janus_ice_stream *stream = handle->stream;
-	if(stream && stream->video_send && stream->do_transport_wide_cc) {
+	if(stream && stream->video_recv && stream->do_transport_wide_cc) {
 		/* Create a transport wide feedback message */
 		size_t size = 1300;
 		char rtcpbuf[1300];
@@ -4394,7 +4390,9 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
 	int origext = header->extension;
 	header->extension = 0;
 	/* Add core and plugin extensions, if any */
-	if(handle->stream->mid_ext_id > 0) {
+	if((packet->video && handle->stream->transport_wide_cc_ext_id > 0) || handle->stream->mid_ext_id > 0 ||
+			(!packet->video && packet->extensions.audio_level != -1 && handle->stream->audiolevel_ext_id > 0) ||
+			(packet->video && packet->extensions.video_rotation != -1 && handle->stream->videoorientation_ext_id > 0)) {
 		header->extension = 1;
 		memset(extensions, 0, sizeof(extensions));
 		janus_rtp_header_extension *extheader = (janus_rtp_header_extension *)extensions;
