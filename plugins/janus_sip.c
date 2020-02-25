@@ -3292,7 +3292,7 @@ static void *janus_sip_handler(void *data) {
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 				}
 				/* Any custom headers we should include? (e.g., Replaces) */
-				if(transfer->custom_headers != NULL) {
+				if(transfer != NULL && transfer->custom_headers != NULL) {
 					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
