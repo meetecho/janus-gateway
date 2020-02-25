@@ -175,7 +175,7 @@ static janus_eventhandler janus_fake_eventhandler_plugin =
 #define JANUS_EVENT_SUBTYPE_WEBRTC_ICE		1
 /*! \brief WebRTC event subtypes: local candidate */
 #define JANUS_EVENT_SUBTYPE_WEBRTC_LCAND	2
-/*! \brief WebRTC event subtypes: local candidate */
+/*! \brief WebRTC event subtypes: remote candidate */
 #define JANUS_EVENT_SUBTYPE_WEBRTC_RCAND	3
 /*! \brief WebRTC event subtypes: selected pair */
 #define JANUS_EVENT_SUBTYPE_WEBRTC_PAIR		4
