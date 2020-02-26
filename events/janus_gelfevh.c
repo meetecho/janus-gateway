@@ -4,12 +4,12 @@
  * \brief  Janus GelfEventHandler plugin
  * \details  This is a GELF event handler plugin for Janus, which is supposed 
  * to send json events to GELF (Graylog logger). Necessary headers are prepended.
- * For sending, you can use TCP which is not recomanded in case there will be
+ * For sending, you can use TCP which is not recommended in case there will be
  * a lot of messages. There is also UDP support, but you need to limit the payload 
  * size with max_message_len + remember to leave space for 12 bytes for special 
  * headers. UDP messages will be chunked automatically.
  * There is also compression available for UDP protocol, to save network bandwith
- * for cpu sacrifice. This is not available for TCP due to GELF limitations
+ * while using a bit more CPU. This is not available for TCP due to GELF limitations
  *
  * \ingroup eventhandlers
  * \ref eventhandlers
@@ -26,7 +26,6 @@
 #include "../events.h"
 #include <netdb.h>
 #include <errno.h>
-#include <sys/time.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -37,7 +36,7 @@
 #define JANUS_GELFEVH_VERSION_STRING 	"0.0.1"
 #define JANUS_GELFEVH_DESCRIPTION 		"This is event handler plugin for Janus, which forwards events via TCP/UDP to GELF server."
 #define JANUS_GELFEVH_NAME 				"JANUS GelfEventHandler plugin"
-#define JANUS_GELFEVH_AUTHOR 			"Meetecho s.r.l."
+#define JANUS_GELFEVH_AUTHOR 			"Mirko Brankovic <mirkobrankovic@gmail.com>"
 #define JANUS_GELFEVH_PACKAGE			"janus.eventhandler.gelfevh"
 
 #define MAX_GELF_CHUNKS 				128
@@ -186,11 +185,11 @@ static int janus_gelfevh_send(char *message) {
 		JANUS_LOG(LOG_WARN, "Message is NULL, not sending to GELF!\n");
 		return -1;
 	}
-	/* TCP */
 	if(janus_gelfevh_socket_type == 1) {
+		/* TCP */
 		unsigned int out_bytes = 0;
 		while (out_bytes < strlen(message)+1) {
-			int n = write(sockfd, message, strlen(message) + 1);
+			int n = send(sockfd, message, strlen(message) + 1);
 			if (n < 0){
 				JANUS_LOG(LOG_WARN, "Unable to send message: %s\n", strerror(errno));
 				close(sockfd);
@@ -203,9 +202,9 @@ static int janus_gelfevh_send(char *message) {
 				out_bytes += n;
 			}
 		}
-	/* UDP chunking with headers */
+	
 	} else {
-		/* Check if we need to compress the data */
+		/* UDP chunking with headers. Check if we need to compress the data */
 		int len = strlen(message);
 		char *buf = message;
 		if(compress) {
@@ -215,7 +214,7 @@ static int janus_gelfevh_send(char *message) {
 				message, strlen(message),
 				compressed_text, sizeof(compressed_text));
 			if(compressed_len == 0) {
-				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(message));
+				JANUS_LOG(LOG_WARN, "Failed to compress event (%zu bytes). Sending message uncompressed\n", strlen(message));
 				/* Sending message uncompressed */
 			} else {
 				len = compressed_len;
@@ -225,14 +224,14 @@ static int janus_gelfevh_send(char *message) {
 
 		int total = len / max_gelf_msg_len + 1;
 		if (total > MAX_GELF_CHUNKS) {
-			JANUS_LOG(LOG_WARN, "GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
+			JANUS_LOG(LOG_ERR, "Event not sent! GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 			return -1;
 		}
 		/* do we need to chunk the message */
 		if(total == 1) {
-			int n = write(sockfd, buf, len);
+			int n = send(sockfd, buf, len);
 			if(n < 0) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
+				JANUS_LOG(LOG_ERR, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
 				return -1;
 			}
 			return 1;
@@ -241,7 +240,7 @@ static int janus_gelfevh_send(char *message) {
 			char *rnd = randstring(8);
 			for (int i = 0; i < total; i++) {
 				int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
-				/* prepend the necessary headers (imitate TCP) */
+				/* Prepend the necessary headers (imitate TCP) */
 				char chunk[bytesToSend + 12];
 				chunk[0] = 0x1e;
 				chunk[1] = 0x0f;
@@ -251,7 +250,7 @@ static int janus_gelfevh_send(char *message) {
 				char *head = chunk;
 				memcpy(head+12, buf, bytesToSend);
 				buf += bytesToSend;
-				int n = write(sockfd, head, bytesToSend + 12);
+				int n = send(sockfd, head, bytesToSend + 12);
 				if(n < 0) {
 					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
 					return -1;
@@ -318,7 +317,7 @@ int janus_gelfevh_init(const char *config_path) {
 			}
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
-		if (item && item->value) {
+		if (item && item->value && ) {
 			int mml = atoi(item->value);
 			max_gelf_msg_len = mml;
 		}
@@ -556,12 +555,8 @@ static void *janus_gelfevh_handler(void *data) {
 			if(microtimestamp && json_is_integer(microtimestamp)) {
 				double created_timestamp = (double)json_integer_value(microtimestamp) / 1000000;
 				json_object_set(output, "timestamp", json_real(created_timestamp));
-			}
-			else {
-				struct timeval t;
-				gettimeofday(&t, NULL);
-				double micro_timestamp = (double)(1000000 * t.tv_sec + t.tv_usec) / 1000000;
-				json_object_set(output, "timestamp", json_real(micro_timestamp));
+			} else {
+				json_object_set(output, "timestamp", json_real(janus_get_real_time()));
 			}
 			json_object_set(output, "host", json_object_get(event, "emitter"));
 			json_object_set(output, "version", json_string("1.1"));
