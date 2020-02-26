@@ -4952,7 +4952,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Set the payload type */
 	packet->data->type = participant->opus_pt;
 	/* Fix sequence number and timestamp (room switching may be involved) */
-	janus_rtp_header_update(packet->data, &participant->context, FALSE, OPUS_SAMPLES);
+	janus_rtp_header_update(packet->data, &participant->context, FALSE, 0);
 	if(gateway != NULL) {
 		janus_plugin_rtp rtp = { .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
 		janus_plugin_rtp_extensions_reset(&rtp.extensions);
