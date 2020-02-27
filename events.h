@@ -34,8 +34,9 @@ gboolean janus_events_is_enabled(void);
  * @note According to the type of event to notify, different arguments may
  * be required and used in order to prepare the actual object to pass to handlers.
  * @param[in] type Type of the event to notify
+ * @param[in] subtype Subtype of the event to notify, where applicable (0 if not)
  * @param[in] session_id Janus session identifier this event refers to */
-void janus_events_notify_handlers(int type, guint64 session_id, ...);
+void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...);
 
 /*! \brief Helper method to change the mask of events a handler is interested in
  * @note Every time this is called, the mask is resetted, which means that to
