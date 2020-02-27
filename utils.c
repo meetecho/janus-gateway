@@ -742,7 +742,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 16)
+	if(!buffer || len < 6)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;
