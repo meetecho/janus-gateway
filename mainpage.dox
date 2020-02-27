@@ -43,7 +43,8 @@
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page. Event handler
- * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
+ * plugins can also be used for the purpose: refer to the \ref eventhandlers
+ * and, for more developer oriented info, to the \ref eventhandlerapi
  * page if you're interested in creating your own. For what concerns logging,
  * out of the box Janus supports printing the output to \c stdout and saving
  * to a local file, but logging can also be extended via additional plugins:
