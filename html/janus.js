@@ -1262,7 +1262,11 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(pluginHandle);
 			},
 			error: function(textStatus, errorThrown) {
-				Janus.error(textStatus + ":", errorThrown);	// FIXME
+				Janus.error(textStatus + ":", errorThrown);	// FIXME				
+				if(errorThrown === "")
+					callbacks.error(textStatus + ": Is the server down?");
+				else
+					callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
 	}
