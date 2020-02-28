@@ -106,20 +106,26 @@ static void janus_gelfevh_event_free(json_t *event) {
 /* GELF backend to send the events to */
 static char *backend = NULL;
 static char *port = NULL;
+
+typedef enum janus_gelfevh_socket_type {
+	TCP = 1,
+	UDP = 2
+} janus_gelfevh_socket_type;
+
 static int max_gelf_msg_len = 500;
-static int janus_gelfevh_socket_type = 1;
 static int sockfd;
+/* Set TCP as Default transport */
+static janus_gelfevh_socket_type transport = TCP;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
-};
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}};
 static struct janus_json_parameter tweak_parameters[] = {
 	{"events", JSON_STRING, 0},
 	{"backend", JSON_STRING, 0},
 	{"port", JSON_STRING, 0},
 	{"max_gelf_msg_len", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"janus_gelfevh_socket_type", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"janus_gelfevh_socket_type", JSON_STRING, 0}
 };
 /* Error codes (for the tweaking via Admin API */
 #define JANUS_GELFEVH_ERROR_INVALID_REQUEST		411
@@ -161,7 +167,7 @@ static int janus_gelfevh_connect(void) {
 	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
-    if((sockfd = socket(AF_INET, janus_gelfevh_socket_type, 0)) < 0 ) {
+    if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
 		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
 		return -1;
 	}
@@ -185,11 +191,11 @@ static int janus_gelfevh_send(char *message) {
 		JANUS_LOG(LOG_WARN, "Message is NULL, not sending to GELF!\n");
 		return -1;
 	}
-	if(janus_gelfevh_socket_type == 1) {
+	if(transport == TCP) {
 		/* TCP */
 		unsigned int out_bytes = 0;
 		while (out_bytes < strlen(message)+1) {
-			int n = send(sockfd, message, strlen(message) + 1);
+			int n = send(sockfd, message, strlen(message) + 1, 0);
 			if (n < 0){
 				JANUS_LOG(LOG_WARN, "Unable to send message: %s\n", strerror(errno));
 				close(sockfd);
@@ -229,7 +235,7 @@ static int janus_gelfevh_send(char *message) {
 		}
 		/* do we need to chunk the message */
 		if(total == 1) {
-			int n = send(sockfd, buf, len);
+			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
 				JANUS_LOG(LOG_ERR, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
 				return -1;
@@ -250,7 +256,7 @@ static int janus_gelfevh_send(char *message) {
 				char *head = chunk;
 				memcpy(head+12, buf, bytesToSend);
 				buf += bytesToSend;
-				int n = send(sockfd, head, bytesToSend + 12);
+				int n = send(sockfd, head, bytesToSend + 12, 0);
 				if(n < 0) {
 					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
 					return -1;
@@ -313,13 +319,16 @@ int janus_gelfevh_init(const char *config_path) {
 		item = janus_config_get(config, config_general, janus_config_type_item, "protocol");
 		if (item && item->value) {
 			if (strcasecmp(item->value, "udp") == 0){
-				janus_gelfevh_socket_type = 2;
+				transport = UDP;
 			}
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
-		if (item && item->value && ) {
-			int mml = atoi(item->value);
-			max_gelf_msg_len = mml;
+		if (item && item->value) {
+			if(atoi(item->value) > 0) {
+				JANUS_LOG(LOG_WARN, "Missing or invalid max_message_len, using default: %d\n", max_gelf_msg_len);
+			} else {
+				max_gelf_msg_len = atoi(item->value);
+			}
 		}
 		/* Which events should we subscribe to? */
 		item = janus_config_get(config, config_general, janus_config_type_item, "events");
@@ -488,7 +497,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if (json_object_get(request, "max_message_len"))
 			max_gelf_msg_len = json_integer_value(json_object_get(request, "max_message_len"));
 		if (strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0){
-			janus_gelfevh_socket_type = 2;
+			transport = UDP;
 		}
 		if(!req_backend || !req_port) {
 			/* Invalid backend address or port */
