@@ -88,6 +88,10 @@ general: {
 									# passed as port for a mountpoint (default=10000-60000)
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
+
+	# By default, integers are used as a unique ID for both mountpoints. In case
+	# you want to use strings instead (e.g., a UUID), set string_ids to true.
+	#string_ids = true
 }
 
 gstreamer-sample: {
