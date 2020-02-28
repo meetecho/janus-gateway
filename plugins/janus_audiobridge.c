@@ -1506,6 +1506,15 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				/* Make sure the ID is completely numeric */
+				char room_id_str[30];
+				g_snprintf(room_id_str, sizeof(room_id_str), "%"SCNu64, audiobridge->room_id);
+				if(strcmp(room_num, room_id_str)) {
+					JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, ID '%s' is not numeric...\n", room_num);
+					g_free(audiobridge);
+					cl = cl->next;
+					continue;
+				}
 			}
 			/* Let's make sure the room doesn't exist already */
 			janus_mutex_lock(&rooms_mutex);
