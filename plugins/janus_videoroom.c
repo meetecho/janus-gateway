@@ -2582,7 +2582,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
 			if(participant && participant->room) {
 				janus_videoroom *room = participant->room;
-				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+				json_object_set_new(info, "room", room ?
+					(string_ids ? json_string(room->room_id_str) : json_integer(room->room_id)) : NULL);
 				json_object_set_new(info, "id", string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 				json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
 				if(participant->display)
@@ -2624,7 +2625,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				janus_videoroom_publisher *feed = (janus_videoroom_publisher *)participant->feed;
 				if(feed && feed->room) {
 					janus_videoroom *room = feed->room;
-					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+					json_object_set_new(info, "room", room ?
+						(string_ids ? json_string(room->room_id_str) : json_integer(room->room_id)) : NULL);
 					json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
 					json_object_set_new(info, "feed_id", string_ids ? json_string(feed->user_id_str) : json_integer(feed->user_id));
 					if(feed->display)
