@@ -4747,13 +4747,15 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			if(IN_MULTICAST(ntohl(mcast))) {
 				fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 				if(fd < 0) {
-					JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s...\n", mountpointname, medianame);
+					JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s... %d (%s)\n",
+						mountpointname, medianame, errno, strerror(errno));
 					break;
 				}
 #ifdef IP_MULTICAST_ALL
 				int mc_all = 0;
 				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
-					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
+					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed... %d (%s)\n",
+						mountpointname, listenername, errno, strerror(errno));
 					close(fd);
 					janus_mutex_unlock(&fd_mutex);
 					return -1;
@@ -4778,7 +4780,8 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					JANUS_LOG(LOG_WARN, "[%s] No multicast interface for: %s. This may not work as expected if you have multiple network devices (NICs)\n", mountpointname, listenername);
 				}
 				if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
-					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
+					JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed... %d (%s)\n",
+						mountpointname, listenername, errno, strerror(errno));
 					close(fd);
 					janus_mutex_unlock(&fd_mutex);
 					return -1;
@@ -4805,7 +4808,8 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 		if(!use_range && IN_MULTICAST(ntohl(mcast))) {
 			int reuse = 1;
 			if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
-				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, listenername);
+				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed... %d (%s)\n",
+					mountpointname, listenername, errno, strerror(errno));
 				close(fd);
 				janus_mutex_unlock(&fd_mutex);
 				return -1;
@@ -4835,8 +4839,14 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 		if(fd == -1) {
 			fd = socket(family == AF_INET ? AF_INET : AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 			int v6only = 0;
-			if(fd < 0 || (family != AF_INET && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
-				JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s...\n", mountpointname, medianame);
+			if(fd < 0) {
+				JANUS_LOG(LOG_ERR, "[%s] Cannot create socket for %s... %d (%s)\n",
+					mountpointname, medianame, errno, strerror(errno));
+				break;
+			}
+			if(family != AF_INET && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				JANUS_LOG(LOG_ERR, "[%s] setsockopt on socket failed for %s... %d (%s)\n",
+					mountpointname, medianame, errno, strerror(errno));
 				break;
 			}
 		}
@@ -4845,7 +4855,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			close(fd);
 			fd = -1;
 			if(!quiet) {
-				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d): %d (%s)...\n",
+				JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)... %d (%s)\n",
 					mountpointname, medianame, port, errno, strerror(errno));
 			}
 			if(!use_range)	/* Asked for a specific port but it's not available, give up */
