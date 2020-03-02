@@ -1779,16 +1779,6 @@ function Janus(gatewayCallbacks) {
 						pluginHandle.onremotestream(config.remoteStream);
 					}
 				};
-				event.track.onmute = event.track.onended;
-				event.track.onunmute = function(ev) {
-					Janus.log("Remote track flowing again:", ev);
-					try {
-						config.remoteStream.addTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
-					} catch(e) {
-						Janus.error(e);
-					};
-				};
 			};
 		}
 		if(addTracks && stream) {
