@@ -46,6 +46,6 @@ The scripts must be invoked like this:
 ./test_aiortc.sh echo.py ws://localhost:8188/
 ```
 
-It will start a Janus instance in the background taking the binary files from the parent directory.
-Then it will wait for 3 seconds before invoking the Python script specified in the first parameter.
+It will start a Janus instance in the background taking the binary files from the Janus sources directory.
+Then it will wait for some seconds before invoking the Python script specified in the first parameter.
 Finally it will check the exit status of the Python script and kill the Janus instance.
