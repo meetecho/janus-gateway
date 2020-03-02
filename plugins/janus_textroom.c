@@ -2103,7 +2103,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such participant %s in room %s\n", user_id, room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_USER;
-			g_snprintf(error_cause, 512, "No such user %s in room %"SCNu64, user_id, room_id);
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id, room_id_str);
 			goto msg_response;
 		}
 		/* Notify all participants */
@@ -2604,7 +2604,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, room_id);
+			g_snprintf(cat, BUFSIZ, "room-%s", room_id_str);
 			/* Remove the old category first */
 			janus_config_remove(config, NULL, cat);
 			/* Now write the room details again */
