@@ -10,6 +10,7 @@
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
+char *janus_log_global_prefix = NULL;
 int lock_debug = 0;
 int refcount_debug = 0;
 

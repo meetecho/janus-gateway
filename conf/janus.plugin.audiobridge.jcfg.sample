@@ -37,6 +37,10 @@ general: {
 									# .wav --> .wav.tmp until the file is closed
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
+
+	# By default, integers are used as a unique ID for both rooms and participants.
+	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
+	#string_ids = true
 }
 
 room-1234: {

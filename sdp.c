@@ -808,7 +808,8 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					json_object_set_new(info, "remote-candidate", json_string(candidate));
 					json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
 					json_object_set_new(info, "component_id", json_integer(component->component_id));
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, handle->opaque_id, info);
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, JANUS_EVENT_SUBTYPE_WEBRTC_RCAND,
+						session->session_id, handle->handle_id, handle->opaque_id, info);
 				}
 				/* See if we need to process this */
 				if(trickle) {
