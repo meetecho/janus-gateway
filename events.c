@@ -82,7 +82,7 @@ gboolean janus_events_is_enabled(void) {
 	return eventsenabled;
 }
 
-void janus_events_notify_handlers(int type, guint64 session_id, ...) {
+void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...) {
 	/* This method has a variable list of arguments, depending on the event type */
 	va_list args;
 	va_start(args, session_id);
@@ -133,6 +133,8 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	if(server != NULL)
 		json_object_set_new(event, "emitter", json_string(server));
 	json_object_set_new(event, "type", json_integer(type));
+	if(subtype > 0)
+		json_object_set_new(event, "subtype", json_integer(subtype));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
 	if(type != JANUS_EVENT_TYPE_CORE && type != JANUS_EVENT_TYPE_EXTERNAL) {
 		/* Core and Admin API originated events don't have a session ID */

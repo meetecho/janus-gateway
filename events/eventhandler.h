@@ -150,6 +150,47 @@ static janus_eventhandler janus_fake_eventhandler_plugin =
 #define JANUS_EVENT_TYPE_ALL		(0xffffffff)
 ///@}
 
+/** @name Subtype of event types Janus could notify
+ * @details Some events, like JANUS_EVENT_TYPE_WEBRTC, don't have a uniform syntax:
+ * an event related to a new local candidate looks very different from an event
+ * related to, e.g., a selected pair or a DTLS state, all of which belong to the
+ * same category of \c webrtc type events. In order to simplify the management of
+ * events in strongly typed languages, events can contain a \c subtype property
+ * as well: this property is optional, because not all event types need this finer
+ * grain of detail. At the time of writing, subtypes are only available for
+ * JANUS_EVENT_TYPE_CORE ("core"), JANUS_EVENT_TYPE_WEBRTC ("webrtc") and
+ * JANUS_EVENT_TYPE_MEDIA ("media") types.
+ * @note Unlike the type, subtypes are not a mask: as a consequence, you cannot
+ * filter subtypes using the Event Handler plugin API, only types. Besides,
+ * there can be overlaps between subtypes related to
+ */
+///@{
+/*! \brief No subtype */
+#define JANUS_EVENT_SUBTYPE_NONE			0
+/*! \brief Core event subtypes: startup */
+#define JANUS_EVENT_SUBTYPE_CORE_STARTUP	1
+/*! \brief Core event subtypes: shutdown */
+#define JANUS_EVENT_SUBTYPE_CORE_SHUTDOWN	2
+/*! \brief WebRTC event subtypes: ICE state */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_ICE		1
+/*! \brief WebRTC event subtypes: local candidate */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_LCAND	2
+/*! \brief WebRTC event subtypes: remote candidate */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_RCAND	3
+/*! \brief WebRTC event subtypes: selected pair */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_PAIR		4
+/*! \brief WebRTC event subtypes: DTLS state */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_DTLS		5
+/*! \brief WebRTC event subtypes: PeerConnection state */
+#define JANUS_EVENT_SUBTYPE_WEBRTC_STATE	6
+/*! \brief Media event subtypes: media state */
+#define JANUS_EVENT_SUBTYPE_MEDIA_STATE		1
+/*! \brief Media event subtypes: slow link */
+#define JANUS_EVENT_SUBTYPE_MEDIA_SLOWLINK	2
+/*! \brief Media event subtypes: stats */
+#define JANUS_EVENT_SUBTYPE_MEDIA_STATS		3
+///@}
+
 #define JANUS_EVENTHANDLER_INIT(...) {			\
 		.init = NULL,							\
 		.destroy = NULL,						\

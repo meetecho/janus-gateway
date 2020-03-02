@@ -758,7 +758,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				json_decref(event);
 			}
 			/* If we got here, update the RTP header and send the packet */
-			janus_rtp_header_update(header, &peer->context, TRUE, 4500);
+			janus_rtp_header_update(header, &peer->context, TRUE, 0);
 			if(session->vcodec == JANUS_VIDEOCODEC_VP8) {
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, len, &plen);
