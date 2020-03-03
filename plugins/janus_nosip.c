@@ -1871,7 +1871,7 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 }
 
 static int janus_nosip_bind_socket(int fd, int port) {
-	struct sockaddr_in rtp_address;
+	struct sockaddr_in rtp_address = { 0 };
 	rtp_address.sin_family = AF_INET;
 	rtp_address.sin_port = htons(port);
 	inet_pton(AF_INET, local_ip, &rtp_address.sin_addr.s_addr);
@@ -2139,7 +2139,7 @@ static void *janus_nosip_relay_thread(void *data) {
 
 	/* File descriptors */
 	socklen_t addrlen;
-	struct sockaddr_in remote;
+	struct sockaddr_in remote = { 0 };
 	int resfd = 0, bytes = 0, pollerrs = 0;
 	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
@@ -2163,12 +2163,12 @@ static void *janus_nosip_relay_thread(void *data) {
 			session->media.updated = FALSE;
 
 			have_audio_server_ip = session->media.remote_audio_ip != NULL;
-			struct sockaddr_in audio_server_addr;
+			struct sockaddr_in audio_server_addr = { 0 };
 			memset(&audio_server_addr, 0, sizeof(struct sockaddr_in));
 			audio_server_addr.sin_family = AF_INET;
 
 			have_video_server_ip = session->media.remote_video_ip != NULL;
-			struct sockaddr_in video_server_addr;
+			struct sockaddr_in video_server_addr = { 0 };
 			memset(&video_server_addr, 0, sizeof(struct sockaddr_in));
 			video_server_addr.sin_family = AF_INET;
 
