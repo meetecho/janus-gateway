@@ -127,8 +127,8 @@ general: {
 		# files to (e.g., recordings, pcap captures and the like). In order
 		# to avoid people can mess with folders they're not supposed to,
 		# you can configure an array of folders that Janus should prevent
-		# creating files in. By default no folder is protected, unless the
-		# 'protected_folder' property below is uncommented and configured.
+		# creating files in. If the 'protected_folder' property below is
+		# commented, no folder is protected.
 		# Notice that at the moment this only covers attempts to start
 		# an .mjr recording and pcap/text2pcap packet captures.
 	protected_folders = [
@@ -141,7 +141,6 @@ general: {
 		"/lib32",
 		"/lib64",
 		"/proc",
-		"/root",
 		"/sbin",
 		"/sys",
 		"/usr",
