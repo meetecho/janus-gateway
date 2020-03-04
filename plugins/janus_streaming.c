@@ -6433,7 +6433,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 #else
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc,
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp,
