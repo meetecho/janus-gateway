@@ -858,8 +858,8 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 		return -1;
 	}
 	struct sockaddr *address = NULL, *remote = NULL;
-	struct sockaddr_in address4, remote4;
-	struct sockaddr_in6 address6, remote6;
+	struct sockaddr_in address4 = { 0 }, remote4 = { 0 };
+	struct sockaddr_in6 address6 = { 0 }, remote6 = { 0 };
 	socklen_t addrlen = 0;
 	if(addr->family == AF_INET) {
 		memset(&address4, 0, sizeof(address4));

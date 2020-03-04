@@ -4849,8 +4849,8 @@ error:
 static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_network_address *iface,
 		const char *listenername, const char *medianame, const char *mountpointname, gboolean quiet) {
 	janus_mutex_lock(&fd_mutex);
-	struct sockaddr_in address;
-	struct sockaddr_in6 address6;
+	struct sockaddr_in address = { 0 };
+	struct sockaddr_in6 address6 = { 0 };
 	janus_network_address_string_buffer address_representation;
 
 	uint16_t rtp_port_next = rtp_range_slider; 					/* Read global slider */
@@ -5043,7 +5043,7 @@ static int janus_streaming_allocate_port_pair(const char *name, const char *medi
 
 /* Helper to return fd port */
 static int janus_streaming_get_fd_port(int fd) {
-	struct sockaddr_in6 server;
+	struct sockaddr_in6 server = { 0 };
 	socklen_t len = sizeof(server);
 	if(getsockname(fd, &server, &len) == -1) {
 		return -1;
@@ -6220,8 +6220,8 @@ static void janus_streaming_rtsp_latch(int fd, char *host, int port, struct sock
 	} else {
 		freeaddrinfo(res);
 		/* Prepare the recipient */
-		struct sockaddr_in remote4;
-		struct sockaddr_in6 remote6;
+		struct sockaddr_in remote4 = { 0 };
+		struct sockaddr_in6 remote6 = { 0 };
 		socklen_t addrlen = 0;
 		if(addr.family == AF_INET) {
 			memset(&remote4, 0, sizeof(remote4));
@@ -6254,7 +6254,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 	if(source == NULL || source->curldata == NULL)
 		return -1;
 	/* First of all, send a latching packet to the RTSP server port(s) */
-	struct sockaddr_in6 remote;
+	struct sockaddr_in6 remote = { 0 };
 	if(source->remote_audio_port > 0 && source->audio_fd >= 0) {
 		JANUS_LOG(LOG_VERB, "RTSP audio latching: %s:%d\n", source->rtsp_ahost, source->remote_audio_port);
 		janus_streaming_rtsp_latch(source->audio_fd, source->rtsp_ahost,
