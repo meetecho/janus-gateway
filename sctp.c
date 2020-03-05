@@ -151,7 +151,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 
 	struct socket *sock = NULL;
 	unsigned int i = 0;
-	struct sockaddr_conn sconn;
+	struct sockaddr_conn sconn = { 0 };
 
 	/* Now go on with SCTP */
 	janus_sctp_channel *channel = NULL;
@@ -257,7 +257,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 
 	/* Operating as client */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Connecting the SCTP association\n", sctp->handle_id);
-	struct sockaddr_conn rconn;
+	struct sockaddr_conn rconn = { 0 };
 	memset(&rconn, 0, sizeof(struct sockaddr_conn));
 	rconn.sconn_family = AF_CONN;
 	rconn.sconn_port = htons(sctp->remote_port);

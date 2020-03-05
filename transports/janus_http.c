@@ -288,8 +288,8 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	/* Any interface or IP address we need to limit ourselves to?
 	 * NOTE WELL: specifying an interface does NOT bind to all IPs associated
 	 * with that interface, but only to the first one that's detected */
-	static struct sockaddr_in addr;
-	struct sockaddr_in6 addr6;
+	static struct sockaddr_in addr = { 0 };
+	struct sockaddr_in6 addr6 = { 0 };
 	gboolean ipv6 = FALSE;
 	if(ip && strstr(ip, ":"))
 		ipv6 = TRUE;

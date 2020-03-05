@@ -1779,7 +1779,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 				errno, strerror(errno));
 			return 0;
 		}
-		struct sockaddr_in6 address;
+		struct sockaddr_in6 address = { 0 };
 		socklen_t len = sizeof(address);
 		memset(&address, 0, sizeof(address));
 		address.sin6_family = AF_INET6;

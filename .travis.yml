@@ -64,5 +64,9 @@ before_script:
   - pushd paho.mqtt.c && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE && make -j$(nproc) && sudo make install && popd
 
 script:
-  - ./autogen.sh && ./configure $JANUS_COMMON_OPTS $JANUS_CONFIG_OPTS && make -j$(nproc)
+  - ./autogen.sh
+  - if [ $LIBCURL = NO ]; then export LCURL=$(sudo find /usr -type f -name libcurl.pc); sudo mv "$LCURL" "$LCURL".bak; fi
+  - ./configure $JANUS_COMMON_OPTS $JANUS_CONFIG_OPTS
+  - if [ $LIBCURL = NO ]; then sudo mv "$LCURL".bak "$LCURL"; fi
+  - make -j$(nproc)
   - make check-fuzzers
