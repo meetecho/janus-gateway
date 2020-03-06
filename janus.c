@@ -3964,7 +3964,7 @@ gint main(int argc, char *argv[])
 	dir = opendir(path);
 	if(!dir) {
 		/* Not really fatal, we don't care and go on anyway: loggers are not fundamental */
-		JANUS_LOG(LOG_FATAL, "\tCouldn't access logger plugins folder...\n");
+		JANUS_LOG(LOG_INFO, "\tCouldn't access logger plugins folder...\n");
 	} else {
 		/* Any loggers to ignore? */
 		item = janus_config_get(config, config_loggers, janus_config_type_item, "disable");
@@ -4713,7 +4713,7 @@ gint main(int argc, char *argv[])
 		dir = opendir(path);
 		if(!dir) {
 			/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
-			JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
+			JANUS_LOG(LOG_INFO, "\tCouldn't access event handler plugins folder...\n");
 		} else {
 			item = janus_config_get(config, config_events, janus_config_type_item, "stats_period");
 			if(item && item->value) {
