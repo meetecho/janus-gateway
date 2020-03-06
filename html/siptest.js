@@ -227,8 +227,11 @@ $(document).ready(function() {
 											// Is this the result of a transfer?
 											var transfer = "";
 											var referredBy = result["referred_by"];
-											if(referredBy)
+											if(referredBy) {
 												transfer = " (referred by " + referredBy + ")";
+												transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
+												transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
+											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
 											var srtp = result["srtp"];
@@ -356,6 +359,8 @@ $(document).ready(function() {
 											var extra = ("referred by " + referredBy);
 											if(replaces)
 												extra += (", replaces call-ID " + replaces);
+											extra = extra.replace(new RegExp('<', 'g'), '&lt');
+											extra = extra.replace(new RegExp('>', 'g'), '&gt');
 											bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ")",
 												function(result) {
 													if(result) {
@@ -977,6 +982,8 @@ function addHelper(helperCreated) {
 							transfer = " (referred by " + referredBy + ")";
 						else if(!referredBy && replaces)
 							transfer = " (replaces call-ID " + replaces + ")";
+						transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
+						transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
 						// Any security offered? A missing "srtp" attribute means plain RTP
 						var rtpType = "";
 						var srtp = result["srtp"];
@@ -1110,6 +1117,8 @@ function addHelper(helperCreated) {
 						var extra = ("referred by " + referredBy);
 						if(replaces)
 							extra += (", replaces call-ID " + replaces);
+						extra = extra.replace(new RegExp('<', 'g'), '&lt');
+						extra = extra.replace(new RegExp('>', 'g'), '&gt');
 						bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ", helper " + helperId + ")",
 							function(result) {
 								if(result) {
