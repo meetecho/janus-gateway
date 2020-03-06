@@ -3283,16 +3283,10 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
-				if(transfer != NULL && transfer->nh_s != NULL) {
-					/* Send a 202 */
-					nua_respond(transfer->nh_s, 202, sip_status_phrase(202),
-						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
-					JANUS_LOG(LOG_VERB, "[%p] 202\n", transfer->nh_s);
+				if(transfer != NULL) {
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
-				}
-				/* Any custom headers we should include? (e.g., Replaces) */
-				if(transfer != NULL && transfer->custom_headers != NULL) {
+					/* Any custom headers we should include? (e.g., Replaces) */
 					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
@@ -3650,7 +3644,7 @@ static void *janus_sip_handler(void *data) {
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL && transfer->nh_s != NULL) {
-					/* Send an error response */
+					/* Send a NOTIFY with the error code */
 					int response_code = 486;
 					json_t *code_json = json_object_get(root, "code");
 					if(code_json)
@@ -3659,8 +3653,14 @@ static void *janus_sip_handler(void *data) {
 						JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline transfer\n");
 						response_code = 486;
 					}
-					nua_respond(transfer->nh_s, response_code, sip_status_phrase(response_code),
-						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
+					char content[100];
+					g_snprintf(content, sizeof(content), "SIP/2.0 %d %s", response_code, sip_status_phrase(response_code));
+					nua_notify(transfer->nh_s,
+						NUTAG_SUBSTATE(nua_substate_terminated),
+						SIPTAG_CONTENT_TYPE_STR("message/sipfrag"),
+						SIPTAG_PAYLOAD_STR(content),
+						NUTAG_WITH_SAVED(transfer->saved),
+						TAG_END());
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -4628,9 +4628,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 			JANUS_LOG(LOG_VERB, "Incoming REFER: %s (by %s, headers: %s)\n",
 				refer_to, referred_by ? referred_by : "unknown", custom_headers ? custom_headers : "unknown");
-			/* Send a 100 back */
-			nua_respond(nh, 100, sip_status_phrase(100), NUTAG_WITH_CURRENT(nua), TAG_END());
-			JANUS_LOG(LOG_VERB, "[%p] 100\n", nh);
+			/* Send a 202 back */
+			nua_respond(nh, 202, sip_status_phrase(202), NUTAG_WITH_CURRENT(nua), TAG_END());
+			JANUS_LOG(LOG_VERB, "[%p] 202\n", nh);
 			/* Take note of the session and NUA handle we got the REFER from (for NOTIFY) */
 			janus_mutex_lock(&sessions_mutex);
 			guint32 refer_id = 0;
