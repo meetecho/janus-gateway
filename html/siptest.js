@@ -830,7 +830,9 @@ function addHelper(helperCreated) {
 		'	<div class="row">' +
 		'		<div class="col-md-12">' +
 		'			<div class="col-md-6 container">' +
-		'				<span class="label label-info">Helper #' + helperId + '</span>' +
+		'				<span class="label label-info">Helper #' + helperId +
+		'					<i class="fa fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
+		'				</span>' +
 		'			</div>' +
 		'			<div class="col-md-6 container" id="phone' + helperId + '">' +
 		'				<div class="input-group margin-bottom-sm">' +
@@ -861,6 +863,11 @@ function addHelper(helperCreated) {
 		'	</div>' +
 		'</div>'
 	);
+	$('#rmhelper' + helperId).click(function() {
+		var hid = $(this).attr('id').split("rmhelper")[1];
+		console.log(hid);
+		removeHelper(hid);
+	});
 	// Attach to SIP plugin, but only register as an helper for the master session
 	janus.attach(
 		{
@@ -882,6 +889,7 @@ function addHelper(helperCreated) {
 			error: function(error) {
 				Janus.error("[Helper #" + helperId + "]   -- Error attaching plugin...", error);
 				bootbox.alert("  -- Error attaching plugin... " + error);
+				removeHelper(helperId);
 			},
 			consentDialog: function(on) {
 				Janus.debug("[Helper #" + helperId + "] Consent dialog should be " + (on ? "on" : "off") + " now");
@@ -925,9 +933,7 @@ function addHelper(helperCreated) {
 						Janus.warn("[Helper #" + helperId + "] Registration failed: " + result["code"] + " " + result["reason"]);
 						bootbox.alert(result["code"] + " " + result["reason"]);
 						// Get rid of the helper
-						helpers[helperId].detach();
-						delete helpers[helperId];
-						$('#sipcall' + helperId).remove();
+						removeHelper(helperId);
 						return;
 					}
 					if(event === 'registered') {
@@ -1263,4 +1269,13 @@ function addHelper(helperCreated) {
 			}
 		});
 
+}
+function removeHelper(helperId) {
+	if(helpers[helperId] && helpers[helperId].sipcall) {
+		// Detach from the helper's Janus handle
+		helpers[helperId].sipcall.detach();
+		delete helpers[helperId];
+		// Remove the related UI too
+		$('#sipcall'+helperId).remove();
+	}
 }
