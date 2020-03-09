@@ -2530,6 +2530,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	/* Cleaning up and removing the session is done in a lazy way */
 	if(!g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media_internal(handle);
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
@@ -2555,6 +2556,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			}
 			janus_videoroom_subscriber_destroy(s);
 		}
+		janus_mutex_lock(&sessions_mutex);
 		g_hash_table_remove(sessions, handle);
 	}
 	janus_mutex_unlock(&sessions_mutex);
