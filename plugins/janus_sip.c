@@ -2021,6 +2021,11 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			session->master = NULL;
 		}
 	}
+	/* If this session was involved in a transfer, get rid of the reference */
+	if(session->refer_id) {
+		g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
+		session->refer_id = 0;
+	}
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
 		nua_shutdown(session->stack->s_nua);
@@ -3284,6 +3289,11 @@ static void *janus_sip_handler(void *data) {
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL) {
+					if(session->refer_id > 0 && session->refer_id != refer_id) {
+						janus_mutex_lock(&sessions_mutex);
+						g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
+						janus_mutex_unlock(&sessions_mutex);
+					}
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
 					/* Any custom headers we should include? (e.g., Replaces) */
@@ -3645,13 +3655,13 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL && transfer->nh_s != NULL) {
 					/* Send a NOTIFY with the error code */
-					int response_code = 486;
+					int response_code = 603;
 					json_t *code_json = json_object_get(root, "code");
 					if(code_json)
 						response_code = json_integer_value(code_json);
 					if(response_code <= 399) {
-						JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline transfer\n");
-						response_code = 486;
+						JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 603 to decline transfer\n");
+						response_code = 603;
 					}
 					char content[100];
 					g_snprintf(content, sizeof(content), "SIP/2.0 %d %s", response_code, sip_status_phrase(response_code));
@@ -3674,8 +3684,14 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(result, "event", json_string("declining"));
 					json_object_set_new(result, "refer_id", json_integer(refer_id));
 					json_object_set_new(result, "code", json_integer(response_code));
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
+					janus_mutex_unlock(&sessions_mutex);
 					goto done;
 				} else {
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
+					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Wrong state (no transfer?)\n");
 					error_code = JANUS_SIP_ERROR_WRONG_STATE;
 					g_snprintf(error_cause, 512, "Wrong state (no transfer?)");
