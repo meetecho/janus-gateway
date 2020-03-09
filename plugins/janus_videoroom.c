@@ -2557,9 +2557,10 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			}
 			janus_videoroom_subscriber_destroy(s);
 		}
+		janus_mutex_lock(&sessions_mutex);
 		g_hash_table_remove(sessions, handle);
-	} else
-		janus_mutex_unlock(&sessions_mutex);
+	}
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
