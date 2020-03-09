@@ -672,8 +672,8 @@ room-<unique room ID>: {
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			10
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.10"
+#define JANUS_AUDIOBRIDGE_VERSION			11
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.11"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
