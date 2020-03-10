@@ -25,7 +25,7 @@ declare namespace JanusJS {
 
 	interface ConstuctorOptions {
 		server: string | string[];
-		iceServers?: string[];
+		iceServers?: RTCIceServer[];
 		ipv6?: boolean;
 		withCredentials?: boolean;
 		max_poll_events?: number;
