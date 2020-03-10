@@ -1429,7 +1429,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	/* Iterate on all mountpoints */
 	mountpoints = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_streaming_mountpoint_destroy);
-	mountpoints_temp = g_hash_table_new(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal);
+	mountpoints_temp = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+		(GDestroyNotify)g_free, NULL);
 	if(config != NULL) {
 		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {

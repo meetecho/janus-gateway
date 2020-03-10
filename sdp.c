@@ -796,11 +796,15 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 				c->password = g_strdup(stream->rpass);
 				if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE || c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 					added = nice_address_set_from_string(&c->base_addr, rrelip);
-					nice_address_set_port(&c->base_addr, rrelport);
+					if(added)
+						nice_address_set_port(&c->base_addr, rrelport);
+					
 				} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 					/* FIXME Do we really need the base address for TURN? */
 					added = nice_address_set_from_string(&c->base_addr, rrelip);
-					nice_address_set_port(&c->base_addr, rrelport);
+					if(added)
+						nice_address_set_port(&c->base_addr, rrelport);
+					
 				}
 				if(!added) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Invalid base address '%s', skipping %s candidate (%s)\n",

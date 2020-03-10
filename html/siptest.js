@@ -176,6 +176,7 @@ $(document).ready(function() {
 										bootbox.alert(error);
 										return;
 									}
+									var callId = msg["call_id"];
 									var result = msg["result"];
 									if(result !== null && result !== undefined && result["event"] !== undefined && result["event"] !== null) {
 										var event = result["event"];
@@ -198,6 +199,18 @@ $(document).ready(function() {
 											if(!registered) {
 												registered = true;
 												masterId = result["master_id"];
+												$('#server').parent().addClass('hide').hide();
+												$('#authuser').parent().addClass('hide').hide();
+												$('#displayname').parent().addClass('hide').hide();
+												$('#password').parent().addClass('hide').hide();
+												$('#register').parent().addClass('hide').hide();
+												$('#registerset').parent().addClass('hide').hide();
+												$('#username').parent().parent().append(
+													'<button id="addhelper" class="btn btn-xs btn-info pull-right" title="Add a new line">' +
+														'<i class="fa fa-plus"></i>' +
+													'</button>'
+												);
+												$('#addhelper').click(addHelper);
 												$('#phone').removeClass('hide').show();
 												$('#call').unbind('click').click(doCall);
 												$('#peer').focus();
@@ -210,6 +223,7 @@ $(document).ready(function() {
 												  .unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
+											sipcall.callId = callId;
 											var doAudio = true, doVideo = true;
 											var offerlessInvite = false;
 											if(jsep !== null && jsep !== undefined) {
@@ -227,8 +241,11 @@ $(document).ready(function() {
 											// Is this the result of a transfer?
 											var transfer = "";
 											var referredBy = result["referred_by"];
-											if(referredBy)
+											if(referredBy) {
 												transfer = " (referred by " + referredBy + ")";
+												transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
+												transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
+											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
 											var srtp = result["srtp"];
@@ -325,6 +342,7 @@ $(document).ready(function() {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
 											toastr.success("Call accepted!");
+											sipcall.callId = callId;
 										} else if(event === 'updatingcall') {
 											// We got a re-INVITE: while we may prompt the user (e.g.,
 											// to notify about media changes), to keep things simple
@@ -347,6 +365,25 @@ $(document).ready(function() {
 														bootbox.alert("WebRTC error... " + JSON.stringify(error));
 													}
 												});
+										} else if(event === 'message') {
+											// We got a MESSAGE
+											var sender = result["displayname"] ? result["displayname"] : result["sender"];
+											var content = result["content"];
+											content = content.replace(new RegExp('<', 'g'), '&lt');
+											content = content.replace(new RegExp('>', 'g'), '&gt');
+											toastr.success(content, "Message from " + sender);
+										} else if(event === 'info') {
+											// We got an INFO
+											var sender = result["displayname"] ? result["displayname"] : result["sender"];
+											var content = result["content"];
+											content = content.replace(new RegExp('<', 'g'), '&lt');
+											content = content.replace(new RegExp('>', 'g'), '&gt');
+											toastr.info(content, "Info from " + sender);
+										} else if(event === 'notify') {
+											// We got a NOTIFY
+											var notify = result["notify"];
+											var content = result["content"];
+											toastr.info(content, "Notify (" + notify + ")");
 										} else if(event === 'transfer') {
 											// We're being asked to transfer the call, ask the user what to do
 											var referTo = result["refer_to"];
@@ -356,12 +393,15 @@ $(document).ready(function() {
 											var extra = ("referred by " + referredBy);
 											if(replaces)
 												extra += (", replaces call-ID " + replaces);
+											extra = extra.replace(new RegExp('<', 'g'), '&lt');
+											extra = extra.replace(new RegExp('>', 'g'), '&gt');
 											bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ")",
 												function(result) {
 													if(result) {
 														// Call the person we're being transferred to
 														if(!sipcall.webrtcStuff.pc) {
 															// Do it here
+															$('#peer').val(referTo).attr('disabled', true);
 															actuallyDoCall(sipcall, referTo, false, referId);
 														} else {
 															// We're in a call already, use a helper
@@ -377,11 +417,13 @@ $(document).ready(function() {
 															}
 															if(h !== -1) {
 																// Do in this helper
+																$('#peer' + h).val(referTo).attr('disabled', true);
 																actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
 															} else {
 																// Create a new helper
 																addHelper(function(id) {
 																	// Do it here
+																	$('#peer' + id).val(referTo).attr('disabled', true);
 																	actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
 																});
 															}
@@ -457,7 +499,12 @@ $(document).ready(function() {
 									Janus.debug(stream);
 									if($('#remotevideo').length === 0) {
 										$('#videoright').parent().find('h3').html(
-											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
+											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>' +
+											'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
+												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
+												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
+												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+											'</span>');
 										$('#videoright').append(
 											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
 										for(var i=0; i<12; i++) {
@@ -470,9 +517,87 @@ $(document).ready(function() {
 										}
 										$('.dtmf').click(function() {
 											// Send DTMF tone (inband)
-											sipcall.dtmf({dtmf: { digit: $(this).text()}});
+											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 											// Notice you can also send DTMF tones using SIP INFO
 											// 		sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+										});
+										$('#msg').click(function() {
+											bootbox.prompt("Insert message to send", function(result) {
+												if(result && result !== '') {
+													// Send the message
+													var msg = { request: "message", content: result };
+													sipcall.send({message: msg});
+												}
+											});
+										});
+										$('#info').click(function() {
+											bootbox.dialog({
+												message: 'Type: <input class="form-control" type="text" id="type" placeholder="e.g., application/xml">' +
+													'<br/>Content: <input class="form-control" type="text" id="content" placeholder="e.g., <message>hi</message>">',
+												title: "Insert the type and content to send",
+												buttons: {
+													cancel: {
+														label: "Cancel",
+														className: "btn-default",
+														callback: function() {
+															// Do nothing
+														}
+													},
+													ok: {
+														label: "OK",
+														className: "btn-primary",
+														callback: function() {
+															// Send the INFO
+															var type = $('#type').val();
+															var content = $('#content').val();
+															if(type === '' || content === '')
+																return;
+															var msg = { request: "info", type: type, content: content };
+															sipcall.send({message: msg});
+														}
+													}
+												}
+											});
+										});
+										$('#transfer').click(function() {
+											bootbox.dialog({
+												message: '<input class="form-control" type="text" id="transferto" placeholder="e.g., sip:goofy@example.com">',
+												title: "Insert the address to transfer the call to",
+												buttons: {
+													cancel: {
+														label: "Cancel",
+														className: "btn-default",
+														callback: function() {
+															// Do nothing
+														}
+													},
+													blind: {
+														label: "Blind transfer",
+														className: "btn-info",
+														callback: function() {
+															// Start a blind transfer
+															var address = $('#transferto').val();
+															if(address === '')
+																return;
+															var msg = { request: "transfer", uri: address };
+															sipcall.send({message: msg});
+														}
+													},
+													attended: {
+														label: "Attended transfer",
+														className: "btn-primary",
+														callback: function() {
+															// Start an attended transfer
+															var address = $('#transferto').val();
+															if(address === '')
+																return;
+															// Add the call-id to replace to the transfer
+															var msg = { request: "transfer", uri: address, replace: sipcall.callId };
+															sipcall.send({message: msg});
+														}
+													}
+												}
+											});
 										});
 										// Show the peer and hide the spinner when we get a playing event
 										$("#remotevideo").bind("playing", function () {
@@ -509,6 +634,8 @@ $(document).ready(function() {
 									$('#videos .no-video-container').remove();
 									$('#videos').hide();
 									$('#dtmf').parent().html("Remote UA");
+									if(sipcall)
+										sipcall.callId = null;
 								}
 							});
 					},
@@ -830,7 +957,9 @@ function addHelper(helperCreated) {
 		'	<div class="row">' +
 		'		<div class="col-md-12">' +
 		'			<div class="col-md-6 container">' +
-		'				<span class="label label-info">Helper #' + helperId + '</span>' +
+		'				<span class="label label-info">Helper #' + helperId +
+		'					<i class="fa fa-window-close" id="rmhelper' + helperId + '" style="cursor: pointer;" title="Remove this helper"></i>' +
+		'				</span>' +
 		'			</div>' +
 		'			<div class="col-md-6 container" id="phone' + helperId + '">' +
 		'				<div class="input-group margin-bottom-sm">' +
@@ -861,6 +990,11 @@ function addHelper(helperCreated) {
 		'	</div>' +
 		'</div>'
 	);
+	$('#rmhelper' + helperId).click(function() {
+		var hid = $(this).attr('id').split("rmhelper")[1];
+		console.log(hid);
+		removeHelper(hid);
+	});
 	// Attach to SIP plugin, but only register as an helper for the master session
 	janus.attach(
 		{
@@ -882,6 +1016,7 @@ function addHelper(helperCreated) {
 			error: function(error) {
 				Janus.error("[Helper #" + helperId + "]   -- Error attaching plugin...", error);
 				bootbox.alert("  -- Error attaching plugin... " + error);
+				removeHelper(helperId);
 			},
 			consentDialog: function(on) {
 				Janus.debug("[Helper #" + helperId + "] Consent dialog should be " + (on ? "on" : "off") + " now");
@@ -918,6 +1053,7 @@ function addHelper(helperCreated) {
 					bootbox.alert(error);
 					return;
 				}
+				var callId = msg["call_id"];
 				var result = msg["result"];
 				if(result !== null && result !== undefined && result["event"] !== undefined && result["event"] !== null) {
 					var event = result["event"];
@@ -925,9 +1061,7 @@ function addHelper(helperCreated) {
 						Janus.warn("[Helper #" + helperId + "] Registration failed: " + result["code"] + " " + result["reason"]);
 						bootbox.alert(result["code"] + " " + result["reason"]);
 						// Get rid of the helper
-						helpers[helperId].detach();
-						delete helpers[helperId];
-						$('#sipcall' + helperId).remove();
+						removeHelper(helperId);
 						return;
 					}
 					if(event === 'registered') {
@@ -947,6 +1081,7 @@ function addHelper(helperCreated) {
 							  .unbind('click').click(doHangup);
 					} else if(event === 'incomingcall') {
 						Janus.log("[Helper #" + helperId + "] Incoming call from " + result["username"] + "! (on helper #" + helperId + ")");
+						helpers[helperId].sipcall.callId = callId;
 						var doAudio = true, doVideo = true;
 						var offerlessInvite = false;
 						if(jsep !== null && jsep !== undefined) {
@@ -971,6 +1106,8 @@ function addHelper(helperCreated) {
 							transfer = " (referred by " + referredBy + ")";
 						else if(!referredBy && replaces)
 							transfer = " (replaces call-ID " + replaces + ")";
+						transfer = transfer.replace(new RegExp('<', 'g'), '&lt');
+						transfer = transfer.replace(new RegExp('>', 'g'), '&gt');
 						// Any security offered? A missing "srtp" attribute means plain RTP
 						var rtpType = "";
 						var srtp = result["srtp"];
@@ -1072,6 +1209,7 @@ function addHelper(helperCreated) {
 								doHangup({ currentTarget: { id: "call" + helperId } });
 							}});
 						}
+						helpers[helperId].sipcall.callId = callId;
 						toastr.success("Call accepted!");
 					} else if(event === 'updatingcall') {
 						// We got a re-INVITE: while we may prompt the user (e.g.,
@@ -1095,6 +1233,25 @@ function addHelper(helperCreated) {
 									bootbox.alert("WebRTC error... " + JSON.stringify(error));
 								}
 							});
+					} else if(event === 'message') {
+						// We got a MESSAGE
+						var sender = result["displayname"] ? result["displayname"] : result["sender"];
+						var content = result["content"];
+						content = content.replace(new RegExp('<', 'g'), '&lt');
+						content = content.replace(new RegExp('>', 'g'), '&gt');
+						toastr.success(content, "Message from " + sender);
+					} else if(event === 'info') {
+						// We got an INFO
+						var sender = result["displayname"] ? result["displayname"] : result["sender"];
+						var content = result["content"];
+						content = content.replace(new RegExp('<', 'g'), '&lt');
+						content = content.replace(new RegExp('>', 'g'), '&gt');
+						toastr.info(content, "Info from " + sender);
+					} else if(event === 'notify') {
+						// We got a NOTIFY
+						var notify = result["notify"];
+						var content = result["content"];
+						toastr.info(content, "Notify (" + notify + ")");
 					} else if(event === 'transfer') {
 						// We're being asked to transfer the call, ask the user what to do
 						var referTo = result["refer_to"];
@@ -1104,15 +1261,19 @@ function addHelper(helperCreated) {
 						var extra = ("referred by " + referredBy);
 						if(replaces)
 							extra += (", replaces call-ID " + replaces);
+						extra = extra.replace(new RegExp('<', 'g'), '&lt');
+						extra = extra.replace(new RegExp('>', 'g'), '&gt');
 						bootbox.confirm("Transfer the call to " + referTo + "? (" + extra + ", helper " + helperId + ")",
 							function(result) {
 								if(result) {
 									// Call the person we're being transferred to
 									if(!helpers[helperId].sipcall.webrtcStuff.pc) {
 										// Do it here
+										$('#peer' + helperId).val(referTo).attr('disabled', true);
 										actuallyDoCall(helpers[helperId].sipcall, referTo, false, referId);
 									} else if(!sipcall.webrtcStuff.pc) {
 										// Do it on the main handle
+										$('#peer').val(referTo).attr('disabled', true);
 										actuallyDoCall(sipcall, referTo, false, referId);
 									} else {
 										// We're in a call already, use the main handle or a helper
@@ -1128,11 +1289,13 @@ function addHelper(helperCreated) {
 										}
 										if(h !== -1) {
 											// Do in this helper
+											$('#peer' + h).val(referTo).attr('disabled', true);
 											actuallyDoCall(helpers[h].sipcall, referTo, false, referId);
 										} else {
 											// Create a new helper
 											addHelper(function(id) {
 												// Do it here
+												$('#peer' + id).val(referTo).attr('disabled', true);
 												actuallyDoCall(helpers[id].sipcall, referTo, false, referId);
 											});
 										}
@@ -1208,7 +1371,12 @@ function addHelper(helperCreated) {
 				Janus.debug(stream);
 				if($('#remotevideo' + helperId).length === 0) {
 					$('#videoright' + helperId).parent().find('h3').html(
-						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>');
+						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>' +
+						'<span id="ctrls' + helperId + '" class="pull-right btn-group btn-group-xs">' +
+							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
+							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
+							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
+						'</span>');
 					$('#videoright' + helperId).append(
 						'<video class="rounded centered hide" id="remotevideo' + helperId + '" width=320 height=240 autoplay playsinline/>');
 					for(var i=0; i<12; i++) {
@@ -1224,6 +1392,84 @@ function addHelper(helperCreated) {
 						helpers[helperId].sipcall.dtmf({dtmf: { tones: $(this).text()}});
 						// Notice you can also send DTMF tones using SIP INFO
 						// 		helpers[helperId].sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+					});
+					$('#msg' + helperId).click(function() {
+						bootbox.prompt("Insert message to send", function(result) {
+							if(result && result !== '') {
+								// Send the message
+								var msg = { request: "message", content: result };
+								helpers[helperId].sipcall.send({message: msg});
+							}
+						});
+					});
+					$('#info' + helperId).click(function() {
+						bootbox.dialog({
+							message: 'Type: <input class="form-control" type="text" id="type" placeholder="e.g., application/xml">' +
+								'<br/>Content: <input class="form-control" type="text" id="content" placeholder="e.g., <message>hi</message>">',
+							title: "Insert the type and content to send",
+							buttons: {
+								cancel: {
+									label: "Cancel",
+									className: "btn-default",
+									callback: function() {
+										// Do nothing
+									}
+								},
+								ok: {
+									label: "OK",
+									className: "btn-primary",
+									callback: function() {
+										// Send the INFO
+										var type = $('#type').val();
+										var content = $('#content').val();
+										if(type === '' || content === '')
+											return;
+										var msg = { request: "info", type: type, content: content };
+										helpers[helperId].sipcall.send({message: msg});
+									}
+								}
+							}
+						});
+					});
+					$('#transfer' + helperId).click(function() {
+						bootbox.dialog({
+							message: '<input class="form-control" type="text" id="transferto" placeholder="e.g., sip:goofy@example.com">',
+							title: "Insert the address to transfer the call to",
+							buttons: {
+								cancel: {
+									label: "Cancel",
+									className: "btn-default",
+									callback: function() {
+										// Do nothing
+									}
+								},
+								blind: {
+									label: "Blind transfer",
+									className: "btn-info",
+									callback: function() {
+										// Start a blind transfer
+										var address = $('#transferto').val();
+										if(address === '')
+											return;
+										var msg = { request: "transfer", uri: address };
+										helpers[helperId].sipcall.send({message: msg});
+									}
+								},
+								attended: {
+									label: "Attended transfer",
+									className: "btn-primary",
+									callback: function() {
+										// Start an attended transfer
+										var address = $('#transferto').val();
+										if(address === '')
+											return;
+										// Add the call-id to replace to the transfer
+										var msg = { request: "transfer", uri: address, replace: helpers[helperId].sipcall.callId };
+										helpers[helperId].sipcall.send({message: msg});
+									}
+								}
+							}
+						});
 					});
 					// Show the peer and hide the spinner when we get a playing event
 					$("#remotevideo" + helperId).bind("playing", function () {
@@ -1260,7 +1506,18 @@ function addHelper(helperCreated) {
 				$('#videos' + helperId + ' .no-video-container').remove();
 				$('#videos' + helperId).hide();
 				$('#dtmf' + helperId).parent().html("Remote UA");
+				if(helpers[helperId] && helpers[helperId].sipcall)
+					helpers[helperId].sipcall.callId = null;
 			}
 		});
 
+}
+function removeHelper(helperId) {
+	if(helpers[helperId] && helpers[helperId].sipcall) {
+		// Detach from the helper's Janus handle
+		helpers[helperId].sipcall.detach();
+		delete helpers[helperId];
+		// Remove the related UI too
+		$('#sipcall'+helperId).remove();
+	}
 }
