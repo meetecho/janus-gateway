@@ -23,7 +23,7 @@ declare namespace JanusJS {
 		dependencies?: Dependencies;
 	}
 
-	interface ConstuctorOptions {
+	interface ConstructorOptions {
 		server: string | string[];
 		iceServers?: RTCIceServer[];
 		ipv6?: boolean;
@@ -138,7 +138,7 @@ declare namespace JanusJS {
 		static error(...args: any[]): void;
 		static randomString(length: number): string;
 
-		constructor(options: ConstuctorOptions);
+		constructor(options: ConstructorOptions);
 
 		getServer(): string;
 		isConnected(): boolean;
