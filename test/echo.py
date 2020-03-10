@@ -42,7 +42,8 @@ class WebSocketClient():
         tx_id = self.transaction_id()
         message.update({'transaction': tx_id})
         tx = asyncio.get_event_loop().create_future()
-        self._transactions[tx_id] = tx
+        tx_in = {'tx': tx, 'request': message['janus']}
+        self._transactions[tx_id] = tx_in
         try:
             await asyncio.gather(self.connection.send(json.dumps(message)), tx)
         except Exception as e:
@@ -55,13 +56,26 @@ class WebSocketClient():
                 data = json.loads(message)
                 tx_id = data.get('transaction')
                 response = data['janus']
+
+                # Handle ACK
                 if tx_id and response == 'ack':
                     logger.debug(f'Received ACK for transaction {tx_id}')
+                    if tx_id in self._transactions:
+                        tx_in = self._transactions[tx_id]
+                        if tx_in['request'] == 'keepalive':
+                            tx = tx_in['tx']
+                            tx.set_result(data)
+                            del self._transactions[tx_id]
+                            logger.debug(f'Closed transaction {tx_id}'
+                                         f' with {response}')
                     continue
+
+                # Handle Success / Event / Error
                 if response not in {'success', 'error'}:
                     logger.info(f'Janus Event --> {response}')
                 if tx_id and tx_id in self._transactions:
-                    tx = self._transactions[tx_id]
+                    tx_in = self._transactions[tx_id]
+                    tx = tx_in['tx']
                     tx.set_result(data)
                     del self._transactions[tx_id]
                     logger.debug(f'Closed transaction {tx_id}'
@@ -95,6 +109,8 @@ class JanusSession:
         self._url = url
         self._handles = {}
         self._session_id = None
+        self._ka_interval = 15
+        self._ka_task = None
 
     async def send(self, message):
         message.update({'session_id': self._session_id})
@@ -109,6 +125,7 @@ class JanusSession:
         assert response['janus'] == 'success'
         session_id = response['data']['id']
         self._session_id = session_id
+        self._ka_task = asyncio.ensure_future(self._keepalive())
         logger.info('Session created')
 
     async def attach(self, plugin):
@@ -128,6 +145,13 @@ class JanusSession:
             message = {'janus': 'destroy'}
             await self.send(message)
             self._session_id = None
+        if self._ka_task:
+            self._ka_task.cancel()
+            try:
+                await self._ka_task
+            except asyncio.CancelledError:
+                pass
+            self._ka_task = None
         self._handles = {}
         logger.info('Session destroyed')
 
@@ -136,6 +160,13 @@ class JanusSession:
             await self._websocket.close()
             self._websocket = None
 
+    async def _keepalive(self):
+        while True:
+            logger.info('Sending keepalive')
+            message = {'janus': 'keepalive'}
+            await self.send(message)
+            logger.info('Keepalive OK')
+            await asyncio.sleep(self._ka_interval)
 
 async def run(pc, player, session, bitrate=512000, record=False):
     @pc.on('track')
