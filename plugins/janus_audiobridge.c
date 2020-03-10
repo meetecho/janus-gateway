@@ -1394,6 +1394,7 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 
 /* Mixer settings */
 #define DEFAULT_PREBUFFERING	6
+#define MAX_PREBUFFERING		50
 
 
 /* Opus settings */
@@ -1781,7 +1782,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->default_prebuffering = DEFAULT_PREBUFFERING;
 			if(default_prebuffering != NULL && default_prebuffering->value != NULL) {
 				int prebuffering = atoi(default_prebuffering->value);
-				if(prebuffering < 0) {
+				if(prebuffering < 0 || prebuffering > MAX_PREBUFFERING) {
 					JANUS_LOG(LOG_WARN, "Invalid default_prebuffering value provided, using default: %d\n", audiobridge->default_prebuffering);
 				} else {
 					audiobridge->default_prebuffering = prebuffering;
@@ -2225,6 +2226,11 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		audiobridge->default_prebuffering = default_prebuffering ?
 			json_integer_value(default_prebuffering) : DEFAULT_PREBUFFERING;
+		if(audiobridge->default_prebuffering > MAX_PREBUFFERING) {
+			audiobridge->default_prebuffering = DEFAULT_PREBUFFERING;
+			JANUS_LOG(LOG_WARN, "Invalid default_prebuffering value provided (too high), using default: %d\n",
+				audiobridge->default_prebuffering);
+		}
 		switch(audiobridge->sampling_rate) {
 			case 8000:
 			case 12000:
@@ -4317,6 +4323,11 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *quality = json_object_get(root, "quality");
 			json_t *acodec = json_object_get(root, "codec");
 			uint prebuffer_count = prebuffer ? json_integer_value(prebuffer) : audiobridge->default_prebuffering;
+			if(prebuffer_count > MAX_PREBUFFERING) {
+				prebuffer_count = audiobridge->default_prebuffering;
+				JANUS_LOG(LOG_WARN, "Invalid prebuffering value provided (too high), using room default: %d\n",
+					audiobridge->default_prebuffering);
+			}
 			int volume = gain ? json_integer_value(gain) : 100;
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
@@ -4606,7 +4617,10 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *update = json_object_get(root, "update");
 			if(prebuffer) {
 				uint prebuffer_count = json_integer_value(prebuffer);
-				if(prebuffer_count != participant->prebuffer_count) {
+				if(prebuffer_count > MAX_PREBUFFERING) {
+					JANUS_LOG(LOG_WARN, "Invalid prebuffering value provided (too high), keeping previous value: %d\n",
+						participant->prebuffer_count);
+				} else if(prebuffer_count != participant->prebuffer_count) {
 					janus_mutex_lock(&participant->qmutex);
 					if(prebuffer_count < participant->prebuffer_count) {
 						/* We're switching to a shorter prebuffer, trim the incoming buffer */
