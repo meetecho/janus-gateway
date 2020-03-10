@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.9.1] - 2020-03-10
+
+- Added configurable global prefix for log lines
+- Implemented better management of remote candidates with invalid addresses
+- Added subtype property to differentiate some macro-types in event handlers
+- Improved detection of H.264 keyframes (thanks @cameronlucas3!)
+- Added configurable support for strings as unique IDs in AudioBridge, VideoRoom, TextRoom and Streaming plugins
+- Fixed small memory leak when creating Streaming mountpoints dynamically
+- Fixed segfault when trying to start a SIP call with a non-existing refer_id (thanks @tmatth!)
+- Fixed errors negotiating video in SIP plugin when multiple video profiles are provided
+- Updated SIP plugin transfer code to answer with a 202 right away, instead of sending a 100 first (which won't work with proxies)
+- Added several features and fixes several nits in SIP demo UI
+- Fixed janus.js error callback not being invoked when an HTTP error happens trying to attach to a plugin (thanks @hxl-dy!)
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.9.0] - 2020-02-21
 
 - Refactored core-plugin callbacks
