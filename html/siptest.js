@@ -592,7 +592,7 @@ $(document).ready(function() {
 															if(address === '')
 																return;
 															// Add the call-id to replace to the transfer
-															var msg = { request: "transfer", uri: address, replaces: sipcall.callId };
+															var msg = { request: "transfer", uri: address, replace: sipcall.callId };
 															sipcall.send({message: msg});
 														}
 													}
@@ -1464,7 +1464,7 @@ function addHelper(helperCreated) {
 										if(address === '')
 											return;
 										// Add the call-id to replace to the transfer
-										var msg = { request: "transfer", uri: address, replaces: helpers[helperId].sipcall.callId };
+										var msg = { request: "transfer", uri: address, replace: helpers[helperId].sipcall.callId };
 										helpers[helperId].sipcall.send({message: msg});
 									}
 								}
