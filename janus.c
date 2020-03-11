@@ -1169,6 +1169,18 @@ int janus_process_incoming_request(janus_request *request) {
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
+			/* If we're claiming from the same transport, ignore */
+			if(session->source->instance == request->instance) {
+				janus_mutex_unlock(&session->mutex);
+				/* Prepare JSON reply */
+				json_t *reply = json_object();
+				json_object_set_new(reply, "janus", json_string("success"));
+				json_object_set_new(reply, "session_id", json_integer(session_id));
+				json_object_set_new(reply, "transaction", json_string(transaction_text));
+				/* Send the success reply */
+				ret = janus_process_success(request, reply);
+				goto jsondone;
+			}
 			/* Notify the old transport that this session is over for them, but has been reclaimed */
 			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, TRUE);
 			janus_request_destroy(session->source);
@@ -1177,7 +1189,7 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Notify the new transport that it has claimed a session */
 		session->source->transport->session_claimed(session->source->instance, session->session_id);
-		/* Previous transport may be gone, clear flag. */
+		/* Previous transport may be gone, clear flag */
 		g_atomic_int_set(&session->transport_gone, 0);
 		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
