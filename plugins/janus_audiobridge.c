@@ -2647,7 +2647,6 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			janus_refcount_increase(&room->ref);
 			if(room->is_private) {
 				/* Skip private room */
-				janus_mutex_unlock(&room->mutex);
 				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
 				janus_refcount_decrease(&room->ref);
 				continue;
