@@ -148,7 +148,7 @@ static struct janus_json_parameter queryhandler_parameters[] = {
 	{"request", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter querylogger_parameters[] = {
-	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"logger", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter messageplugin_parameters[] = {
