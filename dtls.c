@@ -105,7 +105,7 @@ gboolean janus_is_dtls(char *buf) {
 }
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
+#define DTLS_CIPHERS	"DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
