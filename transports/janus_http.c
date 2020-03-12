@@ -1752,6 +1752,8 @@ static void janus_http_request_completed(void *cls, struct MHD_Connection *conne
 	janus_http_msg *request = (janus_http_msg *)ts->transport_p;
 	if(request != NULL) {
 		janus_http_session *session = (janus_http_session *)g_atomic_pointer_get(&request->longpoll);
+		if(session != NULL)
+			janus_refcount_increase(&session->ref);
 		if(request->timeout != NULL) {
 			g_source_destroy(request->timeout);
 			if(session != NULL)
@@ -1763,6 +1765,7 @@ static void janus_http_request_completed(void *cls, struct MHD_Connection *conne
 			janus_mutex_lock(&session->mutex);
 			session->longpolls = g_list_remove(session->longpolls, ts);
 			janus_mutex_unlock(&session->mutex);
+			janus_refcount_decrease(&session->ref);
 		}
 	}
 	janus_mutex_lock(&messages_mutex);
