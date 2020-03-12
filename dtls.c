@@ -109,6 +109,14 @@ gboolean janus_is_dtls(char *buf) {
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
+/* By default we always accept self-signed certificates (that's what almost
+ * all of the existing WebRTC implementations do today), but if told so we
+ * can be configured to reject them, and validate them instead */
+static gboolean dtls_selfsigned_certs_ok = TRUE;
+gboolean janus_dtls_are_selfsigned_certs_ok(void) {
+	return dtls_selfsigned_certs_ok;
+}
+
 /* DTLS timeout base to enforce: notice that this can currently only be
  * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
  * that value cannot be modified (it will in OpenSSL v1.1.1) */
@@ -330,7 +338,8 @@ const char *janus_get_ssl_version(void) {
 }
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
+		guint16 timeout, gboolean accept_selfsigned) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -439,6 +448,13 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
 		return 5;
 	}
+
+	/* Finally, let's set our policy with respect to DTLS self signed certificates */
+	dtls_selfsigned_certs_ok = accept_selfsigned;
+	if(!dtls_selfsigned_certs_ok) {
+		JANUS_LOG(LOG_WARN, "WebRTC PeerConnections with self-signed certificates will NOT be accepted\n");
+	}
+
 	return 0;
 }
 
@@ -962,7 +978,19 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 /* DTLS certificate verification callback */
 int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 	/* We just use the verify_callback to request a certificate from the client */
-	return 1;
+	int err = X509_STORE_CTX_get_error(ctx);
+	if(err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT || err == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN) {
+		/* Self signed certificate: by default we always accept it */
+		if(!dtls_selfsigned_certs_ok) {
+			/* ... unless we're enforcing validation */
+			return 0;
+		}
+	}
+	/* We always reject expired certificates, even when self-signed */
+	if(err == X509_V_ERR_CERT_HAS_EXPIRED)
+		return 0;
+	/* Return a success if we're ok with self-signed, the result of the validation otherwise */
+	return dtls_selfsigned_certs_ok ? 1 : (err == X509_V_OK);
 }
 
 #ifdef HAVE_SCTP
