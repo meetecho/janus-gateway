@@ -485,8 +485,7 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	janus_config_destroy(config);
 	config = NULL;
 
-	sessions = g_hash_table_new_full(g_str_hash, g_str_equal,
-		NULL, (GDestroyNotify)janus_videocall_session_destroy);
+	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videocall_session_destroy);
 	usernames = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_videocall_session_unref);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videocall_message_free);
