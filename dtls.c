@@ -105,7 +105,8 @@ gboolean janus_is_dtls(char *buf) {
 }
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
+#define DTLS_DEFAULT_CIPHERS	"HIGH:!aNULL:!MD5:!RC4"
+static const char *dtls_ciphers = DTLS_DEFAULT_CIPHERS;
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 
@@ -339,7 +340,7 @@ const char *janus_get_ssl_version(void) {
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
-		guint16 timeout, gboolean accept_selfsigned) {
+		const char *ciphers, guint16 timeout, gboolean accept_selfsigned) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -429,11 +430,16 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	}
 	*(lfp-1) = 0;
 	JANUS_LOG(LOG_INFO, "Fingerprint of our certificate: %s\n", local_fingerprint);
-	SSL_CTX_set_cipher_list(ssl_ctx, DTLS_CIPHERS);
+	if(ciphers)
+		dtls_ciphers = ciphers;
+	if(SSL_CTX_set_cipher_list(ssl_ctx, dtls_ciphers) == 0) {
+		JANUS_LOG(LOG_FATAL, "Error setting cipher list (%s)\n", ERR_reason_error_string(ERR_get_error()));
+		return -8;
+	}
 
 	if(janus_dtls_bio_agent_init() < 0) {
 		JANUS_LOG(LOG_FATAL, "Error initializing BIO agent\n");
-		return -8;
+		return -9;
 	}
 
 	dtls_timeout_base = timeout;
@@ -446,7 +452,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	/* Initialize libsrtp */
 	if(srtp_init() != srtp_err_status_ok) {
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
-		return 5;
+		return -10;
 	}
 
 	/* Finally, let's set our policy with respect to DTLS self signed certificates */
