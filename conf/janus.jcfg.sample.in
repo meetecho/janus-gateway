@@ -167,14 +167,14 @@ general: {
 # want to enforce the DTLS stack in Janus to enforce valid certificates
 # from peers, though, you can do that setting 'dtls_accept_selfsigned' to
 # 'false' below: DO NOT TOUCH THAT IF YOU DO NOT KNOW WHAT YOU'RE DOING!
-# Finally, you can configure the DTLS ciphers to offer: the default if
-# not specified is "HIGH:!aNULL:!MD5:!RC4" (what Janus used so far).
+# Finally, you can configure the DTLS ciphers to offer: the default if not
+# set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
 	#dtls_accept_selfsigned = false
-	#dtls_ciphers = "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+	#dtls_ciphers = "your-desired-openssl-ciphers"
 }
 
 # Media-related stuff: you can configure whether if you want
