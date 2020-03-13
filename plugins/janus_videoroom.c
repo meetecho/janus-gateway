@@ -5628,8 +5628,10 @@ static void *janus_videoroom_handler(void *data) {
 						error_code, error_cause, TRUE,
 						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				}
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
+				}
 				janus_mutex_lock(&sessions_mutex);
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
