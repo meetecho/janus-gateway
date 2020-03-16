@@ -108,6 +108,8 @@ gboolean janus_is_dtls(char *buf) {
 #define DTLS_CIPHERS	"DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
+/* NIST P-256 elliptic curve used for private key generation */
+#define DTLS_ELLIPTIC_CURVE NID_X9_62_prime256v1
 
 /* DTLS timeout base to enforce: notice that this can currently only be
  * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
@@ -174,38 +176,14 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 #endif
 
 
-static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key) {
+static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key, gboolean dtls_generate_rsa_private_key) {
 	static const int num_bits = 2048;
 	BIGNUM *bne = NULL;
 	RSA *rsa_key = NULL;
 	X509_NAME *cert_name = NULL;
+	EC_KEY *ecc_key = NULL;
 
 	JANUS_LOG(LOG_VERB, "Generating DTLS key / cert\n");
-
-	/* Create a big number object. */
-	bne = BN_new();
-	if(!bne) {
-		JANUS_LOG(LOG_FATAL, "BN_new() failed\n");
-		goto error;
-	}
-
-	if(!BN_set_word(bne, RSA_F4)) {  /* RSA_F4 == 65537 */
-		JANUS_LOG(LOG_FATAL, "BN_set_word() failed\n");
-		goto error;
-	}
-
-	/* Generate a RSA key. */
-	rsa_key = RSA_new();
-	if(!rsa_key) {
-		JANUS_LOG(LOG_FATAL, "RSA_new() failed\n");
-		goto error;
-	}
-
-	/* This takes some time. */
-	if(!RSA_generate_key_ex(rsa_key, num_bits, bne, NULL)) {
-		JANUS_LOG(LOG_FATAL, "RSA_generate_key_ex() failed\n");
-		goto error;
-	}
 
 	/* Create a private key object (needed to hold the RSA key). */
 	*private_key = EVP_PKEY_new();
@@ -214,12 +192,63 @@ static int janus_dtls_generate_keys(X509 **certificate, EVP_PKEY **private_key) 
 		goto error;
 	}
 
-	if(!EVP_PKEY_assign_RSA(*private_key, rsa_key)) {
-		JANUS_LOG(LOG_FATAL, "EVP_PKEY_assign_RSA() failed\n");
-		goto error;
+
+	if (dtls_generate_rsa_private_key) {
+		/* Create a big number object. */
+		bne = BN_new();
+		if(!bne) {
+			JANUS_LOG(LOG_FATAL, "BN_new() failed\n");
+			goto error;
+		}
+
+		if(!BN_set_word(bne, RSA_F4)) {  /* RSA_F4 == 65537 */
+			JANUS_LOG(LOG_FATAL, "BN_set_word() failed\n");
+			goto error;
+		}
+
+		/* Generate a RSA key. */
+		rsa_key = RSA_new();
+		if(!rsa_key) {
+			JANUS_LOG(LOG_FATAL, "RSA_new() failed\n");
+			goto error;
+		}
+
+		/* This takes some time. */
+		if(!RSA_generate_key_ex(rsa_key, num_bits, bne, NULL)) {
+			JANUS_LOG(LOG_FATAL, "RSA_generate_key_ex() failed\n");
+			goto error;
+		}
+
+		if(!EVP_PKEY_assign_RSA(*private_key, rsa_key)) {
+			JANUS_LOG(LOG_FATAL, "EVP_PKEY_assign_RSA() failed\n");
+			goto error;
+		}
+
+		/* The RSA key now belongs to the private key, so don't clean it up separately. */
+		rsa_key = NULL;
+	} else {
+		// Create key with curve dictated by DTLS_ELLIPTIC_CURVE
+		if ((ecc_key = EC_KEY_new_by_curve_name(DTLS_ELLIPTIC_CURVE)) == NULL) {
+			JANUS_LOG(LOG_FATAL, "EC_KEY_new_by_curve_name() failed\n");
+			goto error;
+		}
+
+		EC_KEY_set_asn1_flag(ecc_key, OPENSSL_EC_NAMED_CURVE);
+
+		/* This takes some time. */
+		if (EC_KEY_generate_key(ecc_key) == 0) {
+			JANUS_LOG(LOG_FATAL, "EC_KEY_generate_key() failed\n");
+			goto error;
+		}
+
+		if (EVP_PKEY_assign_EC_KEY(*private_key, ecc_key) == 0) {
+			JANUS_LOG(LOG_FATAL, "EVP_PKEY_assign_EC_KEY() failed\n");
+			goto error;
+		}
+
+		/* The EC key now belongs to the private key, so don't clean it up separately. */
+		ecc_key = NULL;
 	}
-	/* The RSA key now belongs to the private key, so don't clean it up separately. */
-	rsa_key = NULL;
 
 	/* Create the X509 certificate. */
 	*certificate = X509_new();
@@ -274,6 +303,8 @@ error:
 		BN_free(bne);
 	if(rsa_key && !*private_key)
 		RSA_free(rsa_key);
+	if(ecc_key && !*private_key)
+		EC_KEY_free(ecc_key);
 	if(*private_key)
 		EVP_PKEY_free(*private_key);  /* This also frees the RSA key. */
 	if(*certificate)
@@ -330,7 +361,7 @@ const char *janus_get_ssl_version(void) {
 }
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout, gboolean dtls_generate_rsa_private_key) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -381,7 +412,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 
 	if(!server_pem && !server_key) {
 		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
-		if(janus_dtls_generate_keys(&ssl_cert, &ssl_key) != 0) {
+		if(janus_dtls_generate_keys(&ssl_cert, &ssl_key, dtls_generate_rsa_private_key) != 0) {
 			JANUS_LOG(LOG_FATAL, "Error generating DTLS key/certificate\n");
 			return -2;
 		}

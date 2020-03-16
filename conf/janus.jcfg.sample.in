@@ -195,6 +195,7 @@ media: {
 	#slowlink_threshold = 4
 	#twcc_period = 100
 	#dtls_timeout = 500
+	#dtls_generate_rsa_private_key = false
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN
