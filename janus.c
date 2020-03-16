@@ -682,12 +682,19 @@ janus_session *janus_session_find(guint64 session_id) {
 }
 
 void janus_session_notify_event(janus_session *session, json_t *event) {
-	if(session != NULL && !g_atomic_int_get(&session->destroyed) && session->source != NULL && session->source->transport != NULL) {
-		/* Send this to the transport client */
-		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
-		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
+	if(session != NULL && !g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_lock(&session->mutex);
+		if(session->source != NULL && session->source->transport != NULL) {
+			/* Send this to the transport client */
+			JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
+			session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
+		} else {
+			/* No transport, free the event */
+			json_decref(event);
+		}
+		janus_mutex_unlock(&session->mutex);
 	} else {
-		/* No transport, free the event */
+		/* No session, free the event */
 		json_decref(event);
 	}
 }
@@ -1108,9 +1115,10 @@ int janus_process_incoming_request(janus_request *request) {
 		g_hash_table_remove(sessions, &session->session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
-		if(session->source && session->source->transport) {
+		janus_mutex_lock(&session->mutex);
+		if(session->source && session->source->transport)
 			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
-		}
+		janus_mutex_unlock(&session->mutex);
 		/* Schedule the session for deletion */
 		janus_session_destroy(session);
 
@@ -1161,6 +1169,18 @@ int janus_process_incoming_request(janus_request *request) {
 	} else if(!strcasecmp(message_text, "claim")) {
 		janus_mutex_lock(&session->mutex);
 		if(session->source != NULL) {
+			/* If we're claiming from the same transport, ignore */
+			if(session->source->instance == request->instance) {
+				janus_mutex_unlock(&session->mutex);
+				/* Prepare JSON reply */
+				json_t *reply = json_object();
+				json_object_set_new(reply, "janus", json_string("success"));
+				json_object_set_new(reply, "session_id", json_integer(session_id));
+				json_object_set_new(reply, "transaction", json_string(transaction_text));
+				/* Send the success reply */
+				ret = janus_process_success(request, reply);
+				goto jsondone;
+			}
 			/* Notify the old transport that this session is over for them, but has been reclaimed */
 			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, TRUE);
 			janus_request_destroy(session->source);
@@ -1169,7 +1189,7 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Notify the new transport that it has claimed a session */
 		session->source->transport->session_claimed(session->source->instance, session->session_id);
-		/* Previous transport may be gone, clear flag. */
+		/* Previous transport may be gone, clear flag */
 		g_atomic_int_set(&session->transport_gone, 0);
 		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
@@ -2440,9 +2460,10 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			g_hash_table_remove(sessions, &session->session_id);
 			janus_mutex_unlock(&sessions_mutex);
 			/* Notify the source that the session has been destroyed */
-			if(session->source && session->source->transport) {
+			janus_mutex_lock(&session->mutex);
+			if(session->source && session->source->transport)
 				session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
-			}
+			janus_mutex_unlock(&session->mutex);
 			/* Schedule the session for deletion */
 			janus_session_destroy(session);
 
@@ -2565,12 +2586,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		/* Check if we should limit the response to the plugin-specific info */
 		gboolean plugin_only = json_is_true(json_object_get(root, "plugin_only"));
 		/* Prepare info */
-		janus_mutex_lock(&handle->mutex);
 		json_t *info = json_object();
 		json_object_set_new(info, "session_id", json_integer(session_id));
 		json_object_set_new(info, "session_last_activity", json_integer(session->last_activity));
+		janus_mutex_lock(&session->mutex);
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
+		janus_mutex_unlock(&session->mutex);
+		janus_mutex_lock(&handle->mutex);
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
@@ -3020,7 +3043,7 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 					janus_session_destroy(session);
 					g_hash_table_iter_remove(&iter);
 				} else {
-					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed*/
+					/* Set flag for transport_gone. The Janus sessions watchdog will clean this up if not reclaimed */
 					g_atomic_int_set(&session->transport_gone, 1);
 				}
 			}
