@@ -666,7 +666,12 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 	if(res >= 7) {
 		if(strstr(rip, ".local")) {
 			/* The IP is actually an mDNS address, try to resolve it
-			 * https://tools.ietf.org/html/draft-ietf-rtcweb-mdns-ice-candidates-00 */
+			 * https://tools.ietf.org/html/draft-ietf-rtcweb-mdns-ice-candidates-04 */
+			if(!janus_ice_is_mdns_enabled()) {
+				/* ...unless mDNS resolution is disabled, in which case ignore this candidate */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] mDNS candidate ignored\n", handle->handle_id);
+				return 0;
+			}
 			struct addrinfo *info = NULL;
 			janus_network_address addr;
 			janus_network_address_string_buffer addr_buf;
@@ -798,13 +803,11 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					added = nice_address_set_from_string(&c->base_addr, rrelip);
 					if(added)
 						nice_address_set_port(&c->base_addr, rrelport);
-					
 				} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 					/* FIXME Do we really need the base address for TURN? */
 					added = nice_address_set_from_string(&c->base_addr, rrelip);
 					if(added)
 						nice_address_set_port(&c->base_addr, rrelport);
-					
 				}
 				if(!added) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Invalid base address '%s', skipping %s candidate (%s)\n",

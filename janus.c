@@ -296,6 +296,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_ice_get_stun_server() != NULL) {
@@ -4438,7 +4439,8 @@ gint main(int argc, char *argv[])
 #endif
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE, ignore_unreachable_ice_server = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
+		ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get(config, config_media, janus_config_type_item, "rtp_port_range");
@@ -4485,6 +4487,9 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "Invalid STUN port: %s (disabling STUN)\n", item->value);
 		stun_server = NULL;
 	}
+	/* Check if we should drop mDNS candidates */
+	item = janus_config_get(config, config_nat, janus_config_type_item, "ignore_mdns");
+	ignore_mdns = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
@@ -4532,7 +4537,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_ice_set_static_event_loops(atoi(item->value));
 	/* Initialize the ICE stack now */
-	janus_ice_init(ice_lite, ice_tcp, full_trickle, ipv6, rtp_min_port, rtp_max_port);
+	janus_ice_init(ice_lite, ice_tcp, full_trickle, ignore_mdns, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		if(!ignore_unreachable_ice_server) {
 			JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
