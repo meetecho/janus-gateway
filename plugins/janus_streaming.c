@@ -5660,6 +5660,8 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			if(size > 256)
 				size = 256;
 			g_snprintf(base, size, "%s", cb);
+			if(base[size-2] == '/')
+				base[size-2] = '\0';
 		}
 	}
 	/* Parse the SDP now */
