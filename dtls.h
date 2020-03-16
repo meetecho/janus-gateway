@@ -33,8 +33,9 @@ const char *janus_get_ssl_version(void);
  * @param[in] server_key Path to the key to use
  * @param[in] password Password needed to use the key, if any
  * @param[in] timeout DTLS timeout base, in ms, to use for retransmissions (ignored if not using BoringSSL)
+ * @param[in] rsa_private_key Whether RSA certificates should be generated, instead of NIST P-256
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout, gboolean dtls_generate_rsa_private_key);
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout, gboolean rsa_private_key);
 /*! \brief Method to cleanup DTLS stuff before exiting */
 void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */

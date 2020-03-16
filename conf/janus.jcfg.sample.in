@@ -163,11 +163,14 @@ general: {
 # Janus will autogenerate a self-signed certificate to use. Notice that
 # self-signed certificates are fine for the purpose of WebRTC DTLS
 # connectivity, for the time being, at least until Identity Providers
-# are standardized and implemented in browsers.
+# are standardized and implemented in browsers. By default, NIST P-256
+# certificates are generated (see #1997), but the old RSA generation is
+# still supported if you set the 'rsa_private_key' below to 'true'.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#rsa_private_key = false
 }
 
 # Media-related stuff: you can configure whether if you want
@@ -195,7 +198,6 @@ media: {
 	#slowlink_threshold = 4
 	#twcc_period = 100
 	#dtls_timeout = 500
-	#dtls_generate_rsa_private_key = false
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN

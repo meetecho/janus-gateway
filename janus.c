@@ -4646,12 +4646,11 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "Invalid DTLS timeout: %s (falling back to default)\n", item->value);
 		dtls_timeout = 1000;
 	}
-	gboolean dtls_generate_rsa_private_key = FALSE;
-	item = janus_config_get(config, config_media, janus_config_type_item, "dtls_generate_rsa_private_key");
-	if(item && item->value) {
-		dtls_generate_rsa_private_key = janus_is_true(item->value);
-	}
-	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout, dtls_generate_rsa_private_key) < 0) {
+	gboolean rsa_private_key = FALSE;
+	item = janus_config_get(config, config_certs, janus_config_type_item, "rsa_private_key");
+	if(item && item->value)
+		rsa_private_key = janus_is_true(item->value);
+	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout, rsa_private_key) < 0) {
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
