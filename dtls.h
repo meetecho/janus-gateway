@@ -34,10 +34,11 @@ const char *janus_get_ssl_version(void);
  * @param[in] password Password needed to use the key, if any
  * @param[in] ciphers DTLS ciphers to use (will use hardcoded defaults, if NULL)
  * @param[in] timeout DTLS timeout base, in ms, to use for retransmissions (ignored if not using BoringSSL)
+ * @param[in] rsa_private_key Whether RSA certificates should be generated, instead of NIST P-256
  * @param[in] accept_selfsigned Whether to accept self-signed certificates (default) or enforce validation
  * @returns 0 in case of success, a negative integer on errors */
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
-	const char *ciphers, guint16 timeout, gboolean accept_selfsigned);
+	const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned);
 /*! \brief Method to cleanup DTLS stuff before exiting */
 void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */

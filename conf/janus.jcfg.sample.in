@@ -167,14 +167,17 @@ general: {
 # want to enforce the DTLS stack in Janus to enforce valid certificates
 # from peers, though, you can do that setting 'dtls_accept_selfsigned' to
 # 'false' below: DO NOT TOUCH THAT IF YOU DO NOT KNOW WHAT YOU'RE DOING!
-# Finally, you can configure the DTLS ciphers to offer: the default if not
+# You can also configure the DTLS ciphers to offer: the default if not
 # set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+# Finally, by default NIST P-256 certificates are generated (see #1997),
+# but RSA generation is still supported if you set 'rsa_private_key' to 'true'.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
 	#dtls_accept_selfsigned = false
 	#dtls_ciphers = "your-desired-openssl-ciphers"
+	#rsa_private_key = false
 }
 
 # Media-related stuff: you can configure whether if you want
