@@ -105,11 +105,20 @@ gboolean janus_is_dtls(char *buf) {
 }
 
 /* DTLS stuff */
-#define DTLS_CIPHERS	"DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+#define DTLS_DEFAULT_CIPHERS	"DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+static const char *dtls_ciphers = DTLS_DEFAULT_CIPHERS;
 /* Duration for the self-generated certs: 1 year */
 #define DTLS_AUTOCERT_DURATION	60*60*24*365
 /* NIST P-256 elliptic curve used for private key generation */
 #define DTLS_ELLIPTIC_CURVE NID_X9_62_prime256v1
+
+/* By default we always accept self-signed certificates (that's what almost
+ * all of the existing WebRTC implementations do today), but if told so we
+ * can be configured to reject them, and validate them instead */
+static gboolean dtls_selfsigned_certs_ok = TRUE;
+gboolean janus_dtls_are_selfsigned_certs_ok(void) {
+	return dtls_selfsigned_certs_ok;
+}
 
 /* DTLS timeout base to enforce: notice that this can currently only be
  * modified if you're using BoringSSL, as OpenSSL uses 1s (1000ms) and
@@ -361,7 +370,8 @@ const char *janus_get_ssl_version(void) {
 }
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password, guint16 timeout, gboolean rsa_private_key) {
+gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
+		const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned) {
 	const char *crypto_lib = NULL;
 #if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
@@ -451,11 +461,16 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	}
 	*(lfp-1) = 0;
 	JANUS_LOG(LOG_INFO, "Fingerprint of our certificate: %s\n", local_fingerprint);
-	SSL_CTX_set_cipher_list(ssl_ctx, DTLS_CIPHERS);
+	if(ciphers)
+		dtls_ciphers = ciphers;
+	if(SSL_CTX_set_cipher_list(ssl_ctx, dtls_ciphers) == 0) {
+		JANUS_LOG(LOG_FATAL, "Error setting cipher list (%s)\n", ERR_reason_error_string(ERR_get_error()));
+		return -8;
+	}
 
 	if(janus_dtls_bio_agent_init() < 0) {
 		JANUS_LOG(LOG_FATAL, "Error initializing BIO agent\n");
-		return -8;
+		return -9;
 	}
 
 	dtls_timeout_base = timeout;
@@ -468,8 +483,15 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 	/* Initialize libsrtp */
 	if(srtp_init() != srtp_err_status_ok) {
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
-		return 5;
+		return -10;
 	}
+
+	/* Finally, let's set our policy with respect to DTLS self signed certificates */
+	dtls_selfsigned_certs_ok = accept_selfsigned;
+	if(!dtls_selfsigned_certs_ok) {
+		JANUS_LOG(LOG_WARN, "WebRTC PeerConnections with self-signed certificates will NOT be accepted\n");
+	}
+
 	return 0;
 }
 
@@ -993,7 +1015,19 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 /* DTLS certificate verification callback */
 int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 	/* We just use the verify_callback to request a certificate from the client */
-	return 1;
+	int err = X509_STORE_CTX_get_error(ctx);
+	if(err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT || err == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN) {
+		/* Self signed certificate: by default we always accept it */
+		if(!dtls_selfsigned_certs_ok) {
+			/* ... unless we're enforcing validation */
+			return 0;
+		}
+	}
+	/* We always reject expired certificates, even when self-signed */
+	if(err == X509_V_ERR_CERT_HAS_EXPIRED)
+		return 0;
+	/* Return a success if we're ok with self-signed, the result of the validation otherwise */
+	return dtls_selfsigned_certs_ok ? 1 : (err == X509_V_OK);
 }
 
 #ifdef HAVE_SCTP

@@ -163,13 +163,20 @@ general: {
 # Janus will autogenerate a self-signed certificate to use. Notice that
 # self-signed certificates are fine for the purpose of WebRTC DTLS
 # connectivity, for the time being, at least until Identity Providers
-# are standardized and implemented in browsers. By default, NIST P-256
-# certificates are generated (see #1997), but the old RSA generation is
-# still supported if you set the 'rsa_private_key' below to 'true'.
+# are standardized and implemented in browsers. If for some reason you
+# want to enforce the DTLS stack in Janus to enforce valid certificates
+# from peers, though, you can do that setting 'dtls_accept_selfsigned' to
+# 'false' below: DO NOT TOUCH THAT IF YOU DO NOT KNOW WHAT YOU'RE DOING!
+# You can also configure the DTLS ciphers to offer: the default if not
+# set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+# Finally, by default NIST P-256 certificates are generated (see #1997),
+# but RSA generation is still supported if you set 'rsa_private_key' to 'true'.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#dtls_accept_selfsigned = false
+	#dtls_ciphers = "your-desired-openssl-ciphers"
 	#rsa_private_key = false
 }
 

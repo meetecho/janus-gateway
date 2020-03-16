@@ -4663,6 +4663,10 @@ gint main(int argc, char *argv[])
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
+	const char *dtls_ciphers = NULL;
+	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_ciphers");
+	if(item && item->value)
+		dtls_ciphers = item->value;
 	guint16 dtls_timeout = 1000;
 	item = janus_config_get(config, config_media, janus_config_type_item, "dtls_timeout");
 	if(item && item->value && janus_string_to_uint16(item->value, &dtls_timeout) < 0) {
@@ -4673,7 +4677,11 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_certs, janus_config_type_item, "rsa_private_key");
 	if(item && item->value)
 		rsa_private_key = janus_is_true(item->value);
-	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_timeout, rsa_private_key) < 0) {
+	gboolean dtls_accept_selfsigned = TRUE;
+	item = janus_config_get(config, config_certs, janus_config_type_item, "dtls_accept_selfsigned");
+	if(item && item->value)
+		dtls_accept_selfsigned = janus_is_true(item->value);
+	if(janus_dtls_srtp_init(server_pem, server_key, password, dtls_ciphers, dtls_timeout, rsa_private_key, dtls_accept_selfsigned) < 0) {
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
