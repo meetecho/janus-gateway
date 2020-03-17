@@ -5654,7 +5654,7 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		cb = strstr(buffer, "content-base:");
 	if(cb != NULL) {
 		cb = strstr(cb, "rtsp://");
-		const char *crlf = cb ? strstr(cb, "\r\n") : NULL;
+		const char *crlf = (cb ? strstr(cb, "\r\n") : NULL);
 		if(crlf != NULL && base != NULL) {
 			gulong size = (crlf-cb)+1;
 			if(size > 256)
