@@ -1025,24 +1025,33 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* Session has been claimed -- is there anything to do here? */
 	JANUS_LOG(LOG_VERB, "Session has been claimed: (%"SCNu64"), adding to hash table\n", session_id);
+	janus_mutex_lock(&sessions_mutex);
+	janus_http_session *old_session = g_hash_table_lookup(sessions, &session_id);
+	if(old_session != NULL)
+		janus_refcount_increase(&old_session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	janus_http_session *session = g_malloc(sizeof(janus_http_session));
 	session->session_id = session_id;
 	session->events = g_async_queue_new();
+	session->longpolls = NULL;
+	janus_mutex_init(&session->mutex);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
+	if(old_session == NULL)
+		return;
 	/* Were there a long polls waiting? */
-	janus_mutex_lock(&session->mutex);
+	janus_mutex_lock(&old_session->mutex);
 	janus_http_msg *msg = NULL;
-	while(session->longpolls) {
-		transport = (janus_transport_session *)session->longpolls->data;
+	while(old_session->longpolls) {
+		transport = (janus_transport_session *)old_session->longpolls->data;
 		msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 		if(msg != NULL) {
 			if(msg->timeout != NULL) {
 				g_source_destroy(msg->timeout);
-				janus_refcount_decrease(&session->ref);
+				janus_refcount_decrease(&old_session->ref);
 				janus_refcount_decrease(&transport->ref);
 			}
 			msg->timeout = NULL;
@@ -1054,9 +1063,10 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 				g_source_attach(msg->timeout, httpctx);
 			}
 		}
-		session->longpolls = g_list_remove(session->longpolls, transport);
+		session->longpolls = g_list_remove(old_session->longpolls, transport);
 	}
-	janus_mutex_unlock(&session->mutex);
+	janus_mutex_unlock(&old_session->mutex);
+	janus_refcount_decrease(&old_session->ref);
 }
 
 /* Connection notifiers */
