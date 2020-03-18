@@ -5646,8 +5646,25 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
+static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, char *base, int *pt,
 		char *transport, char *host, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
+	/* Start by checking if there's any Content-Base header we should be aware of */
+	const char *cb = strstr(buffer, "Content-Base:");
+	if(cb == NULL)
+		cb = strstr(buffer, "content-base:");
+	if(cb != NULL) {
+		cb = strstr(cb, "rtsp://");
+		const char *crlf = (cb ? strstr(cb, "\r\n") : NULL);
+		if(crlf != NULL && base != NULL) {
+			gulong size = (crlf-cb)+1;
+			if(size > 256)
+				size = 256;
+			g_snprintf(base, size, "%s", cb);
+			if(base[size-2] == '/')
+				base[size-2] = '\0';
+		}
+	}
+	/* Parse the SDP now */
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m = strstr(buffer, pattern);
@@ -5781,6 +5798,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char vtransport[1024];
 	char vhost[256];
 	vhost[0] = '\0';
+	char vbase[256];
+	vbase[0] = '\0';
 	int vsport = 0, vsport_rtcp = 0;
 	multiple_fds video_fds = {-1, -1};
 
@@ -5791,6 +5810,8 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char atransport[1024];
 	char ahost[256];
 	ahost[0] = '\0';
+	char abase[256];
+	abase[0] = '\0';
 	int asport = 0, asport_rtcp = 0;
 	multiple_fds audio_fds = {-1, -1};
 
@@ -5798,12 +5819,12 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	/* Parse both video and audio first before proceed to setup as curldata will be reused */
 	int vresult = -1;
 	if(dovideo) {
-		vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+		vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", vbase, &vpt,
 			vtransport, vhost, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
 	}
 	int aresult = -1;
 	if(doaudio) {
-		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+		aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", abase, &apt,
 			atransport, ahost, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
 	}
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -5829,14 +5850,14 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		gboolean add_qs = (rtsp_querystring != NULL);
 		if(add_qs && strstr(vcontrol, rtsp_querystring) != NULL)
 			add_qs = FALSE;
-		if(strstr(vcontrol, rtsp_url) == vcontrol) {
+		if(strstr(vcontrol, (strlen(vbase) > 0 ? vbase : rtsp_url)) == vcontrol) {
 			/* The control attribute already contains the whole URL? */
 			g_snprintf(uri, sizeof(uri), "%s%s%s", vcontrol,
 				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
-			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, vcontrol,
-				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
+			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", (strlen(vbase) > 0 ? vbase : rtsp_url),
+				vcontrol, add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, vtransport);
@@ -6002,14 +6023,14 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 		gboolean add_qs = (rtsp_querystring != NULL);
 		if(add_qs && strstr(acontrol, rtsp_querystring) != NULL)
 			add_qs = FALSE;
-		if(strstr(acontrol, rtsp_url) == acontrol) {
+		if(strstr(acontrol, (strlen(abase) > 0 ? abase : rtsp_url)) == acontrol) {
 			/* The control attribute already contains the whole URL? */
 			g_snprintf(uri, sizeof(uri), "%s%s%s", acontrol,
 				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		} else {
 			/* Append the control attribute to the URL */
-			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", rtsp_url, acontrol,
-				add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
+			g_snprintf(uri, sizeof(uri), "%s/%s%s%s", (strlen(abase) > 0 ? abase : rtsp_url),
+				acontrol, add_qs ? "?" : "", add_qs ? rtsp_querystring : "");
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
