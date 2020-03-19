@@ -5047,6 +5047,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(update && !session->media.earlymedia && !session->media.update) {
 				/* Don't push to the application if this is in response to a hold/unhold we sent ourselves */
 				JANUS_LOG(LOG_VERB, "This is an update to an existing call (possibly in response to hold/unhold)\n");
+				janus_sdp_destroy(sdp);
 				break;
 			}
 			if(!session->media.earlymedia && !session->media.update) {
