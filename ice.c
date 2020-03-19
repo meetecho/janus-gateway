@@ -1501,8 +1501,8 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->video_first_rtp_ts[0] = 0;
 	stream->video_first_rtp_ts[1] = 0;
 	stream->video_first_rtp_ts[2] = 0;
-	stream->audio_last_ts = 0;
-	stream->video_last_ts = 0;
+	stream->audio_last_rtp_ts = 0;
+	stream->video_last_rtp_ts = 0;
 	g_free(stream);
 	stream = NULL;
 }
@@ -3649,10 +3649,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Compute an RTP timestamp coherent with the NTP one */
 		rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 		if(rtcp_ctx == NULL) {
-			sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
+			sr->si.rtp_ts = htonl(stream->audio_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->audio_first_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_first_rtp_ts;
+			uint32_t rtp_ts = ((ntp-stream->audio_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
@@ -3710,10 +3710,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Compute an RTP timestamp coherent with the NTP one */
 		rtcp_context *rtcp_ctx = stream->video_rtcp_ctx[0];
 		if(rtcp_ctx == NULL) {
-			sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
+			sr->si.rtp_ts = htonl(stream->video_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->video_first_ntp_ts[0])*(rtcp_ctx->tb))/1000000 + stream->video_first_rtp_ts[0];
+			uint32_t rtp_ts = ((ntp-stream->video_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->video_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
@@ -4249,12 +4249,15 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								component->out_stats.audio.updated = now;
 							}
 							component->out_stats.audio.bytes_lastsec_temp += pkt->length;
-							stream->audio_last_ts = timestamp;
+							struct timeval tv;
+							gettimeofday(&tv, NULL);
+							stream->audio_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+							stream->audio_last_rtp_ts = timestamp;
 							if(stream->audio_first_ntp_ts == 0) {
 								struct timeval tv;
 								gettimeofday(&tv, NULL);
-								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-								stream->audio_first_rtp_ts = timestamp;
+								stream->audio_first_ntp_ts = stream->audio_last_ntp_ts;
+								stream->audio_first_rtp_ts = stream->audio_last_rtp_ts;
 							}
 							/* Let's check if this is not Opus: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
@@ -4277,12 +4280,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								component->out_stats.video[0].updated = now;
 							}
 							component->out_stats.video[0].bytes_lastsec_temp += pkt->length;
-							stream->video_last_ts = timestamp;
+							struct timeval tv;
+							gettimeofday(&tv, NULL);
+							stream->video_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+							stream->video_last_rtp_ts = timestamp;
 							if(stream->video_first_ntp_ts[0] == 0) {
-								struct timeval tv;
-								gettimeofday(&tv, NULL);
-								stream->video_first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-								stream->video_first_rtp_ts[0] = timestamp;
+								stream->video_first_ntp_ts[0] = stream->video_last_ntp_ts;
+								stream->video_first_rtp_ts[0] = stream->video_last_rtp_ts;
 							}
 						}
 						/* Update sent packets counter */
