@@ -1502,7 +1502,9 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->video_first_rtp_ts[1] = 0;
 	stream->video_first_rtp_ts[2] = 0;
 	stream->audio_last_rtp_ts = 0;
+	stream->audio_last_ntp_ts = 0;
 	stream->video_last_rtp_ts = 0;
+	stream->video_last_ntp_ts = 0;
 	g_free(stream);
 	stream = NULL;
 }
@@ -4251,13 +4253,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							component->out_stats.audio.bytes_lastsec_temp += pkt->length;
 							struct timeval tv;
 							gettimeofday(&tv, NULL);
-							stream->audio_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-							stream->audio_last_rtp_ts = timestamp;
+							if ((gint32)(timestamp - stream->audio_last_rtp_ts) > 0) {
+								stream->audio_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->audio_last_rtp_ts = timestamp;
+							}
 							if(stream->audio_first_ntp_ts == 0) {
-								struct timeval tv;
-								gettimeofday(&tv, NULL);
-								stream->audio_first_ntp_ts = stream->audio_last_ntp_ts;
-								stream->audio_first_rtp_ts = stream->audio_last_rtp_ts;
+								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->audio_first_rtp_ts = timestamp;
 							}
 							/* Let's check if this is not Opus: in case we may need to change the timestamp base */
 							rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
@@ -4282,11 +4284,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							component->out_stats.video[0].bytes_lastsec_temp += pkt->length;
 							struct timeval tv;
 							gettimeofday(&tv, NULL);
-							stream->video_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-							stream->video_last_rtp_ts = timestamp;
+							if ((gint32)(timestamp - stream->video_last_rtp_ts) > 0) {
+								stream->video_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->video_last_rtp_ts = timestamp;
+							}
 							if(stream->video_first_ntp_ts[0] == 0) {
-								stream->video_first_ntp_ts[0] = stream->video_last_ntp_ts;
-								stream->video_first_rtp_ts[0] = stream->video_last_rtp_ts;
+								stream->video_first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->video_first_rtp_ts[0] = timestamp;
 							}
 						}
 						/* Update sent packets counter */
