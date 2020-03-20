@@ -285,6 +285,7 @@
 		"event" : "incomingcall",
 		"username" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>",
+		"callee" : "<SIP URI that was called (in case the user is associated with multiple public URIs)>",
 		"referred_by" : "<SIP URI header conveying the identity of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
@@ -329,7 +330,8 @@
 	"result" : {
 		"event" : "missed_call",
 		"caller" : "<SIP URI of the caller>",
-		"displayname" : "<display name of the caller, if available; optional>"
+		"displayname" : "<display name of the caller, if available; optional>",
+		"callee" : "<SIP URI that was called (in case the user is associated with multiple public URIs)>"
 	}
 }
 \endverbatim
@@ -4397,6 +4399,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
+			if(sip->sip_from == NULL || sip->sip_from->a_url == NULL ||
+					sip->sip_to == NULL || sip->sip_to->a_url == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
+				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				break;
+			}
 			gboolean reinvite = FALSE, busy = FALSE;
 			if(session->stack->s_nh_i == NULL) {
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established) || session->relayer_thread != NULL) {
@@ -4448,9 +4456,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "event", json_string("missed_call"));
 				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 				json_object_set_new(result, "caller", json_string(caller_text));
-				if(sip->sip_from && sip->sip_from->a_display) {
+				if(sip->sip_from->a_display) {
 					json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 				}
+				char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
+				json_object_set_new(result, "callee", json_string(callee_text));
 				json_object_set_new(missed, "result", result);
 				json_object_set_new(missed, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
@@ -4461,9 +4471,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("missed_call"));
 					json_object_set_new(info, "caller", json_string(caller_text));
+					json_object_set_new(info, "callee", json_string(callee_text));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				su_free(session->stack->s_home, caller_text);
+				su_free(session->stack->s_home, callee_text);
 				break;
 			}
 			if(!reinvite) {
@@ -4556,9 +4568,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 			json_object_set_new(calling, "username", json_string(session->callee));
-			if(sip->sip_from && sip->sip_from->a_display) {
+			if(sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}
+			char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
+			json_object_set_new(calling, "callee", json_string(callee_text));
 			if(session->incoming_header_prefixes) {
 				json_t *headers = janus_sip_get_incoming_headers(sip, session);
 				json_object_set_new(calling, "headers", headers);
@@ -4594,8 +4608,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
-				if(sip->sip_from && sip->sip_from->a_display)
+				if(sip->sip_from->a_display)
 					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
+				json_object_set_new(info, "callee", json_string(callee_text));
 				if(referred_by)
 					json_object_set_new(info, "referred_by", json_string(referred_by));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
