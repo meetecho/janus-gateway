@@ -727,9 +727,9 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			mc->handle = handle;
 			mc->candidate = g_strdup(candidate);
 			mc->local = g_strdup(rip);
-			mc->cancellable = g_cancellable_new();
+			mc->cancellable = NULL;
 			GResolver *resolver = g_resolver_get_default();
-			g_resolver_lookup_by_name_async(resolver, rip, mc->cancellable,
+			g_resolver_lookup_by_name_async(resolver, rip, NULL,
 				(GAsyncReadyCallback)janus_sdp_mdns_resolved, mc);
 			return 0;
 		}

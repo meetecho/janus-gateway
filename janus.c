@@ -453,7 +453,7 @@ static void janus_handle_signal(int signum) {
 	g_atomic_int_inc(&stop);
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
-	if(mainloop)
+	if(mainloop && g_main_loop_is_running(mainloop))
 		g_main_loop_quit(mainloop);
 }
 
