@@ -2489,7 +2489,7 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 	json_object_set_new(event, "videoroom", json_string("event"));
 	json_object_set_new(event, "room", string_ids ? json_string(participant->room_id_str) : json_integer(participant->room_id));
 	json_object_set_new(event, is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished",
-		json_integer(participant->user_id));
+		string_ids ? json_string(participant->user_id_str) : json_integer(participant->user_id));
 	janus_videoroom_notify_participants(participant, event);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
