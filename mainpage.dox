@@ -3407,6 +3407,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/RSATom/janus-gateway-snap">janus-gateway-snap</a></td>
  *		<td>Helper repo for build Janus WebRTC Server on build.snapcraft.io</td>
  * </tr>
+ * <tr>
+ * 		<td>openSUSE/SUSE</td>
+ * 		<td><a href="https://github.com/ancorgs">Ancor Gonzalez Sosa</a></td>
+ * 		<td><a href="https://build.opensuse.org/project/show/network:jangouts">Janus packages</a></td>
+ *		<td>Repositories for several versions of SUSE and openSUSE</td>
+ * </tr>
  * </table>
  * <br/>
  *
