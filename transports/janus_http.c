@@ -933,9 +933,9 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		janus_http_msg *msg = NULL;
 		while(session->longpolls) {
 			transport = (janus_transport_session *)session->longpolls->data;
-			msg = (janus_http_msg *)transport->transport_p;
+			msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 			/* Is this connection ready to send a response back? */
-			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
 				/* Send the events back */
 				if(msg->timeout != NULL) {
 					g_source_destroy(msg->timeout);
