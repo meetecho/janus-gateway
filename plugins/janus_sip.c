@@ -5955,6 +5955,12 @@ static void *janus_sip_relay_thread(void *data) {
 					JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: video remote IP address (%s) is invalid\n",
 						session->account.username, session->media.remote_video_ip);
 			}
+
+			/* In case we're on hold (remote address is 0.0.0.0) set the send properties to FALSE */
+			if(have_audio_server_ip && !strcmp(session->media.remote_audio_ip, "0.0.0.0"))
+				session->media.audio_send = FALSE;
+			if(have_video_server_ip && !strcmp(session->media.remote_video_ip, "0.0.0.0"))
+				session->media.video_send = FALSE;
 		}
 
 		/* Prepare poll */
