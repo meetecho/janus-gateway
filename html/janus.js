@@ -778,7 +778,7 @@ function Janus(gatewayCallbacks) {
 			Janus.error("Timeout on session " + sessionId);
 			Janus.debug(json);
 			if (websockets) {
-				ws.close(3504, "Gateway timeout");
+				ws.close(504, "Gateway timeout");
 			}
 			return;
 		} else {
