@@ -403,10 +403,14 @@ struct janus_ice_stream {
 	gint64 video_first_ntp_ts[3];
 	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
 	guint32 video_first_rtp_ts[3];
+	/*! \brief Last sent audio NTP timestamp */
+	gint64 audio_last_ntp_ts;
 	/*! \brief Last sent audio RTP timestamp */
-	guint32 audio_last_ts;
+	guint32 audio_last_rtp_ts;
+	/*! \brief Last sent video NTP timestamp */
+	gint64 video_last_ntp_ts;
 	/*! \brief Last sent video RTP timestamp */
-	guint32 video_last_ts;
+	guint32 video_last_rtp_ts;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */
