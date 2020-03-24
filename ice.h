@@ -395,6 +395,8 @@ struct janus_ice_stream {
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
 	GHashTable *rtx_nacked[3];
+	/*! \brief Map of the pending NACKed cleanup callback */
+	GHashTable *pending_nacked_cleanup;
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
