@@ -231,12 +231,13 @@ nat: {
 	#ice_lite = true
 	#ice_tcp = true
 
-	# By default Janus tries to resolve mDNS (.local) candidates: since
-	# this is currently done synchronously and might keep the API busy,
-	# especially in case mDNS resolution takes a long time to timeout,
+	# By default Janus tries to resolve mDNS (.local) candidates: even
+	# though this is now done asynchronously and shouldn't keep the API
+	# busy, even in case mDNS resolution takes a long time to timeout,
 	# you can choose to drop all .local candidates instead, which is
 	# helpful in case you know clients will never be in the same private
-	# network as the one the Janus instance is running from.
+	# network as the one the Janus instance is running from. Notice that
+	# this will cause ICE to fail if mDNS is the only way to connect!
 	#ignore_mdns = true
 
 	# In case you're deploying Janus on a server which is configured with
