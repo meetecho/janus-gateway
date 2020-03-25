@@ -926,6 +926,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			json_decref(message);
 			return -1;
 		}
+		janus_refcount_increase(&session->ref);
 		g_async_queue_push(session->events, message);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Are there long polls waiting? */
@@ -948,6 +949,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			session->longpolls = g_list_remove(session->longpolls, transport);
 		}
 		janus_mutex_unlock(&session->mutex);
+		janus_refcount_decrease(&session->ref);
 	} else {
 		if(request_id == keepalive_id) {
 			/* It's a response from our fake long-poll related keepalive, ignore */
@@ -1808,13 +1810,15 @@ static int janus_http_notifier(janus_http_msg *msg) {
 	guint64 session_id = msg->session_id;
 	janus_mutex_lock(&sessions_mutex);
 	janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
-	janus_mutex_unlock(&sessions_mutex);
-	if(!session || session->destroyed) {
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		/* TODO return error */
 		MHD_resume_connection(msg->connection);
 		return -1;
 	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	json_t *event = NULL, *list = NULL;
 	int events = 0;
 	while((event = g_async_queue_try_pop(session->events)) != NULL) {
@@ -1822,6 +1826,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 			/* TODO return error */
 			JANUS_LOG(LOG_ERR, "Session %"SCNu64" destroyed...\n", session_id);
 			MHD_resume_connection(msg->connection);
+			janus_refcount_decrease(&session->ref);
 			return -1;
 		}
 		if(max_events == 1) {
@@ -1860,6 +1865,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 	msg->response = payload_text;
 	msg->resplen = strlen(payload_text);
 	MHD_resume_connection(msg->connection);
+	janus_refcount_decrease(&session->ref);
 	return 0;
 }
 
