@@ -127,20 +127,29 @@ typedef struct janus_http_msg {
 	char *response;						/* The response from the core as a string */
 	size_t resplen;						/* Length of the response in octets */
 	GSource *timeout;					/* Timeout monitor, if any */
+	volatile gint destroyed;			/* Whether this session has been destroyed */
+	janus_refcount ref;					/* Reference counter for this message */
 } janus_http_msg;
 static GHashTable *messages = NULL;
 static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
 
-static void janus_http_msg_destroy(void *msg) {
-	if(!msg)
+static void janus_http_msg_free(const janus_refcount *msg_ref) {
+	janus_http_msg *request = janus_refcount_containerof(msg_ref, janus_http_msg, ref);
+	/* This message can be destroyed, free all the resources */
+	if(!request)
 		return;
-	janus_http_msg *request = (janus_http_msg *)msg;
 	g_free(request->payload);
 	g_free(request->contenttype);
 	g_free(request->acrh);
 	g_free(request->acrm);
 	g_free(request->response);
 	g_free(request);
+}
+
+static void janus_http_msg_destroy(void *msg) {
+	janus_http_msg *request = (janus_http_msg *)msg;
+	if(request && g_atomic_int_compare_and_exchange(&request->destroyed, 0, 1))
+		janus_refcount_decrease(&request->ref);
 }
 
 
@@ -487,8 +496,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 
 /* Static helper method to fill in the CORS headers */
 static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response *response) {
-	if(msg == NULL || response == NULL)
+	if(msg == NULL || g_atomic_int_get(&msg->destroyed) || response == NULL)
 		return;
+	janus_refcount_increase(&msg->ref);
 	MHD_add_response_header(response, "Access-Control-Allow-Origin", allow_origin ? allow_origin : "*");
 	if(allow_origin) {
 		/* We need these two headers as well, in case Access-Control-Allow-Origin is custom */
@@ -500,6 +510,7 @@ static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response
 		MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 	if(msg->acrh)
 		MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+	janus_refcount_decrease(&msg->ref);
 }
 
 /* Static callback that we register to */
@@ -828,7 +839,9 @@ void janus_http_destroy(void) {
 	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_transport_session *transport = value;
 		janus_http_msg *msg = (janus_http_msg *)transport->transport_p;
-		MHD_resume_connection(msg->connection);
+		if(msg != NULL && !g_atomic_int_get(&msg->destroyed)) {
+			MHD_resume_connection(msg->connection);
+		}
 	}
 	janus_mutex_unlock(&messages_mutex);
 
@@ -926,6 +939,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			json_decref(message);
 			return -1;
 		}
+		janus_refcount_increase(&session->ref);
 		g_async_queue_push(session->events, message);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Are there long polls waiting? */
@@ -936,6 +950,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 			/* Is this connection ready to send a response back? */
 			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
+				janus_refcount_increase(&msg->ref);
 				/* Send the events back */
 				if(msg->timeout != NULL) {
 					g_source_destroy(msg->timeout);
@@ -944,10 +959,12 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 				}
 				msg->timeout = NULL;
 				janus_http_notifier(msg);
+				janus_refcount_decrease(&msg->ref);
 			}
 			session->longpolls = g_list_remove(session->longpolls, transport);
 		}
 		janus_mutex_unlock(&session->mutex);
+		janus_refcount_decrease(&session->ref);
 	} else {
 		if(request_id == keepalive_id) {
 			/* It's a response from our fake long-poll related keepalive, ignore */
@@ -970,10 +987,12 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			return -1;
 		}
 		janus_http_msg *msg = (janus_http_msg *)transport->transport_p;
+		janus_refcount_increase(&msg->ref);
 		janus_mutex_unlock(&messages_mutex);
 		if(!msg->connection) {
 			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
 			json_decref(message);
+			janus_refcount_decrease(&msg->ref);
 			return -1;
 		}
 		if(msg->timeout != NULL) {
@@ -986,6 +1005,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		msg->response = response_text;
 		msg->resplen = strlen(response_text);
 		MHD_resume_connection(msg->connection);
+		janus_refcount_decrease(&msg->ref);
 	}
 	return 0;
 }
@@ -1049,6 +1069,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 		transport = (janus_transport_session *)old_session->longpolls->data;
 		msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 		if(msg != NULL) {
+			janus_refcount_increase(&msg->ref);
 			if(msg->timeout != NULL) {
 				g_source_destroy(msg->timeout);
 				janus_refcount_decrease(&old_session->ref);
@@ -1062,6 +1083,7 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 				g_source_set_callback(msg->timeout, janus_http_timeout, transport, NULL);
 				g_source_attach(msg->timeout, httpctx);
 			}
+			janus_refcount_decrease(&msg->ref);
 		}
 		session->longpolls = g_list_remove(old_session->longpolls, transport);
 	}
@@ -1133,6 +1155,7 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
 		msg->connection = connection;
+		janus_refcount_init(&msg->ref, janus_http_msg_free);
 		ts = janus_transport_session_create(msg, janus_http_msg_destroy);
 		janus_mutex_lock(&messages_mutex);
 		g_hash_table_insert(messages, ts, ts);
@@ -1739,6 +1762,7 @@ done:
 
 static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
+	janus_refcount_increase(&request->ref);
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
@@ -1750,6 +1774,7 @@ static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *ke
 		if(request)
 			request->acrh = g_strdup(value);
 	}
+	janus_refcount_decrease(&request->ref);
 	return MHD_YES;
 }
 
@@ -1761,6 +1786,7 @@ static void janus_http_request_completed(void *cls, struct MHD_Connection *conne
 		return;
 	janus_http_msg *request = (janus_http_msg *)ts->transport_p;
 	if(request != NULL) {
+		janus_refcount_increase(&request->ref);
 		janus_http_session *session = (janus_http_session *)g_atomic_pointer_get(&request->longpoll);
 		if(session != NULL)
 			janus_refcount_increase(&session->ref);
@@ -1777,6 +1803,7 @@ static void janus_http_request_completed(void *cls, struct MHD_Connection *conne
 			janus_mutex_unlock(&session->mutex);
 			janus_refcount_decrease(&session->ref);
 		}
+		janus_refcount_decrease(&request->ref);
 	}
 	janus_mutex_lock(&messages_mutex);
 	g_hash_table_remove(messages, ts);
@@ -1790,10 +1817,12 @@ static ssize_t janus_http_response_callback(void *cls, uint64_t pos, char *buf, 
 		return MHD_CONTENT_READER_END_WITH_ERROR;
 	if(pos >= request->resplen)
 		return MHD_CONTENT_READER_END_OF_STREAM;
+	janus_refcount_increase(&request->ref);
 	size_t bytes = request->resplen - pos;
 	if(bytes > max)
 		bytes = max;
 	memcpy(buf, request->response + pos, bytes);
+	janus_refcount_decrease(&request->ref);
 	return bytes;
 }
 
@@ -1808,13 +1837,15 @@ static int janus_http_notifier(janus_http_msg *msg) {
 	guint64 session_id = msg->session_id;
 	janus_mutex_lock(&sessions_mutex);
 	janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
-	janus_mutex_unlock(&sessions_mutex);
-	if(!session || session->destroyed) {
+	if(!session || g_atomic_int_get(&session->destroyed)) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		/* TODO return error */
 		MHD_resume_connection(msg->connection);
 		return -1;
 	}
+	janus_refcount_increase(&session->ref);
+	janus_mutex_unlock(&sessions_mutex);
 	json_t *event = NULL, *list = NULL;
 	int events = 0;
 	while((event = g_async_queue_try_pop(session->events)) != NULL) {
@@ -1822,6 +1853,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 			/* TODO return error */
 			JANUS_LOG(LOG_ERR, "Session %"SCNu64" destroyed...\n", session_id);
 			MHD_resume_connection(msg->connection);
+			janus_refcount_decrease(&session->ref);
 			return -1;
 		}
 		if(max_events == 1) {
@@ -1860,6 +1892,7 @@ static int janus_http_notifier(janus_http_msg *msg) {
 	msg->response = payload_text;
 	msg->resplen = strlen(payload_text);
 	MHD_resume_connection(msg->connection);
+	janus_refcount_decrease(&session->ref);
 	return 0;
 }
 
@@ -1875,6 +1908,7 @@ static int janus_http_return_success(janus_transport_session *ts, char *payload)
 			free(payload);
 		return MHD_NO;
 	}
+	janus_refcount_increase(&msg->ref);
 	struct MHD_Response *response = MHD_create_response_from_buffer(
 		payload ? strlen(payload) : 0,
 		(void*)payload,
@@ -1883,6 +1917,7 @@ static int janus_http_return_success(janus_transport_session *ts, char *payload)
 	janus_http_add_cors_headers(msg, response);
 	int ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
 	MHD_destroy_response(response);
+	janus_refcount_decrease(&msg->ref);
 	return ret;
 }
 
