@@ -17,11 +17,11 @@ echo "Launching test $TEST ..."
 python3 $TEST $URL
 
 if [ $? -eq 0 ]; then
-    echo "TEST SUCCEDED"
-    kill -9 $JANUS_PID
+    echo "TEST SUCCEEDED"
+    kill -9 $JANUS_PID 2>/dev/null
     exit 0
 else
     echo "TEST FAILED"
-    kill -9 $JANUS_PID
+    kill -9 $JANUS_PID 2>/dev/null
     exit 1
 fi
