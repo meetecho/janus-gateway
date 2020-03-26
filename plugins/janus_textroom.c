@@ -1454,8 +1454,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
 			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(participant == NULL) {
@@ -1635,8 +1635,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		/* A PIN may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_pin, root, "pin", error_code, error_cause,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
@@ -1772,8 +1772,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_lock(&session->mutex);
 		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
 			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
@@ -2191,8 +2191,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
