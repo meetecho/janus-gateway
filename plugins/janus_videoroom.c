@@ -4127,9 +4127,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_mutex_unlock(&rooms_mutex);
 			goto prepare_response;
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		janus_refcount_increase(&videoroom->ref);
 		janus_mutex_lock(&videoroom->mutex);
-		janus_mutex_unlock(&rooms_mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
@@ -5354,9 +5354,9 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_unlock(&rooms_mutex);
 				goto error;
 			}
+			janus_mutex_unlock(&rooms_mutex);
 			janus_refcount_increase(&videoroom->ref);
 			janus_mutex_lock(&videoroom->mutex);
-			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
@@ -5379,7 +5379,11 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				}
 				if(error_code != 0)
+				{
+					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
+				}
 				/* A token might be required to join */
 				if(videoroom->check_allowed) {
 					json_t *token = json_object_get(root, "token");
@@ -5640,7 +5644,10 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				}
 				if(error_code != 0)
+				{
+					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
+				}
 				janus_mutex_lock(&sessions_mutex);
 				session = janus_videoroom_lookup_session(msg->handle);
 				if(!session) {
