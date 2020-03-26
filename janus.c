@@ -206,6 +206,7 @@ static gint stop_signal = 0;
 gint janus_is_stopping(void) {
 	return g_atomic_int_get(&stop);
 }
+static GMainLoop *mainloop = NULL;
 
 
 /* Public instance name */
@@ -452,6 +453,8 @@ static void janus_handle_signal(int signum) {
 	g_atomic_int_inc(&stop);
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
+	if(mainloop && g_main_loop_is_running(mainloop))
+		g_main_loop_quit(mainloop);
 }
 
 /*! \brief Termination handler (atexit) */
@@ -575,6 +578,24 @@ static void janus_session_free(const janus_refcount *session_ref) {
 	g_free(session);
 }
 
+static janus_request *janus_session_get_request(janus_session *session) {
+	if(session == NULL)
+		return NULL;
+	janus_mutex_lock(&session->mutex);
+	janus_request *source = session->source;
+	if(source != NULL && !g_atomic_int_get(&source->destroyed)) {
+		janus_refcount_increase(&source->ref);
+	} else {
+		source = NULL;
+	}
+	janus_mutex_unlock(&session->mutex);
+	return source;
+}
+static void janus_request_unref(janus_request *request) {
+	if(request)
+		janus_refcount_decrease(&request->ref);
+}
+
 static gboolean janus_check_sessions(gpointer user_data) {
 	if(session_timeout < 1)		/* Session timeouts are disabled */
 		return G_SOURCE_CONTINUE;
@@ -597,12 +618,14 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				/* Mark the session as over, we'll deal with it later */
 				janus_session_handles_clear(session);
 				/* Notify the transport */
-				if(session->source) {
+				janus_request *source = janus_session_get_request(session);
+				if(source) {
 					json_t *event = janus_create_message("timeout", session->session_id, NULL);
 					/* Send this to the transport client and notify the session's over */
-					session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
-					session->source->transport->session_over(session->source->instance, session->session_id, TRUE, FALSE);
+					source->transport->send_message(source->instance, NULL, FALSE, event);
+					source->transport->session_over(source->instance, session->session_id, TRUE, FALSE);
 				}
+				janus_request_unref(source);
 				/* Notify event handlers as well */
 				if(janus_events_is_enabled())
 					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
@@ -684,16 +707,16 @@ janus_session *janus_session_find(guint64 session_id) {
 
 void janus_session_notify_event(janus_session *session, json_t *event) {
 	if(session != NULL && !g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_lock(&session->mutex);
-		if(session->source != NULL && session->source->transport != NULL) {
+		janus_request *source = janus_session_get_request(session);
+		if(source != NULL && source->transport != NULL) {
 			/* Send this to the transport client */
-			JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
-			session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
+			JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", source->transport->get_package(), source->instance);
+			source->transport->send_message(source->instance, NULL, FALSE, event);
 		} else {
 			/* No transport, free the event */
 			json_decref(event);
 		}
-		janus_mutex_unlock(&session->mutex);
+		janus_request_unref(source);
 	} else {
 		/* No session, free the event */
 		json_decref(event);
@@ -782,6 +805,20 @@ json_t *janus_session_handles_list_json(janus_session *session) {
 }
 
 /* Requests management */
+static void janus_request_free(const janus_refcount *request_ref) {
+	janus_request *request = janus_refcount_containerof(request_ref, janus_request, ref);
+	/* This request can be destroyed, free all the resources */
+	request->transport = NULL;
+	if(request->instance)
+		janus_refcount_decrease(&request->instance->ref);
+	request->instance = NULL;
+	request->request_id = NULL;
+	if(request->message)
+		json_decref(request->message);
+	request->message = NULL;
+	g_free(request);
+}
+
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
 	janus_request *request = g_malloc(sizeof(janus_request));
 	request->transport = transport;
@@ -790,20 +827,15 @@ janus_request *janus_request_new(janus_transport *transport, janus_transport_ses
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
+	g_atomic_int_set(&request->destroyed, 0);
+	janus_refcount_init(&request->ref, janus_request_free);
 	return request;
 }
 
 void janus_request_destroy(janus_request *request) {
-	if(request == NULL || request == &exit_message)
+	if(request == NULL || request == &exit_message || !g_atomic_int_compare_and_exchange(&request->destroyed, 0, 1))
 		return;
-	request->transport = NULL;
-	janus_refcount_decrease(&request->instance->ref);
-	request->instance = NULL;
-	request->request_id = NULL;
-	if(request->message)
-		json_decref(request->message);
-	request->message = NULL;
-	g_free(request);
+	janus_refcount_decrease(&request->ref);
 }
 
 static int janus_request_check_secret(janus_request *request, guint64 session_id, const gchar *transaction_text) {
@@ -1116,10 +1148,11 @@ int janus_process_incoming_request(janus_request *request) {
 		g_hash_table_remove(sessions, &session->session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
-		janus_mutex_lock(&session->mutex);
-		if(session->source && session->source->transport)
-			session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
-		janus_mutex_unlock(&session->mutex);
+		janus_request *source = janus_session_get_request(session);
+		if(source && source->transport)
+			source->transport->session_over(source->instance, session->session_id, FALSE, FALSE);
+		janus_request_unref(source);
+
 		/* Schedule the session for deletion */
 		janus_session_destroy(session);
 
@@ -2461,10 +2494,10 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			g_hash_table_remove(sessions, &session->session_id);
 			janus_mutex_unlock(&sessions_mutex);
 			/* Notify the source that the session has been destroyed */
-			janus_mutex_lock(&session->mutex);
-			if(session->source && session->source->transport)
-				session->source->transport->session_over(session->source->instance, session->session_id, FALSE, FALSE);
-			janus_mutex_unlock(&session->mutex);
+			janus_request *source = janus_session_get_request(session);
+			if(source && source->transport)
+				source->transport->session_over(source->instance, session->session_id, FALSE, FALSE);
+			janus_request_unref(source);
 			/* Schedule the session for deletion */
 			janus_session_destroy(session);
 
@@ -4716,7 +4749,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 	/* Start the thread that will dispatch incoming requests */
-	requests = g_async_queue_new_full((GDestroyNotify) janus_request_destroy);
+	requests = g_async_queue_new_full((GDestroyNotify)janus_request_destroy);
 	GThread *requests_thread = g_thread_try_new("sessions requests", &janus_transport_requests, NULL, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n", error->code, error->message ? error->message : "??");
@@ -5154,10 +5187,9 @@ gint main(int argc, char *argv[])
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, JANUS_EVENT_SUBTYPE_CORE_STARTUP, 0, info);
 	}
 
-	while(!g_atomic_int_get(&stop)) {
-		/* Loop until we have to stop */
-		usleep(250000); /* A signal will cancel usleep() but not g_usleep() */
-	}
+	/* Loop until we have to stop */
+	mainloop = g_main_loop_new (NULL, TRUE);
+	g_main_loop_run(mainloop);
 
 	/* If the Event Handlers mechanism is enabled, notify handlers that Janus is hanging up */
 	if(janus_events_is_enabled()) {

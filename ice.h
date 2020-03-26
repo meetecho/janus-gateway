@@ -395,6 +395,8 @@ struct janus_ice_stream {
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
 	GHashTable *rtx_nacked[3];
+	/*! \brief Map of the pending NACKed cleanup callback */
+	GHashTable *pending_nacked_cleanup;
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
@@ -403,10 +405,14 @@ struct janus_ice_stream {
 	gint64 video_first_ntp_ts[3];
 	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
 	guint32 video_first_rtp_ts[3];
+	/*! \brief Last sent audio NTP timestamp */
+	gint64 audio_last_ntp_ts;
 	/*! \brief Last sent audio RTP timestamp */
-	guint32 audio_last_ts;
+	guint32 audio_last_rtp_ts;
+	/*! \brief Last sent video NTP timestamp */
+	gint64 video_last_ntp_ts;
 	/*! \brief Last sent video RTP timestamp */
-	guint32 video_last_ts;
+	guint32 video_last_rtp_ts;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */
