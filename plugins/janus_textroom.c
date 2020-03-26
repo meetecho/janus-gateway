@@ -1453,8 +1453,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		janus_refcount_increase(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&textroom->mutex);
 		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
 			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
@@ -1634,8 +1634,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		janus_refcount_increase(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&textroom->mutex);
 		/* A PIN may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_pin, root, "pin", error_code, error_cause,
@@ -1771,8 +1771,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		janus_refcount_increase(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_lock(&session->mutex);
 		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
@@ -2190,8 +2190,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		janus_refcount_increase(&textroom->ref);
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&textroom->mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_secret, root, "secret", error_code, error_cause,
