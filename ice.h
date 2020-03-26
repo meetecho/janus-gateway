@@ -35,10 +35,12 @@
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
  * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
  * @param[in] full_trickle Whether full-trickle must be used (instead of half-trickle)
+ * @param[in] ignore_mdns Whether mDNS candidates should be ignored, instead of resolved
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ignore_mdns,
+	gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
 /*! \brief Method to check whether a STUN server is reachable
@@ -119,6 +121,9 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether full-trickle support is enabled or not
  * @returns true if full-trickle support is enabled, false otherwise */
 gboolean janus_ice_is_full_trickle_enabled(void);
+/*! \brief Method to check whether mDNS resolution is enabled or not
+ * @returns true if mDNS resolution is enabled, false otherwise */
+gboolean janus_ice_is_mdns_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
@@ -390,6 +395,8 @@ struct janus_ice_stream {
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
 	GHashTable *rtx_nacked[3];
+	/*! \brief Map of the pending NACKed cleanup callback */
+	GHashTable *pending_nacked_cleanup;
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
@@ -398,10 +405,14 @@ struct janus_ice_stream {
 	gint64 video_first_ntp_ts[3];
 	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
 	guint32 video_first_rtp_ts[3];
+	/*! \brief Last sent audio NTP timestamp */
+	gint64 audio_last_ntp_ts;
 	/*! \brief Last sent audio RTP timestamp */
-	guint32 audio_last_ts;
+	guint32 audio_last_rtp_ts;
+	/*! \brief Last sent video NTP timestamp */
+	gint64 video_last_ntp_ts;
 	/*! \brief Last sent video RTP timestamp */
-	guint32 video_last_ts;
+	guint32 video_last_rtp_ts;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */

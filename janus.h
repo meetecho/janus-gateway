@@ -127,6 +127,10 @@ struct janus_request {
 	gboolean admin;
 	/*! \brief Pointer to the original request, if available */
 	json_t *message;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 /*! \brief Helper to allocate a janus_request instance
  * @param[in] transport Pointer to the transport

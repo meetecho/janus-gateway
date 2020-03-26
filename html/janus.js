@@ -949,6 +949,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
+		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		var unload = (callbacks.unload === true);
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
@@ -1262,6 +1263,10 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
+				if(errorThrown === "")
+					callbacks.error(textStatus + ": Is the server down?");
+				else
+					callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
 	}
@@ -1939,7 +1944,7 @@ function Janus(gatewayCallbacks) {
 							media.audioSend = true;
 						}
 						if(isAudioSendEnabled(media)) {
-							media.keepVideo = false;
+							media.keepAudio = false;
 							media.addAudio = true;
 						}
 					} else {

@@ -1,6 +1,7 @@
 # Configuration of the MQTT additional transport for the Janus API.
 general: {
 	enabled = false						# Whether the support must be enabled
+	#events = true						# Whether to notify event handlers about transport events (default=true)
 	json = "indented"						# Whether the JSON messages should be indented (default),
 										# plain (no indentation) or compact (no indentation and no spaces)
 

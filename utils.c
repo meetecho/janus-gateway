@@ -90,6 +90,45 @@ guint64 janus_random_uint64(void) {
 	return num;
 }
 
+char *janus_random_uuid(void) {
+#if GLIB_CHECK_VERSION(2, 52, 0)
+	return g_uuid_string_random();
+#else
+	/* g_uuid_string_random is only available from glib 2.52, so if it's
+	 * not available we have to do it manually: the following code is
+	 * heavily based on https://github.com/rxi/uuid4 (MIT license) */
+	const char *template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+	const char *samples = "0123456789abcdef";
+	union { unsigned char b[16]; uint64_t word[2]; } rnd;
+	rnd.word[0] = janus_random_uint64();
+	rnd.word[1] = janus_random_uint64();
+	/* Generate the string */
+	char uuid[37], *dst = uuid;
+	const char *p = template;
+	int i = 0, n = 0;
+	while(*p) {
+		n = rnd.b[i >> 1];
+		n = (i & 1) ? (n >> 4) : (n & 0xf);
+		switch (*p) {
+			case 'x':
+				*dst = samples[n];
+				i++;
+				break;
+			case 'y':
+				*dst = samples[(n & 0x3) + 8];
+				i++;
+				break;
+			default:
+				*dst = *p;
+		}
+		p++;
+		dst++;
+	}
+	uuid[36] = '\0';
+	return g_strdup(uuid);
+#endif
+}
+
 guint64 *janus_uint64_dup(guint64 num) {
 	guint64 *numdup = g_malloc(sizeof(guint64));
 	*numdup = num;
@@ -742,7 +781,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 16)
+	if(!buffer || len < 6)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;

@@ -18,6 +18,11 @@ general: {
 	#debug_timestamps = true				# Whether to show a timestamp for each log line
 	#debug_colors = false					# Whether colors should be disabled in the log
 	#debug_locks = true						# Whether to enable debugging of locks (very verbose!)
+	#log_prefix = "[janus] "				# In case you want log lines to be prefixed by some
+											# custom text, you can use the 'log_prefix' property.
+											# It supports terminal colors, meaning something like
+											# "[\x1b[32mjanus\x1b[0m] " would show a green "janus"
+											# string in square brackets (assuming debug_colors=true).
 
 		# This is what you configure if you want to launch Janus as a daemon
 	#daemonize = true						# Whether Janus should run as a daemon
@@ -122,8 +127,8 @@ general: {
 		# files to (e.g., recordings, pcap captures and the like). In order
 		# to avoid people can mess with folders they're not supposed to,
 		# you can configure an array of folders that Janus should prevent
-		# creating files in. By default no folder is protected, unless the
-		# 'protected_folder' property below is uncommented and configured.
+		# creating files in. If the 'protected_folder' property below is
+		# commented, no folder is protected.
 		# Notice that at the moment this only covers attempts to start
 		# an .mjr recording and pcap/text2pcap packet captures.
 	protected_folders = [
@@ -136,7 +141,6 @@ general: {
 		"/lib32",
 		"/lib64",
 		"/proc",
-		"/root",
 		"/sbin",
 		"/sys",
 		"/usr",
@@ -159,11 +163,21 @@ general: {
 # Janus will autogenerate a self-signed certificate to use. Notice that
 # self-signed certificates are fine for the purpose of WebRTC DTLS
 # connectivity, for the time being, at least until Identity Providers
-# are standardized and implemented in browsers.
+# are standardized and implemented in browsers. If for some reason you
+# want to enforce the DTLS stack in Janus to enforce valid certificates
+# from peers, though, you can do that setting 'dtls_accept_selfsigned' to
+# 'false' below: DO NOT TOUCH THAT IF YOU DO NOT KNOW WHAT YOU'RE DOING!
+# You can also configure the DTLS ciphers to offer: the default if not
+# set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+# Finally, by default NIST P-256 certificates are generated (see #1997),
+# but RSA generation is still supported if you set 'rsa_private_key' to 'true'.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#dtls_accept_selfsigned = false
+	#dtls_ciphers = "your-desired-openssl-ciphers"
+	#rsa_private_key = false
 }
 
 # Media-related stuff: you can configure whether if you want
@@ -205,8 +219,8 @@ media: {
 # users) rather than the default half-trickle (Janus supports trickle
 # candidates from users, but sends its own within the SDP), and whether
 # it should work in ICE-Lite mode (by default it doesn't). Finally,
-# you can also enable ICE-TCP support (beware that it currently *only*
-# works if you enable ICE Lite as well), choose which interfaces should
+# you can also enable ICE-TCP support (beware that this may lead to problems
+# if you do not enable ICE Lite as well), choose which interfaces should
 # be used for gathering candidates, and enable or disable the
 # internal libnice debugging, if needed.
 nat: {
@@ -216,6 +230,15 @@ nat: {
 	#full_trickle = true
 	#ice_lite = true
 	#ice_tcp = true
+
+	# By default Janus tries to resolve mDNS (.local) candidates: even
+	# though this is now done asynchronously and shouldn't keep the API
+	# busy, even in case mDNS resolution takes a long time to timeout,
+	# you can choose to drop all .local candidates instead, which is
+	# helpful in case you know clients will never be in the same private
+	# network as the one the Janus instance is running from. Notice that
+	# this will cause ICE to fail if mDNS is the only way to connect!
+	#ignore_mdns = true
 
 	# In case you're deploying Janus on a server which is configured with
 	# a 1:1 NAT (e.g., Amazon EC2), you might want to also specify the public
