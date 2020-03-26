@@ -89,6 +89,12 @@ gboolean janus_ice_is_full_trickle_enabled(void) {
 	return janus_full_trickle_enabled;
 }
 
+/* mDNS resolution support */
+static gboolean janus_mdns_enabled;
+gboolean janus_ice_is_mdns_enabled(void) {
+	return janus_mdns_enabled;
+}
+
 /* IPv6 support (still mostly WIP) */
 static gboolean janus_ipv6_enabled;
 gboolean janus_ice_is_ipv6_enabled(void) {
@@ -319,6 +325,7 @@ typedef struct janus_ice_nacked_packet {
 	janus_ice_handle *handle;
 	int vindex;
 	guint16 seq_number;
+	guint source_id;
 } janus_ice_nacked_packet;
 static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 	janus_ice_nacked_packet *pkt = (janus_ice_nacked_packet *)user_data;
@@ -327,6 +334,7 @@ static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 			pkt->handle->handle_id, pkt->seq_number, pkt->handle->stream->video_ssrc_peer[pkt->vindex], pkt->vindex);
 		g_hash_table_remove(pkt->handle->stream->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
+		g_hash_table_remove(pkt->handle->stream->pending_nacked_cleanup, GUINT_TO_POINTER(pkt->source_id));
 	}
 
 	return G_SOURCE_REMOVE;
@@ -786,10 +794,12 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
 
 
 /* libnice initialization */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ignore_mdns,
+		gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
 	janus_ice_lite_enabled = ice_lite;
 	janus_ice_tcp_enabled = ice_tcp;
 	janus_full_trickle_enabled = full_trickle;
+	janus_mdns_enabled = !ignore_mdns;
 	janus_ipv6_enabled = ipv6;
 	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (%s mode, ICE-TCP candidates %s, %s-trickle, IPv6 support %s)\n",
 		janus_ice_lite_enabled ? "Lite" : "Full",
@@ -824,6 +834,8 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 		JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
 #endif
 	}
+	if(!janus_mdns_enabled)
+		JANUS_LOG(LOG_WARN, "mDNS resolution disabled, .local candidates will be ignored\n");
 
 	/* We keep track of plugin sessions to avoid problems */
 	plugin_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_plugin_session_dereference);
@@ -860,8 +872,8 @@ int janus_ice_test_stun_server(janus_network_address *addr, uint16_t port,
 		return -1;
 	}
 	struct sockaddr *address = NULL, *remote = NULL;
-	struct sockaddr_in address4, remote4;
-	struct sockaddr_in6 address6, remote6;
+	struct sockaddr_in address4 = { 0 }, remote4 = { 0 };
+	struct sockaddr_in6 address6 = { 0 }, remote6 = { 0 };
 	socklen_t addrlen = 0;
 	if(addr->family == AF_INET) {
 		memset(&address4, 0, sizeof(address4));
@@ -1426,6 +1438,18 @@ void janus_ice_stream_destroy(janus_ice_stream *stream) {
 		janus_ice_component_destroy(stream->component);
 		stream->component = NULL;
 	}
+	if(stream->pending_nacked_cleanup && g_hash_table_size(stream->pending_nacked_cleanup) > 0) {
+		GHashTableIter iter;
+		gpointer val;
+		g_hash_table_iter_init(&iter, stream->pending_nacked_cleanup);
+		while(g_hash_table_iter_next(&iter, NULL, &val)) {
+			GSource *source = val;
+			g_source_destroy(source);
+			g_source_unref(source);
+		}
+		g_hash_table_destroy(stream->pending_nacked_cleanup);
+	}
+	stream->pending_nacked_cleanup = NULL;
 	janus_ice_handle *handle = stream->handle;
 	if(handle != NULL) {
 		janus_refcount_decrease(&handle->ref);
@@ -1493,8 +1517,10 @@ static void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	stream->video_first_rtp_ts[0] = 0;
 	stream->video_first_rtp_ts[1] = 0;
 	stream->video_first_rtp_ts[2] = 0;
-	stream->audio_last_ts = 0;
-	stream->video_last_ts = 0;
+	stream->audio_last_rtp_ts = 0;
+	stream->audio_last_ntp_ts = 0;
+	stream->video_last_rtp_ts = 0;
+	stream->video_last_ntp_ts = 0;
 	g_free(stream);
 	stream = NULL;
 }
@@ -2634,9 +2660,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								np->handle = handle;
 								np->seq_number = cur_seq->seq;
 								np->vindex = vindex;
+								if(stream->pending_nacked_cleanup == NULL)
+									stream->pending_nacked_cleanup = g_hash_table_new(NULL, NULL);
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
-								g_source_attach(timeout_source, handle->mainctx);
+								np->source_id = g_source_attach(timeout_source, handle->mainctx);
+								g_hash_table_insert(stream->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
 								g_source_unref(timeout_source);
 							}
 						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
@@ -3642,10 +3671,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Compute an RTP timestamp coherent with the NTP one */
 		rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 		if(rtcp_ctx == NULL) {
-			sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
+			sr->si.rtp_ts = htonl(stream->audio_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->audio_first_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_first_rtp_ts;
+			uint32_t rtp_ts = ((ntp-stream->audio_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
@@ -3703,10 +3732,10 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 		/* Compute an RTP timestamp coherent with the NTP one */
 		rtcp_context *rtcp_ctx = stream->video_rtcp_ctx[0];
 		if(rtcp_ctx == NULL) {
-			sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
+			sr->si.rtp_ts = htonl(stream->video_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->video_first_ntp_ts[0])*(rtcp_ctx->tb))/1000000 + stream->video_first_rtp_ts[0];
+			uint32_t rtp_ts = ((ntp-stream->video_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->video_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
@@ -4242,10 +4271,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								component->out_stats.audio.updated = now;
 							}
 							component->out_stats.audio.bytes_lastsec_temp += pkt->length;
-							stream->audio_last_ts = timestamp;
+							struct timeval tv;
+							gettimeofday(&tv, NULL);
+							if ((gint32)(timestamp - stream->audio_last_rtp_ts) > 0) {
+								stream->audio_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->audio_last_rtp_ts = timestamp;
+							}
 							if(stream->audio_first_ntp_ts == 0) {
-								struct timeval tv;
-								gettimeofday(&tv, NULL);
 								stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->audio_first_rtp_ts = timestamp;
 							}
@@ -4270,10 +4302,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 								component->out_stats.video[0].updated = now;
 							}
 							component->out_stats.video[0].bytes_lastsec_temp += pkt->length;
-							stream->video_last_ts = timestamp;
+							struct timeval tv;
+							gettimeofday(&tv, NULL);
+							if ((gint32)(timestamp - stream->video_last_rtp_ts) > 0) {
+								stream->video_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+								stream->video_last_rtp_ts = timestamp;
+							}
 							if(stream->video_first_ntp_ts[0] == 0) {
-								struct timeval tv;
-								gettimeofday(&tv, NULL);
 								stream->video_first_ntp_ts[0] = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->video_first_rtp_ts[0] = timestamp;
 							}
@@ -4383,7 +4418,7 @@ static void janus_ice_queue_packet(janus_ice_handle *handle, janus_ice_queued_pa
 }
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, janus_plugin_rtp *packet) {
-	if(!handle || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
+	if(!handle || !handle->stream || handle->queued_packets == NULL || packet == NULL || packet->buffer == NULL ||
 			!janus_is_rtp(packet->buffer, packet->length))
 		return;
 	if((!packet->video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))

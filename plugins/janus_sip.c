@@ -285,6 +285,7 @@
 		"event" : "incomingcall",
 		"username" : "<SIP URI of the caller>",
 		"displayname" : "<display name of the caller, if available; optional>",
+		"callee" : "<SIP URI that was called (in case the user is associated with multiple public URIs)>",
 		"referred_by" : "<SIP URI header conveying the identity of the transferor, if this is a transfer; optional>",
 		"replaces" : "<call-ID of the call that this is supposed to replace, if this is an attended transfer; optional>",
 		"srtp" : "<whether the caller mandates (sdes_mandatory) or offers (sdes_optional) SRTP support; optional>",
@@ -329,7 +330,8 @@
 	"result" : {
 		"event" : "missed_call",
 		"caller" : "<SIP URI of the caller>",
-		"displayname" : "<display name of the caller, if available; optional>"
+		"displayname" : "<display name of the caller, if available; optional>",
+		"callee" : "<SIP URI that was called (in case the user is associated with multiple public URIs)>"
 	}
 }
 \endverbatim
@@ -2135,6 +2137,11 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 			session->master = NULL;
 		}
 	}
+	/* If this session was involved in a transfer, get rid of the reference */
+	if(session->refer_id) {
+		g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
+		session->refer_id = 0;
+	}
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
 		nua_shutdown(session->stack->s_nua);
@@ -3531,16 +3538,15 @@ static void *janus_sip_handler(void *data) {
 				janus_mutex_lock(&sessions_mutex);
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
-				if(transfer != NULL && transfer->nh_s != NULL) {
-					/* Send a 202 */
-					nua_respond(transfer->nh_s, 202, sip_status_phrase(202),
-						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
-					JANUS_LOG(LOG_VERB, "[%p] 202\n", transfer->nh_s);
+				if(transfer != NULL) {
+					if(session->refer_id > 0 && session->refer_id != refer_id) {
+						janus_mutex_lock(&sessions_mutex);
+						g_hash_table_remove(transfers, GUINT_TO_POINTER(session->refer_id));
+						janus_mutex_unlock(&sessions_mutex);
+					}
 					session->refer_id = refer_id;
 					referred_by = transfer->referred_by ? g_strdup(transfer->referred_by) : NULL;
-				}
-				/* Any custom headers we should include? (e.g., Replaces) */
-				if(transfer != NULL && transfer->custom_headers != NULL) {
+					/* Any custom headers we should include? (e.g., Replaces) */
 					g_strlcat(custom_headers, transfer->custom_headers, sizeof(custom_headers));
 				}
 			}
@@ -3903,17 +3909,23 @@ static void *janus_sip_handler(void *data) {
 				janus_sip_transfer *transfer = g_hash_table_lookup(transfers, GUINT_TO_POINTER(refer_id));
 				janus_mutex_unlock(&sessions_mutex);
 				if(transfer != NULL && transfer->nh_s != NULL) {
-					/* Send an error response */
-					int response_code = 486;
+					/* Send a NOTIFY with the error code */
+					int response_code = 603;
 					json_t *code_json = json_object_get(root, "code");
 					if(code_json)
 						response_code = json_integer_value(code_json);
 					if(response_code <= 399) {
-						JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline transfer\n");
-						response_code = 486;
+						JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 603 to decline transfer\n");
+						response_code = 603;
 					}
-					nua_respond(transfer->nh_s, response_code, sip_status_phrase(response_code),
-						NUTAG_WITH_SAVED(transfer->saved), TAG_END());
+					char content[100];
+					g_snprintf(content, sizeof(content), "SIP/2.0 %d %s", response_code, sip_status_phrase(response_code));
+					nua_notify(transfer->nh_s,
+						NUTAG_SUBSTATE(nua_substate_terminated),
+						SIPTAG_CONTENT_TYPE_STR("message/sipfrag"),
+						SIPTAG_PAYLOAD_STR(content),
+						NUTAG_WITH_SAVED(transfer->saved),
+						TAG_END());
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -3927,8 +3939,14 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(result, "event", json_string("declining"));
 					json_object_set_new(result, "refer_id", json_integer(refer_id));
 					json_object_set_new(result, "code", json_integer(response_code));
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
+					janus_mutex_unlock(&sessions_mutex);
 					goto done;
 				} else {
+					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_remove(transfers, GUINT_TO_POINTER(refer_id));
+					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Wrong state (no transfer?)\n");
 					error_code = JANUS_SIP_ERROR_WRONG_STATE;
 					g_snprintf(error_cause, 512, "Wrong state (no transfer?)");
@@ -4634,6 +4652,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
+			if(sip->sip_from == NULL || sip->sip_from->a_url == NULL ||
+					sip->sip_to == NULL || sip->sip_to->a_url == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid request (missing From or To)\n");
+				nua_respond(nh, 400, sip_status_phrase(400), TAG_END());
+				break;
+			}
 			gboolean reinvite = FALSE, busy = FALSE;
 			if(session->stack->s_nh_i == NULL) {
 				if(g_atomic_int_get(&session->establishing) || g_atomic_int_get(&session->established) || session->relayer_thread != NULL) {
@@ -4685,9 +4709,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(result, "event", json_string("missed_call"));
 				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 				json_object_set_new(result, "caller", json_string(caller_text));
-				if(sip->sip_from && sip->sip_from->a_display) {
+				if(sip->sip_from->a_display) {
 					json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 				}
+				char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
+				json_object_set_new(result, "callee", json_string(callee_text));
 				json_object_set_new(missed, "result", result);
 				json_object_set_new(missed, "call_id", json_string(session->callid));
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
@@ -4698,9 +4724,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("missed_call"));
 					json_object_set_new(info, "caller", json_string(caller_text));
+					json_object_set_new(info, "callee", json_string(callee_text));
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				su_free(session->stack->s_home, caller_text);
+				su_free(session->stack->s_home, callee_text);
 				break;
 			}
 			if(!reinvite) {
@@ -4805,9 +4833,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string(reinvite ? "updatingcall" : "incomingcall"));
 			json_object_set_new(calling, "username", json_string(session->callee));
-			if(sip->sip_from && sip->sip_from->a_display) {
+			if(sip->sip_from->a_display) {
 				json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
 			}
+			char *callee_text = url_as_string(session->stack->s_home, sip->sip_to->a_url);
+			json_object_set_new(calling, "callee", json_string(callee_text));
 			if(session->incoming_header_prefixes) {
 				json_t *headers = janus_sip_get_incoming_headers(sip, session);
 				json_object_set_new(calling, "headers", headers);
@@ -4843,8 +4873,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
-				if(sip->sip_from && sip->sip_from->a_display)
+				if(sip->sip_from->a_display)
 					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
+				json_object_set_new(info, "callee", json_string(callee_text));
 				if(referred_by)
 					json_object_set_new(info, "referred_by", json_string(referred_by));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
@@ -4893,9 +4924,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				referred_by = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 			JANUS_LOG(LOG_VERB, "Incoming REFER: %s (by %s, headers: %s)\n",
 				refer_to, referred_by ? referred_by : "unknown", custom_headers ? custom_headers : "unknown");
-			/* Send a 100 back */
-			nua_respond(nh, 100, sip_status_phrase(100), NUTAG_WITH_CURRENT(nua), TAG_END());
-			JANUS_LOG(LOG_VERB, "[%p] 100\n", nh);
+			/* Send a 202 back */
+			nua_respond(nh, 202, sip_status_phrase(202), NUTAG_WITH_CURRENT(nua), TAG_END());
+			JANUS_LOG(LOG_VERB, "[%p] 202\n", nh);
 			/* Take note of the session and NUA handle we got the REFER from (for NOTIFY) */
 			janus_mutex_lock(&sessions_mutex);
 			guint32 refer_id = 0;
@@ -5304,6 +5335,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(update && !session->media.earlymedia && !session->media.update) {
 				/* Don't push to the application if this is in response to a hold/unhold we sent ourselves */
 				JANUS_LOG(LOG_VERB, "This is an update to an existing call (possibly in response to hold/unhold)\n");
+				janus_sdp_destroy(sdp);
 				break;
 			}
 			if(!session->media.earlymedia && !session->media.update) {
@@ -6395,6 +6427,12 @@ static void *janus_sip_relay_thread(void *data) {
 					JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: text remote IP address (%s) is invalid\n",
 						session->account.username, session->media.remote_text_ip);
 			}
+
+			/* In case we're on hold (remote address is 0.0.0.0) set the send properties to FALSE */
+			if(have_audio_server_ip && !strcmp(session->media.remote_audio_ip, "0.0.0.0"))
+				session->media.audio_send = FALSE;
+			if(have_video_server_ip && !strcmp(session->media.remote_video_ip, "0.0.0.0"))
+				session->media.video_send = FALSE;
 		}
 
 		/* Prepare poll */

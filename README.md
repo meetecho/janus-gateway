@@ -21,7 +21,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
-* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (only needed if you are interested in REST support for the Janus API)
+* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (only needed if you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if you are interested in RabbitMQ support for the Janus API or events)

@@ -1263,6 +1263,10 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
+				if(errorThrown === "")
+					callbacks.error(textStatus + ": Is the server down?");
+				else
+					callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
 	}
@@ -1944,7 +1948,7 @@ function Janus(gatewayCallbacks) {
 							media.audioSend = true;
 						}
 						if(isAudioSendEnabled(media)) {
-							media.keepVideo = false;
+							media.keepAudio = false;
 							media.addAudio = true;
 						}
 					} else {

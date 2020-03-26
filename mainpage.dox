@@ -93,7 +93,7 @@
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
@@ -3407,6 +3407,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/RSATom/janus-gateway-snap">janus-gateway-snap</a></td>
  *		<td>Helper repo for build Janus WebRTC Server on build.snapcraft.io</td>
  * </tr>
+ * <tr>
+ * 		<td>openSUSE/SUSE</td>
+ * 		<td><a href="https://github.com/ancorgs">Ancor Gonzalez Sosa</a></td>
+ * 		<td><a href="https://build.opensuse.org/project/show/network:jangouts">Janus packages</a></td>
+ *		<td>Repositories for several versions of SUSE and openSUSE</td>
+ * </tr>
  * </table>
  * <br/>
  *
@@ -3646,7 +3652,7 @@ ldd janus | grep asan
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
@@ -3818,9 +3824,10 @@ ldd janus | grep asan
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
- *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>. \n\n
+ *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
+ *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
- *    and presentations from <a href="https://januscon.it">JanusCon</a>,
+ *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
  *    \n\n
  *    .

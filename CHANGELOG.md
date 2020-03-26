@@ -3,6 +3,43 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.9.2] - 2020-03-26
+
+- Converted HTTP transport plugin to single thread (now requires libmicrohttpd >= 0.9.59)
+- Fixed .deb file packaging (thanks @FThrum!)
+- Fixed occasional audio/video desync
+- Added asynchronous resolution of mDNS candidates, and an option to automatically ignore them entirely
+- Updated default DTLS ciphers (thanks @fippo!)
+- Added option to generate ECDSA certificates at startup, instead of RSA (thanks @Sean-Der!)
+- Fixed rare race condition when claiming sessions
+- Fixed rare crash in ice.c (thanks @tmatth!)
+- Fixed dangerous typo in querylogger_parameters (copy/paste error)
+- Fixed occasional deadlocks in VideoRoom (thanks @mivuDing and @agclark81!)
+- Added support for RTSP Content-Base header to Streaming plugin
+- Fixed double unlock when listing private rooms in AudioBridge
+- Made AudioBridge prebuffering property configurable, both per-room and per-participant
+- Added G.711 support to AudioBridge (both participants and RTP forwarders)
+- Added called URI to 'incomingcall' and 'missed_call' events in SIP plugin (in case the registered user is associated with multiple public URIs)
+- Fixed race conditions and leaks in VideoCall and VoiceMail plugins
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
+## [v0.9.1] - 2020-03-10
+
+- Added configurable global prefix for log lines
+- Implemented better management of remote candidates with invalid addresses
+- Added subtype property to differentiate some macro-types in event handlers
+- Improved detection of H.264 keyframes (thanks @cameronlucas3!)
+- Added configurable support for strings as unique IDs in AudioBridge, VideoRoom, TextRoom and Streaming plugins
+- Fixed small memory leak when creating Streaming mountpoints dynamically
+- Fixed segfault when trying to start a SIP call with a non-existing refer_id (thanks @tmatth!)
+- Fixed errors negotiating video in SIP plugin when multiple video profiles are provided
+- Updated SIP plugin transfer code to answer with a 202 right away, instead of sending a 100 first (which won't work with proxies)
+- Added several features and fixes several nits in SIP demo UI
+- Fixed janus.js error callback not being invoked when an HTTP error happens trying to attach to a plugin (thanks @hxl-dy!)
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.9.0] - 2020-02-21
 
 - Refactored core-plugin callbacks
