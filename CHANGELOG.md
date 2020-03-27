@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 
 - Converted HTTP transport plugin to single thread (now requires libmicrohttpd >= 0.9.59)
 - Fixed .deb file packaging (thanks @FThrum!)
+- Added foundation for aiortc-based functional testing (python)
 - Fixed occasional audio/video desync
 - Added asynchronous resolution of mDNS candidates, and an option to automatically ignore them entirely
 - Updated default DTLS ciphers (thanks @fippo!)
