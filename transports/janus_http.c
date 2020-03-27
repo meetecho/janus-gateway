@@ -1541,6 +1541,7 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
 		msg->connection = connection;
+		janus_refcount_init(&msg->ref, janus_http_msg_free);
 		ts = janus_transport_session_create(msg, janus_http_msg_destroy);
 		janus_mutex_lock(&messages_mutex);
 		g_hash_table_insert(messages, ts, ts);
@@ -1762,7 +1763,8 @@ done:
 
 static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
-	janus_refcount_increase(&request->ref);
+	if(request)
+		janus_refcount_increase(&request->ref);
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
@@ -1774,7 +1776,8 @@ static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *ke
 		if(request)
 			request->acrh = g_strdup(value);
 	}
-	janus_refcount_decrease(&request->ref);
+	if(request)
+		janus_refcount_decrease(&request->ref);
 	return MHD_YES;
 }
 
