@@ -1763,21 +1763,18 @@ done:
 
 static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
-	if(request)
-		janus_refcount_increase(&request->ref);
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
+	if(!request)
+		return MHD_YES;
+	janus_refcount_increase(&request->ref);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
-		if(request)
-			request->contenttype = g_strdup(value);
+		request->contenttype = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Method")) {
-		if(request)
-			request->acrm = g_strdup(value);
+		request->acrm = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Headers")) {
-		if(request)
-			request->acrh = g_strdup(value);
+		request->acrh = g_strdup(value);
 	}
-	if(request)
-		janus_refcount_decrease(&request->ref);
+	janus_refcount_decrease(&request->ref);
 	return MHD_YES;
 }
 
