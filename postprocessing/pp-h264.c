@@ -62,7 +62,7 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
-#if LIBAVCODEC_VERSION_MAJOR < 4
+#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
 	av_register_all();
 #endif
 	/* Adjust logging to match the postprocessor's */
