@@ -8,7 +8,7 @@
  * Necessary headers are prepended.
  * For sending, you can use TCP which is not recommended in case there will be
  * a lot of messages. There is also UDP support, but you need to limit the payload 
- * size with max_message_len + remember to leave room for 12 bytes for special 
+ * size with max_message_len and remember to leave room for 12 bytes for special 
  * headers. UDP messages will be chunked automatically.
  * There is also compression available for UDP protocol, to save network bandwith
  * while using a bit more CPU. This is not available for TCP due to GELF limitations
