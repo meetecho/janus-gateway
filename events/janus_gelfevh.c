@@ -3,10 +3,12 @@
  * \copyright GNU General Public License v3
  * \brief  Janus GelfEventHandler plugin
  * \details  This is a GELF event handler plugin for Janus, which is supposed 
- * to send json events to GELF (Graylog logger). Necessary headers are prepended.
+ * to send json events to GELF 
+ * (Graylog logger https://docs.graylog.org/en/3.2/pages/gelf.html). 
+ * Necessary headers are prepended.
  * For sending, you can use TCP which is not recommended in case there will be
  * a lot of messages. There is also UDP support, but you need to limit the payload 
- * size with max_message_len + remember to leave space for 12 bytes for special 
+ * size with max_message_len + remember to leave room for 12 bytes for special 
  * headers. UDP messages will be chunked automatically.
  * There is also compression available for UDP protocol, to save network bandwith
  * while using a bit more CPU. This is not available for TCP due to GELF limitations
@@ -157,8 +159,8 @@ static int janus_gelfevh_connect(void) {
 	struct sockaddr_in servaddr;
 
 	if(getaddrinfo(backend, NULL, NULL, &res) != 0 ||
-			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
-			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+				janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		if(res)
 			freeaddrinfo(res);
 		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", backend);
