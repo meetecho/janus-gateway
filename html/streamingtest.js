@@ -147,12 +147,19 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
+										var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,
 												// We want recvonly audio/video and, if negotiated, datachannels
 												media: { audioSend: false, videoSend: false, data: true },
+												customizeSdp: function(jsep) {
+													if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+														// Make sure that our offer contains stereo too
+														jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+													}
+												},
 												success: function(jsep) {
 													Janus.debug("Got SDP!");
 													Janus.debug(jsep);
