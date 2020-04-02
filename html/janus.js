@@ -2182,7 +2182,11 @@ function Janus(gatewayCallbacks) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						navigator.mediaDevices.getDisplayMedia({ video: true, audio: media.captureDesktopAudio })
+						constraints.video = { frameRate: media.screenshareFrameRate };
+						if (media.screenshareHeight) constraints.video.height = media.screenshareHeight;
+						if (media.screenshareWidth) constraints.video.width = media.screenshareWidth;
+						constraints.audio = media.captureDesktopAudio;
+						navigator.mediaDevices.getDisplayMedia(constraints)
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media) && !media.keepAudio) {
