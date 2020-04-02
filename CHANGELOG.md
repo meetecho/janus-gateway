@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.9.2] - 2020-03-26
+
+- Converted HTTP transport plugin to single thread (now requires libmicrohttpd >= 0.9.59)
+- Fixed .deb file packaging (thanks @FThrum!)
+- Added foundation for aiortc-based functional testing (python)
+- Fixed occasional audio/video desync
+- Added asynchronous resolution of mDNS candidates, and an option to automatically ignore them entirely
+- Updated default DTLS ciphers (thanks @fippo!)
+- Added option to generate ECDSA certificates at startup, instead of RSA (thanks @Sean-Der!)
+- Fixed rare race condition when claiming sessions
+- Fixed rare crash in ice.c (thanks @tmatth!)
+- Fixed dangerous typo in querylogger_parameters (copy/paste error)
+- Fixed occasional deadlocks in VideoRoom (thanks @mivuDing and @agclark81!)
+- Added support for RTSP Content-Base header to Streaming plugin
+- Fixed double unlock when listing private rooms in AudioBridge
+- Made AudioBridge prebuffering property configurable, both per-room and per-participant
+- Added G.711 support to AudioBridge (both participants and RTP forwarders)
+- Added called URI to 'incomingcall' and 'missed_call' events in SIP plugin (in case the registered user is associated with multiple public URIs)
+- Fixed race conditions and leaks in VideoCall and VoiceMail plugins
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.9.1] - 2020-03-10
 
 - Added configurable global prefix for log lines
