@@ -841,8 +841,6 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					return 0;
 				}
 				nice_address_set_port(&c->addr, rport);
-				c->username = g_strdup(stream->ruser);
-				c->password = g_strdup(stream->rpass);
 				if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE || c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 					added = nice_address_set_from_string(&c->base_addr, rrelip);
 					if(added)
