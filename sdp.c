@@ -392,7 +392,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 			/* If this is a renegotiation, check if this is an ICE restart */
 			if((ruser && stream->ruser && strcmp(ruser, stream->ruser)) ||
 					(rpass && stream->rpass && strcmp(rpass, stream->rpass))) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE restart detected\n", handle->handle_id);
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE restart detected\n", handle->handle_id);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
 				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 			}
@@ -881,15 +881,8 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE already started for this component, setting candidates we have up to now\n", handle->handle_id);
 							janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 						} else {
-							GSList *candidates = NULL;
-							candidates = g_slist_append(candidates, c);
-							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
-								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-( (%s)\n",
-									handle->handle_id, candidate);
-							} else {
-								JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
-							}
-							g_slist_free(candidates);
+							/* Queue the candidate, we'll process it in the loop */
+							janus_ice_add_remote_candidate(handle, c);
 						}
 					} else {
 						/* ICE hasn't started yet: to make sure we're not stuck, also check if we stopped processing the SDP */
@@ -901,14 +894,8 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 								JANUS_LOG(LOG_VERB, "[%"SCNu64"] SDP processed but ICE not started yet for this component, setting candidates we have up to now\n", handle->handle_id);
 								janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 							} else {
-								GSList *candidates = NULL;
-								candidates = g_slist_append(candidates, c);
-								if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
-									JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
-								} else {
-									JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
-								}
-								g_slist_free(candidates);
+								/* Queue the candidate, we'll process it in the loop */
+								janus_ice_add_remote_candidate(handle, c);
 							}
 						} else {
 							/* Still processing the offer/answer: queue the trickle candidate for now, we'll process it later */

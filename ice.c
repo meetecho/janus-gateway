@@ -316,8 +316,11 @@ typedef struct janus_ice_queued_packet {
 } janus_ice_queued_packet;
 /* A few static, fake, messages we use as a trigger: e.g., to start a
  * new DTLS handshake, hangup a PeerConnection or close a handle */
-static janus_ice_queued_packet janus_ice_dtls_handshake,
-	janus_ice_hangup_peerconnection, janus_ice_detach_handle;
+static janus_ice_queued_packet
+	janus_ice_add_candidates,
+	janus_ice_dtls_handshake,
+	janus_ice_hangup_peerconnection,
+	janus_ice_detach_handle;
 
 /* Janus NACKed packet we're tracking (to avoid duplicates) */
 typedef struct janus_ice_nacked_packet {
@@ -458,7 +461,7 @@ static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 }
 
 static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
-	if(pkt == NULL || pkt == &janus_ice_dtls_handshake ||
+	if(pkt == NULL || pkt == &janus_ice_add_candidates || pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_hangup_peerconnection || pkt == &janus_ice_detach_handle) {
 		return;
 	}
@@ -596,6 +599,15 @@ static void janus_plugin_session_dereference(janus_plugin_session *plugin_sessio
 		janus_refcount_decrease(&plugin_session->ref);
 }
 
+
+static void janus_ice_clear_queued_candidates(janus_ice_handle *handle) {
+	if(handle == NULL || handle->queued_candidates == NULL) {
+		return;
+	}
+	while(g_async_queue_length(handle->queued_candidates) > 0) {
+		(void)g_async_queue_try_pop(handle->queued_candidates);
+	}
+}
 
 static void janus_ice_clear_queued_packets(janus_ice_handle *handle) {
 	if(handle == NULL || handle->queued_packets == NULL) {
@@ -1163,6 +1175,7 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->handle_id = handle_id;
 	handle->app = NULL;
 	handle->app_handle = NULL;
+	handle->queued_candidates = g_async_queue_new();
 	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
 	janus_session_handles_insert(session, handle);
@@ -1304,6 +1317,10 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
 	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
+	if(handle->queued_candidates != NULL) {
+		janus_ice_clear_queued_candidates(handle);
+		g_async_queue_unref(handle->queued_candidates);
+	}
 	if(handle->queued_packets != NULL) {
 		janus_ice_clear_queued_packets(handle);
 		g_async_queue_unref(handle->queued_packets);
@@ -1403,6 +1420,7 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		}
 	}
 	handle->pending_trickles = NULL;
+	janus_ice_clear_queued_candidates(handle);
 	g_free(handle->rtp_profile);
 	handle->rtp_profile = NULL;
 	g_free(handle->local_sdp);
@@ -3161,6 +3179,20 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 	g_slist_free(candidates);
 }
 
+void janus_ice_add_remote_candidate(janus_ice_handle *handle, NiceCandidate *c) {
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Queueing candidate %p\n", handle->handle_id, c);
+	if(handle->queued_candidates != NULL)
+		g_async_queue_push(handle->queued_candidates, c);
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_add_candidates);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_add_candidates);
+#endif
+		g_main_context_wakeup(handle->mainctx);
+	}
+}
+
 void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id) {
 	if(!handle || !handle->agent)
 		return;
@@ -3190,32 +3222,22 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	/* Add all candidates */
 	NiceCandidate *c = NULL;
 	GSList *gsc = component->candidates;
-	gchar *rufrag = NULL, *rpwd = NULL;
 	while(gsc) {
 		c = (NiceCandidate *) gsc->data;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] >> Remote Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
-		if(c->username && !rufrag)
-			rufrag = c->username;
-		if(c->password && !rpwd)
-			rpwd = c->password;
-		gchar address[NICE_ADDRESS_STRING_LEN];
-		nice_address_to_string(&(c->addr), (gchar *)&address);
-		gint port = nice_address_get_port(&(c->addr));
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Username:   %s\n", handle->handle_id, c->username);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Password:   %s\n", handle->handle_id, c->password);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Queueing candidate %p (startup)\n", handle->handle_id, c);
+		if(handle->queued_candidates != NULL)
+			g_async_queue_push(handle->queued_candidates, c);
 		gsc = gsc->next;
 	}
-	gint added = nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, component->candidates);
-	if(added < 0 || (guint)added < g_slist_length(component->candidates)) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-( (added %u, expected %u)\n",
-			handle->handle_id, (guint)added, g_slist_length(component->candidates));
-	} else {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote candidates set!\n", handle->handle_id);
-		component->process_started = TRUE;
+	if(handle->queued_packets != NULL) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_add_candidates);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_add_candidates);
+#endif
+		g_main_context_wakeup(handle->mainctx);
 	}
+	component->process_started = TRUE;
 }
 
 int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle) {
@@ -3932,7 +3954,28 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	janus_session *session = (janus_session *)handle->session;
 	janus_ice_stream *stream = handle->stream;
 	janus_ice_component *component = stream ? stream->component : NULL;
-	if(pkt == &janus_ice_dtls_handshake) {
+	if(pkt == &janus_ice_add_candidates) {
+		/* There are remote candidates pending, add them now */
+		GSList *candidates = NULL;
+		NiceCandidate *c = NULL;
+		while((c = g_async_queue_try_pop(handle->queued_candidates)) != NULL) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Processing candidate %p\n", handle->handle_id, c);
+			candidates = g_slist_append(candidates, c);
+		}
+		guint count = g_slist_length(candidates);
+		if(stream != NULL && component != NULL && count > 0) {
+			int added = nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates);
+			if(added < 0 || (guint)added != count) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Failed to add some remote candidates (added %u, expected %u)\n",
+					handle->handle_id, added, count);
+			} else {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] %d remote %s added\n", handle->handle_id,
+					count, (count > 1 ? "candidates" : "candidate"));
+			}
+		}
+		g_slist_free(candidates);
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_dtls_handshake) {
 		if(!janus_is_webrtc_encryption_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] WebRTC encryption disabled, skipping DTLS handshake\n", handle->handle_id);
 			janus_ice_dtls_handshake_done(handle, component);
