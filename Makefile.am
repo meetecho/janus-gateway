@@ -144,6 +144,8 @@ janus_SOURCES = \
 janus_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
+	$(LIBSRTP_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DEVENTDIR=\"$(eventdir)\" \
@@ -156,6 +158,8 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
+	$(LIBSRTP_LDFLAGS) $(LIBSRTP_LIBS) \
+	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
 dist_man1_MANS = janus.1
@@ -317,9 +321,9 @@ events_libadd = \
 if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
-events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
-events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
-events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags) $(LIBCURL_CFLAGS)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) -lm
+events_libjanus_sampleevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
@@ -582,11 +586,13 @@ janus_pp_rec_SOURCES = \
 
 janus_pp_rec_CFLAGS = \
 	$(AM_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
 	$(NULL)
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
+	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
 BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
