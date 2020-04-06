@@ -1520,7 +1520,8 @@ typedef struct janus_videoroom_publisher {
 	GHashTable *rtp_forwarders;
 	GHashTable *srtp_contexts;
 	janus_mutex rtp_forwarders_mutex;
-	int udp_sock; /* The udp socket on which to forward rtp packets */
+	int udp4_sock; /* The udp socket on which to forward rtp packets */
+	int udp6_sock; /* Similar to udp4_sock but for ipv6 */
 	gboolean kicked;	/* Whether this participant has been kicked */
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1622,8 +1623,10 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
 
-	if(p->udp_sock > 0)
-		close(p->udp_sock);
+	if(p->udp4_sock > 0)
+		close(p->udp4_sock);
+	if(p->udp6_sock > 0)
+		close(p->udp6_sock);
 	g_hash_table_destroy(p->rtp_forwarders);
 	p->rtp_forwarders = NULL;
 	g_hash_table_destroy(p->srtp_contexts);
@@ -3684,11 +3687,23 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 		janus_refcount_increase(&publisher->ref);	/* This is just to handle the request for now */
-		if(publisher->udp_sock <= 0) {
-			publisher->udp_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+		if(publisher->udp4_sock <= 0) {
+			publisher->udp4_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if(publisher->udp4_sock <= 0) {
+				janus_refcount_decrease(&publisher->ref);
+				janus_mutex_unlock(&videoroom->mutex);
+				janus_refcount_decrease(&videoroom->ref);
+				JANUS_LOG(LOG_ERR, "Could not open UDP IPV4 socket for RTP stream for publisher (%s)\n", publisher_id_str);
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Could not open UDP IPV4 socket for RTP stream");
+				goto prepare_response;
+			}
+		}
+		if(publisher->udp6_sock <= 0) {
+			publisher->udp6_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 			int v6only = 0;
-			if(publisher->udp_sock <= 0 ||
-					setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+			if(publisher->udp6_sock <= 0 ||
+					setsockopt(publisher->udp6_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
 				janus_refcount_decrease(&publisher->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
@@ -4724,7 +4739,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
-		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+		while((participant->udp4_sock > 0 || participant->udp6_sock > 0) && g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_rtp_forwarder *rtp_forward = (janus_videoroom_rtp_forwarder *)value;
 			if(rtp_forward->is_data || (video && !rtp_forward->is_video) || (!video && rtp_forward->is_video))
 				continue;
@@ -4753,10 +4768,16 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			/* Check if this is an RTP or SRTP forwarder */
 			if(!rtp_forward->is_srtp) {
 				/* Plain RTP */
-				struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
-					(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
-				size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
+				int is_ipv4 = rtp_forward->serv_addr.sin_family == AF_INET;
+
+				struct sockaddr *address = is_ipv4 ?
+					(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6;
+				size_t addrlen = is_ipv4 ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6);
+				int udp_sock = is_ipv4 ? participant->udp4_sock : participant->udp6_sock;
+				if(udp_sock <= 0){
+					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... no %s socket available",
+						  (video ? "video" : "audio"), participant->display, (is_ipv4 ? "IPV4" : "IPV6"));
+				} else if(sendto(udp_sock, buf, len, 0, address, addrlen) < 0) {
 					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
 						(video ? "video" : "audio"), participant->display, strerror(errno), len);
 				}
@@ -4777,10 +4798,15 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 					}
 				}
 				if(rtp_forward->srtp_ctx->slen > 0) {
-					struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
-						(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
-					size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-					if(sendto(participant->udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, address, addrlen) < 0) {
+					int is_ipv4 = rtp_forward->serv_addr.sin_family == AF_INET;
+					struct sockaddr *address = is_ipv4 ?
+						(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6;
+					size_t addrlen = is_ipv4 ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6);
+					int udp_sock = is_ipv4 ? participant->udp4_sock : participant->udp6_sock;
+					if(udp_sock <= 0){
+						JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... no %s socket available",
+							  (video ? "video": "audio"), participant->display, (is_ipv4 ? "IPV4" : "IPV6"));
+					} else if(sendto(udp_sock, rtp_forward->srtp_ctx->sbuf, rtp_forward->srtp_ctx->slen, 0, address, addrlen) < 0) {
 						JANUS_LOG(LOG_HUGE, "Error forwarding SRTP %s packet for %s... %s (len=%d)...\n",
 							(video ? "video" : "audio"), participant->display, strerror(errno), rtp_forward->srtp_ctx->slen);
 					}
@@ -4958,13 +4984,18 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, participant->rtp_forwarders);
-	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+	while((participant->udp4_sock > 0 || participant->udp6_sock > 0) && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
 		if(rtp_forward->is_data) {
-			struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
-				(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
-			size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-			if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
+			int is_ipv4 = rtp_forward->serv_addr.sin_family == AF_INET;
+			struct sockaddr *address = is_ipv4 ?
+				(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6;
+			size_t addrlen = is_ipv4 ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6);
+			int udp_sock = is_ipv4 ? participant->udp4_sock : participant->udp6_sock;
+			if(udp_sock <= 0){
+				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... no %s socket available\n",
+					  participant->display, is_ipv4 ? "IPV4" : "IPV6");
+			} else if(sendto(udp_sock, buf, len, 0, address, addrlen) < 0) {
 				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
 					participant->display, strerror(errno), len);
 			}
@@ -5503,7 +5534,8 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->rtp_forwarders_mutex);
 				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_destroy);
 				publisher->srtp_contexts = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_videoroom_srtp_context_free);
-				publisher->udp_sock = -1;
+				publisher->udp4_sock = -1;
+				publisher->udp6_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
 				publisher->pvt_id = 0;
