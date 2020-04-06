@@ -10,6 +10,8 @@
 #               available if libcurl support was compiled)
 # id = <unique numeric ID> (if missing, a random one will be generated)
 # description = This is my awesome stream
+metadata = An optional string that can contain any metadata (e.g., JSON)
+#		   associated with the stream you want users to receive
 # is_private = true|false (private streams don't appear when you do a 'list'
 #			request)
 # secret = <optional password needed for manipulating (e.g., destroying
@@ -107,6 +109,7 @@ rtp-sample: {
 	type = "rtp"
 	id = 1
 	description = "Opus/VP8 live stream coming from external source"
+	metadata = "You can use this metadata section to put any info you want!"
 	audio = true
 	video = true
 	audioport = 5002

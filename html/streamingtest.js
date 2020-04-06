@@ -269,6 +269,8 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#metadata').empty();
+									$('#info').addClass('hide').hide();
 									simulcastStarted = false;
 								}
 							});
@@ -330,6 +332,21 @@ function updateStreamsList() {
 	}});
 }
 
+function getStreamInfo() {
+	$('#metadata').empty();
+	$('#info').addClass('hide').hide();
+	if(selectedStream === undefined || selectedStream === null)
+		return;
+	// Send a request for more info on the mountpoint we subscribed to
+	var body = { "request": "info", "id": parseInt(selectedStream) };
+	streaming.send({"message": body, success: function(result) {
+		if(result && result.info && result.info.metadata) {
+			$('#metadata').html(result.info.metadata);
+			$('#info').removeClass('hide').show();
+		}
+	}});
+}
+
 function startStream() {
 	Janus.log("Selected video id #" + selectedStream);
 	if(selectedStream === undefined || selectedStream === null) {
@@ -349,6 +366,8 @@ function startStream() {
 	} else {
 		spinner.spin();
 	}
+	// Get some more info for the mountpoint to display, if any
+	getStreamInfo();
 }
 
 function stopStream() {

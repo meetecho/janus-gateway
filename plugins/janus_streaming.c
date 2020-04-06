@@ -69,6 +69,8 @@ type = rtp|live|ondemand|rtsp
               available if libcurl support was compiled)
 id = <unique numeric ID>
 description = This is my awesome stream
+metadata = An optional string that can contain any metadata (e.g., JSON)
+			associated with the stream you want users to receive
 is_private = true|false (private streams don't appear when you do a 'list' request)
 filename = path to the local file to stream (only for live/ondemand)
 secret = <optional password needed for manipulating (e.g., destroying
@@ -191,15 +193,17 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"list" : [
 		{
 			"id" : <unique ID of mountpoint #1>,
-			"description" : "<description of mountpoint #1>",
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
+			"description" : "<description of mountpoint #1>",
+			"metadata" : "<metadata of mountpoint #1, if any>",
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
 			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
 		},
 		{
 			"id" : <unique ID of mountpoint #2>,
-			"description" : "<description of mountpoint #2>",
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
+			"description" : "<description of mountpoint #2>",
+			"metadata" : "<metadata of mountpoint #2, if any>",
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
 			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
 		},
@@ -232,6 +236,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 		"id" : <unique ID of mountpoint>,
 		"name" : "<unique name of mountpoint>",
 		"description" : "<description of mountpoint>",
+		"metadata" : "<metadata of mountpoint, if any>",
 		"secret" : "<secret of mountpoint; only available if a valid secret was provided>",
 		"pin" : "<PIN to access mountpoint; only available if a valid secret was provided>",
 		"is_private" : <true|false, depending on whether the mountpoint is listable; only available if a valid secret was provided>,
@@ -272,6 +277,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"id" : <unique ID to assign the mountpoint; optional, will be chosen by the server if missing>,
 	"name" : "<unique name for the mountpoint; optional, will be chosen by the server if missing>",
 	"description" : "<description of mountpoint; optional>",
+	"metadata" : "<metadata of mountpoint; optional>",
 	"secret" : "<secret to query/edit the mountpoint later; optional>",
 	"pin" : "<PIN required for viewers to access mountpoint; optional>",
 	"is_private" : <true|false, whether the mountpoint should be listable; true by default>,
@@ -329,6 +335,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"id" : <unique ID of the mountpoint to edit; mandatory>,
 	"secret" : "<secret to edit the mountpoint; mandatory if configured>",
 	"new_description" : "<new description for the mountpoint; optional>",
+	"new_metadata" : "<new metadata for the mountpoint; optional>",
 	"new_secret" : "<new secret for the mountpoint; optional>",
 	"new_pin" : "<new PIN for the mountpoint; optional>",
 	"new_is_private" : <true|false, depending on whether the mountpoint should be now listable; optional>,
@@ -803,6 +810,7 @@ static struct janus_json_parameter edit_parameters[] = {
 static struct janus_json_parameter create_parameters[] = {
 	{"name", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
+	{"metadata", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
@@ -1087,6 +1095,7 @@ typedef struct janus_streaming_mountpoint {
 	gchar *id_str;		/* Unique mountpoint ID (when using strings) */
 	char *name;
 	char *description;
+	char *metadata;
 	gboolean is_private;
 	char *secret;
 	char *pin;
@@ -1125,7 +1134,7 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
-		uint64_t id, char *id_str, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		int srtpsuite, char *srtpcrypto, int threads,
 		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface,
 			uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
@@ -1135,11 +1144,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean textdata, gboolean buffermsg);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
-		uint64_t id, char *id_str, char *name, char *desc, char *filename, gboolean live,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata, char *filename, gboolean live,
 		gboolean doaudio, uint8_t acodec, char *artpmap, char *afmtp, gboolean dovideo);
 /* Helper to create a rtsp live source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *id_str, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
 		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp,
@@ -1233,6 +1242,7 @@ static void janus_streaming_mountpoint_free(const janus_refcount *mp_ref) {
 	g_free(mp->id_str);
 	g_free(mp->name);
 	g_free(mp->description);
+	g_free(mp->metadata);
 	g_free(mp->secret);
 	g_free(mp->pin);
 	janus_mutex_lock(&mp->mutex);
@@ -1648,6 +1658,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_network_address video_iface, audio_iface, data_iface;
 				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *md = janus_config_get(config, cat, janus_config_type_item, "metadata");
 				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
@@ -1835,6 +1846,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						mpid, (char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						md ? (char *)md->value : NULL,
 						ssuite && ssuite->value ? atoi(ssuite->value) : 0,
 						scrypto && scrypto->value ? (char *)scrypto->value : NULL,
 						(threads && threads->value) ?  atoi(threads->value) : 0,
@@ -1878,6 +1890,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			} else if(!strcasecmp(type->value, "live")) {
 				/* File-based live source */
 				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *md = janus_config_get(config, cat, janus_config_type_item, "metadata");
 				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
@@ -1925,6 +1938,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						mpid, (char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						md ? (char *)md->value : NULL,
 						(char *)file->value, TRUE,
 						doaudio,
 						(acodec && acodec->value) ? atoi(acodec->value) : 0,
@@ -1943,6 +1957,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* File-based on demand source */
 				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *md = janus_config_get(config, cat, janus_config_type_item, "metadata");
 				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
@@ -1990,6 +2005,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						mpid, (char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						md ? (char *)md->value : NULL,
 						(char *)file->value, FALSE,
 						doaudio,
 						(acodec && acodec->value) ? atoi(acodec->value) : 0,
@@ -2012,6 +2028,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 #else
 				janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
+				janus_config_item *md = janus_config_get(config, cat, janus_config_type_item, "metadata");
 				janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 				janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
 				janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
@@ -2059,6 +2076,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						mpid, (char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						md ? (char *)md->value : NULL,
 						(char *)file->value,
 						username ? (char *)username->value : NULL,
 						password ? (char *)password->value : NULL,
@@ -2324,8 +2342,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_refcount_increase(&mp->ref);
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
-			json_object_set_new(ml, "description", json_string(mp->description));
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			json_object_set_new(ml, "description", json_string(mp->description));
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = mp->source;
 				gint64 now = janus_get_monotonic_time();
@@ -2393,6 +2411,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_object_set_new(ml, "name", json_string(mp->name));
 		if(mp->description)
 			json_object_set_new(ml, "description", json_string(mp->description));
+		if(mp->metadata)
+			json_object_set_new(ml, "metadata", json_string(mp->metadata));
 		if(admin && mp->secret)
 			json_object_set_new(ml, "secret", json_string(mp->secret));
 		if(admin && mp->pin)
@@ -2611,6 +2631,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
+			json_t *md = json_object_get(root, "metadata");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
@@ -2811,6 +2832,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid, mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					md ? (char *)json_string_value(md) : NULL,
 					ssuite ? json_integer_value(ssuite) : 0,
 					scrypto ? (char *)json_string_value(scrypto) : NULL,
 					threads ? json_integer_value(threads) : 0,
@@ -2842,6 +2864,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
+			json_t *md = json_object_get(root, "metadata");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *file = json_object_get(root, "filename");
 			json_t *audio = json_object_get(root, "audio");
@@ -2899,6 +2922,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid, mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					md ? (char *)json_string_value(md) : NULL,
 					filename, TRUE,
 					doaudio, acodec, artpmap, afmtp, dovideo);
 			janus_mutex_lock(&mountpoints_mutex);
@@ -2924,6 +2948,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
+			json_t *md = json_object_get(root, "metadata");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *file = json_object_get(root, "filename");
 			json_t *audio = json_object_get(root, "audio");
@@ -2982,6 +3007,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid, mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					md ? (char *)json_string_value(md) : NULL,
 					filename, FALSE,
 					doaudio, acodec, artpmap, afmtp, dovideo);
 			janus_mutex_lock(&mountpoints_mutex);
@@ -3014,6 +3040,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_network_address multicast_iface;
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
+			json_t *md = json_object_get(root, "metadata");
 			json_t *is_private = json_object_get(root, "is_private");
 			json_t *audio = json_object_get(root, "audio");
 			json_t *audiopt = json_object_get(root, "audiopt");
@@ -3061,6 +3088,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid, mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					md ? (char *)json_string_value(md) : NULL,
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
 					password ? (char *)json_string_value(password) : NULL,
@@ -3105,6 +3133,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_config_add(config, c, janus_config_item_create("type", type_text));
 			janus_config_add(config, c, janus_config_item_create("id", mp->id_str));
 			janus_config_add(config, c, janus_config_item_create("description", mp->description));
+			if(mp->metadata)
+				janus_config_add(config, c, janus_config_item_create("metadata", mp->metadata));
 			if(mp->is_private)
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			/* Per type values */
@@ -3242,8 +3272,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
-		json_object_set_new(ml, "description", json_string(mp->description));
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+		json_object_set_new(ml, "description", json_string(mp->description));
 		json_object_set_new(ml, "is_private", mp->is_private ? json_true() : json_false());
 		if(!strcasecmp(type_text, "rtp")) {
 			janus_streaming_rtp_source *source = mp->source;
@@ -3300,6 +3330,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		/* We only allow for a limited set of properties to be edited */
 		json_t *id = json_object_get(root, "id");
 		json_t *desc = json_object_get(root, "new_description");
+		json_t *md = json_object_get(root, "new_metadata");
 		json_t *secret = json_object_get(root, "new_secret");
 		json_t *pin = json_object_get(root, "new_pin");
 		json_t *is_private = json_object_get(root, "new_is_private");
@@ -3348,6 +3379,12 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			mp->description = new_description;
 			g_free(old_description);
 		}
+		if(md != NULL && strlen(json_string_value(md)) > 0) {
+			char *old_metadata = mp->metadata;
+			char *new_metadata = g_strdup(json_string_value(md));
+			mp->metadata = new_metadata;
+			g_free(old_metadata);
+		}
 		if(is_private)
 			mp->is_private = json_is_true(is_private);
 		/* A secret may be required for this action */
@@ -3382,6 +3419,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			/* Now for the common values at top */
 			janus_config_add(config, c, janus_config_item_create("id", mp->id_str));
 			janus_config_add(config, c, janus_config_item_create("description", mp->description));
+			if(mp->metadata)
+				janus_config_add(config, c, janus_config_item_create("metadata", mp->metadata));
 			if(mp->is_private)
 				janus_config_add(config, c, janus_config_item_create("is_private", "yes"));
 			/* Per type values */
@@ -5350,7 +5389,7 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
-		uint64_t id, char *id_str, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		int srtpsuite, char *srtpcrypto, int threads,
 		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
 		gboolean dovideo, gboolean dovideortcp, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
@@ -5550,6 +5589,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	else
 		description = g_strdup(name ? name : tempname);
 	live_rtp->description = description;
+	live_rtp->metadata = (metadata ? g_strdup(metadata) : NULL);
 	live_rtp->enabled = TRUE;
 	live_rtp->active = FALSE;
 	live_rtp->audio = doaudio;
@@ -5586,6 +5626,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			g_free(live_rtp_source);
 			g_free(live_rtp->name);
 			g_free(live_rtp->description);
+			g_free(live_rtp->metadata);
 			g_free(live_rtp);
 			return NULL;
 		}
@@ -5626,6 +5667,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			g_free(live_rtp_source);
 			g_free(live_rtp->name);
 			g_free(live_rtp->description);
+			g_free(live_rtp->metadata);
 			g_free(live_rtp);
 			return NULL;
 		}
@@ -5755,7 +5797,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
-		uint64_t id, char *id_str, char *name, char *desc, char *filename, gboolean live,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata, char *filename, gboolean live,
 		gboolean doaudio, uint8_t acodec, char *artpmap, char *afmtp, gboolean dovideo) {
 	char id_num[30];
 	if(!string_ids) {
@@ -5825,6 +5867,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	else
 		description = g_strdup(name ? name : tempname);
 	file_source->description = description;
+	file_source->metadata = (metadata ? g_strdup(metadata) : NULL);
 	file_source->enabled = TRUE;
 	file_source->active = FALSE;
 	file_source->audio = TRUE;
@@ -6560,7 +6603,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *id_str, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp,
@@ -6606,6 +6649,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->id_str = g_strdup(id_str);
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
+	live_rtsp->metadata = (metadata ? g_strdup(metadata) : NULL);
 	live_rtsp->enabled = TRUE;
 	live_rtsp->active = FALSE;
 	live_rtsp->audio = doaudio;
@@ -6696,7 +6740,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 #else
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *id_str, char *name, char *desc,
+		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp,
