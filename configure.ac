@@ -758,6 +758,7 @@ AC_SUBST([OPUS_LIBS])
 PKG_CHECK_MODULES([OGG],
                   [ogg],
                   [
+                    AC_DEFINE(HAVE_LIBOGG)
                     AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
                           [enable_plugin_voicemail=yes])
                   ],

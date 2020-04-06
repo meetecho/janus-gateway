@@ -147,12 +147,19 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
+										var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,
 												// We want recvonly audio/video and, if negotiated, datachannels
 												media: { audioSend: false, videoSend: false, data: true },
+												customizeSdp: function(jsep) {
+													if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+														// Make sure that our offer contains stereo too
+														jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+													}
+												},
 												success: function(jsep) {
 													Janus.debug("Got SDP!");
 													Janus.debug(jsep);
@@ -298,6 +305,15 @@ function updateStreamsList() {
 			$('#watch').attr('disabled', true).unbind('click');
 			var list = result["list"];
 			Janus.log("Got a list of available streams");
+			if(list && Array.isArray(list)) {
+				list.sort(function(a, b) {
+					if(!a || a.id < (b ? b.id : 0))
+						return -1;
+					if(!b || b.id < (a ? a.id : 0))
+						return 1;
+					return 0;
+				});
+			}
 			Janus.debug(list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
