@@ -305,6 +305,15 @@ function updateStreamsList() {
 			$('#watch').attr('disabled', true).unbind('click');
 			var list = result["list"];
 			Janus.log("Got a list of available streams");
+			if(list && Array.isArray(list)) {
+				list.sort(function(a, b) {
+					if(!a || a.id < (b ? b.id : 0))
+						return -1;
+					if(!b || b.id < (a ? a.id : 0))
+						return 1;
+					return 0;
+				});
+			}
 			Janus.debug(list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
