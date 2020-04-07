@@ -447,6 +447,18 @@ uint janus_get_twcc_period(void) {
 	return twcc_period;
 }
 
+/* DSCP Type of Service, which we can set via libnice: it's disabled by default */
+static int dscp_tos = 0;
+void janus_set_dscp_tos(int tos) {
+	dscp_tos = tos;
+	if(dscp_tos > 0) {
+		JANUS_LOG(LOG_VERB, "Setting DSCP Type of Service to %ds\n", dscp_tos);
+	}
+}
+int janus_get_dscp_tos(void) {
+	return dscp_tos;
+}
+
 
 static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 	if(pkt == NULL) {
@@ -3417,6 +3429,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
+	if(dscp_tos > 0) {
+		/* A DSCP Type of Service was configured, pass it to libnice */
+		nice_agent_set_stream_tos(handle->agent, handle->stream_id, dscp_tos);
+	}
 	janus_ice_stream *stream = g_malloc0(sizeof(janus_ice_stream));
 	janus_refcount_init(&stream->ref, janus_ice_stream_free);
 	janus_refcount_increase(&handle->ref);
