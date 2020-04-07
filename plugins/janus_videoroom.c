@@ -1521,11 +1521,13 @@ typedef struct janus_videoroom_publisher {
 	GHashTable *srtp_contexts;
 	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; /* The udp socket on which to forward rtp packets */
+	int is_udp_ipv4; /* Whether we should send packets using ipv4 or ipv6 */
 	gboolean kicked;	/* Whether this participant has been kicked */
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_publisher;
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+	int is_ipv4,
 	const gchar *host, int port, int rtcp_port, int pt, uint32_t ssrc,
 	gboolean simulcast, int srtp_suite, const char *srtp_crypto,
 	int substream, gboolean is_video, gboolean is_data);
@@ -1754,6 +1756,7 @@ static void janus_videoroom_reqpli(janus_videoroom_publisher *publisher, const c
 
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+		int is_ipv4,
 		const gchar *host, int port, int rtcp_port, int pt, uint32_t ssrc,
 		gboolean simulcast, int srtp_suite, const char *srtp_crypto,
 		int substream, gboolean is_video, gboolean is_data) {
@@ -1765,38 +1768,64 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	int fd = -1;
 	uint16_t local_rtcp_port = 0;
 	if(!is_data && rtcp_port > 0) {
-		fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+		if (is_ipv4){
+			fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		} else {
+			fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+		}
 		if(fd < 0) {
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
 			return 0;
 		}
-		int v6only = 0;
-		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
-			janus_mutex_unlock(&p->rtp_forwarders_mutex);
-			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
-				errno, strerror(errno));
-			return 0;
+		if (!is_ipv4){
+			int v6only = 0;
+			if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+				janus_mutex_unlock(&p->rtp_forwarders_mutex);
+				JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
+					errno, strerror(errno));
+				return 0;
+			}
 		}
-		struct sockaddr_in6 address = { 0 };
-		socklen_t len = sizeof(address);
-		memset(&address, 0, sizeof(address));
-		address.sin6_family = AF_INET6;
-		address.sin6_port = htons(0);	/* The RTCP port we received is the remote one */
-		address.sin6_addr = in6addr_any;
-		if(bind(fd, (struct sockaddr *)&address, len) < 0 ||
-				getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
+
+		struct sockaddr* bind_addr = NULL;
+		socklen_t len = 0;
+		unsigned short* bind_port = NULL;
+		struct sockaddr_in address4 = { 0 };
+		struct sockaddr_in6 address6 = { 0 };
+		if (is_ipv4){
+			len = sizeof(address4);
+			memset(&address4, 0, sizeof(address4));
+			address4.sin_family = AF_INET;
+			address4.sin_port = htons(0);	/* The RTCP port we received is the remote one */
+			address4.sin_addr.s_addr = ntohl(INADDR_ANY);
+			bind_addr = &address4;
+			bind_port = &address4.sin_port;
+		} else {
+			len = sizeof(address6);
+			memset(&address6, 0, sizeof(address6));
+			address6.sin6_family = AF_INET6;
+			address6.sin6_port = htons(0);	/* The RTCP port we received is the remote one */
+			address6.sin6_addr = in6addr_any;
+			bind_addr = &address6;
+			bind_addr = &address6.sin6_port;
+		}
+
+		if(bind(fd, bind_addr, len) < 0 ||
+		   getsockname(fd, bind_addr, &len) < 0) {
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error binding RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
 			close(fd);
 			return 0;
 		}
-		local_rtcp_port = ntohs(address.sin6_port);
+		local_rtcp_port = ntohs(*bind_port);
+
 		JANUS_LOG(LOG_VERB, "Bound local %s RTCP port: %"SCNu16"\n",
 			is_video ? "video" : "audio", local_rtcp_port);
 	}
+
 	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
 	forward->source = p;
 	forward->rtcp_fd = fd;
@@ -1875,7 +1904,8 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 	forward->substream = substream;
 	forward->is_data = is_data;
 	/* Check if the host address is IPv4 or IPv6 */
-	if(strstr(host, ":") != NULL) {
+
+	if(!is_ipv4){
 		forward->serv_addr6.sin6_family = AF_INET6;
 		inet_pton(AF_INET6, host, &(forward->serv_addr6.sin6_addr));
 		forward->serv_addr6.sin6_port = htons(port);
@@ -1884,6 +1914,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 		inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
 		forward->serv_addr.sin_port = htons(port);
 	}
+
 	if(is_video && simulcast) {
 		forward->simulcast = TRUE;
 		janus_rtp_switching_context_reset(&forward->context);
@@ -1912,7 +1943,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 		struct sockaddr_in addr4 = { 0 };
 		struct sockaddr_in6 addr6 = { 0 };
 		socklen_t addrlen = 0;
-		if(forward->serv_addr.sin_family == AF_INET) {
+		if(is_ipv4) {
 			addr4.sin_family = AF_INET;
 			addr4.sin_addr.s_addr = forward->serv_addr.sin_addr.s_addr;
 			addr4.sin_port = htons(forward->remote_rtcp_port);
@@ -3683,12 +3714,28 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_snprintf(error_cause, 512, "No such feed (%s)", publisher_id_str);
 			goto prepare_response;
 		}
+
+		struct sockaddr_in addr4 = { 0 };
+		struct sockaddr_in6 addr6 = { 0 };
+		struct sockaddr* serv_addr = NULL;
+		int is_ipv4 = 1;
+
+		if(strstr(host, ":") != NULL) {
+			is_ipv4 = 0;
+		}
+
 		janus_refcount_increase(&publisher->ref);	/* This is just to handle the request for now */
 		if(publisher->udp_sock <= 0) {
-			publisher->udp_sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+			int afinet = 0;
+			if (is_ipv4){
+				afinet = AF_INET;
+			} else {
+				afinet = AF_INET6;
+			}
+			publisher->udp_sock = socket(afinet, SOCK_DGRAM, IPPROTO_UDP);
 			int v6only = 0;
 			if(publisher->udp_sock <= 0 ||
-					setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+					(!is_ipv4 && setsockopt(publisher->udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)) {
 				janus_refcount_decrease(&publisher->ref);
 				janus_mutex_unlock(&videoroom->mutex);
 				janus_refcount_decrease(&videoroom->ref);
@@ -3702,23 +3749,23 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		guint32 video_handle[3] = {0, 0, 0};
 		guint32 data_handle = 0;
 		if(audio_port > 0) {
-			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_rtcp_port, audio_pt, audio_ssrc,
+			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, is_ipv4, host, audio_port, audio_rtcp_port, audio_pt, audio_ssrc,
 				FALSE, srtp_suite, srtp_crypto, 0, FALSE, FALSE);
 		}
 		if(video_port[0] > 0) {
-			video_handle[0] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[0], video_rtcp_port, video_pt[0], video_ssrc[0],
+			video_handle[0] = janus_videoroom_rtp_forwarder_add_helper(publisher, is_ipv4, host, video_port[0], video_rtcp_port, video_pt[0], video_ssrc[0],
 				simulcast, srtp_suite, srtp_crypto, 0, TRUE, FALSE);
 		}
 		if(video_port[1] > 0) {
-			video_handle[1] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[1], 0, video_pt[1], video_ssrc[1],
+			video_handle[1] = janus_videoroom_rtp_forwarder_add_helper(publisher, is_ipv4, host, video_port[1], 0, video_pt[1], video_ssrc[1],
 				FALSE, srtp_suite, srtp_crypto, 1, TRUE, FALSE);
 		}
 		if(video_port[2] > 0) {
-			video_handle[2] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[2], 0, video_pt[2], video_ssrc[2],
+			video_handle[2] = janus_videoroom_rtp_forwarder_add_helper(publisher, is_ipv4, host, video_port[2], 0, video_pt[2], video_ssrc[2],
 				FALSE, srtp_suite, srtp_crypto, 2, TRUE, FALSE);
 		}
 		if(data_port > 0) {
-			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, 0, FALSE, 0, NULL, 0, FALSE, TRUE);
+			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, is_ipv4, host, data_port, 0, 0, 0, FALSE, 0, NULL, 0, FALSE, TRUE);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
