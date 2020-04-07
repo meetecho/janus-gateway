@@ -1521,7 +1521,6 @@ typedef struct janus_videoroom_publisher {
 	GHashTable *srtp_contexts;
 	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; /* The udp socket on which to forward rtp packets */
-	int is_udp_ipv4; /* Whether we should send packets using ipv4 or ipv6 */
 	gboolean kicked;	/* Whether this participant has been kicked */
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1800,7 +1799,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			address4.sin_family = AF_INET;
 			address4.sin_port = htons(0);	/* The RTCP port we received is the remote one */
 			address4.sin_addr.s_addr = ntohl(INADDR_ANY);
-			bind_addr = &address4;
+			bind_addr = (struct sockaddr*) &address4;
 			bind_port = &address4.sin_port;
 		} else {
 			len = sizeof(address6);
@@ -1808,8 +1807,8 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			address6.sin6_family = AF_INET6;
 			address6.sin6_port = htons(0);	/* The RTCP port we received is the remote one */
 			address6.sin6_addr = in6addr_any;
-			bind_addr = &address6;
-			bind_addr = &address6.sin6_port;
+			bind_addr = (struct sockaddr*) &address6;
+			bind_port = &address6.sin6_port;
 		}
 
 		if(bind(fd, bind_addr, len) < 0 ||
@@ -3715,9 +3714,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			goto prepare_response;
 		}
 
-		struct sockaddr_in addr4 = { 0 };
-		struct sockaddr_in6 addr6 = { 0 };
-		struct sockaddr* serv_addr = NULL;
 		int is_ipv4 = 1;
 
 		if(strstr(host, ":") != NULL) {
