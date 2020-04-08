@@ -110,14 +110,14 @@ static char *backend = NULL;
 static char *port = NULL;
 
 typedef enum janus_gelfevh_socket_type {
-	TCP = 1,
-	UDP = 2
+	JANUS_GELFEVH_SOCKET_TYPE_TCP = 1,
+	JANUS_GELFEVH_SOCKET_TYPE_UDP = 2
 } janus_gelfevh_socket_type;
 
 static int max_gelf_msg_len = 500;
 static int sockfd;
 /* Set TCP as Default transport */
-static janus_gelfevh_socket_type transport = TCP;
+static janus_gelfevh_socket_type transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -193,7 +193,7 @@ static int janus_gelfevh_send(char *message) {
 		JANUS_LOG(LOG_WARN, "Message is NULL, not sending to GELF!\n");
 		return -1;
 	}
-	if(transport == TCP) {
+	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
 		unsigned int out_bytes = 0;
 		while (out_bytes < strlen(message)+1) {
@@ -235,7 +235,7 @@ static int janus_gelfevh_send(char *message) {
 			JANUS_LOG(LOG_ERR, "Event not sent! GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 			return -1;
 		}
-		/* do we need to chunk the message */
+		/* Do we need to chunk the message */
 		if(total == 1) {
 			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
@@ -321,7 +321,9 @@ int janus_gelfevh_init(const char *config_path) {
 		item = janus_config_get(config, config_general, janus_config_type_item, "protocol");
 		if (item && item->value) {
 			if (strcasecmp(item->value, "udp") == 0){
-				transport = UDP;
+				transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
+			} else {
+				JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default: %d\n", transport);
 			}
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
