@@ -317,6 +317,7 @@ typedef struct janus_ice_queued_packet {
 /* A few static, fake, messages we use as a trigger: e.g., to start a
  * new DTLS handshake, hangup a PeerConnection or close a handle */
 static janus_ice_queued_packet
+	janus_ice_start_gathering,
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
 	janus_ice_hangup_peerconnection,
@@ -461,8 +462,11 @@ static inline void janus_ice_free_rtp_packet(janus_rtp_packet *pkt) {
 }
 
 static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
-	if(pkt == NULL || pkt == &janus_ice_add_candidates || pkt == &janus_ice_dtls_handshake ||
-			pkt == &janus_ice_hangup_peerconnection || pkt == &janus_ice_detach_handle) {
+	if(pkt == NULL || pkt == &janus_ice_start_gathering ||
+			pkt == &janus_ice_add_candidates ||
+			pkt == &janus_ice_dtls_handshake ||
+			pkt == &janus_ice_hangup_peerconnection ||
+			pkt == &janus_ice_detach_handle) {
 		return;
 	}
 	g_free(pkt->data);
@@ -3507,7 +3511,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
 	nice_agent_set_port_range(handle->agent, handle->stream_id, 1, rtp_range_min, rtp_range_max);
 #endif
-	if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+	/* Gather now only if we're doing hanf-trickle */
+	if(!janus_full_trickle_enabled && !nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		janus_ice_webrtc_hangup(handle, "Gathering error");
@@ -3531,6 +3536,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		return -1;
 	}
 	janus_refcount_increase(&component->dtls->ref);
+	/* If we're doing full-tricke, start gathering asynchronously */
+	if(janus_full_trickle_enabled) {
+#if GLIB_CHECK_VERSION(2, 46, 0)
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_start_gathering);
+#else
+		g_async_queue_push(handle->queued_packets, &janus_ice_start_gathering);
+#endif
+	}
 	return 0;
 }
 
@@ -3954,7 +3967,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	janus_session *session = (janus_session *)handle->session;
 	janus_ice_stream *stream = handle->stream;
 	janus_ice_component *component = stream ? stream->component : NULL;
-	if(pkt == &janus_ice_add_candidates) {
+	if(pkt == &janus_ice_start_gathering) {
+		/* Start gathering candidates */
+		if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
+			janus_ice_webrtc_hangup(handle, "ICE gathering error");
+		}
+		return G_SOURCE_CONTINUE;
+	} else if(pkt == &janus_ice_add_candidates) {
 		/* There are remote candidates pending, add them now */
 		GSList *candidates = NULL;
 		NiceCandidate *c = NULL;
