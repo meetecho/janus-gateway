@@ -329,6 +329,8 @@ struct janus_ice_handle {
 	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
+	/*! \brief Queue of remote candidates that still need to be processed */
+	GAsyncQueue *queued_candidates;
 	/*! \brief Queue of events in the loop and outgoing packets to send */
 	GAsyncQueue *queued_packets;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
@@ -656,6 +658,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
 void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
+/*! \brief Method to queue a remote candidate for processing
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] c The remote NiceCandidate to process */
+void janus_ice_add_remote_candidate(janus_ice_handle *handle, NiceCandidate *c);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
