@@ -3745,6 +3745,8 @@ ldd janus | grep asan
  * -# <a href="#writeplugin">I want to write my own plugin, where do I start?</a>\n
  * -# <a href="#ulimit">I'm using the VideoRoom plugin and, when several users are handled, I get
  *    a "Too many open files" errors and Janus crashes</a>\n
+ * -# <a href="#aesgcm">I get an undefined reference to <code>srtp_crypto_policy_set_aes_gcm_256_16_auth</code>
+ *    when building Janus</a>\n
  * -# <a href="#https">When I enable the HTTPS web server in Janus, the CPU goes crazy</a>\n
  * -# <a href="#turn">I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</a>\n
  * -# <a href="#benchmark">Is there any benchmark on Janus performances?</a>\n
@@ -4117,6 +4119,17 @@ ldd janus | grep asan
  *    using the \c ulimit application. For a simple and quick way to handle
  *    this refer to the guide provided by the MongoDB developers:
  *    http://docs.mongodb.org/manual/reference/ulimit/ \n\n
+ *    .
+ * \anchor aesgcm
+ * -# <b>I get an undefined reference to <code>srtp_crypto_policy_set_aes_gcm_256_16_auth</code>
+ *    when building Janus</b>\n
+ *    .
+ *    As explained in the README, you have to build libsrtp or libsrtp2 with
+ *    the <code>--enable-openssl</code> or <code>--enable-nss</code> flags,
+ *    since they're needed to support AES-GCM in our SRTP streams. If you
+ *    don't want AES-GCM support, pass the <code>--disable-aes-gcm</code>
+ *    option when configuring Janus instead: remember to do a
+ *    <code>make clean</code> before recompiling Janus after the change. \n\n
  *    .
  * \anchor https
  * -# <b>When I enable the HTTPS web server in Janus, the CPU goes crazy</b>\n
