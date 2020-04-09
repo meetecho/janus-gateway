@@ -6138,16 +6138,19 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid subscriber instance");
 				goto error;
 			}
+			janus_refcount_increase(&subscriber->ref);
 			if(subscriber->room == NULL) {
 				JANUS_LOG(LOG_ERR, "No such room\n");
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room");
+				janus_refcount_decrease(&subscriber->ref);
 				goto error;
 			}
 			if(!strcasecmp(request_text, "join")) {
 				JANUS_LOG(LOG_ERR, "Already in as a subscriber on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 				g_snprintf(error_cause, 512, "Already in as a subscriber on this handle");
+				janus_refcount_decrease(&subscriber->ref);
 				goto error;
 			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
@@ -6165,12 +6168,15 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
+				}
 				if(subscriber->kicked) {
 					JANUS_LOG(LOG_ERR, "Unauthorized, you have been kicked\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				json_t *audio = json_object_get(root, "audio");
@@ -6185,6 +6191,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				json_t *temporal = json_object_get(root, "temporal_layer");
@@ -6194,6 +6201,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				/* Update the audio/video/data flags, if set */
@@ -6397,6 +6405,7 @@ static void *janus_videoroom_handler(void *data) {
 						subscriber->data = publisher->data && subscriber->data_offered;
 						/* Done */
 						janus_videoroom_message_free(msg);
+						janus_refcount_decrease(&subscriber->ref);
 						continue;
 					}
 				}
@@ -6412,8 +6421,10 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
+				}
 				if(!string_ids) {
 					JANUS_VALIDATE_JSON_OBJECT(root, feed_parameters,
 						error_code, error_cause, TRUE,
@@ -6423,8 +6434,10 @@ static void *janus_videoroom_handler(void *data) {
 						error_code, error_cause, TRUE,
 						JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				}
-				if(error_code != 0)
+				if(error_code != 0) {
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
+				}
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = 0;
 				char feed_id_num[30], *feed_id_str = NULL;
@@ -6442,12 +6455,14 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 					g_snprintf(error_cause, 512, "No such room");
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				if(g_atomic_int_get(&subscriber->destroyed)) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed (%s)\n", subscriber->room_id_str);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 					g_snprintf(error_cause, 512, "No such room (%s)", subscriber->room_id_str);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				janus_mutex_lock(&subscriber->room->mutex);
@@ -6458,6 +6473,7 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 					g_snprintf(error_cause, 512, "No such feed (%s)", feed_id_str);
 					janus_mutex_unlock(&subscriber->room->mutex);
+					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
 				janus_refcount_increase(&publisher->ref);
@@ -6476,6 +6492,7 @@ static void *janus_videoroom_handler(void *data) {
 						JANUS_LOG(LOG_ERR, "The two publishers are not using the same codecs, can't switch\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 						g_snprintf(error_cause, 512, "The two publishers are not using the same codecs, can't switch");
+						janus_refcount_decrease(&subscriber->ref);
 						goto error;
 					}
 					/* Go on */
@@ -6545,8 +6562,10 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+				janus_refcount_decrease(&subscriber->ref);
 				goto error;
 			}
+			janus_refcount_decrease(&subscriber->ref);
 		}
 
 		/* Prepare JSON event */
