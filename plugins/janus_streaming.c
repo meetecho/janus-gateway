@@ -1128,7 +1128,20 @@ typedef struct janus_streaming_helper {
 	GAsyncQueue *queued_packets;
 	volatile gint destroyed;
 	janus_mutex mutex;
+	janus_refcount ref;
 } janus_streaming_helper;
+static void janus_streaming_helper_destroy(janus_streaming_helper *helper) {
+	if(helper && g_atomic_int_compare_and_exchange(&helper->destroyed, 0, 1))
+		janus_refcount_decrease(&helper->ref);
+}
+static void janus_streaming_helper_free(const janus_refcount *helper_ref) {
+	janus_streaming_helper *helper = janus_refcount_containerof(helper_ref, janus_streaming_helper, ref);
+	/* This helper can be destroyed, free all the resources */
+	g_async_queue_unref(helper->queued_packets);
+	if(helper->viewers != NULL)
+		g_list_free(helper->viewers);
+	g_free(helper);
+}
 static void *janus_streaming_helper_thread(void *data);
 static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_data);
 
@@ -1228,6 +1241,7 @@ static void janus_streaming_mountpoint_destroy(janus_streaming_mountpoint *mount
 		while(l) {
 			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
 			g_async_queue_push(ht->queued_packets, &exit_packet);
+			janus_streaming_helper_destroy(ht);
 			l = l->next;
 		}
 	}
@@ -1248,6 +1262,17 @@ static void janus_streaming_mountpoint_free(const janus_refcount *mp_ref) {
 	janus_mutex_lock(&mp->mutex);
 	if(mp->viewers != NULL)
 		g_list_free(mp->viewers);
+	if(mp->threads != NULL) {
+		/* Remove the last reference to the helper threads, if any */
+		GList *l = mp->threads;
+		while(l) {
+			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+			janus_refcount_decrease(&ht->ref);
+			l = l->next;
+		}
+		/* Destroy the list */
+		g_list_free(mp->threads);
+	}
 	janus_mutex_unlock(&mp->mutex);
 
 	if(mp->source != NULL && mp->source_destroy != NULL) {
@@ -5765,21 +5790,27 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			helper->id = i+1;
 			helper->mp = live_rtp;
 			helper->queued_packets = g_async_queue_new_full((GDestroyNotify)janus_streaming_rtp_relay_packet_free);
-			/* Add a reference because janus_streaming_relay_thread is going to push on these queues */
-			g_async_queue_ref(helper->queued_packets);
 			janus_mutex_init(&helper->mutex);
+			janus_refcount_init(&helper->ref, janus_streaming_helper_free);
 			live_rtp->helper_threads++;
+			/* Spawn a thread and add references */
 			g_snprintf(tname, sizeof(tname), "help %u-%"SCNu64, helper->id, live_rtp->id);
 			janus_refcount_increase(&live_rtp->ref);
+			janus_refcount_increase(&helper->ref);
 			helper->thread = g_thread_try_new(tname, &janus_streaming_helper_thread, helper, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
 					error->code, error->message ? error->message : "??");
 				janus_refcount_decrease(&live_rtp->ref);	/* This is for the helper thread */
+				g_async_queue_unref(helper->queued_packets);
+				janus_refcount_decrease(&helper->ref);
+				/* This extra unref is for the init */
+				janus_refcount_decrease(&helper->ref);
 				janus_streaming_mountpoint_destroy(live_rtp);
 				g_free(helper);
 				return NULL;
 			}
+			janus_refcount_increase(&helper->ref);
 			live_rtp->threads = g_list_append(live_rtp->threads, helper);
 		}
 	}
@@ -7080,6 +7111,17 @@ static void *janus_streaming_relay_thread(void *data) {
 		janus_refcount_decrease(&mountpoint->ref);
 		return NULL;
 	}
+
+	/* Add a reference to the helper threads, if needed */
+	if(mountpoint->helper_threads > 0) {
+		GList *l = mountpoint->threads;
+		while(l) {
+			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+			janus_refcount_increase(&ht->ref);
+			l = l->next;
+		}
+	}
+
 	int audio_fd = source->audio_fd;
 	int video_fd[3] = {source->video_fd[0], source->video_fd[1], source->video_fd[2]};
 	int data_fd = source->data_fd;
@@ -7763,12 +7805,12 @@ static void *janus_streaming_relay_thread(void *data) {
 	json_decref(event);
 	janus_mutex_unlock(&mountpoint->mutex);
 
-	/* Unref the helper threads queues */
+	/* Unref the helper threads */
 	if(mountpoint->helper_threads > 0) {
 		GList *l = mountpoint->threads;
 		while(l) {
 			janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
-			g_async_queue_unref(ht->queued_packets);
+			janus_refcount_decrease(&ht->ref);
 			l = l->next;
 		}
 	}
@@ -8108,7 +8150,7 @@ static void *janus_streaming_helper_thread(void *data) {
 	janus_streaming_mountpoint *mp = helper->mp;
 	JANUS_LOG(LOG_INFO, "[%s/#%d] Joining Streaming helper thread\n", mp->name, helper->id);
 	janus_streaming_rtp_relay_packet *pkt = NULL;
-	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mp->destroyed)) {
+	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mp->destroyed) && !g_atomic_int_get(&helper->destroyed)) {
 		pkt = g_async_queue_pop(helper->queued_packets);
 		if(pkt == &exit_packet)
 			break;
@@ -8120,14 +8162,7 @@ static void *janus_streaming_helper_thread(void *data) {
 		janus_streaming_rtp_relay_packet_free(pkt);
 	}
 	JANUS_LOG(LOG_INFO, "[%s/#%d] Leaving Streaming helper thread\n", mp->name, helper->id);
-	janus_mutex_lock(&mp->mutex);
-	janus_mutex_lock(&helper->mutex);
-	g_async_queue_unref(helper->queued_packets);
-	if(helper->viewers != NULL)
-		g_list_free(helper->viewers);
-	janus_mutex_unlock(&helper->mutex);
-	g_free(helper);
-	janus_mutex_unlock(&mp->mutex);
+	janus_refcount_decrease(&helper->ref);
 	janus_refcount_decrease(&mp->ref);
 	return NULL;
 }
