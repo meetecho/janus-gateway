@@ -1484,7 +1484,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					janus_sdp_attribute *a = (janus_sdp_attribute *)mo->data;
 					if(a->name && strstr(a->name, "fmtp") && a->value) {
 						char *tmp = strchr(a->value, ' ');
-						if(tmp && strlen(tmp) > 1) {
+						if(tmp && strlen(tmp) > 1 && custom_audio_fmtp == NULL) {
 							tmp++;
 							custom_audio_fmtp = g_strdup(tmp);
 							/* FIXME We should integrate the existing audio_fmtp */
