@@ -208,6 +208,8 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_mqtt_event_handler=no])
                AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])
+               AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])
               ],
               [])
 
@@ -307,6 +309,13 @@ AC_ARG_ENABLE([nanomsg-event-handler],
               [AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])],
               [enable_nanomsg_event_handler=maybe])
+
+AC_ARG_ENABLE([gelf-event-handler],
+              [AS_HELP_STRING([--disable-gelf-event-handler],
+                              [Disable gelf event handler ])],
+              [AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])],
+              [enable_gelf_event_handler=maybe])
 
 AC_ARG_ENABLE([json-logger],
               [AS_HELP_STRING([--enable-json-logger],
@@ -599,6 +608,7 @@ AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
 
@@ -1019,6 +1029,9 @@ AM_COND_IF([ENABLE_MQTTEVH],
 AM_COND_IF([ENABLE_NANOMSGEVH],
 	[echo "    Nanomsg event handler: yes"],
 	[echo "    Nanomsg event handler: no"])
+AM_COND_IF([ENABLE_GELFEVH],
+	[echo "    GELF event handler:    yes"],
+	[echo "    GELF event handler:    no"])
 echo "External loggers:"
 AM_COND_IF([ENABLE_JSONLOGGER],
 	[echo "    JSON file logger:      yes"],

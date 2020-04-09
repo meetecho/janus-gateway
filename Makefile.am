@@ -368,6 +368,16 @@ conf_DATA += conf/janus.eventhandler.nanomsgevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
 endif
 
+if ENABLE_GELFEVH
+event_LTLIBRARIES += events/libjanus_gelfevh.la
+events_libjanus_gelfevh_la_SOURCES = events/janus_gelfevh.c
+events_libjanus_gelfevh_la_CFLAGS = $(events_cflags)
+events_libjanus_gelfevh_la_LDFLAGS = $(events_ldflags)
+events_libjanus_gelfevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.gelfevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.gelfevh.jcfg.sample
+endif
+
 ##
 # Loggers
 ##
