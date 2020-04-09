@@ -70,6 +70,7 @@ typedef struct janus_lua_session {
 	janus_recorder *drc;				/* The Janus recorder instance for data, if enabled */
 	janus_mutex rec_mutex;				/* Mutex to protect the recorders from race conditions */
 	volatile gint started;				/* Whether this session's PeerConnection is ready or not */
+	volatile gint dataready;			/* Whether the data channel was established on this sessions's PeerConnection */
 	volatile gint hangingup;			/* Whether this session's PeerConnection is hanging up */
 	volatile gint destroyed;			/* Whether this session's been marked as destroyed */
 	/* If you need any additional property (e.g., for hooks you added in janus_lua_extra.c) add them below this line */

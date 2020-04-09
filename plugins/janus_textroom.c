@@ -535,6 +535,7 @@ void janus_textroom_setup_media(janus_plugin_session *handle);
 void janus_textroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_textroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_textroom_data_ready(janus_plugin_session *handle);
 void janus_textroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_textroom_hangup_media(janus_plugin_session *handle);
 void janus_textroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -561,6 +562,7 @@ static janus_plugin janus_textroom_plugin =
 		.incoming_rtp = janus_textroom_incoming_rtp,
 		.incoming_rtcp = janus_textroom_incoming_rtcp,
 		.incoming_data = janus_textroom_incoming_data,
+		.data_ready = janus_textroom_data_ready,
 		.slow_link = janus_textroom_slow_link,
 		.hangup_media = janus_textroom_hangup_media,
 		.destroy_session = janus_textroom_destroy_session,
@@ -687,6 +689,7 @@ typedef struct janus_textroom_session {
 	GHashTable *rooms;			/* Map of rooms this user is in, and related participant instance */
 	janus_mutex mutex;			/* Mutex to lock this session */
 	volatile gint setup;
+	volatile gint dataready;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -1109,6 +1112,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_textroom_session_free);
 	g_atomic_int_set(&session->setup, 0);
+	g_atomic_int_set(&session->dataready, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -1330,7 +1334,7 @@ admin_response:
 }
 
 void janus_textroom_setup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_mutex_lock(&sessions_mutex);
@@ -1387,6 +1391,19 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
 	janus_textroom_handle_incoming_request(handle, text, NULL, FALSE);
 	janus_refcount_decrease(&session->ref);
+}
+
+void janus_textroom_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable: we shouldn't send anything before this happens */
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_TEXTROOM_PACKAGE, handle);
+	}
 }
 
 /* Helper method to handle incoming messages from the data channel */
@@ -2811,7 +2828,7 @@ void janus_textroom_hangup_media(janus_plugin_session *handle) {
 }
 
 static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_textroom_session *session = janus_textroom_lookup_session(handle);
@@ -2823,6 +2840,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	g_atomic_int_set(&session->dataready, 0);
 	/* Get rid of all participants */
 	janus_mutex_lock(&session->mutex);
 	GList *list = NULL;

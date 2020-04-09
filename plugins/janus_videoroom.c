@@ -1091,6 +1091,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_videoroom_data_ready(janus_plugin_session *handle);
 void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -1117,6 +1118,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_rtp = janus_videoroom_incoming_rtp,
 		.incoming_rtcp = janus_videoroom_incoming_rtcp,
 		.incoming_data = janus_videoroom_incoming_data,
+		.data_ready = janus_videoroom_data_ready,
 		.slow_link = janus_videoroom_slow_link,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
@@ -1384,6 +1386,7 @@ typedef struct janus_videoroom_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
+	volatile gint dataready;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_mutex mutex;
@@ -4987,6 +4990,19 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	janus_videoroom_publisher_dereference_nodebug(participant);
 }
 
+void janus_videoroom_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable */
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_VIDEOROOM_PACKAGE, handle);
+	}
+}
+
 void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video) {
 	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -5192,6 +5208,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
+	g_atomic_int_set(&session->dataready, 0);
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
 	/* Send an event to the browser and tell the PeerConnection is over */
@@ -7202,7 +7219,7 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 	if(!session || !session->handle) {
 		return;
 	}
-	if(!session->started) {
+	if(!session->started || !g_atomic_int_get(&session->dataready)) {
 		return;
 	}
 	if(gateway != NULL && packet->data != NULL) {
