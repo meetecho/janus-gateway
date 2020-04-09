@@ -13,6 +13,10 @@ general: {
 									# plain (no indentation) or compact (no indentation and no spaces)
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
+
+	# By default, integers are used as a unique ID for rooms. In case you
+	# want to use strings instead (e.g., a UUID), set string_ids to true.
+	#string_ids = true
 }
 
 room-1234: {

@@ -35,10 +35,12 @@
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
  * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
  * @param[in] full_trickle Whether full-trickle must be used (instead of half-trickle)
+ * @param[in] ignore_mdns Whether mDNS candidates should be ignored, instead of resolved
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, gboolean ignore_mdns,
+	gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
 void janus_ice_deinit(void);
 /*! \brief Method to check whether a STUN server is reachable
@@ -119,6 +121,9 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether full-trickle support is enabled or not
  * @returns true if full-trickle support is enabled, false otherwise */
 gboolean janus_ice_is_full_trickle_enabled(void);
+/*! \brief Method to check whether mDNS resolution is enabled or not
+ * @returns true if mDNS resolution is enabled, false otherwise */
+gboolean janus_ice_is_mdns_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
@@ -146,6 +151,12 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
+/*! \brief Method to modify the DSCP Type of Service (TOS), which is disabled by default
+ * @param[in] tos The new TOS value (0 to disable) */
+void janus_set_dscp_tos(int period);
+/*! \brief Method to get the current DSCP Type of Service (see above)
+ * @returns The current TOS value (0 if disabled) */
+int janus_get_dscp_tos(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
@@ -318,6 +329,8 @@ struct janus_ice_handle {
 	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
+	/*! \brief Queue of remote candidates that still need to be processed */
+	GAsyncQueue *queued_candidates;
 	/*! \brief Queue of events in the loop and outgoing packets to send */
 	GAsyncQueue *queued_packets;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
@@ -390,6 +403,8 @@ struct janus_ice_stream {
 	uint16_t nack_queue_ms;
 	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
 	GHashTable *rtx_nacked[3];
+	/*! \brief Map of the pending NACKed cleanup callback */
+	GHashTable *pending_nacked_cleanup;
 	/*! \brief First received audio NTP timestamp */
 	gint64 audio_first_ntp_ts;
 	/*! \brief First received audio RTP timestamp */
@@ -398,10 +413,14 @@ struct janus_ice_stream {
 	gint64 video_first_ntp_ts[3];
 	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
 	guint32 video_first_rtp_ts[3];
+	/*! \brief Last sent audio NTP timestamp */
+	gint64 audio_last_ntp_ts;
 	/*! \brief Last sent audio RTP timestamp */
-	guint32 audio_last_ts;
+	guint32 audio_last_rtp_ts;
+	/*! \brief Last sent video NTP timestamp */
+	gint64 video_last_ntp_ts;
 	/*! \brief Last sent video RTP timestamp */
-	guint32 video_last_ts;
+	guint32 video_last_rtp_ts;
 	/*! \brief SDES mid RTP extension ID */
 	gint mid_ext_id;
 	/*! \brief RTP Stream extension ID, and the related rtx one */
@@ -639,6 +658,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
 void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
+/*! \brief Method to queue a remote candidate for processing
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] c The remote NiceCandidate to process */
+void janus_ice_add_remote_candidate(janus_ice_handle *handle, NiceCandidate *c);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP

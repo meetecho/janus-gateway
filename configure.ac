@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.9.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.9.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=90
+JANUS_VERSION=93
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.9.0"
+JANUS_VERSION_STRING="0.9.3"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -324,7 +324,8 @@ AC_ARG_ENABLE([systemd-sockets],
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
-					libconfig
+                    gio-2.0 >= $glib_version
+                    libconfig
                     nice
                     jansson >= $jansson_version
                     libssl >= $ssl_version
@@ -386,51 +387,29 @@ AC_CHECK_LIB([dl],
 
 AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
 AS_IF([test "x$enable_libsrtp2" != "xno"],
-      [AC_CHECK_LIB([srtp2],
-                    [srtp_init],
-                    [
-                      AC_CHECK_HEADER([srtp2/srtp.h],
-                                      [
-                                        AC_DEFINE(HAVE_SRTP_2)
-                                        JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp2"
-                                        enable_libsrtp2=yes
-                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
-                                        AC_CHECK_LIB([srtp2],
-                                                     [srtp_crypto_policy_set_aes_gcm_256_16_auth],
-                                                     [AC_DEFINE(HAVE_SRTP_AESGCM)],
-                                                     [AC_MSG_NOTICE([libsrtp2 does not have support for AES-GCM profiles])])
-                                      ],
-                                      [
-                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
-                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
-                                      ])
-                    ],
-                    [
-                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
-                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
-                    ])
+      [PKG_CHECK_MODULES([LIBSRTP],
+                         [libsrtp2],
+                         [
+                          AC_DEFINE(HAVE_SRTP_2)
+                          AC_DEFINE(HAVE_SRTP_AESGCM)
+                          enable_libsrtp2=yes
+                          AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                         ],
+                         [
+                          AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                         ])
       ])
 AM_COND_IF([ENABLE_LIBSRTP_2],
            [],
-           [AC_CHECK_LIB([srtp],
-                         [srtp_init],
-                         [
-                           AC_CHECK_HEADER([srtp/srtp.h],
-                                           [
-                                             JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp"
-                                             enable_libsrtp2=no
-                                             PKG_CHECK_MODULES([SRTP15X],
-                                                               [
-                                                                 libsrtp >= 1.5.0
-                                                               ])
-                                             AC_CHECK_LIB([srtp],
-                                                          [crypto_policy_set_aes_gcm_256_16_auth],
-                                                          [AC_DEFINE(HAVE_SRTP_AESGCM)],
-                                                          [AC_MSG_NOTICE([libsrtp does not have support for AES-GCM profiles])])
-                                           ],
-                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
-                         ],
-                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           [PKG_CHECK_MODULES([LIBSRTP],
+                              [libsrtp >= 1.5.0],
+                              [
+                               AC_DEFINE(HAVE_SRTP_AESGCM)
+                               enable_libsrtp2=no
+                              ],
+                              [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])
+                              ])
            ])
 
 AC_CHECK_LIB([usrsctp],
@@ -453,7 +432,6 @@ PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
                     AC_DEFINE(HAVE_LIBCURL)
-                    JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lcurl"
                     AS_IF(
                       [test "x$enable_turn_rest_api" != "xno"],
                       [
@@ -515,7 +493,7 @@ PKG_CHECK_MODULES([TRANSPORTS],
                   ])
 
 PKG_CHECK_MODULES([MHD],
-                  [libmicrohttpd],
+                  [libmicrohttpd >= 0.9.59],
                   [
                     AS_IF([test "x$enable_rest" = "xmaybe"],
                           [enable_rest=yes])
@@ -780,6 +758,7 @@ AC_SUBST([OPUS_LIBS])
 PKG_CHECK_MODULES([OGG],
                   [ogg],
                   [
+                    AC_DEFINE(HAVE_LIBOGG)
                     AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
                           [enable_plugin_voicemail=yes])
                   ],

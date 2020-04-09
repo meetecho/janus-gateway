@@ -69,6 +69,10 @@ guint32 janus_random_uint32(void);
  * @returns A random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
+/*! \brief Helper to generate random UUIDs (needed by some plugins)
+ * @returns A random UUID string, which must be deallocated with \c g_free */
+char *janus_random_uuid(void);
+
 /*! \brief Helper to generate an allocated copy of a guint64 number
  * @note While apparently silly, this is needed in order to make sure guint64 values
  * used as keys in GHashTable operations are not lost: using temporary guint64 numbers
