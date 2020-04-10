@@ -771,7 +771,7 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
 		}
 		if(!mid && !mline) {
-			*error = "Trickle error: missing mandatory element (sdpMid or sdlMLineIndex)";
+			*error = "Trickle error: missing mandatory element (sdpMid or sdpMLineIndex)";
 			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
 		}
 		json_t *rc = json_object_get(candidate, "candidate");
