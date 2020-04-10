@@ -601,6 +601,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
+	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-1), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
 }
@@ -902,7 +903,8 @@ static struct janus_json_parameter recording_stop_parameters[] = {
 };
 static struct janus_json_parameter simulcast_parameters[] = {
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter svc_parameters[] = {
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -915,6 +917,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
@@ -2318,6 +2321,8 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 				json_object_set_new(simulcast, "substream-target", json_integer(session->sim_context.substream_target));
 				json_object_set_new(simulcast, "temporal-layer", json_integer(session->sim_context.templayer));
 				json_object_set_new(simulcast, "temporal-layer-target", json_integer(session->sim_context.templayer_target));
+				if(session->sim_context.drop_trigger > 0)
+					json_object_set_new(simulcast, "fallback", json_integer(session->sim_context.drop_trigger));
 				json_object_set_new(info, "simulcast", simulcast);
 			}
 			if(source->svc) {
@@ -4645,6 +4650,14 @@ static void *janus_streaming_handler(void *data) {
 						JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
 							session->sim_context.templayer_target, session->sim_context.templayer);
 					}
+					/* Check if we need a custom fallback timer for the substream */
+					json_t *fallback = json_object_get(root, "fallback");
+					if(fallback) {
+						JANUS_LOG(LOG_VERB, "Setting fallback timer (simulcast): %lld (was %"SCNu32")\n",
+							json_integer_value(fallback) ? json_integer_value(fallback) : 250000,
+							session->sim_context.drop_trigger ? session->sim_context.drop_trigger : 250000);
+						session->sim_context.drop_trigger = json_integer_value(fallback);
+					}
 				} else if(source && source->svc) {
 					JANUS_VALIDATE_JSON_OBJECT(root, svc_parameters,
 						error_code, error_cause, TRUE,
@@ -4888,6 +4901,14 @@ done:
 							gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 							json_decref(event);
 						}
+					}
+					/* Check if we need to change the fallback timer for the substream */
+					json_t *fallback = json_object_get(root, "fallback");
+					if(fallback) {
+						JANUS_LOG(LOG_VERB, "Setting fallback timer (simulcast): %lld (was %"SCNu32")\n",
+							json_integer_value(fallback) ? json_integer_value(fallback) : 250000,
+							session->sim_context.drop_trigger ? session->sim_context.drop_trigger : 250000);
+						session->sim_context.drop_trigger = json_integer_value(fallback);
 					}
 				}
 				if(source && source->svc) {

@@ -288,6 +288,8 @@ typedef struct janus_rtp_simulcasting_context {
 	int templayer;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer_target;
+	/*! \brief How much time (in us, default 250000) without receiving packets will make us drop to the substream below */
+	guint32 drop_trigger;
 	/*! \brief When we relayed the last packet (used to detect when substreams become unavailable) */
 	gint64 last_relayed;
 	/*! \brief Whether the substream has changed after processing a packet */
