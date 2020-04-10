@@ -376,9 +376,8 @@ room-<unique room ID>: {
 		{	// Participant #1
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
-			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
-			"internal_audio_ssrc" : <audio SSRC used internally for this active publisher>,
-			"internal_video_ssrc" : <video SSRC used internally for this active publisher>
+			"publisher" : "<true|false, whether user is an active publisher in the room>",
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>
 		},
 		// Other participants
 	]
