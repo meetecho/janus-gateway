@@ -2175,16 +2175,20 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Adding video constraint:", videoSupport);
 					}
 				} else if(media.video === 'screen' || media.video === 'window') {
-					if(!media.screenshareFrameRate) {
-						media.screenshareFrameRate = 3;
-					}
 					if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						constraints.video = { frameRate: media.screenshareFrameRate };
-						if (media.screenshareHeight) constraints.video.height = media.screenshareHeight;
-						if (media.screenshareWidth) constraints.video.width = media.screenshareWidth;
+						constraints.video = {};
+						if(media.screenshareFrameRate) {
+							constraints.video.frameRate = media.screenshareFrameRate;
+						}
+						if(media.screenshareHeight) {
+							constraints.video.height = media.screenshareHeight;
+						}
+						if(media.screenshareWidth) {
+							constraints.video.width = media.screenshareWidth;
+						}
 						constraints.audio = media.captureDesktopAudio;
 						navigator.mediaDevices.getDisplayMedia(constraints)
 							.then(function(stream) {
