@@ -130,7 +130,9 @@ AC_ARG_ENABLE([aes-gcm],
               [AS_HELP_STRING([--disable-aes-gcm],
                               [Disable AES-GCM support in libsrtp(2)])],
               [],
-              [AC_DEFINE(HAVE_SRTP_AESGCM)])
+              [AC_CHECK_LIB(srtp2,srtp_crypto_policy_set_aes_gcm_256_16_auth,,
+               [AC_CHECK_LIB(srtp,srtp_crypto_policy_set_aes_gcm_256_16_auth,,AC_MSG_ERROR([libsrtp will fail to link due to missing AES-GCM support]))])]
+               AC_DEFINE(HAVE_SRTP_AESGCM))
 
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
