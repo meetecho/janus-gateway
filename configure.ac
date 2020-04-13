@@ -91,6 +91,7 @@ esac
 glib_version=2.34
 ssl_version=1.0.1
 jansson_version=2.5
+GST_REQUIRED=1.8.0
 
 ##
 # Janus
@@ -337,6 +338,7 @@ PKG_CHECK_MODULES([JANUS],
                     libssl >= $ssl_version
                     libcrypto
                     zlib
+                    gstreamer-1.0 >= $GST_REQUIRED
                   ])
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
@@ -790,6 +792,21 @@ PKG_CHECK_MODULES([LUA],
                   ])
 AC_SUBST([LUA_CFLAGS])
 AC_SUBST([LUA_LIBS])
+
+#Gstreamer
+#                  gstreamer-1.0 >= $GST_REQUIRED
+#                  gstreamer-base-1.0 >= $GST_REQUIRED
+#                  gstreamer-controller-1.0 >= $GST_REQUIRED
+#                   AC_MSG_ERROR([GST not found ])
+
+#Gstreamer
+PKG_CHECK_MODULES([GST],
+                  [gstreamer-1.0],
+                  [
+                    AC_SUBST([GST_CFLAGS])
+                    AC_SUBST([GST_LIBS])
+                  ]
+                  )
 
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])
