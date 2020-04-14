@@ -854,6 +854,7 @@ room-<unique room ID>: {
 	"offer_data" : <true|false; whether or not datachannels should be negotiated; true by default if the publisher has datachannels>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
+	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
 }
@@ -967,6 +968,7 @@ room-<unique room ID>: {
 	"data" : <true|false, depending on whether datachannel messages should be relayed or not; optional>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled; optional>,
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
+	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
 	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
 }
@@ -1281,6 +1283,7 @@ static struct janus_json_parameter configure_parameters[] = {
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1299,6 +1302,7 @@ static struct janus_json_parameter subscriber_parameters[] = {
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fallback", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* For VP9 SVC */
 	{"spatial_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -2649,6 +2653,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					json_object_set_new(simulcast, "substream-target", json_integer(participant->sim_context.substream_target));
 					json_object_set_new(simulcast, "temporal-layer", json_integer(participant->sim_context.templayer));
 					json_object_set_new(simulcast, "temporal-layer-target", json_integer(participant->sim_context.templayer_target));
+					if(participant->sim_context.drop_trigger > 0)
+						json_object_set_new(simulcast, "fallback", json_integer(participant->sim_context.drop_trigger));
 					json_object_set_new(info, "simulcast", simulcast);
 				}
 				if(participant->room && participant->room->do_svc) {
@@ -5702,6 +5708,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				}
+				json_t *sc_fallback = json_object_get(root, "fallback");
 				janus_videoroom_publisher *owner = NULL;
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants,
 					string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
@@ -5780,6 +5787,7 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->sim_context.rid_ext_id = publisher->rid_extmap_id;
 					subscriber->sim_context.substream_target = sc_substream ? json_integer_value(sc_substream) : 2;
 					subscriber->sim_context.templayer_target = sc_temporal ? json_integer_value(sc_temporal) : 2;
+					subscriber->sim_context.drop_trigger = sc_fallback ? json_integer_value(sc_fallback) : 0;
 					janus_vp8_simulcast_context_reset(&subscriber->vp8_context);
 					/* Check if a VP9 SVC-related request is involved */
 					if(subscriber->room->do_svc) {
@@ -6203,6 +6211,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_decrease(&subscriber->ref);
 					goto error;
 				}
+				json_t *sc_fallback = json_object_get(root, "fallback");
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;
 				if(publisher) {
@@ -6267,6 +6276,9 @@ static void *janus_videoroom_handler(void *data) {
 							/* Send a FIR */
 							janus_videoroom_reqpli(publisher, "Simulcasting temporal layer change");
 						}
+					}
+					if(sc_fallback && (publisher->ssrc[0] != 0 || publisher->rid[0] != NULL)) {
+						subscriber->sim_context.drop_trigger = json_integer_value(sc_fallback);
 					}
 				}
 				if(subscriber->room->do_svc) {

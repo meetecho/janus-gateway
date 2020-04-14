@@ -464,6 +464,8 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "substream-target", json_integer(session->sim_context.substream_target));
 		json_object_set_new(info, "temporal-layer", json_integer(session->sim_context.templayer));
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->sim_context.templayer_target));
+		if(session->sim_context.drop_trigger > 0)
+			json_object_set_new(info, "fallback", json_integer(session->sim_context.drop_trigger));
 	}
 	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
@@ -895,6 +897,13 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
 			goto error;
 		}
+		json_t *fallback = json_object_get(root, "fallback");
+		if(fallback && (!json_is_integer(fallback) || json_integer_value(fallback) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (fallback should be a positive integer)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (fallback should be a positive integer)");
+			goto error;
+		}
 		json_t *record = json_object_get(root, "record");
 		if(record && !json_is_boolean(record)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
@@ -942,6 +951,12 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32"\n", session->bitrate);
 			gateway->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
 		}
+		if(fallback) {
+			JANUS_LOG(LOG_VERB, "Setting fallback timer (simulcast): %lld (was %"SCNu32")\n",
+				json_integer_value(fallback) ? json_integer_value(fallback) : 250000,
+				session->sim_context.drop_trigger ? session->sim_context.drop_trigger : 250000);
+			session->sim_context.drop_trigger = json_integer_value(fallback);
+		}
 		if(substream) {
 			session->sim_context.substream_target = json_integer_value(substream);
 			JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
@@ -987,10 +1002,10 @@ static void *janus_echotest_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 		}
 
-		if(!audio && !video && !bitrate && !substream && !temporal && !record && !msg_sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, substream, temporal, record, jsep) found\n");
+		if(!audio && !video && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, substream, temporal, fallback, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, simulcast, temporal, record, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, simulcast, temporal, fallback, record, jsep) found");
 			goto error;
 		}
 

@@ -181,7 +181,8 @@
 	"record" : true|false,
 	"filename" : <base path/filename to use for the recording>,
 	"substream" : <substream to receive (0-2), in case simulcasting is enabled>,
-	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>
+	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled>,
+	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>
 }
 \endverbatim
  *
@@ -665,6 +666,8 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "substream-target", json_integer(session->sim_context.substream_target));
 		json_object_set_new(info, "temporal-layer", json_integer(session->sim_context.templayer));
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->sim_context.templayer_target));
+		if(session->sim_context.drop_trigger > 0)
+			json_object_set_new(info, "fallback", json_integer(session->sim_context.drop_trigger));
 	}
 	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
@@ -1412,6 +1415,13 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
 				goto error;
 			}
+			json_t *fallback = json_object_get(root, "fallback");
+			if(fallback && (!json_is_integer(fallback) || json_integer_value(fallback) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (fallback should be a positive integer)\n");
+				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (fallback should be a positive integer)");
+				goto error;
+			}
 			if(audio) {
 				session->audio_active = json_is_true(audio);
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -1431,6 +1441,12 @@ static void *janus_videocall_handler(void *data) {
 				gateway->send_remb(session->handle, session->bitrate ? session->bitrate : 10000000);
 			}
 			janus_videocall_session *peer = session->peer;
+			if(fallback) {
+				JANUS_LOG(LOG_VERB, "Setting fallback timer (simulcast): %lld (was %"SCNu32")\n",
+					json_integer_value(fallback) ? json_integer_value(fallback) : 250000,
+					session->sim_context.drop_trigger ? session->sim_context.drop_trigger : 250000);
+				session->sim_context.drop_trigger = json_integer_value(fallback);
+			}
 			if(substream) {
 				session->sim_context.substream_target = json_integer_value(substream);
 				JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",

@@ -997,9 +997,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		/* Let's start slow */
 		context->last_relayed = janus_get_monotonic_time();
 	} else {
-		/* Check if 250ms went by with no packet relayed */
+		/* Check if too much time went by with no packet relayed */
 		gint64 now = janus_get_monotonic_time();
-		if(now-context->last_relayed >= 250000) {
+		if(now-context->last_relayed >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			int substream = context->substream-1;
 			if(substream < 0)
