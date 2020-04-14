@@ -3460,6 +3460,6 @@ function Janus(gatewayCallbacks) {
 
 	function isTrickleEnabled(trickle) {
 		Janus.debug("isTrickleEnabled:", trickle);
-		return !!trickle;
+		return (trickle === false) ? false : true;
 	}
 }
