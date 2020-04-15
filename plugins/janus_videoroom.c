@@ -3471,6 +3471,15 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
 				json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
+				json_object_set_new(rl, "audiolevel_ext", room->audiolevel_ext ? json_true() : json_false());
+				json_object_set_new(rl, "audiolevel_event", room->audiolevel_event ? json_true() : json_false());
+				if(room->audiolevel_event) {
+					json_object_set_new(rl, "audio_active_packets", json_integer(room->audio_active_packets));
+					json_object_set_new(rl, "audio_level_average", json_integer(room->audio_level_average));
+				}
+				json_object_set_new(rl, "videoorient_ext", room->videoorient_ext ? json_true() : json_false());
+				json_object_set_new(rl, "playoutdelay_ext", room->playoutdelay_ext ? json_true() : json_false());
+				json_object_set_new(rl, "transport_wide_cc_ext", room->transport_wide_cc_ext ? json_true() : json_false());
 				json_array_append_new(list, rl);
 			}
 			janus_refcount_decrease(&room->ref);
