@@ -82,3 +82,4 @@ Makefile.in
 .idea
 
 .vscode
+node_modules
