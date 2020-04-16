@@ -542,7 +542,7 @@ function updateSimulcastButtons(substream, temporal) {
 // are just an example, and are basically exact copies from this demo:
 // 		https://github.com/webrtc/samples/blob/gh-pages/src/content/peerconnection/endtoend-encryption/js/main.js
 // That said, you're free (or actually, encouraged) to try and use other
-// custom, and more advanced, trasform functions as well (e.g., SFrames).
+// custom, and more advanced, transform functions as well (e.g., SFrames).
 var currentCryptoKey = null;
 var currentKeyIdentifier = 0;
 function promptCryptoKey() {
@@ -601,6 +601,7 @@ var senderTransform = new TransformStream({
 		for(let i=0; i<10; ++i) {
 			newView.setInt8(i, view.getInt8(i));
 		}
+		// This is a bitwise xor of the key with the payload. This is not strong encryption, just a demo.
 		for(let i=10; i<chunk.data.byteLength; ++i) {
 			const keyByte = currentCryptoKey.charCodeAt(i % currentCryptoKey.length);
 			newView.setInt8(i, view.getInt8(i) ^ keyByte);
