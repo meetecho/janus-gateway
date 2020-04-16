@@ -334,6 +334,7 @@ int main(int argc, char *argv[])
 	gboolean video = FALSE, data = FALSE;
 	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
 		vp8 = FALSE, vp9 = FALSE, h264 = FALSE;
+	gboolean e2ee = FALSE;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
@@ -449,6 +450,10 @@ int main(int argc, char *argv[])
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
+				/* First of all let's check if this is an end-to-end encrypted recording */
+				json_t *e = json_object_get(info, "e");
+				if(e && json_is_true(e))
+					e2ee = TRUE;
 				/* Is it audio or video? */
 				json_t *type = json_object_get(info, "t");
 				if(!type || !json_is_string(type)) {
@@ -566,6 +571,8 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
+				if(e2ee)
+					JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
 				/* Save the original string as a metadata to save in the media container, if possible */
 				if(metadata == NULL)
 					metadata = g_strdup(prebuffer);
@@ -912,6 +919,17 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Parsing and reordering completed, bye!\n");
 		cmdline_parser_free(&args_info);
 		exit(0);
+	}
+
+	/* Now we have to start working: stop here if it's an end-to-end encrypted
+	 * recording, though, as the processed file would NOT be playable... In
+	 * the future we may want to provide ways for users to pass custom decrypt
+	 * functions to the processor (e.g., for users with legitimate access to
+	 * the key to decrypt the content), but at the moment we just drop it */
+	if(e2ee) {
+		JANUS_LOG(LOG_ERR, "End-to-end encrypted media recording, can't process...\n");
+		cmdline_parser_free(&args_info);
+		exit(1);
 	}
 
 	if(!video && !data && audioskew_th > 0) {

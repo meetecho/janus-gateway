@@ -1289,6 +1289,13 @@ static void *janus_nosip_handler(void *data) {
 				g_snprintf(error_cause, 512, "The NoSIP plugin does not support DataChannels");
 				goto error;
 			}
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but legacy endpoints will need unencrypted media frames */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
 			/* Check if the user provided an info string to provide context */
 			const char *info = json_string_value(json_object_get(root, "info"));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */

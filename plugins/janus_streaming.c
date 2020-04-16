@@ -125,6 +125,15 @@ feed the mountpoint, as you may risk getting SRTP decrypt errors:
 srtpsuite = 32
 srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
 
+The Streaming plugin can also be used to (re)stream media that has been
+encrypted using something that can be consumed via Insertable Streams.
+In that case, we only need to be aware of it, so that we can send the
+info along with the SDP. How to decrypt the media is out of scope, and
+up to the application since, again, this is end-to-end encryption and
+so neither Janus nor the Streaming plugin have access to anything.
+DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
+e2ee = true
+
 The following options are only valid for the 'rstp' type:
 url = RTSP stream URL
 rtsp_user = RTSP authorization username, if needed
@@ -825,7 +834,8 @@ static struct janus_json_parameter rtp_parameters[] = {
 	{"collision", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"threads", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"srtpsuite", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"srtpcrypto", JSON_STRING, 0}
+	{"srtpcrypto", JSON_STRING, 0},
+	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter live_parameters[] = {
 	{"filename", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1064,12 +1074,14 @@ typedef struct janus_streaming_rtp_source {
 	janus_network_address audio_iface;
 	janus_network_address video_iface;
 	janus_network_address data_iface;
-	/* Only needed for SRTP forwarders */
+	/* Only needed for SRTP support */
 	gboolean is_srtp;
 	int srtpsuite;
 	char *srtpcrypto;
 	srtp_t srtp_ctx;
 	srtp_policy_t srtp_policy;
+	/* If the media is end-to-end encrypted, we may need to know */
+	gboolean e2ee;
 } janus_streaming_rtp_source;
 
 typedef struct janus_streaming_file_source {
@@ -1151,7 +1163,7 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
-		int srtpsuite, char *srtpcrypto, int threads,
+		int srtpsuite, char *srtpcrypto, int threads, gboolean e2ee,
 		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface,
 			uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
 		gboolean dovideo, gboolean dovideortcp, char *vmcast, const janus_network_address *viface,
@@ -1197,6 +1209,9 @@ typedef struct janus_streaming_session {
 	int spatial_layer, target_spatial_layer;
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
+	/* If the media is end-to-end encrypted, we may need to know */
+	gboolean e2ee;
+	/* State */
 	gboolean stopping;
 	volatile gint renegotiating;
 	volatile gint hangingup;
@@ -1722,6 +1737,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *threads = janus_config_get(config, cat, janus_config_type_item, "threads");
 				janus_config_item *ssuite = janus_config_get(config, cat, janus_config_type_item, "srtpsuite");
 				janus_config_item *scrypto = janus_config_get(config, cat, janus_config_type_item, "srtpcrypto");
+				janus_config_item *e2ee = janus_config_get(config, cat, janus_config_type_item, "e2ee");
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean doaskew = audio && askew && askew->value && janus_is_true(askew->value);
@@ -1877,7 +1893,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						md ? (char *)md->value : NULL,
 						ssuite && ssuite->value ? atoi(ssuite->value) : 0,
 						scrypto && scrypto->value ? (char *)scrypto->value : NULL,
-						(threads && threads->value) ?  atoi(threads->value) : 0,
+						(threads && threads->value) ? atoi(threads->value) : 0,
+						(e2ee && e2ee->value) ? janus_is_true(e2ee->value) : FALSE,
 						doaudio, doaudiortcp,
 						amcast ? (char *)amcast->value : NULL,
 						doaudio && aiface && aiface->value ? &audio_iface : NULL,
@@ -2336,6 +2353,8 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 		}
 		janus_refcount_decrease(&mp->ref);
 	}
+	if(session->e2ee)
+		json_object_set_new(info, "e2ee", json_true());
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -2670,6 +2689,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *threads = json_object_get(root, "threads");
 			json_t *ssuite = json_object_get(root, "srtpsuite");
 			json_t *scrypto = json_object_get(root, "srtpcrypto");
+			json_t *e2ee = json_object_get(root, "e2ee");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE, doaudiortcp = FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE, dovideortcp = FALSE;
 			gboolean dodata = data ? json_is_true(data) : FALSE;
@@ -2866,6 +2886,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					ssuite ? json_integer_value(ssuite) : 0,
 					scrypto ? (char *)json_string_value(scrypto) : NULL,
 					threads ? json_integer_value(threads) : 0,
+					e2ee ? json_is_true(e2ee) : FALSE,
 					doaudio, doaudiortcp, amcast, &audio_iface, aport, artcpport, acodec, artpmap, afmtp, doaskew,
 					dovideo, dovideortcp, vmcast, &video_iface, vport, vrtcpport, vcodec, vrtpmap, vfmtp, bufferkf,
 					simulcast, vport2, vport3, dosvc, dovskew,
@@ -4371,6 +4392,7 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 	session->stopping = TRUE;
 	session->started = FALSE;
 	session->paused = FALSE;
+	session->e2ee = FALSE;
 	janus_streaming_mountpoint *mp = session->mountpoint;
 	if(mp) {
 		janus_mutex_lock(&mp->mutex);
@@ -4687,6 +4709,9 @@ static void *janus_streaming_handler(void *data) {
 							session->target_temporal_layer, session->temporal_layer);
 					}
 				}
+				/* If this mountpoint is broadcasting end-to-end encrypted media,
+				 * add the info to the JSEP offer we'll be sending them */
+				session->e2ee = source->e2ee;
 			}
 			janus_refcount_increase(&session->ref);
 done:
@@ -5123,6 +5148,8 @@ done:
 		json_t *jsep = json_pack("{ssss}", "type", sdp_type, "sdp", sdp);
 		if(do_restart)
 			json_object_set_new(jsep, "restart", json_true());
+		if(session->e2ee)
+			json_object_set_new(jsep, "e2ee", json_true());
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
 		if(result != NULL)
@@ -5437,7 +5464,7 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
-		int srtpsuite, char *srtpcrypto, int threads,
+		int srtpsuite, char *srtpcrypto, int threads, gboolean e2ee,
 		gboolean doaudio, gboolean doaudiortcp, char *amcast, const janus_network_address *aiface, uint16_t aport, uint16_t artcpport, uint8_t acodec, char *artpmap, char *afmtp, gboolean doaskew,
 		gboolean dovideo, gboolean dovideortcp, char *vmcast, const janus_network_address *viface, uint16_t vport, uint16_t vrtcpport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 			gboolean simulcast, uint16_t vport2, uint16_t vport3, gboolean svc, gboolean dovskew, int rtp_collision,
@@ -5722,6 +5749,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		live_rtp_source->srtpsuite = srtpsuite;
 		live_rtp_source->srtpcrypto = g_strdup(srtpcrypto);
 	}
+	live_rtp_source->e2ee = e2ee;
 	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_iface = doaudio && !janus_network_address_is_null(aiface) ? *aiface : nil;
 	live_rtp_source->audio_port = doaudio ? aport : -1;
