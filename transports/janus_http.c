@@ -127,6 +127,7 @@ typedef struct janus_http_msg {
 	char *response;						/* The response from the core as a string */
 	size_t resplen;						/* Length of the response in octets */
 	GSource *timeout;					/* Timeout monitor, if any */
+	volatile gint timeout_flag;			/* Whether a timeout hasn't fired yet */
 	volatile gint destroyed;			/* Whether this session has been destroyed */
 	janus_refcount ref;					/* Reference counter for this message */
 } janus_http_msg;
@@ -996,10 +997,9 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			if(msg && g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
 				janus_refcount_increase(&msg->ref);
 				/* Send the events back */
-				if(msg->timeout != NULL) {
+				if(g_atomic_int_compare_and_exchange(&msg->timeout_flag, 1, 0)) {
 					g_source_destroy(msg->timeout);
 					g_source_unref(msg->timeout);
-					msg->timeout = NULL;
 				}
 				msg->timeout = NULL;
 				janus_http_notifier(msg);
@@ -1039,10 +1039,9 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 			janus_refcount_decrease(&msg->ref);
 			return -1;
 		}
-		if(msg->timeout != NULL) {
+		if(g_atomic_int_compare_and_exchange(&msg->timeout_flag, 1, 0)) {
 			g_source_destroy(msg->timeout);
 			g_source_unref(msg->timeout);
-			msg->timeout = NULL;
 		}
 		msg->timeout = NULL;
 		char *response_text = json_dumps(message, json_format);
@@ -1115,16 +1114,14 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 		msg = (janus_http_msg *)(transport ? transport->transport_p : NULL);
 		if(msg != NULL) {
 			janus_refcount_increase(&msg->ref);
-			if(msg->timeout != NULL) {
+			if(g_atomic_int_compare_and_exchange(&msg->timeout_flag, 1, 0)) {
 				g_source_destroy(msg->timeout);
 				g_source_unref(msg->timeout);
-				msg->timeout = NULL;
 			}
+			msg->timeout = NULL;
 			if(g_atomic_pointer_compare_and_exchange(&msg->longpoll, session, NULL)) {
-				/* Add a new timeout that fires right away to return an error */
-				janus_refcount_increase(&transport->ref);
-				msg->timeout = janus_http_request_timeout_create(transport, old_session, 0);
-				g_source_attach(msg->timeout, httpctx);
+				/* Return an error on the long poll right away */
+				janus_http_timeout(transport, old_session);
 			}
 			janus_refcount_decrease(&msg->ref);
 		}
@@ -1474,6 +1471,7 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 				/* We won't wait forever for an answer (about 30 seconds) */
 				janus_refcount_increase(&ts->ref);
 				janus_refcount_increase(&session->ref);
+				g_atomic_int_set(&msg->timeout_flag, 1);
 				msg->timeout = janus_http_request_timeout_create(ts, session, 30);
 				g_source_attach(msg->timeout, httpctx);
 				/* Mark this connection as the long poll for this session */
@@ -1542,6 +1540,7 @@ parsingdone:
 		MHD_destroy_response(response);
 		/* We won't wait forever for an answer (about 10 seconds) */
 		janus_refcount_increase(&ts->ref);
+		g_atomic_int_set(&msg->timeout_flag, 1);
 		msg->timeout = janus_http_request_timeout_create(ts, NULL, 10);
 		g_source_attach(msg->timeout, httpctx);
 		/* Pass the ball to the core */
@@ -1576,7 +1575,7 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 	int firstround = 0;
 	janus_transport_session *ts = (janus_transport_session *)*ptr;
 	janus_http_msg *msg = NULL;
-	if (ts == NULL) {
+	if(ts == NULL) {
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
@@ -1785,6 +1784,7 @@ parsingdone:
 		MHD_destroy_response(response);
 		/* We won't wait forever for an answer (about 10 seconds) */
 		janus_refcount_increase(&ts->ref);
+		g_atomic_int_set(&msg->timeout_flag, 1);
 		msg->timeout = janus_http_request_timeout_create(ts, NULL, 10);
 		g_source_attach(msg->timeout, httpctx);
 		/* Pass the ball to the core */
@@ -1830,11 +1830,11 @@ static void janus_http_request_completed(void *cls, struct MHD_Connection *conne
 		janus_http_session *session = (janus_http_session *)g_atomic_pointer_get(&request->longpoll);
 		if(session != NULL)
 			janus_refcount_increase(&session->ref);
-		if(request->timeout != NULL) {
+		if(g_atomic_int_compare_and_exchange(&request->timeout_flag, 1, 0)) {
 			g_source_destroy(request->timeout);
 			g_source_unref(request->timeout);
-			request->timeout = NULL;
 		}
+		request->timeout = NULL;
 		if(session) {
 			janus_mutex_lock(&session->mutex);
 			session->longpolls = g_list_remove(session->longpolls, ts);
@@ -2000,6 +2000,10 @@ void janus_http_timeout(janus_transport_session *ts, janus_http_session *session
 		return;
 	janus_refcount_increase(&ts->ref);
 	janus_http_msg *request = (janus_http_msg *)ts->transport_p;
+	if(!g_atomic_int_compare_and_exchange(&request->timeout_flag, 1, 0)) {
+		request->timeout = NULL;
+		return;
+	}
 	request->timeout = NULL;
 	/* Is this a long poll timeout, simply meaning we had nothing to send so far? */
 	if(session != NULL) {
