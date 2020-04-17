@@ -1145,12 +1145,9 @@ static void *janus_echotest_handler(void *data) {
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
 						}
 					}
-					/* Note: at the time of writing, audio encryption is not
-					 * supported yet by insertable streams yet, so in case
-					 * end-to-end encryption is enabled for this stream, we
-					 * DON'T mark it as encrypted (since media will not be) */
-					//~ if(session->e2ee)
-						//~ janus_recorder_encrypted(rc);
+					/* If media is encrypted, mark it in the recording */
+					if(session->e2ee)
+						janus_recorder_encrypted(rc);
 					session->arc = rc;
 				}
 				if(session->has_video) {

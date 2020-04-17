@@ -1038,6 +1038,9 @@ static int janus_lua_method_startrecording(lua_State *s) {
 				JANUS_LOG(LOG_ERR, "Duplicate audio recording\n");
 				goto error;
 			}
+			/* If media is encrypted, mark it in the recording */
+			if(session->e2ee)
+				janus_recorder_encrypted(rc);
 			arc = rc;
 		} else if(!strcasecmp(type, "video")) {
 			if(vrc != NULL || session->vrc != NULL) {

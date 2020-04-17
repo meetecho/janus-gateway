@@ -1543,11 +1543,9 @@ static void *janus_videocall_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
 							}
 						}
-						/* Note: at the time of writing, audio encryption is not
-						 * supported yet by insertable streams yet, so we DON'T
-						 * mark it as encrypted (since media will not be) */
-						//~ if(session->e2ee)
-							//~ janus_recorder_encrypted(rc);
+						/* If media is encrypted, mark it in the recording */
+						if(session->e2ee)
+							janus_recorder_encrypted(rc);
 						session->arc = rc;
 					}
 					if(session->has_video) {

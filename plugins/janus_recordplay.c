@@ -1576,8 +1576,9 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->arc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create(recordings_path, janus_audiocodec_name(rec->acodec), rec->arc_file);
-				//~ if(e2ee)
-					//~ janus_recorder_encrypted(rc);
+				/* If media is encrypted, mark it in the recording */
+				if(e2ee)
+					janus_recorder_encrypted(rc);
 				session->arc = rc;
 			}
 			if(video) {
@@ -1589,6 +1590,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->vrc_file = g_strdup(filename);
 				janus_recorder *rc = janus_recorder_create(recordings_path, janus_videocodec_name(rec->vcodec), rec->vrc_file);
+				/* If media is encrypted, mark it in the recording */
 				if(e2ee)
 					janus_recorder_encrypted(rc);
 				session->vrc = rc;

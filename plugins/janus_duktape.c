@@ -1171,6 +1171,9 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 				JANUS_LOG(LOG_ERR, "Duplicate audio recording\n");
 				goto error;
 			}
+			/* If media is encrypted, mark it in the recording */
+			if(session->e2ee)
+				janus_recorder_encrypted(rc);
 			arc = rc;
 		} else if(!strcasecmp(type, "video")) {
 			if(vrc != NULL || session->vrc != NULL) {

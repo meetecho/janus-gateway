@@ -5104,12 +5104,9 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 			}
 		}
-		/* Note: at the time of writing, audio encryption is not
-		 * supported yet by insertable streams yet, so in case
-		 * end-to-end encryption is enabled for this stream, we
-		 * DON'T mark it as encrypted (since media will not be) */
-		//~ if(participant->e2ee)
-			//~ janus_recorder_encrypted(rc);
+		/* If media is encrypted, mark it in the recording */
+		if(participant->e2ee)
+			janus_recorder_encrypted(rc);
 		participant->arc = rc;
 	}
 	if(video && participant->vrc == NULL) {

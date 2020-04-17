@@ -3877,6 +3877,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(error_cause, 512, "Error starting recorder for audio");
 					goto prepare_response;
 				}
+				/* If media is encrypted, mark it in the recording */
+				if(source->e2ee)
+					janus_recorder_encrypted(arc);
 				JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
 			}
 			if(video) {
@@ -3904,6 +3907,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(error_cause, 512, "Error starting recorder for video");
 					goto prepare_response;
 				}
+				/* If media is encrypted, mark it in the recording */
+				if(source->e2ee)
+					janus_recorder_encrypted(vrc);
 				JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
 			}
 			if(data) {

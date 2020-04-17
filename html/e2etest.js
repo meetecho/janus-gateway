@@ -76,7 +76,8 @@ $(document).ready(function() {
 				return;
 			}
 			// Make sure Insertable Streams are supported too
-			if(!RTCRtpSender.prototype.createEncodedVideoStreams) {
+			if(!RTCRtpSender.prototype.createEncodedAudioStreams ||
+					!RTCRtpSender.prototype.createEncodedVideoStreams) {
 				bootbox.alert("Insertable Streams not supported by this browser... ");
 				return;
 			}
@@ -567,8 +568,8 @@ function promptCryptoKey() {
 				simulcast2: doSimulcast2,
 				// Since we want to use Insertable Streams,
 				// we specify the transform functions to use
-				senderTransform: senderTransform,
-				receiverTransform: receiverTransform,
+				senderTransforms: senderTransforms,
+				receiverTransforms: receiverTransforms,
 				success: function(jsep) {
 					Janus.debug("Got SDP!", jsep);
 					var body = { audio: true, video: true, data: true };
@@ -587,69 +588,72 @@ function promptCryptoKey() {
 			});
 	});
 }
-var senderTransform = new TransformStream({
-	start() {
-		// Called on startup.
-		console.log("[Sender transform] Startup");
-	},
-	transform(chunk, controller) {
-		//~ console.log("[Sender transform] Transforming");
-		// Copy of the above mentioned demo's encodeFunction()
-		const view = new DataView(chunk.data);
-		const newData = new ArrayBuffer(chunk.data.byteLength + 5);
-		const newView = new DataView(newData);
-		for(let i=0; i<10; ++i) {
-			newView.setInt8(i, view.getInt8(i));
+var senderTransforms = {}, receiverTransforms = {};
+for(var m of ["audio", "video"]) {
+	senderTransforms[m] = new TransformStream({
+		start() {
+			// Called on startup.
+			console.log("[Sender transform)] Startup");
+		},
+		transform(chunk, controller) {
+			//~ console.log("[Sender transform] Transforming");
+			// Copy of the above mentioned demo's encodeFunction()
+			const view = new DataView(chunk.data);
+			const newData = new ArrayBuffer(chunk.data.byteLength + 5);
+			const newView = new DataView(newData);
+			for(let i=0; i<10; ++i) {
+				newView.setInt8(i, view.getInt8(i));
+			}
+			// This is a bitwise xor of the key with the payload. This is not strong encryption, just a demo.
+			for(let i=10; i<chunk.data.byteLength; ++i) {
+				const keyByte = currentCryptoKey.charCodeAt(i % currentCryptoKey.length);
+				newView.setInt8(i, view.getInt8(i) ^ keyByte);
+			}
+			newView.setUint8(chunk.data.byteLength, currentKeyIdentifier % 0xff);
+			newView.setUint32(chunk.data.byteLength + 1, 0xDEADBEEF);
+			chunk.data = newData;
+			controller.enqueue(chunk);
+		},
+		flush() {
+			// Called when the stream is about to be closed
+			console.log("[Sender transform] Closing");
 		}
-		// This is a bitwise xor of the key with the payload. This is not strong encryption, just a demo.
-		for(let i=10; i<chunk.data.byteLength; ++i) {
-			const keyByte = currentCryptoKey.charCodeAt(i % currentCryptoKey.length);
-			newView.setInt8(i, view.getInt8(i) ^ keyByte);
+	});
+	receiverTransforms[m] = new TransformStream({
+		start() {
+			// Called on startup.
+			console.log("[Receiver transform] Startup");
+		},
+		transform(chunk, controller) {
+			//~ console.log("[Receiver transform] Transforming");
+			// Copy of the above mentioned demo's decodeFunction()
+			const view = new DataView(chunk.data);
+			const checksum = view.getUint32(chunk.data.byteLength - 4);
+			if(checksum !== 0xDEADBEEF) {
+				console.log('Corrupted frame received');
+				console.log(checksum.toString(16));
+				return;
+			}
+			const keyIdentifier = view.getUint8(chunk.data.byteLength - 5);
+			if(keyIdentifier !== currentKeyIdentifier) {
+				console.log(`Key identifier mismatch, got ${keyIdentifier} expected ${currentKeyIdentifier}.`);
+				return;
+			}
+			const newData = new ArrayBuffer(chunk.data.byteLength - 5);
+			const newView = new DataView(newData);
+			for(let i=0; i<10; ++i) {
+				newView.setInt8(i, view.getInt8(i));
+			}
+			for(let i=10; i<chunk.data.byteLength - 5; ++i) {
+				const keyByte = currentCryptoKey.charCodeAt(i % currentCryptoKey.length);
+				newView.setInt8(i, view.getInt8(i) ^ keyByte);
+			}
+			chunk.data = newData;
+			controller.enqueue(chunk);
+		},
+		flush() {
+			// Called when the stream is about to be closed
+			console.log("[Receiver transform] Closing");
 		}
-		newView.setUint8(chunk.data.byteLength, currentKeyIdentifier % 0xff);
-		newView.setUint32(chunk.data.byteLength + 1, 0xDEADBEEF);
-		chunk.data = newData;
-		controller.enqueue(chunk);
-	},
-	flush() {
-		// Called when the stream is about to be closed
-		console.log("[Sender transform] Closing");
-	}
-});
-var receiverTransform = new TransformStream({
-	start() {
-		// Called on startup.
-		console.log("[Receiver transform] Startup");
-	},
-	transform(chunk, controller) {
-		//~ console.log("[Receiver transform] Transforming");
-		// Copy of the above mentioned demo's decodeFunction()
-		const view = new DataView(chunk.data);
-		const checksum = view.getUint32(chunk.data.byteLength - 4);
-		if(checksum !== 0xDEADBEEF) {
-			console.log('Corrupted frame received');
-			console.log(checksum.toString(16));
-			return;
-		}
-		const keyIdentifier = view.getUint8(chunk.data.byteLength - 5);
-		if(keyIdentifier !== currentKeyIdentifier) {
-			console.log(`Key identifier mismatch, got ${keyIdentifier} expected ${currentKeyIdentifier}.`);
-			return;
-		}
-		const newData = new ArrayBuffer(chunk.data.byteLength - 5);
-		const newView = new DataView(newData);
-		for(let i=0; i<10; ++i) {
-			newView.setInt8(i, view.getInt8(i));
-		}
-		for(let i=10; i<chunk.data.byteLength - 5; ++i) {
-			const keyByte = currentCryptoKey.charCodeAt(i % currentCryptoKey.length);
-			newView.setInt8(i, view.getInt8(i) ^ keyByte);
-		}
-		chunk.data = newData;
-		controller.enqueue(chunk);
-	},
-	flush() {
-		// Called when the stream is about to be closed
-		console.log("[Receiver transform] Closing");
-	}
-});
+	});
+}

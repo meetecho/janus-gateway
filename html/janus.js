@@ -1731,12 +1731,12 @@ function Janus(gatewayCallbacks) {
 				pc_config.bundlePolicy = "max-bundle";
 			}
 			// Check if a sender or receiver transform has been provided
-			if(RTCRtpSender.prototype.createEncodedVideoStreams &&
-					(callbacks.senderTransform || callbacks.receiverTransform)) {
-				config.senderTransform = callbacks.senderTransform;
-				config.receiverTransform = callbacks.receiverTransform;
-				// Audio isn't supported by Insertable Streams yet
-				//~ pc_config["forceEncodedAudioInsertableStreams"] = true;
+			if(RTCRtpSender.prototype.createEncodedAudioStreams &&
+					RTCRtpSender.prototype.createEncodedVideoStreams &&
+					(callbacks.senderTransforms || callbacks.receiverTransforms)) {
+				config.senderTransforms = callbacks.senderTransforms;
+				config.receiverTransforms = callbacks.receiverTransforms;
+				pc_config["forceEncodedAudioInsertableStreams"] = true;
 				pc_config["forceEncodedVideoInsertableStreams"] = true;
 			}
 			Janus.log("Creating PeerConnection");
@@ -1787,17 +1787,16 @@ function Janus(gatewayCallbacks) {
 				pluginHandle.onremotestream(config.remoteStream);
 				if(event.track.onended)
 					return;
-				if(config.receiverTransform) {
+				if(config.receiverTransforms) {
 					var receiverStreams = null;
-					if(event.track.kind === "audio") {
-						// Audio isn't supported by Insertable Streams yet
-						//~ receiverStreams = event.receiver.createEncodedAudioStreams();
-					} else if(event.track.kind === "video") {
+					if(event.track.kind === "audio" && config.receiverTransforms["audio"]) {
+						receiverStreams = event.receiver.createEncodedAudioStreams();
+					} else if(event.track.kind === "video" && config.receiverTransforms["video"]) {
 						receiverStreams = event.receiver.createEncodedVideoStreams();
 					}
 					if(receiverStreams) {
 						receiverStreams.readableStream
-							.pipeThrough(config.receiverTransform)
+							.pipeThrough(config.receiverTransforms[event.track.kind])
 							.pipeTo(receiverStreams.writableStream);
 					}
 				}
@@ -1829,17 +1828,16 @@ function Janus(gatewayCallbacks) {
 				if(!simulcast2) {
 					var sender = config.pc.addTrack(track, stream);
 					// Check if insertable streams are involved
-					if(sender && config.receiverTransform) {
+					if(sender && config.senderTransforms) {
 						var senderStreams = null;
-						if(sender.track.kind === "audio") {
-							// Audio isn't supported by Insertable Streams yet
-							//~ senderStreams = sender.createEncodedAudioStreams();
-						} else if(sender.track.kind === "video") {
+						if(sender.track.kind === "audio" && config.senderTransforms["audio"]) {
+							senderStreams = sender.createEncodedAudioStreams();
+						} else if(sender.track.kind === "video" && config.senderTransforms["video"]) {
 							senderStreams = sender.createEncodedVideoStreams();
 						}
 						if(senderStreams) {
 							senderStreams.readableStream
-								.pipeThrough(config.senderTransform)
+								.pipeThrough(config.senderTransforms[sender.track.kind])
 								.pipeTo(senderStreams.writableStream);
 						}
 					}
@@ -2679,7 +2677,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				// If transforms are present, notify Janus that the media is end-to-end encrypted
-				if(config.senderTransform || config.receiverTransform) {
+				if(config.senderTransforms || config.receiverTransforms) {
 					offer["e2ee"] = true;
 				}
 				callbacks.success(offer);
@@ -2920,7 +2918,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				// If transforms are present, notify Janus that the media is end-to-end encrypted
-				if(config.senderTransform || config.receiverTransform) {
+				if(config.senderTransforms || config.receiverTransforms) {
 					answer["e2ee"] = true;
 				}
 				callbacks.success(answer);
@@ -3209,8 +3207,8 @@ function Janus(gatewayCallbacks) {
 			config.iceDone = false;
 			config.dataChannel = {};
 			config.dtmfSender = null;
-			config.senderTransform = null;
-			config.receiverTransform = null;
+			config.senderTransforms = null;
+			config.receiverTransforms = null;
 		}
 		pluginHandle.oncleanup();
 	}
