@@ -3340,7 +3340,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
-			g_snprintf(error_cause, 512, "Error creating Opus decoder for RTP forwarder");
+			g_snprintf(error_cause, 512, "Error creating Opus encoder for RTP forwarder");
 			goto prepare_response;
 		}
 
@@ -4457,7 +4457,7 @@ static void *janus_audiobridge_handler(void *data) {
 					g_free(participant);
 					JANUS_LOG(LOG_ERR, "Error creating Opus encoder\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
-					g_snprintf(error_cause, 512, "Error creating Opus decoder");
+					g_snprintf(error_cause, 512, "Error creating Opus encoder");
 					goto error;
 				}
 				if(audiobridge->sampling_rate == 8000) {
@@ -4495,7 +4495,7 @@ static void *janus_audiobridge_handler(void *data) {
 						opus_decoder_destroy(participant->decoder);
 					participant->decoder = NULL;
 					g_free(participant);
-					JANUS_LOG(LOG_ERR, "Error creating Opus encoder\n");
+					JANUS_LOG(LOG_ERR, "Error creating Opus decoder\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
 					g_snprintf(error_cause, 512, "Error creating Opus decoder");
 					goto error;
@@ -4952,7 +4952,7 @@ static void *janus_audiobridge_handler(void *data) {
 					new_encoder = NULL;
 					JANUS_LOG(LOG_ERR, "Error creating Opus encoder\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
-					g_snprintf(error_cause, 512, "Error creating Opus decoder");
+					g_snprintf(error_cause, 512, "Error creating Opus encoder");
 					/* Join the old room again... */
 					g_hash_table_insert(audiobridge->participants,
 						string_ids ? (gpointer)g_strdup(participant->user_id_str) : (gpointer)janus_uint64_dup(participant->user_id),
@@ -4992,7 +4992,7 @@ static void *janus_audiobridge_handler(void *data) {
 					if(new_decoder)
 						opus_decoder_destroy(new_decoder);
 					new_decoder = NULL;
-					JANUS_LOG(LOG_ERR, "Error creating Opus encoder\n");
+					JANUS_LOG(LOG_ERR, "Error creating Opus decoder\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR;
 					g_snprintf(error_cause, 512, "Error creating Opus decoder");
 					/* Join the old room again... */
