@@ -127,7 +127,11 @@
 {
 	"request" : "record",
 	"id" : <unique numeric ID for the recording; optional, will be chosen by the server if missing>
-	"name" : "<Pretty name for the recording>"
+	"name" : "<Pretty name for the recording>",
+	"filename" : "<Base path/name for the file (media type and extension added by the plugin); optional>",
+	"audiocodec" : "<name of the audio codec we prefer for the recording; optional>",
+	"videocodec" : "<name of the video codec we prefer for the recording; optional>",
+	"videoprofile" : "<in case the video codec supports, profile to use (e.g., "2" for VP9, or "42e01f" for H.264); optional>"
 }
 \endverbatim
  *
@@ -346,6 +350,9 @@ static struct janus_json_parameter record_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"filename", JSON_STRING, 0},
+	{"audiocodec", JSON_STRING, 0},
+	{"videocodec", JSON_STRING, 0},
+	{"videoprofile", JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter play_parameters[] = {
@@ -412,6 +419,7 @@ typedef struct janus_recordplay_session {
 	gboolean active;
 	gboolean recorder;		/* Whether this session is used to record or to replay a WebRTC session */
 	gboolean firefox;		/* We send Firefox users a different kind of FIR */
+	char *video_profile;	/* Codec-specific video profile to use, if any */
 	janus_recordplay_recording *recording;
 	janus_recorder *arc;	/* Audio recorder */
 	janus_recorder *vrc;	/* Video recorder */
@@ -447,6 +455,7 @@ static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->video_profile);
 	g_free(session);
 }
 
@@ -1366,6 +1375,8 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		g_free(session->rid[i]);
 		session->rid[i] = NULL;
 	}
+	g_free(session->video_profile);
+	session->video_profile = NULL;
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -1452,6 +1463,9 @@ static void *janus_recordplay_handler(void *data) {
 			if(filename) {
 				filename_text = json_string_value(filename);
 			}
+			json_t *audiocodec = json_object_get(root, "audiocodec");
+			json_t *videocodec = json_object_get(root, "videocodec");
+			json_t *videoprofile = json_object_get(root, "videoprofile");
 			json_t *update = json_object_get(root, "update");
 			gboolean do_update = update ? json_is_true(update) : FALSE;
 			if(do_update && !sdp_update) {
@@ -1520,7 +1534,11 @@ static void *janus_recordplay_handler(void *data) {
 			/* Check which codec we should record for audio and/or video */
 			const char *acodec = NULL, *vcodec = NULL;
 			janus_sdp_find_preferred_codecs(offer, &acodec, &vcodec);
+			if(audiocodec != NULL)
+				acodec = json_string_value(audiocodec);
 			rec->acodec = janus_audiocodec_from_name(acodec);
+			if(videocodec != NULL)
+				vcodec = json_string_value(videocodec);
 			rec->vcodec = janus_videocodec_from_name(vcodec);
 			/* We found preferred codecs: let's just make sure the direction is what we need */
 			janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
@@ -1537,6 +1555,28 @@ static void *janus_recordplay_handler(void *data) {
 			if(video) {
 				JANUS_LOG(LOG_VERB, "Video codec: %s\n", janus_videocodec_name(rec->vcodec));
 			}
+			/* Check which video profiles are available, to see if we can force some */
+			const char *video_profile = json_string_value(videoprofile);
+			if(video_profile == NULL) {
+				if(rec->vcodec == JANUS_VIDEOCODEC_VP9) {
+					/* Check if profile-id=2 is supported */
+					if(janus_sdp_get_codec_pt_full(offer, "vp9", "2") != -1) {
+						/* It is, use it to generate the answer */
+						video_profile = "2";
+					}
+				} else if(rec->vcodec == JANUS_VIDEOCODEC_H264) {
+					/* Check if profile-id=2 is supported */
+					if(janus_sdp_get_codec_pt_full(offer, "h264", "42e01f") != -1) {
+						/* It is, use it to generate the answer */
+						video_profile = "42e01f";
+					}
+				}
+			}
+			g_free(session->video_profile);
+			session->video_profile = NULL;
+			if(video_profile != NULL)
+				session->video_profile = g_strdup(video_profile);
+			/* Set payload types */
 			rec->audio_pt = AUDIO_PT;
 			if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
 				/* Some audio codecs have a fixed payload type that we can't mess with */
@@ -1588,6 +1628,8 @@ recdone:
 				JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_VIDEO, video,
 				JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
+				JANUS_SDP_OA_VP9_PROFILE, session->video_profile,
+				JANUS_SDP_OA_H264_PROFILE, session->video_profile,
 				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_DATA, FALSE,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,

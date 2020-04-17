@@ -116,7 +116,9 @@ function handleMessage(id, tr, msg, jsep)
 			end
 			local offer = sdp.parse(cojsep.sdp)
 			logger.print("Got offer: " .. sdp.render(offer))
-			local answer = sdp.generateAnswer(offer, { audio = true, video = true, data = true })
+			local answer = sdp.generateAnswer(offer, { audio = true, video = true, data = true,
+				audioCodec = comsg["audiocodec"], videoCodec = comsg["videocodec"],
+				vp9Profile = comsg["videoprofile"], h264Profile = comsg["videoprofile"] })
 			logger.print("Generated answer: " .. sdp.render(answer))
 			logger.print("Processing request: " .. dumpTable(comsg))
 			processRequest(id, comsg)

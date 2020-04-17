@@ -263,7 +263,9 @@ function processAsync(task) {
 	}
 	var offer = sdpUtils.parse(jsep.sdp)
 	console.log("Got offer:", offer);
-	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true });
+	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true,
+		audioCodec: msg["audiocodec"], videoCodec: msg["videocodec"],
+		vp9Profile: msg["videoprofile"], h264Profile: msg["videoprofile"] });
 	console.log("Generated answer:", answer);
 	console.log("Processing request:", msg);
 	processRequest(id, msg);

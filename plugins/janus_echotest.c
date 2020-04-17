@@ -39,6 +39,7 @@
 	"audiocodec" : "<optional codec name; only used when creating a PeerConnection>",
 	"video" : true|false,
 	"videocodec" : "<optional codec name; only used when creating a PeerConnection>",
+	"videoprofile" : "<optional codec profile to force; only used when creating a PeerConnection, only valid for VP9 (0 or 2) and H.264 (e.g., 42e01f)>",
 	"bitrate" : <numeric bitrate value>,
 	"record" : true|false,
 	"filename" : <base path/filename to use for the recording>,
@@ -51,7 +52,9 @@
  * use the preferred audio codecs as set by the user; if for any reason you
  * want to override what the browsers offered first and use a different
  * codec instead (e.g., to try VP9 instead of VP8), you can use the
- * \c audiocodec property for audio, and \c videocodec for video.
+ * \c audiocodec property for audio, and \c videocodec for video. For video
+ * codecs supporting a specific profile negotiation (VP9 and H.264), you can
+ * specify which profile you're interested in using the \c videoprofile property.
  *
  * All the other settings can be applied dynamically during the session:
  * \c audio instructs the plugin to do or do not bounce back audio
@@ -932,6 +935,13 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (videocodec should be a string)");
 			goto error;
 		}
+		json_t *videoprofile = json_object_get(root, "videoprofile");
+		if(videoprofile && !json_is_string(videoprofile)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (videoprofile should be a string)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (videoprofile should be a string)");
+			goto error;
+		}
 		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
@@ -1002,10 +1012,10 @@ static void *janus_echotest_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 		}
 
-		if(!audio && !video && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, substream, temporal, fallback, record, jsep) found\n");
+		if(!audio && !video && !videocodec && !videoprofile && !bitrate && !substream && !temporal && !fallback && !record && !msg_sdp) {
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, videocodec, videoprofile, bitrate, substream, temporal, fallback, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, simulcast, temporal, fallback, record, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, videocodec, videoprofile, bitrate, simulcast, temporal, fallback, record, jsep) found");
 			goto error;
 		}
 
@@ -1055,6 +1065,8 @@ static void *janus_echotest_handler(void *data) {
 				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
 				JANUS_SDP_OA_AUDIO_FMTP, opus_fec ? "useinbandfec=1" : NULL,
 				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
+				JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),
+				JANUS_SDP_OA_H264_PROFILE, json_string_value(videoprofile),
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
