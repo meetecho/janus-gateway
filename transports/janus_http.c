@@ -196,7 +196,7 @@ typedef struct janus_http_request_timeout {
 static void janus_http_timeout(janus_transport_session *ts, janus_http_session *session);
 /* GSource Functions */
 static gboolean janus_http_request_timeout_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
-	JANUS_LOG(LOG_WARN, "[%p] dispatch\n", source);
+	JANUS_LOG(LOG_DBG, "[%p] dispatch\n", source);
 	janus_http_request_timeout *t = (janus_http_request_timeout *)source;
 	/* Timeout fired, invoke the function */
 	janus_http_timeout(t->ts, t->session);
@@ -206,7 +206,7 @@ static gboolean janus_http_request_timeout_dispatch(GSource *source, GSourceFunc
 	return G_SOURCE_REMOVE;
 }
 static void janus_http_request_timeout_finalize(GSource *source) {
-	JANUS_LOG(LOG_WARN, "[%p] finalize\n", source);
+	JANUS_LOG(LOG_DBG, "[%p] finalize\n", source);
 	janus_http_request_timeout *timeout = (janus_http_request_timeout *)source;
 	if(timeout) {
 		if(timeout->session)
@@ -227,7 +227,7 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 	t->ts = ts;
 	t->session = session;
 	g_source_set_ready_time(source, janus_get_monotonic_time() + timeout*G_USEC_PER_SEC);
-	JANUS_LOG(LOG_WARN, "[%p] create (%d)\n", source, timeout);
+	JANUS_LOG(LOG_DBG, "[%p] create (%d)\n", source, timeout);
 	return source;
 }
 
