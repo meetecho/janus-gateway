@@ -57,6 +57,9 @@ var myroom = 1234;	// Demo room
 var myusername = null;
 var myid = null;
 var mystream = null;
+
+var janusSecretkey = null;
+
 // We use this other ID just to map our subscriptions to us
 var mypvtid = null;
 
@@ -109,9 +112,16 @@ $(document).ready(function() {
 				return;
 			}
 			// Create session
+              var key = {dev:"SHA1-TOKEN-DEV",
+                         qa:"SHA1-TOKEN-QA",
+                         stage:"SHA1-TOKEN-STAGE",
+                         prod:"SHA1-TOKEN-PROD",
+                         gov:"SHA1-TOKEN-GOV"};
+                janusSecretkey = key[environment];
 			janus = new Janus(
 				{
 					server: server,
+                                        secretKey: janusSecretkey,
 					success: function() {
 						// Attach to VideoRoom plugin
 						janus.attach(
