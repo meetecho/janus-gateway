@@ -497,6 +497,8 @@ function Janus(gatewayCallbacks) {
 		longPollTimeout = gatewayCallbacks.longPollTimeout;
 	if(isNaN(longPollTimeout))
 		longPollTimeout = 60000;
+  // Parameters for sendBeacon URI when unload event is reached
+  var unloadParams = gatewayCallbacks.unloadParams || {};
 
 	// overrides for default maxBitrate values for simulcasting
 	function getMaxBitrates(simulcastMaxBitrates) {
@@ -988,7 +990,20 @@ function Janus(gatewayCallbacks) {
 				ws.close();
 				ws = null;
 			} else {
-				navigator.sendBeacon(server + "/" + sessionId, JSON.stringify(request));
+        var uri = server + "/" + sessionId;
+        if (unloadParams) {
+          Object.keys(unloadParams)
+            .filter(function(key) { return unloadParams[key] != null; }) // Ignore null or undefined params
+            .forEach(function(key) {
+              // If there are more than 1 param, we need to use '&' instead of '?' after first param
+              if (uri.search(/\?.*=.*/) >= 0) {
+                uri += '&' + key + '=' + unloadParams[key];
+              } else {
+                uri += '?' + key + '=' + unloadParams[key];
+              }
+            });
+        }
+				navigator.sendBeacon(uri, JSON.stringify(request));
 			}
 			Janus.log("Destroyed session:");
 			sessionId = null;
