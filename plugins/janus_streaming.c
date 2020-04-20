@@ -439,10 +439,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 	"id" : <unique ID of the mountpoint to manipulate; mandatory>,
 	"audio" : "<enable audio recording, and use this base path/filename; optional>",
 	"video" : "<enable video recording, and use this base path/filename; optional>",
-	"data" : "<enable data recording, and use this base path/filename; optional>",
-	"audio" : <true|false; whether or not audio should be recorded>,
-	"video" : <true|false; whether or not video should be recorded>,
-	"data" : <true|false; whether or not datachannel messages should be recorded>
+	"data" : "<enable data recording, and use this base path/filename; optional>"
 }
 \endverbatim
  *
