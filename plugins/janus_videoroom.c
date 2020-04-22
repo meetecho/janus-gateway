@@ -1359,8 +1359,7 @@ static janus_videoroom_message exit_message;
 typedef struct janus_videoroom {
 	guint64 room_id;			/* Unique room ID (when using integers) */
 	gchar *room_id_str;			/* Unique room ID (when using strings) */
-        guint64 video_publisher_id;             /* CARBYNE, only for webinar mode, Unique video publisher ID  */
-        guint64 video_rtp_forward_stream_id;    /* CARBYNE, only for webinar mode, Unique rtp_forward  ID */
+        guint64 video_rtp_forward_stream_id;    /* CARBYNE-RF, Unique rtp_forward  ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
@@ -4824,7 +4823,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                                gst_object_unref (GST_OBJECT(gstr->pipeline));
                                g_free (gstr);
                                /* FIXME: clean up session here, if pipeline fails */
-                               return;
+                               janus_refcount_decrease(&participant->ref);
+                               goto error;
                             }
                          } else if (participant->vcodec == JANUS_VIDEOCODEC_H264) {
                             gst_bin_add_many(GST_BIN(gstr->pipeline),gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvparse,gstr->wvqueue,gstr->wvsink,NULL);
@@ -4833,7 +4833,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                                gst_object_unref (GST_OBJECT(gstr->pipeline));
                                g_free (gstr);
                                /* FIXME: clean up session here, if pipeline fails */
-                               return;
+                               janus_refcount_decrease(&participant->ref);
+                               goto error;
                             }
                          }
                          gstr->bus = gst_pipeline_get_bus (GST_PIPELINE (gstr->pipeline));
@@ -4868,6 +4869,22 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 		}
 	}
 	janus_refcount_decrease(&session->ref);
+        return;
+error:
+       {
+                        /*CARBYNE-GST Prepare JSON error event */
+                        json_t *event = json_object();
+                        char error_cause[512];
+                        g_snprintf(error_cause, 512, "%s", "GST mailfunction");
+                        json_object_set_new(event, "videoroom", json_string("event"));
+                        json_object_set_new(event, "error_code", json_integer(JANUS_VIDEOROOM_ERROR_NO_MESSAGE));
+                        json_object_set_new(event, "error", json_string(error_cause));
+                        int ret = gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+                        JANUS_LOG(LOG_WARN, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+                        json_decref(event);
+                        janus_videoroom_hangup_media(session->handle);
+                        gateway->close_pc(session->handle);
+       }
 }
 
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pkt) {
@@ -5877,9 +5894,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
 /*CARBYNE-RF-UPDATE-VIDEOROOM*/
-/*TBD: add test for WEBINAR mode */
                                 JANUS_LOG(LOG_INFO, "CARBYNE::::--------  video_publisher_id: %"SCNu64"\n", user_id);
-                                videoroom->video_publisher_id = user_id;
                                 videoroom->video_rtp_forward_stream_id=0;
 /*CARBYNE-RF-UPDATE-VIDEOROOM*/
 				publisher->session = session;
@@ -7319,17 +7334,17 @@ static void *janus_videoroom_handler(void *data) {
 		continue;
 
 error:
-		{
-			/* Prepare JSON error event */
-			json_t *event = json_object();
-			json_object_set_new(event, "videoroom", json_string("event"));
-			json_object_set_new(event, "error_code", json_integer(error_code));
-			json_object_set_new(event, "error", json_string(error_cause));
-			int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
-			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
-			json_decref(event);
-			janus_videoroom_message_free(msg);
-		}
+              {
+                 /* Prepare JSON error event */
+                 json_t *event = json_object();
+                 json_object_set_new(event, "videoroom", json_string("event"));
+                 json_object_set_new(event, "error_code", json_integer(error_code));
+                 json_object_set_new(event, "error", json_string(error_cause));
+                 int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, NULL);
+                 JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+                 json_decref(event);
+                 janus_videoroom_message_free(msg);
+              }
 	}
 	JANUS_LOG(LOG_VERB, "Leaving VideoRoom handler thread\n");
 	return NULL;
