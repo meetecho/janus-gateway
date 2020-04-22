@@ -5898,9 +5898,6 @@ static void *janus_videoroom_handler(void *data) {
 						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, jsep);
 						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-						json_decref(event);
-						json_decref(jsep);
-						janus_videoroom_message_free(msg);
 						/* Also notify event handlers */
 						if(notify_events && gateway->events_is_enabled()) {
 							json_t *info = json_object();
@@ -5910,6 +5907,9 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(info, "private_id", json_integer(pvt_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 						}
+						json_decref(event);
+						json_decref(jsep);
+						janus_videoroom_message_free(msg);
 						continue;
 					}
 					janus_mutex_unlock(&publisher->subscribers_mutex);
