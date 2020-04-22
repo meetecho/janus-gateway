@@ -1230,7 +1230,7 @@ void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, janus_plugin_r
 }
 
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {
-	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 
 	janus_mutex_lock(&sessions_mutex);

@@ -151,6 +151,12 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
+/*! \brief Method to modify the DSCP Type of Service (TOS), which is disabled by default
+ * @param[in] tos The new TOS value (0 to disable) */
+void janus_set_dscp_tos(int period);
+/*! \brief Method to get the current DSCP Type of Service (see above)
+ * @returns The current TOS value (0 if disabled) */
+int janus_get_dscp_tos(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
@@ -323,6 +329,8 @@ struct janus_ice_handle {
 	const gchar *hangup_reason;
 	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
 	GList *pending_trickles;
+	/*! \brief Queue of remote candidates that still need to be processed */
+	GAsyncQueue *queued_candidates;
 	/*! \brief Queue of events in the loop and outgoing packets to send */
 	GAsyncQueue *queued_packets;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
@@ -650,6 +658,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
 void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
+/*! \brief Method to queue a remote candidate for processing
+ * @param[in] handle The Janus ICE handle this method refers to
+ * @param[in] c The remote NiceCandidate to process */
+void janus_ice_add_remote_candidate(janus_ice_handle *handle, NiceCandidate *c);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP

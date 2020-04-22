@@ -64,7 +64,9 @@ int janus_pp_g722_create(char *destination, char *metadata) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
+#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
 	av_register_all();
+#endif
 	/* Adjust logging to match the postprocessor's */
 	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
 		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
