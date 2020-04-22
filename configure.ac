@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.9.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.9.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=93
+JANUS_VERSION=94
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.9.3"
+JANUS_VERSION_STRING="0.9.4"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -125,6 +125,12 @@ AC_ARG_ENABLE([libsrtp2],
                               [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
               [],
               [enable_libsrtp2=maybe])
+
+AC_ARG_ENABLE([aes-gcm],
+              [AS_HELP_STRING([--disable-aes-gcm],
+                              [Disable AES-GCM support in libsrtp(2)])],
+              [],
+              [AC_DEFINE(HAVE_SRTP_AESGCM)])
 
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
@@ -391,7 +397,6 @@ AS_IF([test "x$enable_libsrtp2" != "xno"],
                          [libsrtp2],
                          [
                           AC_DEFINE(HAVE_SRTP_2)
-                          AC_DEFINE(HAVE_SRTP_AESGCM)
                           enable_libsrtp2=yes
                           AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
                          ],
@@ -404,10 +409,7 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
            [],
            [PKG_CHECK_MODULES([LIBSRTP],
                               [libsrtp >= 1.5.0],
-                              [
-                               AC_DEFINE(HAVE_SRTP_AESGCM)
-                               enable_libsrtp2=no
-                              ],
+                              [enable_libsrtp2=no],
                               [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])
                               ])
            ])
