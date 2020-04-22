@@ -5182,8 +5182,8 @@ gint main(int argc, char *argv[])
 	/* Make sure libnice is recent enough, otherwise print a warning */
 	int libnice_version = 0;
 	if(libnice_version_string != NULL && sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
-		if(libnice_version < 15) {
-			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
+		if(libnice_version < 16) {
+			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.16 recommended. Notice the installed version was checked at build time: if you updated libnice in the meanwhile, re-configure and recompile to get rid of this warning\n",
 				libnice_version_string);
 		}
 	}

@@ -771,7 +771,7 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
 		}
 		if(!mid && !mline) {
-			*error = "Trickle error: missing mandatory element (sdpMid or sdlMLineIndex)";
+			*error = "Trickle error: missing mandatory element (sdpMid or sdpMLineIndex)";
 			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
 		}
 		json_t *rc = json_object_get(candidate, "candidate");
@@ -2779,6 +2779,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Is this audio or video? */
 				int video = 0, vindex = 0;
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
+					janus_rtcp_swap_report_blocks(buf, buflen, stream->video_ssrc_rtx);
+				}
 				/* Bundled streams, should we check the SSRCs? */
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 					/* No audio has been negotiated, definitely video */
@@ -2802,6 +2805,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							video = 0;
 						} else if(rtcp_ssrc == stream->video_ssrc) {
 							video = 1;
+						} else if(rtcp_ssrc == stream->video_ssrc_rtx) {
+							/* rtx SSRC, we don't care */
+							return;
 						} else if(janus_rtcp_has_fir(buf, buflen) || janus_rtcp_has_pli(buf, buflen) || janus_rtcp_get_remb(buf, buflen)) {
 							/* Mh, no SR or RR? Try checking if there's any FIR, PLI or REMB */
 							video = 1;

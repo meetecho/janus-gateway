@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.9.3] - 2020-04-22
+
+- Change libsrtp detection in the configure script to use pkg-config
+- Fixed compilation error with gcc10
+- Fixed RTCP issue that could occasionally lead to broken retransmissions when using rtx
+- Added option to specify DSCP Type of Service (ToS) for media streams
+- Fixed a couple of race conditions during renegotiations
+- Fixed VideoRoom and Streaming "destroy" not working properly when using string IDs
+- Fix occasional segfault in VideoRoom (thanks @cb22!)
+- Fixed AudioBridge "create" not working properly when using string IDs
+- Added support for playing Opus files in AudioBridge rooms
+- Added support to Opus files for file-based mountpoints in Streaming plugin
+- Added support for generic metadata to Streaming mountpoints
+- Streaming plugin now returns mountpoint IP address(es) in "create" and "info", when binding to specific IP/interface
+- Fixed occasional segfault when using helper threads in Streaming plugin
+- Fixed occasional race conditions in HTTP transport
+- Added support for specifying screensharing framerate in janus.js (thanks @agclark81!)
+- Cleaned up code in janus.js (thanks @alienpavlov!)
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.9.2] - 2020-03-26
 
 - Converted HTTP transport plugin to single thread (now requires libmicrohttpd >= 0.9.59)
