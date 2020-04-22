@@ -300,6 +300,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
+	if(janus_get_dscp_tos() > 0)
+		json_object_set_new(info, "dscp-tos", json_integer(janus_get_dscp_tos()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -3519,6 +3521,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	}
 	if(!updating && !janus_ice_is_full_trickle_enabled()) {
 		/* Wait for candidates-done callback */
+		int waiting = 0;
 		while(ice_handle->cdone < 1) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -3526,13 +3529,16 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
-			g_usleep(10000);
 			if(ice_handle->cdone < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
 				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
+			if((waiting % 500) == 0) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+			}
+			waiting++;
+			g_usleep(1000);
 		}
 	}
 	/* Anonymize SDP */
@@ -4632,6 +4638,18 @@ gint main(int argc, char *argv[])
 			                    " Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", test_ip);
 		}
 	}
+
+	/* Is there any DSCP TOS to apply? */
+	item = janus_config_get(config, config_media, janus_config_type_item, "dscp_tos");
+	if(item && item->value) {
+		int tos = atoi(item->value);
+		if(tos < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring dscp_tos value as it's not a positive integer\n");
+		} else {
+			janus_set_dscp_tos(tos);
+		}
+	}
+
 	/* NACK related stuff */
 	item = janus_config_get(config, config_media, janus_config_type_item, "min_nack_queue");
 	if(item && item->value) {
@@ -5164,8 +5182,8 @@ gint main(int argc, char *argv[])
 	/* Make sure libnice is recent enough, otherwise print a warning */
 	int libnice_version = 0;
 	if(libnice_version_string != NULL && sscanf(libnice_version_string, "%*d.%*d.%d", &libnice_version) == 1) {
-		if(libnice_version < 15) {
-			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.15 recommended\n",
+		if(libnice_version < 16) {
+			JANUS_LOG(LOG_WARN, "libnice version outdated: %s installed, at least 0.1.16 recommended. Notice the installed version was checked at build time: if you updated libnice in the meanwhile, re-configure and recompile to get rid of this warning\n",
 				libnice_version_string);
 		}
 	}

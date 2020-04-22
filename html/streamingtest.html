@@ -66,8 +66,8 @@
 				</div>
 			</div>
 			<div class="container hide" id="streams">
-				<div class="row">
-					<div class="col-md-6">
+				<div class="col-md-6">
+					<div class="row">
 						<div class="panel panel-default">
 							<div class="panel-heading">
 								<h3 class="panel-title">Streams <i id="update-streams" class="fa fa-refresh" title="Update list of streams" style="cursor: pointer;"></i></h3>
@@ -86,17 +86,27 @@
 							</div>
 						</div>
 					</div>
-					<div class="col-md-6">
+					<div class="row hide" id="info">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Stream
-									<span class="label label-info hide" id="status"></span>
-									<span class="label label-primary hide" id="curres"></span>
-									<span class="label label-info hide" id="curbitrate"></span>
-								</h3>
+								<h3 class="panel-title"><i class="fa fa-info-circle"></i> Metadata</h3>
 							</div>
-							<div class="panel-body" id="stream"></div>
+							<div class="panel-body">
+								<pre id="metadata" style="word-break: break-word;"></pre>
+							</div>
 						</div>
+					</div>
+				</div>
+				<div class="col-md-6">
+					<div class="panel panel-default">
+						<div class="panel-heading">
+							<h3 class="panel-title">Stream
+								<span class="label label-info hide" id="status"></span>
+								<span class="label label-primary hide" id="curres"></span>
+								<span class="label label-info hide" id="curbitrate"></span>
+							</h3>
+						</div>
+						<div class="panel-body" id="stream"></div>
 					</div>
 				</div>
 			</div>

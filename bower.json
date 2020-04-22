@@ -1,6 +1,6 @@
 {
   "name": "janus-gateway",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "homepage": "https://github.com/meetecho/janus-gateway",
   "authors": [
     "Lorenzo Miniero <lorenzo@meetecho.com>",
