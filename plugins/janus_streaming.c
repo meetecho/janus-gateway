@@ -5213,9 +5213,11 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					if(iface->family == AF_INET) {
 						mreq.imr_interface = iface->ipv4;
 						(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
-						JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
-						if(host && hostlen > 0)
-							g_strlcpy(host, janus_network_address_string_from_buffer(&address_representation), hostlen);
+						char *maddr = inet_ntoa(mreq.imr_multiaddr);
+						JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s (%s)\n", mountpointname, listenername,
+							janus_network_address_string_from_buffer(&address_representation), maddr);
+						if(maddr && host && hostlen > 0)
+							g_strlcpy(host, maddr, hostlen);
 					} else {
 						JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 multicast is currently supported by this plugin)\n", mountpointname, listenername);
 						close(fd);
