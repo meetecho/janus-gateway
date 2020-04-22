@@ -154,6 +154,59 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len) {
 	return 0;
 }
 
+void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc) {
+	if(packet == NULL || len == 0)
+		return;
+	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
+	int pno = 0, total = len;
+	while(rtcp) {
+		if (!janus_rtcp_check_len(rtcp, total))
+			break;
+		if(rtcp->version != 2)
+			break;
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_SR: {
+				/* SR, sender report */
+				if (!janus_rtcp_check_sr(rtcp, total))
+					break;
+				janus_rtcp_sr *sr = (janus_rtcp_sr *)rtcp;
+				if(sr->header.rc >= 2 && ntohl(sr->rb[0].ssrc) == rtx_ssrc) {
+					janus_report_block rb0_copy = sr->rb[0];
+					sr->rb[0] = sr->rb[1];
+					sr->rb[1] = rb0_copy;
+				}
+				break;
+			}
+			case RTCP_RR: {
+				/* RR, receiver report */
+				if (!janus_rtcp_check_rr(rtcp, total))
+					break;
+				janus_rtcp_rr *rr = (janus_rtcp_rr *)rtcp;
+				if(rr->header.rc >= 2 && ntohl(rr->rb[0].ssrc) == rtx_ssrc) {
+					janus_report_block rb0_copy = rr->rb[0];
+					rr->rb[0] = rr->rb[1];
+					rr->rb[1] = rb0_copy;
+					JANUS_LOG(LOG_HUGE, "Switched incoming RTCP Report Blocks %"SCNu32"(rtx) <--> %"SCNu32"\n",
+							rtx_ssrc, ntohl(rr->rb[0].ssrc));
+				}
+				break;
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0) {
+			break;
+		}
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (janus_rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+}
+
 /* Helper to handle an incoming SR: triggered by a call to janus_rtcp_fix_ssrc with a valid context pointer */
 static void janus_rtcp_incoming_sr(janus_rtcp_context *ctx, janus_rtcp_sr *sr) {
 	if(ctx == NULL)
