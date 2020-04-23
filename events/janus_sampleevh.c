@@ -778,8 +778,10 @@ done:
 			g_free(event_text);
 
 		/* Done, let's unref the event */
-		json_decref(output);
-		output = NULL;
+		if (output) {
+			json_decref(output);
+			output = NULL;
+		}
 	}
 	JANUS_LOG(LOG_VERB, "Leaving SampleEventHandler handler thread\n");
 	return NULL;
