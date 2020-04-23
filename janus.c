@@ -3534,8 +3534,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
-			if((waiting % 500) == 0) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+			if(waiting && (waiting % 5000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Waited 5s for candidates, that's way too much... going on with what we have (WebRTC setup might fail)\n", ice_handle->handle_id);
+				break;
+			}
+			if(waiting && (waiting % 1000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s for candidates-done callback... (slow gathering, are you using STUN or TURN for Janus too, instead of just for users? Consider enabling full-trickle instead)\n",
+					ice_handle->handle_id, (waiting == 1000 ? "Waiting" : "Still waiting"));
 			}
 			waiting++;
 			g_usleep(1000);
