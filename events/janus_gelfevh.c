@@ -117,7 +117,7 @@ typedef enum janus_gelfevh_socket_type {
 static int max_gelf_msg_len = 500;
 static int sockfd;
 /* Set TCP as Default transport */
-static janus_gelfevh_socket_type transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
+static janus_gelfevh_socket_type transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -317,13 +317,15 @@ int janus_gelfevh_init(const char *config_path) {
 		if (item && item->value) {
 			if (strcasecmp(item->value, "udp") == 0){
 				transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
+			} else if (strcasecmp(item->value, "tcp") == 0){
+				transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
 			} else {
-				JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default: %d\n", transport);
+				JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default:UDP\n");
 			}
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
 		if (item && item->value) {
-			if(atoi(item->value) > 0) {
+			if(atoi(item->value) = 0) {
 				JANUS_LOG(LOG_WARN, "Missing or invalid max_message_len, using default: %d\n", max_gelf_msg_len);
 			} else {
 				max_gelf_msg_len = atoi(item->value);
@@ -497,6 +499,8 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 			max_gelf_msg_len = json_integer_value(json_object_get(request, "max_message_len"));
 		if (strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0){
 			transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
+		} else {
+			transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
 		}
 		if(!req_backend || !req_port) {
 			/* Invalid backend address or port */
