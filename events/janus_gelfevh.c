@@ -10,7 +10,7 @@
  * a lot of messages. There is also UDP support, but you need to limit the payload 
  * size with max_message_len and remember to leave room for 12 bytes for special 
  * headers. UDP messages will be chunked automatically.
- * There is also compression available for UDP protocol, to save network bandwith
+ * There is also compression available for UDP protocol, to save network bandwidth
  * while using a bit more CPU. This is not available for TCP due to GELF limitations
  *
  * \ingroup eventhandlers
@@ -139,9 +139,9 @@ static struct janus_json_parameter tweak_parameters[] = {
 static char *randstring(size_t length) {
 	static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	char *randomString = NULL;
-	if (length) {
-		randomString = malloc(sizeof(char) * (length + 1));
-		if (randomString) {
+	if(length) {
+		randomString = g_malloc(sizeof(char) * (length + 1));
+		if(randomString) {
 			for (int n = 0; n < (int)length; n++) {
 				int key = rand() % (int)(sizeof(charset) - 1);
 				randomString[n] = charset[key];
@@ -169,7 +169,7 @@ static int janus_gelfevh_connect(void) {
 	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
-    if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
+	if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
 		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
 		return -1;
 	}
@@ -196,10 +196,10 @@ static int janus_gelfevh_send(char *message) {
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
 		int out_bytes = send(sockfd, message, strlen(message), 0);
-		if (out_bytes < 0) {
+		if(out_bytes < 0) {
 			JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
 			return -1;
-		} else if (out_bytes == 0) {
+		} else if(out_bytes == 0) {
 			JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
 			close(sockfd);
 			return -1;
@@ -226,7 +226,7 @@ static int janus_gelfevh_send(char *message) {
 		}
 
 		int total = len / max_gelf_msg_len + 1;
-		if (total > MAX_GELF_CHUNKS) {
+		if(total > MAX_GELF_CHUNKS) {
 			JANUS_LOG(LOG_WARN, "Event not sent! GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 			return -1;
 		}
@@ -314,17 +314,17 @@ int janus_gelfevh_init(const char *config_path) {
 		}
 		port = g_strdup(item->value);
 		item = janus_config_get(config, config_general, janus_config_type_item, "protocol");
-		if (item && item->value) {
-			if (strcasecmp(item->value, "udp") == 0){
+		if(item && item->value) {
+			if(strcasecmp(item->value, "udp") == 0) {
 				transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
-			} else if (strcasecmp(item->value, "tcp") == 0){
+			} else if(strcasecmp(item->value, "tcp") == 0) {
 				transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
 			} else {
-				JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default:UDP\n");
+				JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default: UDP\n");
 			}
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
-		if (item && item->value) {
+		if(item && item->value) {
 			if(atoi(item->value) == 0) {
 				JANUS_LOG(LOG_WARN, "Missing or invalid max_message_len, using default: %d\n", max_gelf_msg_len);
 			} else {
@@ -365,7 +365,7 @@ done:
 	JANUS_LOG(LOG_VERB, "GELF event handler configured: %s:%s\n", backend, port);
 
 	/* Check if connection failed. Error is logged in janus_gelfevh_connect function */
-	if (janus_gelfevh_connect() < 0 ) {
+	if(janus_gelfevh_connect() < 0 ) {
 		return -1;
 	}
 
@@ -486,18 +486,18 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if(json_object_get(request, "events"))
 			req_events = json_string_value(json_object_get(request, "events"));
 		/* Compression */
-		if (json_object_get(request, "compress"))
+		if(json_object_get(request, "compress"))
 			req_compress = json_is_true(json_object_get(request, "compress"));
-		if (json_object_get(request, "compression"))
+		if(json_object_get(request, "compression"))
 			req_compress = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));
 		if(json_object_get(request, "port"))
 			req_port = json_string_value(json_object_get(request, "port"));
-		if (json_object_get(request, "max_message_len"))
+		if(json_object_get(request, "max_message_len"))
 			max_gelf_msg_len = json_integer_value(json_object_get(request, "max_message_len"));
-		if (strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0){
+		if(strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0) {
 			transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
 		} else {
 			transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
@@ -512,9 +512,9 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		janus_mutex_lock(&evh_mutex);
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_gelfevh.events_mask);
-		if (req_compress > -1)
+		if(req_compress > -1)
 			compress = req_compress ? TRUE : FALSE;
-		if (req_compression > -1 && req_compression < 10)
+		if(req_compression > -1 && req_compression < 10)
 			compression = req_compression;
 		if(req_backend && req_port) {
 			g_free(backend);
