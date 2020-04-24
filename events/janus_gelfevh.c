@@ -325,7 +325,7 @@ int janus_gelfevh_init(const char *config_path) {
 		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "max_message_len");
 		if (item && item->value) {
-			if(atoi(item->value) = 0) {
+			if(atoi(item->value) == 0) {
 				JANUS_LOG(LOG_WARN, "Missing or invalid max_message_len, using default: %d\n", max_gelf_msg_len);
 			} else {
 				max_gelf_msg_len = atoi(item->value);
