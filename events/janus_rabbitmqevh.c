@@ -150,7 +150,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	gboolean ssl_enable = FALSE;
 	gboolean ssl_verify_peer = FALSE;
 	gboolean ssl_verify_hostname = FALSE;
-	const char *route_key = NULL, *exchange = NULL;
+	const char *route_key = NULL, *exchange = NULL , *exchange_type = NULL ;
 
 	/* Setup the event handler, if required */
 	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
@@ -247,6 +247,15 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		goto error;
 	}
 	route_key = g_strdup(item->value);
+
+
+	item = janus_config_get(config, config_general, janus_config_type_item, "exchange_type");
+	if(!item || !item->value) {
+		exchange_type = JANUS_RABBITMQ_EXCHANGE_TYPE;
+	} else {
+		exchange_type = g_strdup(item->value);
+	}
+
 	item = janus_config_get(config, config_general, janus_config_type_item, "exchange");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Missing name of outgoing exchange for RabbitMQ, using default\n");
@@ -254,9 +263,9 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		exchange = g_strdup(item->value);
 	}
 	if (exchange == NULL) {
-		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s)\n", rmqhost, rmqport, route_key);
+		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exchange_type:%s\n", rmqhost, rmqport, route_key,exchange_type);
 	} else {
-		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exch: (%s)\n", rmqhost, rmqport, route_key, exchange);
+		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exch: (%s) exchange_type:%s\n", rmqhost, rmqport, route_key, exchange,exchange_type);
 	}
 
 	/* Connect */
@@ -326,7 +335,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	if(exchange != NULL) {
 		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring exchange...\n");
 		rmq_exchange = amqp_cstring_bytes(exchange);
-		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(JANUS_RABBITMQ_EXCHANGE_TYPE), 0, 0, 0, 0, amqp_empty_table);
+		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, 0, 0, 0, amqp_empty_table);
 		result = amqp_get_rpc_reply(rmq_conn);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
