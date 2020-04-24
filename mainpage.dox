@@ -2084,6 +2084,11 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section signed HMAC-Signed token authentication
+ *
+ * <div class="well"><b>NOTE WELL:</b> At the time of writing, HMAC-Signed
+ * tokens are ONLY available for the VideoRoom plugin. If you need authentication
+ * for other plugins, you should use the \ref token instead.</div>
+ *
  * Simple token based authentication requires the application host to
  * continuously update the Janus instance on permission changes.
  * Since Janus stores the tokens in memory, it can be problematic to guarantee
