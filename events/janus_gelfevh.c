@@ -341,14 +341,19 @@ int janus_gelfevh_init(const char *config_path) {
 		/* Check if we need any compression */
 		item = janus_config_get(config, config_general, janus_config_type_item, "compress");
 		if(item && item->value && janus_is_true(item->value)) {
-			compress = TRUE;
-			item = janus_config_get(config, config_general, janus_config_type_item, "compression");
-			if(item && item->value) {
-				int c = atoi(item->value);
-				if(c < 0 || c > 9) {
-					JANUS_LOG(LOG_WARN, "Invalid compression factor '%d', falling back to '%d'...\n", c, compression);
-				} else {
-					compression = c;
+			if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
+				compress = FALSE;
+				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling ... \n");
+			} else {
+				compress = TRUE;
+				item = janus_config_get(config, config_general, janus_config_type_item, "compression");
+				if(item && item->value) {
+					int c = atoi(item->value);
+					if(c < 0 || c > 9) {
+						JANUS_LOG(LOG_WARN, "Invalid compression factor '%d', falling back to '%d'...\n", c, compression);
+					} else {
+						compression = c;
+					}
 				}
 			}
 		}
@@ -497,10 +502,13 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 			req_port = json_string_value(json_object_get(request, "port"));
 		if(json_object_get(request, "max_message_len"))
 			max_gelf_msg_len = json_integer_value(json_object_get(request, "max_message_len"));
-		if(strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0) {
+		if(strcasecmp(json_string_value(json_object_get(request, "protocol")), "tcp") == 0) {
+			transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
+		} else if(strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0) {
 			transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
 		} else {
-			transport = JANUS_GELFEVH_SOCKET_TYPE_TCP;
+			JANUS_LOG(LOG_WARN, "Missing or invalid transport, using default: UDP\n");
+			transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
 		}
 		if(!req_backend || !req_port) {
 			/* Invalid backend address or port */
@@ -512,8 +520,14 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		janus_mutex_lock(&evh_mutex);
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_gelfevh.events_mask);
-		if(req_compress > -1)
-			compress = req_compress ? TRUE : FALSE;
+		if(req_compress > -1) {
+			if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
+				compress = FALSE;
+				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling ... \n");
+			} else {
+				compress = req_compress ? TRUE : FALSE;
+			}
+		}
 		if(req_compression > -1 && req_compression < 10)
 			compression = req_compression;
 		if(req_backend && req_port) {
