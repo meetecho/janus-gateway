@@ -164,9 +164,9 @@ typedef struct janus_http_session {
 	janus_refcount ref;			/* Reference counter for this session */
 } janus_http_session;
 /* We keep track of created sessions as we handle long polls */
-const char *keepalive_id = "keepalive";
-GHashTable *sessions = NULL;
-janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+static const char *keepalive_id = "keepalive";
+static GHashTable *sessions = NULL;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_http_session_destroy(janus_http_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -271,8 +271,8 @@ static char *admin_ws_path = NULL;
 static char *allow_origin = NULL;
 
 /* REST and Admin/Monitor ACL list */
-GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
-janus_mutex access_list_mutex;
+static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
+static janus_mutex access_list_mutex;
 static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;

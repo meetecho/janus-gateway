@@ -304,8 +304,8 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 }
 
 /* WebSockets ACL list for both Janus and Admin API */
-GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
-janus_mutex access_list_mutex;
+static GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
+static janus_mutex access_list_mutex;
 static void janus_websockets_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
