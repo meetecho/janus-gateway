@@ -195,22 +195,17 @@ static int janus_gelfevh_send(char *message) {
 	}
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
-		unsigned int out_bytes = 0;
-		while (out_bytes < strlen(message)+1) {
-			int n = send(sockfd, message, strlen(message) + 1, 0);
-			if (n < 0){
-				JANUS_LOG(LOG_WARN, "Unable to send message: %s\n", strerror(errno));
-				close(sockfd);
-				return -1;
-			} else if (n == 0) {
-				JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
-				close(sockfd);
-				return -1;
-			} else {
-				out_bytes += n;
-			}
-		}
-	
+		int out_bytes = send(sockfd, message, strlen(message), 0);
+		if (out_bytes < 0) {
+			JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
+			return -1;
+		} else if (out_bytes == 0) {
+			JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
+			close(sockfd);
+			return -1;
+		} else {
+			return 1;
+		}	
 	} else {
 		/* UDP chunking with headers. Check if we need to compress the data */
 		int len = strlen(message);
@@ -232,14 +227,14 @@ static int janus_gelfevh_send(char *message) {
 
 		int total = len / max_gelf_msg_len + 1;
 		if (total > MAX_GELF_CHUNKS) {
-			JANUS_LOG(LOG_ERR, "Event not sent! GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
+			JANUS_LOG(LOG_WARN, "Event not sent! GELF allows %d number of chunks, try increasing max_gelf_msg_len\n", MAX_GELF_CHUNKS);
 			return -1;
 		}
 		/* Do we need to chunk the message */
 		if(total == 1) {
 			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
-				JANUS_LOG(LOG_ERR, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
 				return -1;
 			}
 			return 1;
@@ -501,7 +496,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if (json_object_get(request, "max_message_len"))
 			max_gelf_msg_len = json_integer_value(json_object_get(request, "max_message_len"));
 		if (strcasecmp(json_string_value(json_object_get(request, "protocol")), "udp") == 0){
-			transport = UDP;
+			transport = JANUS_GELFEVH_SOCKET_TYPE_UDP;
 		}
 		if(!req_backend || !req_port) {
 			/* Invalid backend address or port */
