@@ -5156,22 +5156,25 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	janus_videoroom_hangup_media_internal(handle);
 }
 
-static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
+static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber *s) {
 	/* Already hung up */
 	if (!s->feed) {
 		return;
 	}
 	/* Check if the owner needs to be cleaned up */
-	if(s->pvt_id > 0 && s->room != NULL) {
-		janus_mutex_lock(&s->room->mutex);
-		janus_videoroom_publisher *owner = g_hash_table_lookup(s->room->private_ids, GUINT_TO_POINTER(s->pvt_id));
+	janus_videoroom *room = s->room;
+	if(room != NULL)
+		janus_refcount_increase(&room->ref);
+	if(s->pvt_id > 0 && room != NULL) {
+		janus_mutex_lock(&room->mutex);
+		janus_videoroom_publisher *owner = g_hash_table_lookup(room->private_ids, GUINT_TO_POINTER(s->pvt_id));
 		if(owner != NULL) {
 			janus_mutex_lock(&owner->subscribers_mutex);
 			/* Note: we should refcount these subscription-publisher mappings as well */
 			owner->subscriptions = g_slist_remove(owner->subscriptions, s);
 			janus_mutex_unlock(&owner->subscribers_mutex);
 		}
-		janus_mutex_unlock(&s->room->mutex);
+		janus_mutex_unlock(&room->mutex);
 	}
 	/* TODO: are we sure this is okay as other handlers use feed directly without synchronization */
 	if(s->feed)
@@ -5185,6 +5188,8 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber * s) {
 		/* Remove the reference we added when "joining" the room */
 		janus_refcount_decrease(&s->ref);
 	}
+	if(room != NULL)
+		janus_refcount_decrease(&room->ref);
 }
 
 static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
@@ -5857,9 +5862,6 @@ static void *janus_videoroom_handler(void *data) {
 						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event, jsep);
 						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-						json_decref(event);
-						json_decref(jsep);
-						janus_videoroom_message_free(msg);
 						/* Also notify event handlers */
 						if(notify_events && gateway->events_is_enabled()) {
 							json_t *info = json_object();
@@ -5869,6 +5871,9 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(info, "private_id", json_integer(pvt_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 						}
+						json_decref(event);
+						json_decref(jsep);
+						janus_videoroom_message_free(msg);
 						continue;
 					}
 					janus_mutex_unlock(&publisher->subscribers_mutex);

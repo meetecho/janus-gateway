@@ -3576,6 +3576,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Janus WebRTC server Docker Image for Media Streaming Expert User</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
+ * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
+ *		<td>Docker image for the Janus WebRTC Server</td>
+ * </tr>
  * </table>
  * <br/>
  *
@@ -3623,6 +3628,18 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
  * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-ud-transport</a></td>
  * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section orchestration Orchestration
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/OpenSight">OpenSight</a></td>
+ * 		<td><a href="https://github.com/OpenSight/janus-cloud">janus-cloud</a></td>
+ * 		<td>An API proxy for Janus WebRTC server cluster</td>
  * </tr>
  * </table>
  * <br/>
