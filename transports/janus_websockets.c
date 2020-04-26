@@ -1154,6 +1154,22 @@ static int janus_websockets_common_callback(
 			}
 			if(!g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->ts->mutex);
+                if (lws_send_pipe_choked(wsi)) {
+                    if (ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0) {
+                        JANUS_LOG(LOG_WARN, "websockets choked with buffer: %d\n", ws_client->bufpending);
+                        lws_callback_on_writable(wsi);
+                    }
+                    else {
+                        gint qlen = g_async_queue_length(ws_client->messages);
+                        JANUS_LOG(LOG_WARN, "websockets choked with queue: %d\n", qlen);
+                        if (qlen > 0) {
+                            lws_callback_on_writable(wsi);
+                        }
+                    }
+				    janus_mutex_unlock(&ws_client->ts->mutex);
+                    return 0;
+                }
+
 				/* Check if we have a pending/partial write to complete first */
 				if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0
 						&& !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
