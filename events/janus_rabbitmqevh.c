@@ -247,7 +247,6 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	}
 	route_key = g_strdup(item->value);
 
-
 	item = janus_config_get(config, config_general, janus_config_type_item, "exchange_type");
 	if(!item || !item->value) {
 		exchange_type = JANUS_RABBITMQ_EXCHANGE_TYPE;
