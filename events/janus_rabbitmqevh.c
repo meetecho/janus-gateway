@@ -91,7 +91,6 @@ static void janus_rabbitmqevh_event_free(json_t *event) {
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
-/* FIXME: Should it be configurable? */
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
 
 /* RabbitMQ session */
