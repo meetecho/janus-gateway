@@ -1090,7 +1090,7 @@ static int janus_audiobridge_file_read(janus_audiobridge_file *ctx, OpusDecoder 
 			return -2;
 		}
 		read = fread(ctx->oggbuf, 1, 8192, ctx->file);
-		if(feof(ctx->file)) {
+		if(read == 0 && feof(ctx->file)) {
 			/* Check if we should rewind, or be done */
 			if(!ctx->loop) {
 				/* We're done */
