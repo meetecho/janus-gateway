@@ -1520,6 +1520,7 @@ typedef struct janus_videoroom_publisher {
 	GSList *subscribers;	/* Subscriptions to this publisher (who's watching this publisher)  */
 	GSList *subscriptions;	/* Subscriptions this publisher has created (who this publisher is watching) */
 	janus_mutex subscribers_mutex;
+	janus_mutex own_subscriptions_mutex;
 	GHashTable *rtp_forwarders;
 	GHashTable *srtp_contexts;
 	janus_mutex rtp_forwarders_mutex;
@@ -4198,7 +4199,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		/* If this room requires valid private_id values, we can kick subscriptions too */
 		if(videoroom->require_pvtid && participant->subscriptions != NULL) {
 			/* Iterate on the subscriptions we know this user has */
-			janus_mutex_lock(&participant->subscribers_mutex);
+			janus_mutex_lock(&participant->own_subscriptions_mutex);
 			GSList *s = participant->subscriptions;
 			while(s) {
 				janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)s->data;
@@ -4212,7 +4213,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				}
 				s = s->next;
 			}
-			janus_mutex_unlock(&participant->subscribers_mutex);
+			janus_mutex_unlock(&participant->own_subscriptions_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
 		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
@@ -5169,10 +5170,10 @@ static void janus_videoroom_hangup_subscriber(janus_videoroom_subscriber *s) {
 		janus_mutex_lock(&room->mutex);
 		janus_videoroom_publisher *owner = g_hash_table_lookup(room->private_ids, GUINT_TO_POINTER(s->pvt_id));
 		if(owner != NULL) {
-			janus_mutex_lock(&owner->subscribers_mutex);
+			janus_mutex_lock(&owner->own_subscriptions_mutex);
 			/* Note: we should refcount these subscription-publisher mappings as well */
 			owner->subscriptions = g_slist_remove(owner->subscriptions, s);
-			janus_mutex_unlock(&owner->subscribers_mutex);
+			janus_mutex_unlock(&owner->own_subscriptions_mutex);
 		}
 		janus_mutex_unlock(&room->mutex);
 	}
@@ -5247,7 +5248,6 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		}
 		GSList *subscribers = participant->subscribers;
 		participant->subscribers = NULL;
-		janus_mutex_unlock(&participant->subscribers_mutex);
 		/* Hangup all subscribers */
 		while(subscribers) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)subscribers->data;
@@ -5256,6 +5256,7 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 				janus_videoroom_hangup_subscriber(s);
 			}
 		}
+		janus_mutex_unlock(&participant->subscribers_mutex);
 		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		janus_refcount_decrease(&participant->ref);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -5278,8 +5279,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 				}
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
-				janus_mutex_unlock(&publisher->subscribers_mutex);
 				janus_videoroom_hangup_subscriber(subscriber);
+				janus_mutex_unlock(&publisher->subscribers_mutex);
 			}
 		}
 		/* TODO Should we close the handle as well? */
@@ -5510,6 +5511,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->subscribers = NULL;
 				publisher->subscriptions = NULL;
 				janus_mutex_init(&publisher->subscribers_mutex);
+				janus_mutex_init(&publisher->own_subscriptions_mutex);
 				publisher->audio_pt = -1;	/* We'll deal with this later */
 				publisher->video_pt = -1;	/* We'll deal with this later */
 				publisher->audio_level_extmap_id = 0;
@@ -5816,9 +5818,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&publisher->subscribers_mutex);
 					if(owner != NULL) {
 						/* Note: we should refcount these subscription-publisher mappings as well */
-						janus_mutex_lock(&owner->subscribers_mutex);
+						janus_mutex_lock(&owner->own_subscriptions_mutex);
 						owner->subscriptions = g_slist_append(owner->subscriptions, subscriber);
-						janus_mutex_unlock(&owner->subscribers_mutex);
+						janus_mutex_unlock(&owner->own_subscriptions_mutex);
 						/* Done adding the subscription, owner is safe to be released */
 						janus_refcount_decrease(&owner->session->ref);
 						janus_refcount_decrease(&owner->ref);
