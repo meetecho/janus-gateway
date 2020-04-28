@@ -1942,8 +1942,7 @@ static int janus_http_return_success(janus_transport_session *ts, char *payload)
 	}
 	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection) {
-		if(payload)
-			free(payload);
+		g_free(payload);
 		return MHD_NO;
 	}
 	janus_refcount_increase(&msg->ref);
@@ -2002,6 +2001,7 @@ void janus_http_timeout(janus_transport_session *ts, janus_http_session *session
 	janus_http_msg *request = (janus_http_msg *)ts->transport_p;
 	if(!g_atomic_int_compare_and_exchange(&request->timeout_flag, 1, 0)) {
 		request->timeout = NULL;
+		janus_refcount_decrease(&ts->ref);
 		return;
 	}
 	request->timeout = NULL;
