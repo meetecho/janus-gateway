@@ -4779,9 +4779,9 @@ done:
 			if(mp->data && session->data) {
 				/* Add data line */
 				g_snprintf(buffer, 512,
-					"m=application 1 DTLS/SCTP 5000\r\n"
+					"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n"
 					"c=IN IP4 1.1.1.1\r\n"
-					"a=sctpmap:5000 webrtc-datachannel 16\r\n");
+					"a=sctp-port:5000\r\n");
 				g_strlcat(sdptemp, buffer, 2048);
 			}
 #endif
