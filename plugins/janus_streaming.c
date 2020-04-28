@@ -1367,7 +1367,7 @@ static int janus_streaming_opus_context_read(janus_streaming_opus_context *ctx, 
 			return -2;
 		}
 		read = fread(ctx->oggbuf, 1, 8192, ctx->file);
-		if(feof(ctx->file)) {
+		if(read == 0 && feof(ctx->file)) {
 			/* FIXME We're doing this forever... should this be configurable? */
 			JANUS_LOG(LOG_VERB, "[%s] Rewind! (%s)\n", ctx->name, ctx->filename);
 			if(janus_streaming_opus_context_init(ctx) < 0)
