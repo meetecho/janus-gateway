@@ -140,7 +140,7 @@ room-<unique room ID>: {
 	"pin" : "<password required to join the room, optional>",
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"allowed" : [ array of string tokens users can use to join this room, optional],
-        "wgwtoken":" wgw  token, as in join"
+        "roomtoken":" wgw  token, as in join"
 	...
 }
 \endverbatim
@@ -414,7 +414,7 @@ room-<unique room ID>: {
 	"id" : <unique ID to register for the publisher; optional, will be chosen by the plugin if missing>,
 	"display" : "<display name for the publisher; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>"
-        "wgwtoken":"the same wgw  token, as in create"
+        "roomtoken":"the same wgw  token, as in create"
 }
 \endverbatim
  *
@@ -1145,7 +1145,7 @@ static struct janus_json_parameter adminkey_parameters[] = {
 };
 
 static struct janus_json_parameter wgw_token_auth_parameters[] = { /*CARBYNE-AUT */
-        {"wgwtoken", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+        {"roomtoken", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 static struct janus_json_parameter create_parameters[] = {
@@ -1359,7 +1359,7 @@ static janus_videoroom_message exit_message;
 typedef struct janus_videoroom {
 	guint64 room_id;			/* Unique room ID (when using integers) */
 	gchar *room_id_str;			/* Unique room ID (when using strings) */
-        guint64 video_rtp_forward_stream_id;    /* CARBYNE-RF, Unique rtp_forward  ID */
+	guint64 video_rtp_forward_stream_id;    /* CARBYNE-RF, Unique rtp_forward  ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
@@ -2069,26 +2069,31 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 
                 janus_config_item *token_ttl_ms_item = janus_config_get(config, config_general, janus_config_type_item, "token_ttl_ms");
 
-                if(token_ttl_ms_item != NULL && token_ttl_ms_item->value != NULL)
+                if(token_ttl_ms_item != NULL && token_ttl_ms_item->value != NULL) {
                         token_ttl_ms  = atol(token_ttl_ms_item->value);
+		}
                 JANUS_LOG(LOG_VERB, "token_ttl_ms: %uld\n", token_ttl_ms);
                 /*CARBYNE-AUT end*/
 		/* Any admin key to limit who can "create"? */
 		janus_config_item *key = janus_config_get(config, config_general, janus_config_type_item, "admin_key");
-		if(key != NULL && key->value != NULL)
+		if(key != NULL && key->value != NULL) {
 			admin_key = g_strdup(key->value);
+		}
 		janus_config_item *lrf = janus_config_get(config, config_general, janus_config_type_item, "lock_rtp_forward");
-		if(admin_key && lrf != NULL && lrf->value != NULL)
+		if(admin_key && lrf != NULL && lrf->value != NULL) {
 			lock_rtpfwd = janus_is_true(lrf->value);
+		}
 		janus_config_item *events = janus_config_get(config, config_general, janus_config_type_item, "events");
-		if(events != NULL && events->value != NULL)
+		if(events != NULL && events->value != NULL) {
 			notify_events = janus_is_true(events->value);
+		}
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_VIDEOROOM_NAME);
 		}
 		janus_config_item *ids = janus_config_get(config, config_general, janus_config_type_item, "string_ids");
-		if(ids != NULL && ids->value != NULL)
+		if(ids != NULL && ids->value != NULL) {
 			string_ids = janus_is_true(ids->value);
+		}
 		if(string_ids) {
 			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
 		}
@@ -2984,7 +2989,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
                     if(error_code != 0)
                          goto prepare_response;
 
-                    json_t *vr_token = json_object_get(root, "wgwtoken");
+                    json_t *vr_token = json_object_get(root, "roomtoken");
                     const char *vr_token_text = json_string_value(vr_token);
 
                     JANUS_LOG(LOG_INFO, " create:plugin token:  %s\n", vr_token_text);
@@ -4823,7 +4828,6 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                                                      JANUS_LOG (LOG_ERR, "Failed to link GSTREAMER elements in gstr!!!\n");
                                gst_object_unref (GST_OBJECT(gstr->pipeline));
                                g_free (gstr);
-                               /* FIXME: clean up session here, if pipeline fails */
                                janus_refcount_decrease(&participant->ref);
                                goto error;
                             }
@@ -4833,14 +4837,12 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                                                      JANUS_LOG (LOG_ERR, "Failed to link GSTREAMER elements in gstr!!!\n");
                                gst_object_unref (GST_OBJECT(gstr->pipeline));
                                g_free (gstr);
-                               /* FIXME: clean up session here, if pipeline fails */
                                janus_refcount_decrease(&participant->ref);
                                goto error;
                             }
                          }
                          gstr->bus = gst_pipeline_get_bus (GST_PIPELINE (gstr->pipeline));
                          session->gstr = gstr;
-                         //      session->vpackets = g_async_queue_new ();
                          GError * error = NULL;
                          g_thread_try_new ("gst", &janus_gst_gst_thread, session, &error);
                          if (error != NULL) {
@@ -4883,6 +4885,7 @@ error:
                         int ret = gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
                         JANUS_LOG(LOG_WARN, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
                         json_decref(event);
+                        /* close incoming media, session  and  peer connection */
                         janus_videoroom_hangup_media(session->handle);
                         gateway->close_pc(session->handle);
        }
@@ -5810,7 +5813,7 @@ static void *janus_videoroom_handler(void *data) {
                                       goto error;
                                    }
 
-                                   json_t *vr_token = json_object_get(root, "wgwtoken");
+                                   json_t *vr_token = json_object_get(root, "roomtoken");
                                    const char *vr_token_text = json_string_value(vr_token);
                                    JANUS_LOG(LOG_INFO, " join:plugin token:  %s\n", vr_token_text);
                                    if(FALSE ==  janus_auth_check_signature(vr_token_text,(const char *)videoroom->room_id_str)) {
@@ -7701,12 +7704,17 @@ static gboolean janus_auth_check_signature(const char *token, const char *room) 
     }
 
     gchar **parts = g_strsplit(token, ":", 3);
+
+    if(parts==NULL) {
+        JANUS_LOG(LOG_ERR, "janus_videoroom: auth: fail, Token split fail \n");
+        goto fail;
+    }
     /*SGW  Token should have exactly 3 parts */
     if(!parts[0] || !parts[1] || !parts[2] || parts[3]) {
         JANUS_LOG(LOG_ERR, "janus_videoroom: auth: fail, Token should have exactly one data and middle and  one hash part \n");
         goto fail;
     }
-   /* SGW token FORMULA: Base64(timestamp):nonce:Base64(HMACSHA256(id:Base64(timestamp):nonce)); */
+   /* Room token FORMULA: Base64(timestamp):nonce:Base64(HMACSHA256(room_id:Base64(timestamp):nonce)); */
    /* Verify timestamp */
    gsize timestamp_len;
    guchar *timestamp = g_base64_decode(parts[0],&timestamp_len);
@@ -7736,29 +7744,29 @@ static gboolean janus_auth_check_signature(const char *token, const char *room) 
     }
    JANUS_LOG(LOG_INFO, "janus_videoroom: auth:  parts[2]:%s \n",parts[2]);
    JANUS_LOG(LOG_INFO, "janus_videoroom: auth:  base64:  %s \n",base64);
-   /* translate to URL safe  string */ 
-    char sig[XL_BUFFER_SIZE] = { 0 };
+   /* translate to URL safe  string */
+    char singatureBase64URLSafe[XL_BUFFER_SIZE] = { 0 };
     for(unsigned int i=0,j=0;i< strlen(base64); i++,j++) {
-     switch(base64[i]) { 
+     switch(base64[i]) {
       case '/':
-       sig[j]= '_';  
+       singatureBase64URLSafe[j]= '_';
       continue;
       case '+':
-       sig[j]= '-';
+       singatureBase64URLSafe[j]= '-';
       continue;
       case '=':
-       sig[j]= '\0';
+       singatureBase64URLSafe[j]= '\0';
       continue;
      default:
-       sig[j]=base64[i]; 
+       singatureBase64URLSafe[j]=base64[i];
      continue;
      }
     }
-    JANUS_LOG(LOG_INFO, "janus_videoroom: auth: signature:%s \n",sig);
-    gboolean result = janus_strcmp_const_time(parts[2],sig);
+    JANUS_LOG(LOG_INFO, "janus_videoroom: auth: singatureBase64URLSafe:%s \n",singatureBase64URLSafe);
+    gboolean result = janus_strcmp_const_time(parts[2],singatureBase64URLSafe);
     g_strfreev(parts);
     g_free(base64);
-    JANUS_LOG(LOG_INFO, "janus_videoroom: auth: result: %d \n", (int)result);
+    JANUS_LOG(LOG_INFO, "janus_videoroom: signature auth result: %d \n", (int)result);
     return result;
 
 fail:
