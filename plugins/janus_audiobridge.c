@@ -4032,9 +4032,18 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			json_object_set_new(event, "audiobridge", json_string("announcement-stopped"));
 			json_object_set_new(event, "room",
 				string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
-			json_object_set_new(event, "file_id", json_string(p->user_id_str));
+			json_object_set_new(event, "file_id", json_string(file_id));
 			janus_audiobridge_notify_participants(p, event);
 			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("announcement-stopped"));
+				json_object_set_new(info, "room",
+					string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+				json_object_set_new(info, "file_id", json_string(file_id));
+				gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
+			}
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
@@ -6088,6 +6097,15 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						json_object_set_new(event, "file_id", json_string(p->user_id_str));
 						janus_audiobridge_notify_participants(p, event);
 						json_decref(event);
+						/* Also notify event handlers */
+						if(notify_events && gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("announcement-stopped"));
+							json_object_set_new(info, "room",
+								string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+							json_object_set_new(info, "file_id", json_string(p->user_id_str));
+							gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
+						}
 						/* Remove the announcement */
 						g_hash_table_remove(audiobridge->anncs, p->user_id_str);
 						janus_mutex_unlock_nodebug(&audiobridge->mutex);
@@ -6108,6 +6126,15 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					janus_audiobridge_notify_participants(p, event);
 					json_decref(event);
 					janus_mutex_unlock_nodebug(&audiobridge->mutex);
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("announcement-started"));
+						json_object_set_new(info, "room",
+							string_ids ? json_string(audiobridge->room_id_str) : json_integer(audiobridge->room_id));
+						json_object_set_new(info, "file_id", json_string(p->user_id_str));
+						gateway->notify_event(&janus_audiobridge_plugin, NULL, info);
+					}
 				}
 				for(i=0; i<samples; i++) {
 					if(p->volume_gain == 100) {
