@@ -1054,7 +1054,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets API
  *
- * Since version \c 0.0.6, there are three different ways to interact with a
+ * Since version \c 0.0.6, there are different ways to interact with a
  * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref apimqtt, \ref apinanomsg
  * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
@@ -1693,11 +1693,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * event, as Janus would never be receiving media, but only send it.
  *
  * \section WS WebSockets Interface
- * In recent version of Janus we added support for WebSockets to control
- * the server, along the already existing (and still the default) REST
- * API. In fact, while WebSockets still present some more issues in terms
- * of reachability when compared to plain HTTP, they definitely provide
- * a more efficient means for implementing a bidirectional communication.
+ * WebSockets provide a more efficient means for implementing a bidirectional communication.
  * This is especially useful if you're wrapping the Janus API on your
  * servers, as it allows you to avoid all the noise and overhead introduced
  * by several concurrent HTTP transactions and long polls by relying on
