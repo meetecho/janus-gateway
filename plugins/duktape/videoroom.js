@@ -90,7 +90,7 @@ function destroy() {
 function createSession(id) {
 	// Keep track of a new session
 	console.log("Created new session:", id);
-	sessions[id] = { id: id, janusServer: janusServer ,subscribers:[] };
+	sessions[id] = { id: id, janusServer: janusServer ,subscribers:[],publishers:[],isConnected:false };
 	// By default, we accept and relay all streams
 	configureMedium(id, "audio", "in", true);
 	configureMedium(id, "audio", "out", true);
@@ -163,6 +163,7 @@ function handleMessage(id, tr, msg, jsep) {
 				console.log("subscriber addRecipient", msgT.feed,id)
 				console.log("Join request ......",msgT);
 				if(sessions[msgT.feed])sessions[msgT.feed].subscribers.push(id);
+				if(sessions[id])sessions[id].publishers.push(msgT.feed);
 				addRecipient(msgT.feed,id);
 				sendPli(msgT.feed);
 				var sdpOffer =  sdpUtils.generateOffer({ audio: true, video: true})
@@ -226,9 +227,9 @@ function setupMedia(id) {
 		})*/
 	var publishersArray = getOtherPublishers(0);
 	event = { event: "media", publishers:publishersArray, newPublisher:id };
+	sessions[id].isConnected=true
 	notifyEvent(id, JSON.stringify(event));
 	publishers.forEach(function (publisher) {
-
 		var publishersArray = getOtherPublishers(publisher);
 		event = { event: "media", publishers:publishersArray, newPublisher:id };
 		// Just for fun (and to showcase the feature), let's send an event to handlers;
@@ -249,10 +250,11 @@ function hangupMedia(id) {
 	// Detach the stream from all subscribers
 	sessions[id].subscribers.forEach(function (subcriber) {
 	console.log("Removing subscriber " , subcriber," from ",id);
+		sessions[subcriber].publishers=sessions[subcriber].publishers.filter(function(publisher) {return publisher !== id});
 		removeRecipient(id, subcriber);
 	//	pushEvent(subcriber, null, JSON.stringify(unpublishedEvent));
-	//	tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
-	//	pokeScheduler();
+		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
+		pokeScheduler();
 
 	})
 	// Clear some flags
@@ -260,6 +262,8 @@ function hangupMedia(id) {
 	if(s) {
 		s.audioCodec = null;
 		s.videoCodec = null;
+		s.subscribers=[];
+		s.isConnected =false
 	}
 }
 
