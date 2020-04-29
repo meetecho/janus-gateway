@@ -1229,6 +1229,8 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 	}
 	/* Parse request */
 	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
+		if(firstround)
+			return ret;
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
