@@ -91,7 +91,7 @@ static void janus_rabbitmqevh_event_free(json_t *event) {
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
-#define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
+#define JANUS_RABBITMQEVH_EXCHANGE_TYPE "fanout"
 
 /* RabbitMQ session */
 static amqp_connection_state_t rmq_conn;
@@ -149,7 +149,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	gboolean ssl_enable = FALSE;
 	gboolean ssl_verify_peer = FALSE;
 	gboolean ssl_verify_hostname = FALSE;
-	const char *route_key = NULL, *exchange = NULL , *exchange_type = NULL ;
+	const char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 
 	/* Setup the event handler, if required */
 	janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
@@ -249,7 +249,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 
 	item = janus_config_get(config, config_general, janus_config_type_item, "exchange_type");
 	if(!item || !item->value) {
-		exchange_type = JANUS_RABBITMQ_EXCHANGE_TYPE;
+		exchange_type = (char *)JANUS_RABBITMQEVH_EXCHANGE_TYPE;
 	} else {
 		exchange_type = g_strdup(item->value);
 	}

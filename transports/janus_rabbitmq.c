@@ -302,7 +302,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		from_janus = g_strdup(item->value);
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange_type");
 		if(!item || !item->value) {
-			janus_exchange_type = JANUS_RABBITMQ_EXCHANGE_TYPE;
+			janus_exchange_type = (char *)JANUS_RABBITMQ_EXCHANGE_TYPE;
 		} else {
 			janus_exchange_type = g_strdup(item->value);
 		}
