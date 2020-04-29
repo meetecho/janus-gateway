@@ -62,7 +62,7 @@ room-<unique room ID>: {
 	fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 	audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec to force on publishers, default=opus
 				can be a comma separated list in order of preference, e.g., opus,pcmu)
-	videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8
+	videocodec = vp8|vp9|h264|av1|h265 (video codec to force on publishers, default=vp8
 				can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
 	opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=false)
 	video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
@@ -2820,9 +2820,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						break;
 					}
 					if(strlen(codec) == 0 || JANUS_VIDEOCODEC_NONE == janus_videocodec_from_name(codec)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be or contain vp8, vp9 or h264)\n");
+						JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be or contain vp8, vp9, h264, av1 or h265)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (videocodec can only be or contain vp8, vp9 or h264)");
+						g_snprintf(error_cause, 512, "Invalid element (videocodec can only be or contain vp8, vp9, av1, h264 or h265)");
 						goto prepare_response;
 					}
 					i++;
@@ -4903,6 +4903,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 						participant->fir_latest = now;
 				} else if(participant->vcodec == JANUS_VIDEOCODEC_H264) {
 					if(janus_h264_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOCODEC_AV1) {
+					if(janus_av1_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOCODEC_H265) {
+					if(janus_h265_is_keyframe(payload, plen))
 						participant->fir_latest = now;
 				}
 				if((now-participant->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {

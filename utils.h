@@ -279,6 +279,20 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len);
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
 
+/*! \brief Helper method to check if an AV1 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_av1_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.265 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_h265_is_keyframe(const char *buffer, int len);
+
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {
 	uint16_t last_picid, base_picid, base_picid_prev;

@@ -333,6 +333,14 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 1;
 		format = "h264/90000";
 		format2 = "H264/90000";
+	} else if(!strcasecmp(codec, "av1")) {
+		video = 1;
+		format = "av1/90000";
+		format2 = "AV1/90000";
+	} else if(!strcasecmp(codec, "h265")) {
+		video = 1;
+		format = "h265/90000";
+		format2 = "H265/90000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -406,6 +414,10 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "vp9";
 					if(strstr(name, "h264") || strstr(name, "H264"))
 						return "h264";
+					if(strstr(name, "av1") || strstr(name, "AV1"))
+						return "av1";
+					if(strstr(name, "h265") || strstr(name, "H265"))
+						return "h265";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
 					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
@@ -810,6 +822,16 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 		}
 	}
 	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+gboolean janus_av1_is_keyframe(const char *buffer, int len) {
+	/* TODO Just a placeholder: always returns FALSE, for now */
+	return FALSE;
+}
+
+gboolean janus_h265_is_keyframe(const char *buffer, int len) {
+	/* TODO Just a placeholder: always returns FALSE, for now */
 	return FALSE;
 }
 

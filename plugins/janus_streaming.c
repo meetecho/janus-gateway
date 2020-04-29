@@ -3896,6 +3896,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					codec = "vp9";
 				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
 					codec = "h264";
+				else if(strstr(mp->codecs.video_rtpmap, "av1") || strstr(mp->codecs.video_rtpmap, "AV1"))
+					codec = "av1";
+				else if(strstr(mp->codecs.video_rtpmap, "h265") || strstr(mp->codecs.video_rtpmap, "H265"))
+					codec = "h265";
 				const char *videofile = json_string_value(video);
 				vrc = janus_recorder_create(NULL, codec, (char *)videofile);
 				if(vrc == NULL) {
@@ -5851,6 +5855,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
 		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
+		else if(strstr(vrtpmap, "av1") || strstr(vrtpmap, "AV1"))
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_AV1;
+		else if(strstr(vrtpmap, "h265") || strstr(vrtpmap, "H265"))
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H265;
 	}
 	if(svc) {
 		if(live_rtp->codecs.video_codec == JANUS_VIDEOCODEC_VP9) {
@@ -7675,6 +7683,12 @@ static void *janus_streaming_relay_thread(void *data) {
 										break;
 									case JANUS_VIDEOCODEC_H264:
 										kf = janus_h264_is_keyframe(payload, plen);
+										break;
+									case JANUS_VIDEOCODEC_AV1:
+										kf = janus_av1_is_keyframe(payload, plen);
+										break;
+									case JANUS_VIDEOCODEC_H265:
+										kf = janus_h265_is_keyframe(payload, plen);
 										break;
 									default:
 										break;

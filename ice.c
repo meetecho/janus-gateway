@@ -2520,6 +2520,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_vp9_is_keyframe;
 						else if(!strcasecmp(stream->video_codec, "h264"))
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "av1"))
+							stream->video_is_keyframe = &janus_av1_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "h265"))
+							stream->video_is_keyframe = &janus_h265_is_keyframe;
 					}
 				}
 				/* Prepare the data to pass to the responsible plugin */
@@ -4269,6 +4273,10 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							stream->video_is_keyframe = &janus_vp9_is_keyframe;
 						else if(!strcasecmp(stream->video_codec, "h264"))
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "av1"))
+							stream->video_is_keyframe = &janus_av1_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "h265"))
+							stream->video_is_keyframe = &janus_h265_is_keyframe;
 					}
 				}
 				/* Do we need to dump this packet for debugging? */
