@@ -3988,7 +3988,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	janus_ice_component *component = stream ? stream->component : NULL;
 	if(pkt == &janus_ice_start_gathering) {
 		/* Start gathering candidates */
-		if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+		if(handle->agent == NULL) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] No ICE agent, not going to gather candidates...\n", handle->handle_id);
+		} else if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
 			janus_ice_webrtc_hangup(handle, "ICE gathering error");
 		}
