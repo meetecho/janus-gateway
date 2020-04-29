@@ -1617,12 +1617,10 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 	}
 	/* Parse request */
 	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
-		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
-		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		janus_http_add_cors_headers(msg, response);
-		ret = MHD_queue_response(connection, MHD_HTTP_NOT_IMPLEMENTED, response);
-		MHD_destroy_response(response);
-		return ret;
+		if(firstround)
+			return ret;
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
+		goto done;
 	}
 	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
