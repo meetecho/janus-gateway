@@ -3562,6 +3562,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #else
 		g_async_queue_push(handle->queued_packets, &janus_ice_start_gathering);
 #endif
+		g_main_context_wakeup(handle->mainctx);
 	}
 	return 0;
 }
