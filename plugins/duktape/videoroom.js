@@ -5,6 +5,7 @@
 
 // Example details
 name = "echotest.js";
+janusServer = "webconf.officering.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
@@ -89,7 +90,7 @@ function destroy() {
 function createSession(id) {
 	// Keep track of a new session
 	console.log("Created new session:", id);
-	sessions[id] = { id: id, lua: name };
+	sessions[id] = { id: id, janusServer: janusServer ,subscribers:[] };
 	// By default, we accept and relay all streams
 	configureMedium(id, "audio", "in", true);
 	configureMedium(id, "audio", "out", true);
@@ -106,6 +107,7 @@ function destroySession(id) {
 	publishers=publishers.filter(function(publisher) {return publisher !== id});
 	hangupMedia(id);
 	delete sessions[id];
+	return 0;
 }
 
 function querySession(id) {
@@ -159,7 +161,8 @@ function handleMessage(id, tr, msg, jsep) {
 				return 1;
 			}else if (msgT.ptype === "subscriber"){
 				console.log("subscriber addRecipient", msgT.feed,id)
-				console.log("Join request ......",msgT)
+				console.log("Join request ......",msgT);
+				if(sessions[msgT.feed])sessions[msgT.feed].subscribers.push(id);
 				addRecipient(msgT.feed,id);
 				sendPli(msgT.feed);
 				var sdpOffer =  sdpUtils.generateOffer({ audio: true, video: true})
@@ -168,7 +171,6 @@ function handleMessage(id, tr, msg, jsep) {
 					room: 1234,
 					description: "Demo Room",
 					id:msgT.feed
-
 				}
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsepOffer: sdpOffer });
 				pokeScheduler();
@@ -222,13 +224,37 @@ function setupMedia(id) {
 				sendPli( sessions[key].id);
 			}
 		})*/
+	var publishersArray = getOtherPublishers(0);
+	event = { event: "media", publishers:publishersArray, newPublisher:id };
+	notifyEvent(id, JSON.stringify(event));
+	publishers.forEach(function (publisher) {
+
+		var publishersArray = getOtherPublishers(publisher);
+		event = { event: "media", publishers:publishersArray, newPublisher:id };
+		// Just for fun (and to showcase the feature), let's send an event to handlers;
+		// notice how we pass the id now, meaning this event is tied to a specific session
+		console.log("sending",publisher,event)
+		pushEvent(publisher, null, JSON.stringify(event));
+
+	});
+
 }
 
 function hangupMedia(id) {
 	// WebRTC not available anymore
 	console.log("WebRTC PeerConnection is down for session:", id);
-	// Detach the stream
-	removeRecipient(id, id);
+
+	unpublishedEvent = {videoroom: "event", room: 1234, unpublished: id ,janusServer:janusServer}
+	notifyEvent(id, JSON.stringify(unpublishedEvent));
+	// Detach the stream from all subscribers
+	sessions[id].subscribers.forEach(function (subcriber) {
+	console.log("Removing subscriber " , subcriber," from ",id);
+		removeRecipient(id, subcriber);
+	//	pushEvent(subcriber, null, JSON.stringify(unpublishedEvent));
+	//	tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
+	//	pokeScheduler();
+
+	})
 	// Clear some flags
 	var s = sessions[id];
 	if(s) {
@@ -314,7 +340,7 @@ function processRequest(id, msg) {
 	tasks.push({ id: id, tr: null, msg: null, jsep: null });
 	// Return explaining that this is will be handled asynchronously
 	pokeScheduler();
-	return 0;
+	return 1;
 }
 
 // We use this other function to process asynchronous requests
@@ -354,19 +380,19 @@ function processAsync(task) {
 		// notice how we pass the id now, meaning this event is tied to a specific session
 		event = { event: "processed", request: msg };
 		notifyEvent(id, JSON.stringify(event));
+
+
 	}else if(jsepOffer){
 
 		var jsepOfferReplay = { type: "offer", sdp: sdpUtils.render(jsepOffer) };
-		console.log("  jsepOfferReplay--!!!!!!!!!!!!!!!!!!!!!!!!!-------------------->", jsepOfferReplay);
-
 		pushEvent(id, tr, JSON.stringify(msg), JSON.stringify(jsepOfferReplay));
-
-
 	}
 	else{
 		if(!msg)msg={ videoroom: "event", result: "ok" ,publishers:getOtherPublishers(id)};
 		if(!sessions[id].private_Id)sessions[id].private_Id=getRndInteger(100000, 999999);
 		msg.private_Id=sessions[id].private_Id;
+		console.log("Pushing Evente to ",id);
+		console.log("Event ",msg);
 		pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
