@@ -1070,7 +1070,7 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 		janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(buf+hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
-		if(len > (hlen + extlen)) {
+		if(len >= (hlen + extlen)) {
 			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
 				const uint8_t padding = 0x00, reserved = 0xF;
