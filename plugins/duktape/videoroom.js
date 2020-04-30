@@ -4,8 +4,8 @@
 // folder, which contains the JavaScript code for the web demo instead...
 
 // Example details
-name = "echotest.js";
-janusServer = "webconf.officering.net";
+name = "videoroomjs.js";
+janusServer = "webconf.yourcompany.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
@@ -116,8 +116,7 @@ function querySession(id) {
 	var s = sessions[id];
 	if(!s)
 		return null;
-	var info = { script: s["lua"], id: s["id"] };
-	return JSON.stringify(info);
+	return JSON.stringify(s);
 }
 
 function handleMessage(id, tr, msg, jsep) {
@@ -134,11 +133,9 @@ function handleMessage(id, tr, msg, jsep) {
 	var msgT = JSON.parse(msg);
 	// Let's return a synchronous response if there's no jsep, asynchronous otherwise
 	if(!jsep) {
-		//var res = processRequest(id, msgT);
 		var response = {
 			videoroom: "response",
 			result: "ok"
-			//	,publishers:getObjectValues(sessions)
 		};
 		//	if(res < 0)
 		//		response["result"] = "error";
@@ -210,21 +207,6 @@ function setupMedia(id) {
 	// Attach the session's stream to itself (echo test)
 	//addRecipient(id, id);
 	console.log("sessions",sessions)
-	/*	Object.keys(sessions).forEach(function (key) {
-			if(id!=sessions[key].id){
-				console.log("1 setupMedia addRecipient", id,sessions[key].id)
-				addRecipient( id,sessions[key].id);
-				sendPli( id);
-			}
-
-		})
-		Object.keys(sessions).forEach(function (key) {
-			if(id!=sessions[key].id){
-				console.log("2 setupMedia addRecipient", sessions[key].id,id)
-				addRecipient( sessions[key].id,id);
-				sendPli( sessions[key].id);
-			}
-		})*/
 	var publishersArray = getOtherPublishers(0);
 	event = { event: "media", publishers:publishersArray, newPublisher:id };
 	sessions[id].isConnected=true
@@ -232,8 +214,6 @@ function setupMedia(id) {
 	publishers.forEach(function (publisher) {
 		var publishersArray = getOtherPublishers(publisher);
 		event = { event: "media", publishers:publishersArray, newPublisher:id };
-		// Just for fun (and to showcase the feature), let's send an event to handlers;
-		// notice how we pass the id now, meaning this event is tied to a specific session
 		console.log("sending",publisher,event)
 		pushEvent(publisher, null, JSON.stringify(event));
 
@@ -250,9 +230,8 @@ function hangupMedia(id) {
 	// Detach the stream from all subscribers
 	sessions[id].subscribers.forEach(function (subcriber) {
 	console.log("Removing subscriber " , subcriber," from ",id);
-		sessions[subcriber].publishers=sessions[subcriber].publishers.filter(function(publisher) {return publisher !== id});
+		if(sessions[subcriber])sessions[subcriber].publishers=sessions[subcriber].publishers.filter(function(publisher) {return publisher !== id});
 		removeRecipient(id, subcriber);
-	//	pushEvent(subcriber, null, JSON.stringify(unpublishedEvent));
 		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
 		pokeScheduler();
 
