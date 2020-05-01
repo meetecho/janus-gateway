@@ -407,8 +407,13 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 	}
 
 	/* FIX the situation where we get an incorrect final frame */
-	max_width = max_prev_width;
-	max_height = max_prev_height;
+	if (max_width < max_prev_width) {
+		max_width = max_prev_width
+	}
+	
+	if (max_height == max_width && max_prev_height > 0) {
+		max_height = max_prev_height;
+	}
 
 	int mean_ts = min_ts_diff; /* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000 / (mean_ts > 0 ? mean_ts : 30));
