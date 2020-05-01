@@ -1,11 +1,11 @@
-// This is a simple example of an echo test application built in JavaScript,
+// This is a simple example of an videoroom test application built in JavaScript,
 // and conceived to be used in conjunction with the janus_duktape.c plugin.
-// Obviously, it must NOT be confused with the echotest.js in the html
+// Obviously, it must NOT be confused with the videoroomjs.js in the html
 // folder, which contains the JavaScript code for the web demo instead...
 
 // Example details
-name = "videoroomjs.js";
-janusServer = "webconf.yourcompany.net";
+var name = "videoroomjs.js";
+var janusServer = "webconf.yourcompany.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
@@ -38,7 +38,7 @@ Duktape.modSearch = function(id) {
 		return res;
 	}
 	throw new Error('Module not found: ' + id);
-}
+};
 
 // Let's import our ugly SDP parser now
 var sdpUtils = require("janus-sdp");
@@ -103,7 +103,7 @@ function createSession(id) {
 
 function destroySession(id) {
 	// A Janus plugin session has gone
-	console.log("Destroyed session:", id)
+	console.log("Destroyed session:", id);
 	publishers=publishers.filter(function(publisher) {return publisher !== id});
 	hangupMedia(id);
 	delete sessions[id];
@@ -112,7 +112,7 @@ function destroySession(id) {
 
 function querySession(id) {
 	// Return info on a session
-	console.log("Queried session:", id)
+	console.log("Queried session:", id);
 	var s = sessions[id];
 	if(!s)
 		return null;
@@ -122,7 +122,7 @@ function querySession(id) {
 function handleMessage(id, tr, msg, jsep) {
 	// Handle a message, synchronously or asynchronously, and return
 	// something accordingly: if it's the latter, we'll do a coroutine
-	console.log("Handling incoming message for session:", id,msg)
+	console.log("Handling incoming message for session:", id,msg);
 //	console.log( tr, msg, jsep)
 	var s = sessions[id];
 	if(!s) {
@@ -137,50 +137,55 @@ function handleMessage(id, tr, msg, jsep) {
 			videoroom: "response",
 			result: "ok"
 		};
-		//	if(res < 0)
-		//		response["result"] = "error";
-		// Synchronous response: return value is a JSON string
-		//{request: "join", room: 1234, ptype: "publisher", display: "dddd"}
-		console.log("Replay",response);
 		if(msgT.request==="join"){
 			if (msgT.ptype === "publisher"){
 				sessions[id].display=msgT.display;
 				var responseJoined = {
 					videoroom: "joined",
-					publishers:getOtherPublishers(id),
+					//publishers:getOtherPublishers(id),
 					room: 1234,
-					description: "Demo Room"
-				}
-				publishers.push(id)
+					description: "Demo Room",
+					id:id
+				};
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
+				publishers.forEach(function (publisher) {
+						var publishersArray = [sessions[id]];// getOtherPublishers(publisher);
+						event = { videoroom:"event", event: "newPublisher", publishers:publishersArray, newPublisher:id };
+						console.log("sending",publisher,event);
+						//pushEvent(publisher, null, JSON.stringify(event));
+						tasks.push({ id: publisher, tr: null , msg: event, jsep: null });
+				});
+				publishers.push(id);
 				pokeScheduler();
 				//	pushEvent(id, tr, JSON.stringify(response), null);
 				return 1;
-			}else if (msgT.ptype === "subscriber"){
-				console.log("subscriber addRecipient", msgT.feed,id)
+			}
+			else if (msgT.ptype === "subscriber"){
+				console.log("subscriber addRecipient", msgT.feed,id);
 				console.log("Join request ......",msgT);
 				if(sessions[msgT.feed])sessions[msgT.feed].subscribers.push(id);
 				if(sessions[id])sessions[id].publishers.push(msgT.feed);
 				addRecipient(msgT.feed,id);
 				sendPli(msgT.feed);
-				var sdpOffer =  sdpUtils.generateOffer({ audio: true, video: true})
+				var sdpOffer =  sdpUtils.generateOffer({ audio: true, video: true});
 				var responseJoined = {
 					videoroom: "attached",
 					room: 1234,
 					description: "Demo Room",
 					id:msgT.feed
-				}
+				};
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsepOffer: sdpOffer });
 				pokeScheduler();
-
-
 				return 1;
 			}
 		}
-
 		return JSON.stringify(response);
-	} else {
-		if(msgT.request==="configure"){
+	}
+	else{
+		if(msgT.request==="start"){
+			console.log("Replay to start no sdp !!!",response);
+			return JSON.stringify(response);
+		}else if(msgT.request==="configure"){
 			var res = processRequest(id, msgT);
 		}
 		// Decode the JSEP JSON string too
@@ -206,26 +211,20 @@ function setupMedia(id) {
 	console.log("WebRTC PeerConnection is up for session:", id);
 	// Attach the session's stream to itself (echo test)
 	//addRecipient(id, id);
-	console.log("sessions",sessions)
+	console.log("sessions",sessions);
 	var publishersArray = getOtherPublishers(0);
-	event = { event: "media", publishers:publishersArray, newPublisher:id };
-	sessions[id].isConnected=true
+	var event = { event: "media", publishers:publishersArray, newPublisher:id };
+	sessions[id].isConnected=true;
 	notifyEvent(id, JSON.stringify(event));
-	publishers.forEach(function (publisher) {
-		var publishersArray = getOtherPublishers(publisher);
-		event = { event: "media", publishers:publishersArray, newPublisher:id };
-		console.log("sending",publisher,event)
-		pushEvent(publisher, null, JSON.stringify(event));
-
-	});
-
 }
+
+
 
 function hangupMedia(id) {
 	// WebRTC not available anymore
 	console.log("WebRTC PeerConnection is down for session:", id);
 
-	unpublishedEvent = {videoroom: "event", room: 1234, unpublished: id ,janusServer:janusServer}
+	unpublishedEvent = {videoroom: "event", room: 1234, unpublished: id ,janusServer:janusServer};
 	notifyEvent(id, JSON.stringify(unpublishedEvent));
 	// Detach the stream from all subscribers
 	sessions[id].subscribers.forEach(function (subcriber) {
@@ -235,7 +234,7 @@ function hangupMedia(id) {
 		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
 		pokeScheduler();
 
-	})
+	});
 	// Clear some flags
 	var s = sessions[id];
 	if(s) {
@@ -341,8 +340,7 @@ function processAsync(task) {
 			console.log("Can't handle async message: no such session");
 			return;
 		}
-		var offer = sdpUtils.parse(jsep.sdp)
-
+		var offer = sdpUtils.parse(jsep.sdp);
 		//hardCode for now to do : to take out of massege ...
 		if(!sessions[id].audioCodec)sessions[id].audioCodec = "opus";
 		if(!sessions[id].videoCodec)sessions[id].videoCodec = "vp8";
@@ -353,7 +351,7 @@ function processAsync(task) {
 		console.log("Processing request:", msg);
 		processRequest(id, msg);
 		console.log("Pushing event:");
-		var event = { videoroom: "event", result: "ok"};
+		var event = { videoroom: "event", result: "ok",video_codec:sessions[id].videoCodec,audio_codec:sessions[id].audioCodec,};
 		console.log("  --", event);
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
@@ -379,14 +377,14 @@ function processAsync(task) {
 		pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
-
+/*
 function getObjectValues(obj){
 	arr=[];
 	Object.keys(obj).forEach(function (key) {
 		arr.push(obj[key]);
 	});
 	return arr;
-}
+}*/
 // Done
 console.log("Script loaded");
 function getRndInteger(min, max) {
@@ -394,10 +392,10 @@ function getRndInteger(min, max) {
 }
 
 function getOtherPublishers(id) {
-	var publishersData = []
-	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id})
+	var publishersData = [];
+	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id});
 	publishersRealevent.forEach(function (pubId) {
 		publishersData.push(sessions[pubId])
-	})
+	});
 	return publishersData;
 }
