@@ -4,12 +4,12 @@
 // folder, which contains the JavaScript code for the web demo instead...
 
 // Example details
-var name = "videoroomjs.js";
+var name = "duktape-videoroomjs";
 var janusServer = "webconf.yourcompany.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
-	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
+	return "janus_duktape:"+this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
 };
 // Let's add a prefix to all console.log lines
 var originalConsoleLog = console.log;
@@ -47,7 +47,10 @@ var sdpUtils = require("janus-sdp");
 var sessions = {};
 var tasks = [];
 var publishers = [];
-
+var rooms ={};
+// Objects Templates
+var  newSessionTemplate= { id: 0, janusServer: janusServer,room: 0 ,subscribers:[],publishers:[],isConnected:false } ;
+var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] }
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
 	return 12;
@@ -90,7 +93,7 @@ function destroy() {
 function createSession(id) {
 	// Keep track of a new session
 	console.log("Created new session:", id);
-	sessions[id] = { id: id, janusServer: janusServer ,subscribers:[],publishers:[],isConnected:false };
+	sessions[id] =  getSession(id);
 	// By default, we accept and relay all streams
 	configureMedium(id, "audio", "in", true);
 	configureMedium(id, "audio", "out", true);
@@ -103,8 +106,16 @@ function createSession(id) {
 
 function destroySession(id) {
 	// A Janus plugin session has gone
+	var session = getSession(id);
 	console.log("Destroyed session:", id);
-	publishers=publishers.filter(function(publisher) {return publisher !== id});
+
+	var room = getRoom(session.room);
+	room.publishers = room.publishers.filter(function(publisher) {return publisher !== id});
+	if(room.publishers.length===0){
+		delete rooms[roomId]
+	}else {
+		setRoom(room);
+	}
 	hangupMedia(id);
 	delete sessions[id];
 	return 0;
@@ -113,9 +124,7 @@ function destroySession(id) {
 function querySession(id) {
 	// Return info on a session
 	console.log("Queried session:", id);
-	var s = sessions[id];
-	if(!s)
-		return null;
+	var s = getSession(id);
 	return JSON.stringify(s);
 }
 
@@ -125,8 +134,10 @@ function handleMessage(id, tr, msg, jsep) {
 	console.log("Handling incoming message for session:", id,msg);
 //	console.log( tr, msg, jsep)
 	var s = sessions[id];
+	// need to change for external source when adding one
 	if(!s) {
 		// Session not found: return value is a negative integer
+
 		return -1;
 	}
 	// Decode the message JSON string
@@ -139,23 +150,29 @@ function handleMessage(id, tr, msg, jsep) {
 		};
 		if(msgT.request==="join"){
 			if (msgT.ptype === "publisher"){
-				sessions[id].display=msgT.display;
+				//must have room if we whant to start publish somewhere ...
+				if(!msgT.room)msgT.room=1234;
+				var room = getRoom(msgT.room)
+				var session = getSession(id)
+				session.display=msgT.display;
+				session.room = msgT.room;
 				var responseJoined = {
 					videoroom: "joined",
-					//publishers:getOtherPublishers(id),
-					room: 1234,
-					description: "Demo Room",
+					room: room.roomId,
+					description: room.roomName,
 					id:id
 				};
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
-				publishers.forEach(function (publisher) {
-						var publishersArray = [sessions[id]];// getOtherPublishers(publisher);
+				room.publishers.forEach(function (publisher) {
+						var publishersArray = [sessions[id]];
 						event = { videoroom:"event", event: "newPublisher", publishers:publishersArray, newPublisher:id };
 						console.log("sending",publisher,event);
 						//pushEvent(publisher, null, JSON.stringify(event));
 						tasks.push({ id: publisher, tr: null , msg: event, jsep: null });
 				});
-				publishers.push(id);
+				room.publishers.push(id);
+				setRoom(room);
+				setSession(session)
 				pokeScheduler();
 				//	pushEvent(id, tr, JSON.stringify(response), null);
 				return 1;
@@ -163,8 +180,12 @@ function handleMessage(id, tr, msg, jsep) {
 			else if (msgT.ptype === "subscriber"){
 				console.log("subscriber addRecipient", msgT.feed,id);
 				console.log("Join request ......",msgT);
-				if(sessions[msgT.feed])sessions[msgT.feed].subscribers.push(id);
-				if(sessions[id])sessions[id].publishers.push(msgT.feed);
+				var session = getSession(id);
+				var sessionFeed = getSession(msgT.feed);
+				sessionFeed.subscribers.push(id);
+				session.publishers.push(msgT.feed);
+				setSession(session);
+				setSession(sessionFeed);
 				addRecipient(msgT.feed,id);
 				sendPli(msgT.feed);
 				var sdpOffer =  sdpUtils.generateOffer({ audio: true, video: true});
@@ -215,14 +236,14 @@ function setupMedia(id) {
 	console.log("WebRTC PeerConnection is up for session:", id);
 	// Attach the session's stream to itself (echo test)
 	//addRecipient(id, id);
-	console.log("sessions",sessions);
-	var publishersArray = getOtherPublishers(0);
+	//console.log("sessions",sessions);
+	var session = getSession(id);
+	var publishersArray = getRoomPublishers(session.room);
 	var event = { event: "media", publishers:publishersArray, newPublisher:id };
-	sessions[id].isConnected=true;
+	session.isConnected=true;
+	setSession(session);
 	notifyEvent(id, JSON.stringify(event));
 }
-
-
 
 function hangupMedia(id) {
 	// WebRTC not available anymore
@@ -230,23 +251,25 @@ function hangupMedia(id) {
 
 	unpublishedEvent = {videoroom: "event", room: 1234, unpublished: id ,janusServer:janusServer};
 	notifyEvent(id, JSON.stringify(unpublishedEvent));
+	var session = getSession(id);
 	// Detach the stream from all subscribers
-	sessions[id].subscribers.forEach(function (subcriber) {
+	session.subscribers.forEach(function (subcriber) {
 	console.log("Removing subscriber " , subcriber," from ",id);
-		if(sessions[subcriber])sessions[subcriber].publishers=sessions[subcriber].publishers.filter(function(publisher) {return publisher !== id});
+		var sessionSubcriber = getSession(subcriber);
+		sessionSubcriber.publishers=sessionSubcriber.publishers.filter(function(publisher) {return publisher !== id});
 		removeRecipient(id, subcriber);
+		setSession(sessionSubcriber);
 		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
 		pokeScheduler();
 
 	});
 	// Clear some flags
-	var s = sessions[id];
-	if(s) {
-		s.audioCodec = null;
-		s.videoCodec = null;
-		s.subscribers=[];
-		s.isConnected =false
-	}
+
+	session.audioCodec = null;
+	session.videoCodec = null;
+	session.subscribers=[];
+	session.isConnected =false
+	setSession(session);
 }
 
 function incomingTextData(id, buf, len) {
@@ -337,17 +360,17 @@ function processAsync(task) {
 	var msg = task.msg;
 	var jsep = task.jsep;
 	var jsepOffer = task.jsepOffer;
+	var session = getSession(id);
 	if(jsep){
 		console.log("Handling async message for session:", id,task.msg);
-		var s = sessions[id];
-		if(!s) {
+		if(!session) {
 			console.log("Can't handle async message: no such session");
 			return;
 		}
 		var offer = sdpUtils.parse(jsep.sdp);
 		//hardCode for now to do : to take out of massege ...
-		if(!sessions[id].audioCodec)sessions[id].audioCodec = "opus";
-		if(!sessions[id].videoCodec)sessions[id].videoCodec = "vp8";
+		if(session.audioCodec)session.audioCodec = "opus";
+		if(session.videoCodec)session.videoCodec = "vp8";
 
 		console.log("Got offer:", offer);
 		var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true });
@@ -355,7 +378,7 @@ function processAsync(task) {
 		console.log("Processing request:", msg);
 		processRequest(id, msg);
 		console.log("Pushing event:");
-		var event = { videoroom: "event", result: "ok",video_codec:sessions[id].videoCodec,audio_codec:sessions[id].audioCodec,};
+		var event = { videoroom: "event", result: "ok",video_codec:session.videoCodec,audio_codec:session.audioCodec};
 		console.log("  --", event);
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
@@ -365,7 +388,7 @@ function processAsync(task) {
 		// notice how we pass the id now, meaning this event is tied to a specific session
 		event = { event: "processed", request: msg };
 		notifyEvent(id, JSON.stringify(event));
-
+		setSession(session)
 
 	}else if(jsepOffer){
 
@@ -373,9 +396,12 @@ function processAsync(task) {
 		pushEvent(id, tr, JSON.stringify(msg), JSON.stringify(jsepOfferReplay));
 	}
 	else{
-		if(!msg)msg={ videoroom: "event", result: "ok" ,publishers:getOtherPublishers(id)};
-		if(!sessions[id].private_Id)sessions[id].private_Id=getRndInteger(100000, 999999);
-		msg.private_Id=sessions[id].private_Id;
+		if(!msg)msg={ videoroom: "event", result: "ok" ,publishers:getRoomPublishersArray(session.room,id)};
+		if(!session.private_Id){
+			session.private_Id=getRndInteger(100000, 999999);
+			setSession(session)
+		}
+		msg.private_Id=session.private_Id;
 		console.log("Pushing Evente to ",id);
 		console.log("Event ",msg);
 		pushEvent(id, tr, JSON.stringify(msg), null);
@@ -394,7 +420,7 @@ console.log("Script loaded");
 function getRndInteger(min, max) {
 	return Math.floor(Math.random() * (max - min + 1) ) + min;
 }
-
+/*
 function getOtherPublishers(id) {
 	var publishersData = [];
 	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id});
@@ -402,4 +428,52 @@ function getOtherPublishers(id) {
 		publishersData.push(sessions[pubId])
 	});
 	return publishersData;
+}*/
+
+function getRoomPublishers(roomId,filterPublisher) {
+	var roomObj ={};
+	var room = getRoom(roomId);
+	room.publishers.forEach(function (publisher) {
+		if(publisher!==filterPublisher)roomObj[publisher]=sessions[publisher];
+	})
+	return roomObj
+}
+function getRoomPublishersArray(roomId,filterPublisher) {
+	var pulisherArray =[];
+	var room = getRoom(roomId);
+	room.publishers.forEach(function (publisher) {
+		if(publisher!==filterPublisher)pulisherArray.push(sessions[publisher]);
+	})
+	return pulisherArray
+}
+
+function getRoom(roomId) {
+	var room =  null ;
+	if(rooms[roomId]){
+		room=rooms[roomId];
+	}else {
+		// new room template
+		room =  newRoomTemplate ;
+		room.roomId=roomId
+		rooms[roomId] = room;
+	}
+	return room
+}
+function getSession(sessionID) {
+	var session =  null ;
+	if(sessions[sessionID]){
+		session=sessions[sessionID];
+	}else {
+		// new session template
+		session =  newSessionTemplate ;
+		session.id=sessionID;
+		sessions[sessionID] = session;
+	}
+	return session
+}
+function setSession(session) {
+	sessions[session.id]=session;
+}
+function setRoom(room) {
+	rooms[room.roomId]=room;
 }
