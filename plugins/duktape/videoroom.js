@@ -183,8 +183,12 @@ function handleMessage(id, tr, msg, jsep) {
 	}
 	else{
 		if(msgT.request==="start"){
-			console.log("Replay to start no sdp !!!",response);
-			return JSON.stringify(response);
+			var responseStart ={
+				videoroom: "response",
+				result: "ok"
+			};
+			console.log("Replay to start no sdp !!!",responseStart);
+			return JSON.stringify(responseStart);
 		}else if(msgT.request==="configure"){
 			var res = processRequest(id, msgT);
 		}
