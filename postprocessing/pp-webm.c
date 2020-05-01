@@ -289,12 +289,26 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						/* FIX the situation where we get an incorrect final frame */
 						if (vp8w > max_width)
 						{
-							max_prev_width = max_width;
+							if (max_width > 0)
+							{
+								max_prev_width = max_width;
+							} 
+							else
+							{
+								max_prev_width = vp8w;
+							}
 							max_width = vp8w;
 						}
 						if (vp8h > max_height)
 						{
-							max_prev_height = max_height;
+							if (max_width > 0)
+							{
+								max_prev_height = max_height;
+							} 
+							else
+							{
+								max_prev_height = vp8h;
+							}
 							max_height = vp8h;
 						}
 					}
