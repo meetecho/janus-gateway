@@ -195,17 +195,19 @@ static int janus_gelfevh_send(char *message) {
 	}
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
-		int out_bytes = send(sockfd, message, strlen(message), 0);
-		if(out_bytes < 0) {
-			JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
-			return -1;
-		} else if(out_bytes == 0) {
-			JANUS_LOG(LOG_WARN, "Connection has been unexpectedly closed by remote side: %s\n", strerror(errno));
-			close(sockfd);
-			return -1;
-		} else {
-			return 1;
-		}	
+		int out_bytes = 0;
+		int length = strlen(message);
+		char *buffer = message;
+		while(length > 0) {
+			out_bytes = send(sockfd, buffer, length + 1, 0);
+			if(out_bytes <= 0) {
+				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
+				close(sockfd);
+				return -1;
+			}
+			buffer += out_bytes;
+			length -= out_bytes;
+		}
 	} else {
 		/* UDP chunking with headers. Check if we need to compress the data */
 		int len = strlen(message);
