@@ -195,11 +195,11 @@ static int janus_gelfevh_send(char *message) {
 	}
 	if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 		/* TCP */
-		ssize_t out_bytes = 0;
-		size_t length = strlen(message);
-		const char *buffer = message;
+		int out_bytes = 0;
+		int length = strlen(message);
+		char *buffer = message;
 		while(length > 0) {
-			out_bytes = send(sockfd, buffer, length, 0);
+			out_bytes = send(sockfd, buffer, length + 1, 0);
 			if(out_bytes <= 0) {
 				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
 				close(sockfd);
@@ -208,8 +208,6 @@ static int janus_gelfevh_send(char *message) {
 			buffer += out_bytes;
 			length -= out_bytes;
 		}
-		return 0;
-
 	} else {
 		/* UDP chunking with headers. Check if we need to compress the data */
 		int len = strlen(message);
