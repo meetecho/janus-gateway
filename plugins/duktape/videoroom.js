@@ -9,7 +9,7 @@ var janusServer = "webconf.yourcompany.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
-	return "janus_duktape:"+this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
+	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
 };
 // Let's add a prefix to all console.log lines
 var originalConsoleLog = console.log;
@@ -48,9 +48,7 @@ var sessions = {};
 var tasks = [];
 var publishers = [];
 var rooms ={};
-// Objects Templates
-var  newSessionTemplate= { id: 0, janusServer: janusServer,room: 0 ,subscribers:[],publishers:[],isConnected:false } ;
-var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] }
+
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
 	return 12;
@@ -93,7 +91,7 @@ function destroy() {
 function createSession(id) {
 	// Keep track of a new session
 	console.log("Created new session:", id);
-	sessions[id] =  getSession(id);
+	var session =  getSession(id);
 	// By default, we accept and relay all streams
 	configureMedium(id, "audio", "in", true);
 	configureMedium(id, "audio", "out", true);
@@ -112,7 +110,7 @@ function destroySession(id) {
 	var room = getRoom(session.room);
 	room.publishers = room.publishers.filter(function(publisher) {return publisher !== id});
 	if(room.publishers.length===0){
-		delete rooms[roomId]
+		delete rooms[session.room]
 	}else {
 		setRoom(room);
 	}
@@ -164,7 +162,7 @@ function handleMessage(id, tr, msg, jsep) {
 				};
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
 				room.publishers.forEach(function (publisher) {
-						var publishersArray = [sessions[id]];
+						var publishersArray = [session];
 						event = { videoroom:"event", event: "newPublisher", publishers:publishersArray, newPublisher:id };
 						console.log("sending",publisher,event);
 						//pushEvent(publisher, null, JSON.stringify(event));
@@ -174,6 +172,8 @@ function handleMessage(id, tr, msg, jsep) {
 				setRoom(room);
 				setSession(session)
 				pokeScheduler();
+				console.log("rooms !!!!!!!!!!!",rooms);
+				console.log("sessions !!!!!!!!!!!",sessions);
 				//	pushEvent(id, tr, JSON.stringify(response), null);
 				return 1;
 			}
@@ -453,6 +453,7 @@ function getRoom(roomId) {
 		room=rooms[roomId];
 	}else {
 		// new room template
+		var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] }
 		room =  newRoomTemplate ;
 		room.roomId=roomId
 		rooms[roomId] = room;
@@ -464,15 +465,19 @@ function getSession(sessionID) {
 	if(sessions[sessionID]){
 		session=sessions[sessionID];
 	}else {
+		// Objects Templates
+		var  newSessionTemplate= { id: 0, janusServer: janusServer,room: 0 ,subscribers:[],publishers:[],isConnected:false } ;
 		// new session template
 		session =  newSessionTemplate ;
 		session.id=sessionID;
 		sessions[sessionID] = session;
+		console.log("New session was burn !!!! ",sessionID,session)
 	}
 	return session
 }
 function setSession(session) {
 	sessions[session.id]=session;
+	console.log("session was update  !!!! ",session.id,session)
 }
 function setRoom(room) {
 	rooms[room.roomId]=room;
