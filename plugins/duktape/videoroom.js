@@ -158,6 +158,7 @@ function handleMessage(id, tr, msg, jsep) {
 					videoroom: "joined",
 					room: room.roomId,
 					description: room.roomName,
+					publishers:getRoomPublishersArray(msgT.room,id),
 					id:id
 				};
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
@@ -210,9 +211,11 @@ function handleMessage(id, tr, msg, jsep) {
 			};
 			console.log("Replay to start no sdp !!!",responseStart);
 			return JSON.stringify(responseStart);
-		}else if(msgT.request==="configure"){
-			var res = processRequest(id, msgT);
 		}
+		//else if(msgT.request==="configure"){
+		//	msg  = processRequest(id, msgT);
+
+		//}
 		// Decode the JSEP JSON string too
 		var jsepT = JSON.parse(jsep);
 		// We'll need a coroutine here: the scheduler will resume it later
@@ -305,6 +308,10 @@ function processRequest(id, msg) {
 		console.log("Invalid request");
 		return -1;
 	}
+	var  session = getSession(id);
+	//hardCode for now to do : to take out of massege ...
+	if(!session.audioCodec)session.audioCodec = "opus";
+	if(!session.videoCodec)session.videoCodec = "vp8";
 	console.log("Lets Confihure the diffrents Media.. ..");
 
 	// We implement most of the existing EchoTest API messages, here
@@ -346,6 +353,7 @@ function processRequest(id, msg) {
 	} else if(msg["record"] === false) {
 		stopRecording(id, "audio", "video", "data");
 	}
+	setSession(session)
 	tasks.push({ id: id, tr: null, msg: null, jsep: null });
 	// Return explaining that this is will be handled asynchronously
 	pokeScheduler();
@@ -368,18 +376,14 @@ function processAsync(task) {
 			return;
 		}
 		var offer = sdpUtils.parse(jsep.sdp);
-		//hardCode for now to do : to take out of massege ...
-		if(session.audioCodec)session.audioCodec = "opus";
-		if(session.videoCodec)session.videoCodec = "vp8";
-
 		console.log("Got offer:", offer);
 		var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true });
 		console.log("Generated answer:", answer);
 		console.log("Processing request:", msg);
 		processRequest(id, msg);
 		console.log("Pushing event:");
-		var event = { videoroom: "event", result: "ok",video_codec:session.videoCodec,audio_codec:session.audioCodec};
-		console.log("  --", event);
+		var event = { videoroom: "event", result: "ok" ,video_codec:session.videoCodec,audio_codec:session.audioCodec};
+		console.log("  -- on answer sdp ...", event);
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
 
@@ -407,29 +411,16 @@ function processAsync(task) {
 		pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
-/*
-function getObjectValues(obj){
-	arr=[];
-	Object.keys(obj).forEach(function (key) {
-		arr.push(obj[key]);
-	});
-	return arr;
-}*/
+
 // Done
 console.log("Script loaded");
 function getRndInteger(min, max) {
 	return Math.floor(Math.random() * (max - min + 1) ) + min;
 }
-/*
-function getOtherPublishers(id) {
-	var publishersData = [];
-	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id});
-	publishersRealevent.forEach(function (pubId) {
-		publishersData.push(sessions[pubId])
-	});
-	return publishersData;
-}*/
 
+/**************************************************
+ sessions , publisher and room state manegment ...
+**************************************************/
 function getRoomPublishers(roomId,filterPublisher) {
 	var roomObj ={};
 	var room = getRoom(roomId);
@@ -446,7 +437,6 @@ function getRoomPublishersArray(roomId,filterPublisher) {
 	})
 	return pulisherArray
 }
-
 function getRoom(roomId) {
 	var room =  null ;
 	if(rooms[roomId]){
