@@ -38,8 +38,11 @@ admin: {
 }
 
 # Certificate and key to use for any secure WebSocket server, if enabled (and passphrase if needed).
+# You can also disable insecure protocols and ciphers by configuring the
+# 'ciphers' property accordingly (no limitation by default).
 certificates: {
 	#cert_pem = "/path/to/cert.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#ciphers = "DEFAULT"
 }
