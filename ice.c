@@ -1470,7 +1470,6 @@ void janus_ice_stream_destroy(janus_ice_stream *stream) {
 		while(g_hash_table_iter_next(&iter, NULL, &val)) {
 			GSource *source = val;
 			g_source_destroy(source);
-			g_source_unref(source);
 		}
 		g_hash_table_destroy(stream->pending_nacked_cleanup);
 	}
@@ -2694,8 +2693,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
 								np->source_id = g_source_attach(timeout_source, handle->mainctx);
-								g_hash_table_insert(stream->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
 								g_source_unref(timeout_source);
+								g_hash_table_insert(stream->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
 							}
 						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 2nd NACK\n",
