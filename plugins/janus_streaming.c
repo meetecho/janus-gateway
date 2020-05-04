@@ -4820,27 +4820,29 @@ done:
 			result = json_object();
 			json_object_set_new(result, "status", json_string(do_restart ? "updating" : "preparing"));
 			/* Add the user to the list of watchers and we're done */
-			mp->viewers = g_list_append(mp->viewers, session);
-			if(mp->streaming_source == janus_streaming_source_rtp) {
-				/* If we're using helper threads, add the viewer to one of those */
-				if(mp->helper_threads > 0) {
-					int viewers = -1;
-					janus_streaming_helper *helper = NULL;
-					GList *l = mp->threads;
-					while(l) {
-						janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
-						if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
-							viewers = ht->num_viewers;
-							helper = ht;
+			if(g_list_find(mp->viewers, session) == NULL) {
+				mp->viewers = g_list_append(mp->viewers, session);
+				if(mp->streaming_source == janus_streaming_source_rtp) {
+					/* If we're using helper threads, add the viewer to one of those */
+					if(mp->helper_threads > 0) {
+						int viewers = -1;
+						janus_streaming_helper *helper = NULL;
+						GList *l = mp->threads;
+						while(l) {
+							janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+							if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
+								viewers = ht->num_viewers;
+								helper = ht;
+							}
+							l = l->next;
 						}
-						l = l->next;
+						janus_mutex_lock(&helper->mutex);
+						helper->viewers = g_list_append(helper->viewers, session);
+						helper->num_viewers++;
+						janus_mutex_unlock(&helper->mutex);
+						JANUS_LOG(LOG_VERB, "Added viewer to helper thread #%d (%d viewers)\n",
+							helper->id, helper->num_viewers);
 					}
-					janus_mutex_lock(&helper->mutex);
-					helper->viewers = g_list_append(helper->viewers, session);
-					helper->num_viewers++;
-					janus_mutex_unlock(&helper->mutex);
-					JANUS_LOG(LOG_VERB, "Added viewer to helper thread #%d (%d viewers)\n",
-						helper->id, helper->num_viewers);
 				}
 			}
 			janus_mutex_unlock(&mp->mutex);
