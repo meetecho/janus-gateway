@@ -1864,6 +1864,29 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : webrtcError;
+
+		function stopTracksOnError(stream, callbacks) {
+			var originalErrorCallback = callbacks.error;
+			callbacks.error = function (err) {
+				try {
+					// Try a MediaStreamTrack.stop() for each track
+					var tracks = stream.getTracks();
+					for(var mst of tracks) {
+						Janus.log(mst);
+						if(mst)
+							mst.stop();
+					}
+				} catch(e) {
+					// Do nothing if this fails
+				}
+				if (typeof callbacks.error == "function") {
+					originalErrorCallback(err)
+				}
+			}
+
+			return callbacks;
+		}
+
 		var jsep = callbacks.jsep;
 		if(offer && jsep) {
 			Janus.error("Provided a JSEP to a createOffer");
@@ -2199,10 +2222,10 @@ function Janus(gatewayCallbacks) {
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
 										stream.addTrack(audioStream.getAudioTracks()[0]);
-										streamsDone(handleId, jsep, media, callbacks, stream);
+										streamsDone(handleId, jsep, media, stopTracksOnError(stream, callbacks), stream);
 									})
 								} else {
-									streamsDone(handleId, jsep, media, callbacks, stream);
+									streamsDone(handleId, jsep, media, stopTracksOnError(stream, callbacks), stream);
 								}
 							}, function (error) {
 								pluginHandle.consentDialog(false);
@@ -2217,7 +2240,7 @@ function Janus(gatewayCallbacks) {
 						if(error) {
 							callbacks.error(error);
 						} else {
-							streamsDone(handleId, jsep, media, callbacks, stream);
+							streamsDone(handleId, jsep, media, stopTracksOnError(stream, callbacks), stream);
 						}
 					}
 					function getScreenMedia(constraints, gsmCallback, useAudio) {
@@ -2373,7 +2396,7 @@ function Janus(gatewayCallbacks) {
 						navigator.mediaDevices.getUserMedia(gumConstraints)
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
-								streamsDone(handleId, jsep, media, callbacks, stream);
+								streamsDone(handleId, jsep, media, stopTracksOnError(stream, callbacks), stream);
 							}).catch(function(error) {
 								pluginHandle.consentDialog(false);
 								callbacks.error({code: error.code, name: error.name, message: error.message});
