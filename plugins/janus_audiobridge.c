@@ -67,7 +67,7 @@ room-<unique room ID>: {
  *
  * \c create , \c edit , \c destroy , \c exists, \c allowed, \c kick, \c list,
  * \c listparticipants , \c resetdecoder , \c rtp_forward, \c stop_rtp_forward ,
- * \c list_forwarders , \c play_file and \c stop_file are synchronous requests,
+ * \c list_forwarders , \c play_file , \c is_playing and \c stop_file are synchronous requests,
  * which means you'll get a response directly within the context of the
  * transaction. \c create allows you to create a new audio conference bridge
  * dynamically, as an alternative to using the configuration file; \c edit
@@ -87,8 +87,8 @@ room-<unique room ID>: {
  * of configured forwarders for a room can be retrieved using the
  * \c list_forwarders request; finally, \c play_file allows you to
  * reproduce an audio .opus file in a mix (e.g., to play an announcement
- * or some background music), while \c stop_file can be used to stop
- * such a playback instead.
+ * or some background music), \c is_playing checks if a specific file is
+ * still playing, while \c stop_file will stop such a playback instead.
  *
  * The \c join , \c configure , \c changeroom and \c leave requests
  * instead are all asynchronous, which means you'll get a notification
@@ -534,6 +534,29 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
+ * You can check whether a specific playback is still going on in a room,
+ * you can use the \c is_playing request, which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "is_playing",
+	"room" : <unique numeric ID of the room where the playback is taking place>,
+	"secret" : "<room password, if configured>",
+	"file_id" : "<unique string ID of the announcement>"
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ *
+\verbatim
+{
+	"audiobridge" : "success",
+	"room" : <unique numeric ID>,
+	"file_id" : "<unique string ID of the announcement>",
+	"playing" : <true|false>
+}
+\endverbatim
+ *
  * As anticipated, when not looping a playback will automatically stop and
  * self-destruct when it reaches the end of the audio file. In case you
  * want to stop a playback sooner than that, or want to stop a looped
@@ -946,7 +969,7 @@ static struct janus_json_parameter play_file_parameters[] = {
 	{"file_id", JSON_STRING, 0},
 	{"loop", JANUS_JSON_BOOL, 0}
 };
-static struct janus_json_parameter stop_file_parameters[] = {
+static struct janus_json_parameter checkstop_file_parameters[] = {
 	{"file_id", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
@@ -3947,6 +3970,95 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			g_free(file_id);
 		goto prepare_response;
 #endif
+	} else if(!strcasecmp(request_text, "is_playing")) {
+#ifndef HAVE_LIBOGG
+		JANUS_LOG(LOG_VERB, "Playing files unsupported in this instance\n");
+		error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Playing files unsupported in this instance");
+		goto prepare_response;
+#else
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto prepare_response;
+		JANUS_VALIDATE_JSON_OBJECT(root, checkstop_file_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		if(lock_playfile && admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto prepare_response;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto prepare_response;
+		}
+		/* Parse parameters */
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		/* Update room */
+		janus_mutex_lock(&rooms_mutex);
+		janus_audiobridge_room *audiobridge = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+		if(audiobridge == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
+			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_mutex_lock(&audiobridge->mutex);
+		if(audiobridge->destroyed) {
+			janus_mutex_unlock(&audiobridge->mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
+			error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
+			goto prepare_response;
+		}
+		/* Check if there is such an announcement */
+		json_t *id = json_object_get(root, "file_id");
+		char *file_id = (char *)json_string_value(id);
+		janus_audiobridge_participant *p = g_hash_table_lookup(audiobridge->anncs, file_id);
+		gboolean playing = (p && p->annc && p->annc->started);
+		janus_mutex_unlock(&audiobridge->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+
+		/* Done, prepare response */
+		response = json_object();
+		json_object_set_new(response, "audiobridge", json_string("success"));
+		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
+		json_object_set_new(response, "file_id", json_string(file_id));
+		json_object_set_new(response, "playing", playing ? json_true() : json_false());
+		goto prepare_response;
+#endif
 	} else if(!strcasecmp(request_text, "stop_file")) {
 #ifndef HAVE_LIBOGG
 		JANUS_LOG(LOG_VERB, "Playing files unsupported in this instance\n");
@@ -3965,7 +4077,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		if(error_code != 0)
 			goto prepare_response;
-		JANUS_VALIDATE_JSON_OBJECT(root, stop_file_parameters,
+		JANUS_VALIDATE_JSON_OBJECT(root, checkstop_file_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
