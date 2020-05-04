@@ -240,6 +240,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 		"secret" : "<secret of mountpoint; only available if a valid secret was provided>",
 		"pin" : "<PIN to access mountpoint; only available if a valid secret was provided>",
 		"is_private" : <true|false, depending on whether the mountpoint is listable; only available if a valid secret was provided>,
+		"viewers" : <count of current subscribers, if any>,
 		"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
 		"audio" : <true, only present if the mountpoint contains audio>,
 		"audiopt" : <audio payload type, only present if configured and the mountpoint contains audio>,
@@ -2454,6 +2455,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		if(admin && mp->is_private)
 			json_object_set_new(ml, "is_private", json_true());
 		json_object_set_new(ml, "enabled", mp->enabled ? json_true() : json_false());
+		if(admin)
+			json_object_set_new(ml, "viewers", json_integer(mp->viewers ? g_list_length(mp->viewers) : 0));
 		if(mp->audio) {
 			json_object_set_new(ml, "audio", json_true());
 			if(mp->codecs.audio_pt != -1)
