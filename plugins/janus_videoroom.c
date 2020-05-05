@@ -4805,8 +4805,9 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                           gstr->isvCapsSet = FALSE;
                           gstr->pipeline = gst_pipeline_new("pipeline");
                           char udpline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
-                          g_snprintf(udpline, JANUS_RTP_FORWARD_STRING_SIZE, "udp://127.0.0.1:%d",rtpforwardport);
-                          g_object_set(gstr->wvsource, "uri", udpline, NULL);
+                          //g_snprintf(udpline, JANUS_RTP_FORWARD_STRING_SIZE, "udp://127.0.0.1:%d",rtpforwardport);
+                          //g_object_set(gstr->wvsource, "uri", udpline, NULL);
+                          g_object_set(gstr->wvsource, "port", rtpforwardport, NULL);
                           g_object_set(gstr->wvsink, "name", "sink", NULL);
                           char  rtspline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
                           if(rtsp_url != NULL) {
@@ -5045,8 +5046,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
 					(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
 				size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
+				//JANUS_LOG(LOG_ERR, "SENDTO-1 %d port:%d\n",len,ntohs(rtp_forward->serv_addr.sin_port));
 				if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
-					JANUS_LOG(LOG_HUGE, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
+					JANUS_LOG(LOG_ERR, "Error forwarding RTP %s packet for %s... %s (len=%d)...\n",
 						(video ? "video" : "audio"), participant->display, strerror(errno), len);
 				}
 			} else {
@@ -5315,7 +5317,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 			struct sockaddr *address = (rtp_forward->serv_addr.sin_family == AF_INET ?
 				(struct sockaddr *)&rtp_forward->serv_addr : (struct sockaddr *)&rtp_forward->serv_addr6);
 			size_t addrlen = (rtp_forward->serv_addr.sin_family == AF_INET ? sizeof(rtp_forward->serv_addr) : sizeof(rtp_forward->serv_addr6));
-			if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
+		if(sendto(participant->udp_sock, buf, len, 0, address, addrlen) < 0) {
 				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
 					participant->display, strerror(errno), len);
 			}
