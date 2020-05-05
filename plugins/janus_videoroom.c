@@ -4804,9 +4804,6 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                           gstr->vfiltercaps = NULL;
                           gstr->isvCapsSet = FALSE;
                           gstr->pipeline = gst_pipeline_new("pipeline");
-                          char udpline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
-                          //g_snprintf(udpline, JANUS_RTP_FORWARD_STRING_SIZE, "udp://127.0.0.1:%d",rtpforwardport);
-                          //g_object_set(gstr->wvsource, "uri", udpline, NULL);
                           g_object_set(gstr->wvsource, "port", rtpforwardport, NULL);
                           g_object_set(gstr->wvsink, "name", "sink", NULL);
                           char  rtspline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
