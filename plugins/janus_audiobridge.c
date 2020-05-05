@@ -6126,13 +6126,13 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_mutex_unlock_nodebug(&audiobridge->mutex);
 			/* No participant and RTP forwarders, do nothing */
 			if(prev_count > 0) {
-				JANUS_LOG(LOG_VERB, "Last user/forwarder/file just left room %s, going idle...\n", audiobridge->room_id_str);
+				JANUS_LOG(LOG_WARN, "Last user/forwarder/file just left room %s, going idle...\n", audiobridge->room_id_str);
 				prev_count = 0;
 			}
 			continue;
 		}
 		if(prev_count == 0) {
-			JANUS_LOG(LOG_VERB, "First user/forwarder/file just joined room %s, waking it up...\n", audiobridge->room_id_str);
+			JANUS_LOG(LOG_WARN, "First user/forwarder/file just joined room %s, waking it up...\n", audiobridge->room_id_str);
 		}
 		prev_count = count+rf_count+pf_count;
 		/* Update RTP header information */
@@ -6348,7 +6348,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		if(g_hash_table_size(audiobridge->rtp_forwarders) > 0 && audiobridge->rtp_encoder) {
 			/* If the room is empty, check if there's any RTP forwarder with an "always on" option */
 			gboolean go_on = FALSE;
-			if(count == 0) {
+			if(count == 0 && pf_count == 0) {
 				GHashTableIter iter;
 				gpointer value;
 				g_hash_table_iter_init(&iter, audiobridge->rtp_forwarders);
@@ -6374,7 +6374,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				while(audiobridge->rtp_udp_sock > 0 && g_hash_table_iter_next(&iter, &key, &value)) {
 					guint32 stream_id = GPOINTER_TO_UINT(key);
 					janus_audiobridge_rtp_forwarder *forwarder = (janus_audiobridge_rtp_forwarder *)value;
-					if(count == 0 && !forwarder->always_on)
+					if(count == 0 && pf_count == 0 && !forwarder->always_on)
 						continue;
 					if(forwarder->codec == JANUS_AUDIOCODEC_OPUS && !have_opus) {
 						/* This is an Opus forwarder and we don't have a version for that yet */
