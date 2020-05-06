@@ -599,7 +599,7 @@ static void janus_request_unref(janus_request *request) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
-	if(session_timeout < 1)		/* Session timeouts are disabled */
+	if(session_timeout < 1 && reclaim_session_timeout < 1)		/* Session timeouts are disabled */
 		return G_SOURCE_CONTINUE;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -612,7 +612,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if ((now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+			if ((session_timeout > 0 && (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC) &&
 					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) ||
 					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
 							!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1))) {
