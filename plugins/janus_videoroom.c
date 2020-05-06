@@ -796,7 +796,7 @@ room-<unique room ID>: {
 	"request" : "enable_recording",
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
-	"record" : <true|false, whether this publisher should be recorded or not; optional>,
+	"record" : <true|false, whether this room should be recorded or not>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 }
 \endverbatim *
