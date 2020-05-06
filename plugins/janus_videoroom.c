@@ -797,7 +797,6 @@ room-<unique room ID>: {
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
 	"record" : <true|false, whether this room should be recorded or not>,
-	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 }
 \endverbatim *
  *
@@ -1263,8 +1262,7 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"restart", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter record_parameters[] = {
-	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED},
-	{"filename", JSON_STRING, 0}
+	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -4415,7 +4413,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(error_code != 0)
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
-		json_t *recfile = json_object_get(root, "filename");
 		int recording_active = json_is_true(record);
 		JANUS_LOG(LOG_VERB, "Enable Recording : %d \n", (recording_active ? 1 : 0));
 		/* Lookup room */
@@ -4442,10 +4439,6 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				gboolean prev_recording_active = participant->recording_active;
 				participant->recording_active = recording_active;
 				JANUS_LOG(LOG_VERB, "Setting record property: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_active ? "true" : "false", participant->room_id, participant->user_id);
-				if(recfile) {
-					participant->recording_base = g_strdup(json_string_value(recfile));
-					JANUS_LOG(LOG_VERB, "Setting recording basename: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_base, participant->room_id, participant->user_id);
-				}
 				/* Do we need to do something with the recordings right now? */
 				if(participant->recording_active != prev_recording_active) {
 					/* Something changed */
