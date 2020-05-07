@@ -560,6 +560,9 @@ endif
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
 bin_PROGRAMS += mjr2pcap
+if ENABLE_PCAP2MJR
+bin_PROGRAMS += pcap2mjr
+endif
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-cmdline.c \
@@ -622,8 +625,44 @@ mjr2pcap_LDADD = \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
 
+if ENABLE_PCAP2MJR
+pcap2mjr_SOURCES = \
+	postprocessing/p2m-cmdline.c \
+	postprocessing/p2m-cmdline.h \
+	postprocessing/pp-rtp.h \
+	postprocessing/pcap2mjr.c \
+	log.c \
+	utils.c \
+	$(NULL)
+
+pcap2mjr_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(POST_PROCESSING_CFLAGS) \
+	$(PCAP_CFLAGS) \
+	$(NULL)
+
+pcap2mjr_LDADD = \
+	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
+	$(PCAP_LIBS) \
+	$(NULL)
+
+BUILT_SOURCES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
+
+postprocessing/p2m-cmdline.h: postprocessing/p2m-cmdline.c
+
+postprocessing/p2m-cmdline.c: postprocessing/pcap2mjr.c
+	gengetopt --set-package="pcap2mjr" --set-version="$(VERSION)" -F postprocessing/p2m-cmdline < postprocessing/pcap2mjr.ggo
+
+EXTRA_DIST += postprocessing/pcap2mjr.ggo
+CLEANFILES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
+endif
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
 dist_man1_MANS += postprocessing/mjr2pcap.1
+if ENABLE_PCAP2MJR
+dist_man1_MANS += postprocessing/pcap2mjr.1
+endif
 
 endif
 

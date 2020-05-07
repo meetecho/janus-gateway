@@ -1054,7 +1054,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets API
  *
- * Since version \c 0.0.6, there are three different ways to interact with a
+ * Since version \c 0.0.6, there are different ways to interact with a
  * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref apimqtt, \ref apinanomsg
  * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
@@ -1693,11 +1693,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * event, as Janus would never be receiving media, but only send it.
  *
  * \section WS WebSockets Interface
- * In recent version of Janus we added support for WebSockets to control
- * the server, along the already existing (and still the default) REST
- * API. In fact, while WebSockets still present some more issues in terms
- * of reachability when compared to plain HTTP, they definitely provide
- * a more efficient means for implementing a bidirectional communication.
+ * WebSockets provide a more efficient means for implementing a bidirectional communication.
  * This is especially useful if you're wrapping the Janus API on your
  * servers, as it allows you to avoid all the noise and overhead introduced
  * by several concurrent HTTP transactions and long polls by relying on
@@ -2084,6 +2080,11 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section signed HMAC-Signed token authentication
+ *
+ * <div class="well"><b>NOTE WELL:</b> At the time of writing, HMAC-Signed
+ * tokens are ONLY available for the VideoRoom plugin. If you need authentication
+ * for other plugins, you should use the \ref token instead.</div>
+ *
  * Simple token based authentication requires the application host to
  * continuously update the Janus instance on permission changes.
  * Since Janus stores the tokens in memory, it can be problematic to guarantee
@@ -3575,6 +3576,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
  * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Janus WebRTC server Docker Image for Media Streaming Expert User</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
+ * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
+ *		<td>Docker image for the Janus WebRTC Server</td>
  * </tr>
  * </table>
  * <br/>
