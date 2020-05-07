@@ -300,8 +300,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
-	if(janus_get_dscp_tos() > 0)
-		json_object_set_new(info, "dscp-tos", json_integer(janus_get_dscp_tos()));
+	if(janus_get_dscp() > 0)
+		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -3534,8 +3534,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
-			if((waiting % 500) == 0) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+			if(waiting && (waiting % 5000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Waited 5s for candidates, that's way too much... going on with what we have (WebRTC setup might fail)\n", ice_handle->handle_id);
+				break;
+			}
+			if(waiting && (waiting % 1000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s for candidates-done callback... (slow gathering, are you using STUN or TURN for Janus too, instead of just for users? Consider enabling full-trickle instead)\n",
+					ice_handle->handle_id, (waiting == 1000 ? "Waiting" : "Still waiting"));
 			}
 			waiting++;
 			g_usleep(1000);
@@ -4640,13 +4645,15 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Is there any DSCP TOS to apply? */
-	item = janus_config_get(config, config_media, janus_config_type_item, "dscp_tos");
+	item = janus_config_get(config, config_media, janus_config_type_item, "dscp");
+	if(!item || !item->value)	/* Just for backwards compatibility */
+		item = janus_config_get(config, config_media, janus_config_type_item, "dscp_tos");
 	if(item && item->value) {
-		int tos = atoi(item->value);
-		if(tos < 0) {
-			JANUS_LOG(LOG_WARN, "Ignoring dscp_tos value as it's not a positive integer\n");
+		int dscp = atoi(item->value);
+		if(dscp < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring dscp value as it's not a positive integer\n");
 		} else {
-			janus_set_dscp_tos(tos);
+			janus_set_dscp(dscp);
 		}
 	}
 

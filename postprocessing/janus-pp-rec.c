@@ -690,9 +690,9 @@ int main(int argc, char *argv[])
 				ntohs(ext->type), ntohs(ext->length));
 			skip += 4 + ntohs(ext->length)*4;
 			if(audio_level_extmap_id > 0)
-				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len > 24 ? 24 : len, audio_level_extmap_id, &audiolevel);
+				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
 			if(video_orient_extmap_id > 0) {
-				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len > 24 ? 24 : len, video_orient_extmap_id, &rotation);
+				janus_pp_rtp_header_extension_parse_video_orientation(prebuffer, len, video_orient_extmap_id, &rotation);
 				if(rotation != -1 && rotation != last_rotation) {
 					last_rotation = rotation;
 					rotated++;

@@ -451,16 +451,16 @@ uint janus_get_twcc_period(void) {
 	return twcc_period;
 }
 
-/* DSCP Type of Service, which we can set via libnice: it's disabled by default */
-static int dscp_tos = 0;
-void janus_set_dscp_tos(int tos) {
-	dscp_tos = tos;
-	if(dscp_tos > 0) {
-		JANUS_LOG(LOG_VERB, "Setting DSCP Type of Service to %ds\n", dscp_tos);
+/* DSCP value, which we can set via libnice: it's disabled by default */
+static int dscp_ef = 0;
+void janus_set_dscp(int dscp) {
+	dscp_ef = dscp;
+	if(dscp_ef > 0) {
+		JANUS_LOG(LOG_VERB, "Setting DSCP EF to %d\n", dscp_ef);
 	}
 }
-int janus_get_dscp_tos(void) {
-	return dscp_tos;
+int janus_get_dscp(void) {
+	return dscp_ef;
 }
 
 
@@ -1299,9 +1299,6 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 		if(handle->mainloop != NULL) {
-			if(handle->stream_id > 0) {
-				nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop), NULL, NULL);
-			}
 			if(static_event_loops == 0 && handle->mainloop != NULL && g_main_loop_is_running(handle->mainloop)) {
 				g_main_loop_quit(handle->mainloop);
 			}
@@ -1389,10 +1386,6 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Hanging up PeerConnection because of a %s\n",
 		handle->handle_id, reason);
 	handle->hangup_reason = reason;
-	/* Stop incoming traffic */
-	if(handle->mainloop != NULL && handle->stream_id > 0) {
-		nice_agent_attach_recv(handle->agent, handle->stream_id, 1, g_main_loop_get_context(handle->mainloop), NULL, NULL);
-	}
 	/* Let's message the loop, we'll notify the plugin from there */
 	if(handle->queued_packets != NULL) {
 #if GLIB_CHECK_VERSION(2, 46, 0)
@@ -1477,7 +1470,6 @@ void janus_ice_stream_destroy(janus_ice_stream *stream) {
 		while(g_hash_table_iter_next(&iter, NULL, &val)) {
 			GSource *source = val;
 			g_source_destroy(source);
-			g_source_unref(source);
 		}
 		g_hash_table_destroy(stream->pending_nacked_cleanup);
 	}
@@ -2238,6 +2230,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still waiting for the DTLS stack for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forced to stop it here...\n", handle->handle_id);
+		return;
+	}
 	/* What is this? */
 	if(janus_is_dtls(buf) || (!janus_is_rtp(buf, len) && !janus_is_rtcp(buf, len))) {
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
@@ -2697,8 +2693,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								GSource *timeout_source = g_timeout_source_new_seconds(5);
 								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
 								np->source_id = g_source_attach(timeout_source, handle->mainctx);
-								g_hash_table_insert(stream->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
 								g_source_unref(timeout_source);
+								g_hash_table_insert(stream->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
 							}
 						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16" (%s stream #%d), sending 2nd NACK\n",
@@ -3461,9 +3457,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	/* Now create an ICE stream for all the media we'll handle */
 	handle->stream_id = nice_agent_add_stream(handle->agent, 1);
-	if(dscp_tos > 0) {
-		/* A DSCP Type of Service was configured, pass it to libnice */
-		nice_agent_set_stream_tos(handle->agent, handle->stream_id, dscp_tos);
+	if(dscp_ef > 0) {
+		/* A DSCP value was configured, shift it and pass it to libnice as a TOS */
+		nice_agent_set_stream_tos(handle->agent, handle->stream_id, dscp_ef << 2);
 	}
 	janus_ice_stream *stream = g_malloc0(sizeof(janus_ice_stream));
 	janus_refcount_init(&stream->ref, janus_ice_stream_free);
@@ -3565,6 +3561,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #else
 		g_async_queue_push(handle->queued_packets, &janus_ice_start_gathering);
 #endif
+		g_main_context_wakeup(handle->mainctx);
 	}
 	return 0;
 }
@@ -3991,7 +3988,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 	janus_ice_component *component = stream ? stream->component : NULL;
 	if(pkt == &janus_ice_start_gathering) {
 		/* Start gathering candidates */
-		if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
+		if(handle->agent == NULL) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] No ICE agent, not going to gather candidates...\n", handle->handle_id);
+		} else if(!nice_agent_gather_candidates(handle->agent, handle->stream_id)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates...\n", handle->handle_id);
 			janus_ice_webrtc_hangup(handle, "ICE gathering error");
 		}
