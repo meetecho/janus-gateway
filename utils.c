@@ -831,7 +831,17 @@ gboolean janus_av1_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h265_is_keyframe(const char *buffer, int len) {
-	/* TODO Just a placeholder: always returns FALSE, for now */
+	if(!buffer || len < 2)
+		return FALSE;
+	/* Parse the NAL unit */
+	uint16_t unit = 0;
+	memcpy(&unit, buffer, sizeof(uint16_t));
+	unit = ntohs(unit);
+	uint8_t type = (unit & 0x7E00) >> 9;
+	if(type == 32 || type == 33) {
+		/* FIXME We return TRUE for VPS and SPS */
+		return TRUE;
+	}
 	return FALSE;
 }
 

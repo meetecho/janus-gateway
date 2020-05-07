@@ -570,6 +570,10 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-g722.h \
 	postprocessing/pp-h264.c \
 	postprocessing/pp-h264.h \
+	postprocessing/pp-av1.c \
+	postprocessing/pp-av1.h \
+	postprocessing/pp-h265.c \
+	postprocessing/pp-h265.h \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \
