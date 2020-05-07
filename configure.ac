@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.9.4],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.9.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=94
+JANUS_VERSION=95
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.9.4"
+JANUS_VERSION_STRING="0.9.5"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -903,8 +903,21 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          ])
       ])
 
+PKG_CHECK_MODULES([PCAP],
+                  [libpcap],
+                  [
+                   AC_DEFINE(HAVE_LIBPCAP)
+                   enable_pcap2mjr=yes
+                  ],
+                  [
+                   enable_pcap2mjr=no
+                  ])
+AC_SUBST([PCAP_CFLAGS])
+AC_SUBST([PCAP_LIBS])
+
 AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
+AM_CONDITIONAL([ENABLE_PCAP2MJR], [test "x$enable_pcap2mjr" = "xyes"])
 
 AC_CONFIG_FILES([
   Makefile

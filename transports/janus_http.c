@@ -164,9 +164,9 @@ typedef struct janus_http_session {
 	janus_refcount ref;			/* Reference counter for this session */
 } janus_http_session;
 /* We keep track of created sessions as we handle long polls */
-const char *keepalive_id = "keepalive";
-GHashTable *sessions = NULL;
-janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+static const char *keepalive_id = "keepalive";
+static GHashTable *sessions = NULL;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_http_session_destroy(janus_http_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -271,8 +271,8 @@ static char *admin_ws_path = NULL;
 static char *allow_origin = NULL;
 
 /* REST and Admin/Monitor ACL list */
-GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
-janus_mutex access_list_mutex;
+static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
+static janus_mutex access_list_mutex;
 static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
@@ -1229,6 +1229,8 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 	}
 	/* Parse request */
 	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
+		if(firstround)
+			return ret;
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
@@ -1615,12 +1617,10 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 	}
 	/* Parse request */
 	if(strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
-		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
-		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		janus_http_add_cors_headers(msg, response);
-		ret = MHD_queue_response(connection, MHD_HTTP_NOT_IMPLEMENTED, response);
-		MHD_destroy_response(response);
-		return ret;
+		if(firstround)
+			return ret;
+		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
+		goto done;
 	}
 	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
@@ -1942,8 +1942,7 @@ static int janus_http_return_success(janus_transport_session *ts, char *payload)
 	}
 	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection) {
-		if(payload)
-			free(payload);
+		g_free(payload);
 		return MHD_NO;
 	}
 	janus_refcount_increase(&msg->ref);
@@ -2002,6 +2001,7 @@ void janus_http_timeout(janus_transport_session *ts, janus_http_session *session
 	janus_http_msg *request = (janus_http_msg *)ts->transport_p;
 	if(!g_atomic_int_compare_and_exchange(&request->timeout_flag, 1, 0)) {
 		request->timeout = NULL;
+		janus_refcount_decrease(&ts->ref);
 		return;
 	}
 	request->timeout = NULL;

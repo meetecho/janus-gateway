@@ -790,9 +790,9 @@ static void janus_textroom_message_free(janus_textroom_message *msg) {
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
 		"s=Janus TextRoom plugin\r\n" \
 		"t=0 0\r\n" \
-		"m=application 1 DTLS/SCTP 5000\r\n" \
+		"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
-		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
+		"a=sctp-port:5000\r\n"
 
 
 /* Error codes */
