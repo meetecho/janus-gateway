@@ -40,7 +40,9 @@
 
 #include <glib.h>
 #include <jansson.h>
+
 #include <pcap.h>
+#include <pcap/sll.h>
 
 #include "../debug.h"
 #include "p2m-cmdline.h"
@@ -173,6 +175,13 @@ int main(int argc, char *argv[])
 		cmdline_parser_free(&args_info);
 		exit(1);
 	}
+	int link = pcap_datalink(pcap);
+	if(link != DLT_LINUX_SLL && link != DLT_EN10MB) {
+		JANUS_LOG(LOG_ERR, "Unsupported link type %d (%s) in capture\n",
+			link, pcap_datalink_val_to_name(link));
+		cmdline_parser_free(&args_info);
+		exit(1);
+	}
 
 	/* Create the target file */
 	FILE *outfile = fopen(destination, "wb");
@@ -226,15 +235,27 @@ int main(int argc, char *argv[])
 		if(start_ts == 0)
 			start_ts = pkt_ts;
 		/* Traverse all the headers */
-		pcap2mjr_ethernet_header *eth = (pcap2mjr_ethernet_header *)temp;
-		if(ntohs(eth->type) != 0x0800) {
-			if(show_warnings) {
-				JANUS_LOG(LOG_WARN, "Not an IPv4 packet, skipping packet #%"SCNu32"\n", count);
+		if(link == DLT_EN10MB) {
+			pcap2mjr_ethernet_header *eth = (pcap2mjr_ethernet_header *)temp;
+			if(ntohs(eth->type) != 0x0800) {
+				if(show_warnings) {
+					JANUS_LOG(LOG_WARN, "Not an IPv4 packet, skipping packet #%"SCNu32"\n", count);
+				}
+				continue;
 			}
-			continue;
+			temp += sizeof(pcap2mjr_ethernet_header);
+			pkt_size -= sizeof(pcap2mjr_ethernet_header);
+		} else {
+			struct sll_header *lcc = (struct sll_header *)temp;
+			if(ntohs(lcc->sll_protocol) != 0x0800) {
+				if(show_warnings) {
+					JANUS_LOG(LOG_WARN, "Not an IPv4 packet, skipping packet #%"SCNu32"\n", count);
+				}
+				continue;
+			}
+			temp += sizeof(struct sll_header);
+			pkt_size -= sizeof(struct sll_header);
 		}
-		temp += sizeof(pcap2mjr_ethernet_header);
-		pkt_size -= sizeof(pcap2mjr_ethernet_header);
 		pcap2mjr_ip_header *ip = (pcap2mjr_ip_header *)temp;
 		if(ip->protocol != 17) {
 			if(show_warnings) {
