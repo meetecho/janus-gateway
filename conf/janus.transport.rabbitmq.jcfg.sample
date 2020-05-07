@@ -27,6 +27,7 @@ general: {
 	to_janus = "to-janus"				# Name of the queue for incoming messages
 	from_janus = "from-janus"			# Name of the queue for outgoing messages
 	#janus_exchange = "janus-exchange"	# Exchange for outgoing messages, using default if not provided
+	#janus_exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
 	#ssl_enabled = false					# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled
 	#ssl_verify_hostname = true			# Whether hostname verification must be enabled

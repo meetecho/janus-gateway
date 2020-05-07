@@ -109,7 +109,6 @@ static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
-/* FIXME: Should it be configurable? */
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
 
 /* JSON serialization options */
@@ -154,7 +153,7 @@ static janus_transport_session *rmq_session = NULL;
 /* Global properties */
 static char *rmqhost = NULL, *vhost = NULL, *username = NULL, *password = NULL,
 	*ssl_cacert_file = NULL, *ssl_cert_file = NULL, *ssl_key_file = NULL,
-	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL;
+	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL, *janus_exchange_type = NULL;
 
 
 /* Transport implementation */
@@ -301,6 +300,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
+		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange_type");
+		if(!item || !item->value) {
+			janus_exchange_type = (char *)JANUS_RABBITMQ_EXCHANGE_TYPE;
+		} else {
+			janus_exchange_type = g_strdup(item->value);
+		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_INFO, "Missing name of outgoing exchange for RabbitMQ integration, using default\n");
@@ -308,9 +313,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			janus_exchange = g_strdup(item->value);
 		}
 		if (janus_exchange == NULL) {
-			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
+			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)  exchange_type:%s \n", rmqhost, rmqport, to_janus, from_janus, janus_exchange_type);
 		} else {
-			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s) exch: (%s)\n", rmqhost, rmqport, to_janus, from_janus, janus_exchange);
+			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s) exch: (%s) exchange_type:%s \n", rmqhost, rmqport, to_janus, from_janus, janus_exchange, janus_exchange_type);
 		}
 		rmq_janus_api_enabled = TRUE;
 	}
@@ -414,7 +419,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(janus_exchange != NULL) {
 			JANUS_LOG(LOG_VERB, "Declaring exchange...\n");
 			rmq_client->janus_exchange = amqp_cstring_bytes(janus_exchange);
-			amqp_exchange_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange, amqp_cstring_bytes(JANUS_RABBITMQ_EXCHANGE_TYPE), 0, 0, 0, 0, amqp_empty_table);
+			amqp_exchange_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange, amqp_cstring_bytes(janus_exchange_type), 0, 0, 0, 0, amqp_empty_table);
 			result = amqp_get_rpc_reply(rmq_client->rmq_conn);
 			if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 				JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
