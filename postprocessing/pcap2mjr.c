@@ -36,6 +36,9 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <netinet/udp.h>
 #include <errno.h>
 
 #include <glib.h>
@@ -71,34 +74,6 @@ typedef struct pcap2mjr_ethernet_header {
 	uint8_t src[6];
 	uint16_t type;
 } pcap2mjr_ethernet_header;
-
-/* IP header */
-typedef struct pcap2mjr_ip_header {
-#if __BYTE_ORDER == __BIG_ENDIAN
-	uint8_t version:4;
-	uint8_t hlen:4;
-#elif __BYTE_ORDER == __LITTLE_ENDIAN
-	uint8_t hlen:4;
-	uint8_t version:4;
-#endif
-	uint8_t tos;
-	uint16_t tlen;
-	uint16_t id;
-	uint16_t flags;
-	uint8_t ttl;
-	uint8_t protocol;
-	uint16_t csum;
-	uint8_t src[4];
-	uint8_t dst[4];
-} pcap2mjr_ip_header;
-
-/* UDP header */
-typedef struct pcap2mjr_udp_header {
-	uint16_t srcport;
-	uint16_t dstport;
-	uint16_t len;
-	uint16_t csum;
-} pcap2mjr_udp_header;
 
 
 /* Signal handler */
@@ -210,8 +185,8 @@ int main(int argc, char *argv[])
     const u_char *buffer = NULL, *temp = NULL;
 	uint32_t count = 0, written = 0, pssrc = 0;
     int ret = 0;
-    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(pcap2mjr_ip_header) +
-		sizeof(pcap2mjr_udp_header) + 12, pkt_size = 0;
+    size_t min_size = sizeof(pcap2mjr_ethernet_header) + sizeof(struct iphdr) +
+		sizeof(struct udphdr) + 12, pkt_size = 0;
 	gboolean header_written = FALSE;
 	gint64 start_ts = 0, pkt_ts = 0;
     while(working && (ret = pcap_next_ex(pcap, &header, &buffer)) >= 0) {
@@ -235,36 +210,47 @@ int main(int argc, char *argv[])
 		if(start_ts == 0)
 			start_ts = pkt_ts;
 		/* Traverse all the headers */
+		int protocol = 0;
 		if(link == DLT_EN10MB) {
+			/* Ethernet */
 			pcap2mjr_ethernet_header *eth = (pcap2mjr_ethernet_header *)temp;
-			if(ntohs(eth->type) != 0x0800) {
-				if(show_warnings) {
-					JANUS_LOG(LOG_WARN, "Not an IPv4 packet, skipping packet #%"SCNu32"\n", count);
-				}
-				continue;
-			}
+			protocol = ntohs(eth->type);
 			temp += sizeof(pcap2mjr_ethernet_header);
 			pkt_size -= sizeof(pcap2mjr_ethernet_header);
 		} else {
+			/* Linux Cooked Capture */
 			struct sll_header *lcc = (struct sll_header *)temp;
-			if(ntohs(lcc->sll_protocol) != 0x0800) {
-				if(show_warnings) {
-					JANUS_LOG(LOG_WARN, "Not an IPv4 packet, skipping packet #%"SCNu32"\n", count);
-				}
-				continue;
-			}
+			protocol = ntohs(lcc->sll_protocol);
 			temp += sizeof(struct sll_header);
 			pkt_size -= sizeof(struct sll_header);
 		}
-		pcap2mjr_ip_header *ip = (pcap2mjr_ip_header *)temp;
-		if(ip->protocol != 17) {
+		if(protocol == 0x0800) {
+			/* IPv4 */
+			struct iphdr *v4 = (struct iphdr *)temp;
+			protocol = v4->protocol;
+			temp += sizeof(struct iphdr);
+			pkt_size -= sizeof(struct iphdr);
+		} else if(protocol == 0x86DD) {
+			/* IPv6 */
+			struct ip6_hdr *v6 = (struct ip6_hdr *)temp;
+			protocol = v6->ip6_ctlun.ip6_un1.ip6_un1_nxt;
+			temp += sizeof(struct ip6_hdr);
+			pkt_size -= sizeof(struct ip6_hdr);
+		} else {
+			if(show_warnings) {
+				JANUS_LOG(LOG_WARN, "Not an IPv4 or IPv6 packet, skipping\n");
+			}
+			continue;
+		}
+		if(protocol != 17) {
 			if(show_warnings) {
 				JANUS_LOG(LOG_WARN, "Not an UDP packet, skipping\n");
 			}
 			continue;
 		}
-		temp += (sizeof(pcap2mjr_ip_header) + sizeof(pcap2mjr_udp_header));
-		pkt_size -= (sizeof(pcap2mjr_ip_header) + sizeof(pcap2mjr_udp_header));
+		/* UDP */
+		temp += sizeof(struct udphdr);
+		pkt_size -= sizeof(struct udphdr);
 		/* Make sure this is an RTP packet */
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)temp;
 		if(rtp->version != 2 || (rtp->type >= 64 && rtp->type < 96)) {
