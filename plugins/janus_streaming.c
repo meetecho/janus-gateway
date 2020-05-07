@@ -249,6 +249,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 		"secret" : "<secret of mountpoint; only available if a valid secret was provided>",
 		"pin" : "<PIN to access mountpoint; only available if a valid secret was provided>",
 		"is_private" : <true|false, depending on whether the mountpoint is listable; only available if a valid secret was provided>,
+		"viewers" : <count of current subscribers, if any>,
 		"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
 		"audio" : <true, only present if the mountpoint contains audio>,
 		"audiopt" : <audio payload type, only present if configured and the mountpoint contains audio>,
@@ -1213,6 +1214,7 @@ typedef struct janus_streaming_session {
 	gboolean e2ee;
 	/* State */
 	gboolean stopping;
+	janus_mutex mutex;
 	volatile gint renegotiating;
 	volatile gint hangingup;
 	volatile gint destroyed;
@@ -1382,7 +1384,7 @@ static int janus_streaming_opus_context_read(janus_streaming_opus_context *ctx, 
 			return -2;
 		}
 		read = fread(ctx->oggbuf, 1, 8192, ctx->file);
-		if(feof(ctx->file)) {
+		if(read == 0 && feof(ctx->file)) {
 			/* FIXME We're doing this forever... should this be configurable? */
 			JANUS_LOG(LOG_VERB, "[%s] Rewind! (%s)\n", ctx->name, ctx->filename);
 			if(janus_streaming_opus_context_init(ctx) < 0)
@@ -2270,6 +2272,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->mountpoint = NULL;	/* This will happen later */
 	session->started = FALSE;	/* This will happen later */
 	session->paused = FALSE;
+	janus_mutex_init(&session->mutex);
 	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
@@ -2469,6 +2472,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		if(admin && mp->is_private)
 			json_object_set_new(ml, "is_private", json_true());
 		json_object_set_new(ml, "enabled", mp->enabled ? json_true() : json_false());
+		if(admin)
+			json_object_set_new(ml, "viewers", json_integer(mp->viewers ? g_list_length(mp->viewers) : 0));
 		if(mp->audio) {
 			json_object_set_new(ml, "audio", json_true());
 			if(mp->codecs.audio_pt != -1)
@@ -3713,17 +3718,27 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		json_object_set_new(event, "result", result);
 		while(viewer) {
 			janus_streaming_session *s = (janus_streaming_session *)viewer->data;
-			if(s != NULL) {
-				s->stopping = TRUE;
-				s->started = FALSE;
-				s->paused = FALSE;
-				s->mountpoint = NULL;
-				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-				gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
-				gateway->close_pc(s->handle);
-				janus_refcount_decrease(&s->ref);
-				janus_refcount_decrease(&mp->ref);
+			if(s == NULL) {
+				mp->viewers = g_list_remove_all(mp->viewers, s);
+				viewer = g_list_first(mp->viewers);
+				continue;
 			}
+			janus_mutex_lock(&session->mutex);
+			if(s->mountpoint != mp) {
+				mp->viewers = g_list_remove_all(mp->viewers, s);
+				viewer = g_list_first(mp->viewers);
+				janus_mutex_unlock(&session->mutex);
+				continue;
+			}
+			s->stopping = TRUE;
+			s->started = FALSE;
+			s->paused = FALSE;
+			s->mountpoint = NULL;
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
+			gateway->close_pc(s->handle);
+			janus_refcount_decrease(&s->ref);
+			janus_refcount_decrease(&mp->ref);
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				/* Remove the viewer from the helper threads too, if any */
 				if(mp->helper_threads > 0) {
@@ -3745,6 +3760,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			}
 			mp->viewers = g_list_remove_all(mp->viewers, s);
 			viewer = g_list_first(mp->viewers);
+			janus_mutex_unlock(&session->mutex);
 		}
 		json_decref(event);
 		janus_mutex_unlock(&mp->mutex);
@@ -4412,7 +4428,10 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 	session->started = FALSE;
 	session->paused = FALSE;
 	session->e2ee = FALSE;
+	janus_mutex_lock(&session->mutex);
 	janus_streaming_mountpoint *mp = session->mountpoint;
+	session->mountpoint = NULL;
+	janus_mutex_unlock(&session->mutex);
 	if(mp) {
 		janus_mutex_lock(&mp->mutex);
 		JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint viewers\n");
@@ -4443,7 +4462,6 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		}
 		janus_mutex_unlock(&mp->mutex);
 	}
-	session->mountpoint = NULL;
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -4551,12 +4569,14 @@ static void *janus_streaming_handler(void *data) {
 				goto error;
 			}
 			janus_mutex_lock(&mp->mutex);
+			janus_mutex_lock(&session->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
 			if(do_restart) {
 				/* User asked for an ICE restart: provide a new offer */
 				if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
 					/* Already triggered a renegotiation, and still waiting for an answer */
+					janus_mutex_unlock(&session->mutex);
 					janus_mutex_unlock(&mp->mutex);
 					JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %s\n", session->mountpoint->id_str);
 					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
@@ -4572,30 +4592,33 @@ static void *janus_streaming_handler(void *data) {
 			if(session->mountpoint != NULL) {
 				if(session->mountpoint != mp) {
 					/* Already watching something else */
-					janus_mutex_unlock(&mp->mutex);
 					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Already watching mountpoint %s\n", session->mountpoint->id_str);
 					error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Already watching mountpoint %s", session->mountpoint->id_str);
+					janus_mutex_unlock(&session->mutex);
+					janus_mutex_unlock(&mp->mutex);
 					goto error;
 				} else {
 					/* Make sure it's not an API error */
 					if(!session->started) {
 						/* Can't be a renegotiation, PeerConnection isn't up yet */
-						janus_mutex_unlock(&mp->mutex);
 						JANUS_LOG(LOG_ERR, "Already watching mountpoint %s\n", session->mountpoint->id_str);
 						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 						g_snprintf(error_cause, 512, "Already watching mountpoint %s", session->mountpoint->id_str);
 						janus_refcount_decrease(&mp->ref);
+						janus_mutex_unlock(&session->mutex);
+						janus_mutex_unlock(&mp->mutex);
 						goto error;
 					}
 					if(!g_atomic_int_compare_and_exchange(&session->renegotiating, 0, 1)) {
 						/* Already triggered a renegotiation, and still waiting for an answer */
-						janus_mutex_unlock(&mp->mutex);
 						JANUS_LOG(LOG_ERR, "Already renegotiating mountpoint %s\n", session->mountpoint->id_str);
 						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
 						g_snprintf(error_cause, 512, "Already renegotiating mountpoint %s", session->mountpoint->id_str);
 						janus_refcount_decrease(&mp->ref);
+						janus_mutex_unlock(&session->mutex);
+						janus_mutex_unlock(&mp->mutex);
 						goto error;
 					}
 					/* Simple renegotiation, remove the extra uneeded reference */
@@ -4608,6 +4631,7 @@ static void *janus_streaming_handler(void *data) {
 			/* New viewer: we send an offer ourselves */
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %s\n", id_value_str);
 			if(session->mountpoint != NULL || g_list_find(mp->viewers, session) != NULL) {
+				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&mp->mutex);
 				janus_refcount_decrease(&mp->ref);
 				JANUS_LOG(LOG_ERR, "Already watching a stream...\n");
@@ -4633,6 +4657,7 @@ static void *janus_streaming_handler(void *data) {
 					(!mp->video || !session->video) &&
 					(!mp->data || !session->data)) {
 				session->mountpoint = NULL;
+				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&mp->mutex);
 				janus_refcount_decrease(&mp->ref);
 				JANUS_LOG(LOG_ERR, "Can't offer an SDP with no audio, video or data for this mountpoint\n");
@@ -4649,8 +4674,9 @@ static void *janus_streaming_handler(void *data) {
 				g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
 				if(error != NULL) {
 					session->mountpoint = NULL;
-					janus_mutex_unlock(&mp->mutex);
+					janus_mutex_unlock(&session->mutex);
 					janus_refcount_decrease(&session->ref);	/* This is for the failed thread */
+					janus_mutex_unlock(&mp->mutex);
 					janus_refcount_decrease(&mp->ref);		/* This is for the failed thread */
 					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n",
@@ -4668,6 +4694,7 @@ static void *janus_streaming_handler(void *data) {
 						JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 					if(error_code != 0) {
 						session->mountpoint = NULL;
+						janus_mutex_unlock(&session->mutex);
 						janus_mutex_unlock(&mp->mutex);
 						janus_refcount_decrease(&mp->ref);
 						goto error;
@@ -4705,6 +4732,7 @@ static void *janus_streaming_handler(void *data) {
 						JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 					if(error_code != 0) {
 						session->mountpoint = NULL;
+						janus_mutex_unlock(&session->mutex);
 						janus_mutex_unlock(&mp->mutex);
 						janus_refcount_decrease(&mp->ref);
 						goto error;
@@ -4810,9 +4838,9 @@ done:
 			if(mp->data && session->data) {
 				/* Add data line */
 				g_snprintf(buffer, 512,
-					"m=application 1 DTLS/SCTP 5000\r\n"
+					"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n"
 					"c=IN IP4 1.1.1.1\r\n"
-					"a=sctpmap:5000 webrtc-datachannel 16\r\n");
+					"a=sctp-port:5000\r\n");
 				g_strlcat(sdptemp, buffer, 2048);
 			}
 #endif
@@ -4821,29 +4849,32 @@ done:
 			result = json_object();
 			json_object_set_new(result, "status", json_string(do_restart ? "updating" : "preparing"));
 			/* Add the user to the list of watchers and we're done */
-			mp->viewers = g_list_append(mp->viewers, session);
-			if(mp->streaming_source == janus_streaming_source_rtp) {
-				/* If we're using helper threads, add the viewer to one of those */
-				if(mp->helper_threads > 0) {
-					int viewers = -1;
-					janus_streaming_helper *helper = NULL;
-					GList *l = mp->threads;
-					while(l) {
-						janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
-						if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
-							viewers = ht->num_viewers;
-							helper = ht;
+			if(g_list_find(mp->viewers, session) == NULL) {
+				mp->viewers = g_list_append(mp->viewers, session);
+				if(mp->streaming_source == janus_streaming_source_rtp) {
+					/* If we're using helper threads, add the viewer to one of those */
+					if(mp->helper_threads > 0) {
+						int viewers = -1;
+						janus_streaming_helper *helper = NULL;
+						GList *l = mp->threads;
+						while(l) {
+							janus_streaming_helper *ht = (janus_streaming_helper *)l->data;
+							if(viewers == -1 || (helper == NULL && ht->num_viewers == 0) || ht->num_viewers < viewers) {
+								viewers = ht->num_viewers;
+								helper = ht;
+							}
+							l = l->next;
 						}
-						l = l->next;
+						janus_mutex_lock(&helper->mutex);
+						helper->viewers = g_list_append(helper->viewers, session);
+						helper->num_viewers++;
+						janus_mutex_unlock(&helper->mutex);
+						JANUS_LOG(LOG_VERB, "Added viewer to helper thread #%d (%d viewers)\n",
+							helper->id, helper->num_viewers);
 					}
-					janus_mutex_lock(&helper->mutex);
-					helper->viewers = g_list_append(helper->viewers, session);
-					helper->num_viewers++;
-					janus_mutex_unlock(&helper->mutex);
-					JANUS_LOG(LOG_VERB, "Added viewer to helper thread #%d (%d viewers)\n",
-						helper->id, helper->num_viewers);
 				}
 			}
+			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&mp->mutex);
 		} else if(!strcasecmp(request_text, "start")) {
 			if(session->mountpoint == NULL) {
@@ -5006,8 +5037,10 @@ done:
 			 * NOTE: this only works for live RTP streams as of now: you
 			 * cannot, for instance, switch from a live RTP mountpoint to
 			 * an on demand one or viceversa (TBD.) */
+			janus_mutex_lock(&session->mutex);
 			janus_streaming_mountpoint *oldmp = session->mountpoint;
 			if(oldmp == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_VERB, "Can't switch: not on a mountpoint\n");
 				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 				g_snprintf(error_cause, 512, "Can't switch: not on a mountpoint");
@@ -5015,6 +5048,7 @@ done:
 			}
 			if(oldmp->streaming_type != janus_streaming_type_live ||
 					oldmp->streaming_source != janus_streaming_source_rtp) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_VERB, "Can't switch: not on a live RTP mountpoint\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_SWITCH;
 				g_snprintf(error_cause, 512, "Can't switch: not on a live RTP mountpoint");
@@ -5031,6 +5065,7 @@ done:
 					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			}
 			if(error_code != 0) {
+				janus_mutex_unlock(&session->mutex);
 				janus_refcount_decrease(&oldmp->ref);
 				goto error;
 			}
@@ -5049,6 +5084,7 @@ done:
 				string_ids ? (gpointer)id_value_str : (gpointer)&id_value);
 			if(mp == NULL) {
 				janus_mutex_unlock(&mountpoints_mutex);
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
 				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 				g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
@@ -5060,6 +5096,7 @@ done:
 				janus_refcount_decrease(&oldmp->ref);
 				janus_refcount_decrease(&mp->ref);
 				janus_mutex_unlock(&mountpoints_mutex);
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_VERB, "Can't switch: target is not a live RTP mountpoint\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_SWITCH;
 				g_snprintf(error_cause, 512, "Can't switch: target is not a live RTP mountpoint");
@@ -5069,6 +5106,8 @@ done:
 			JANUS_LOG(LOG_VERB, "Request to switch to mountpoint/stream %s (old: %s)\n", mp->id_str, oldmp->id_str);
 			session->paused = TRUE;
 			/* Unsubscribe from the previous mountpoint and subscribe to the new one */
+			session->mountpoint = NULL;
+			janus_mutex_unlock(&session->mutex);
 			janus_mutex_lock(&oldmp->mutex);
 			oldmp->viewers = g_list_remove_all(oldmp->viewers, session);
 			/* Remove the viewer from the helper threads too, if any */
@@ -5092,6 +5131,7 @@ done:
 			janus_mutex_unlock(&oldmp->mutex);
 			/* Subscribe to the new one */
 			janus_mutex_lock(&mp->mutex);
+			janus_mutex_lock(&session->mutex);
 			mp->viewers = g_list_append(mp->viewers, session);
 			/* If we're using helper threads, add the viewer to one of those */
 			if(mp->helper_threads > 0) {
@@ -5112,9 +5152,10 @@ done:
 				helper->num_viewers++;
 				janus_mutex_unlock(&helper->mutex);
 			}
-			janus_mutex_unlock(&mp->mutex);
 			session->mountpoint = mp;
 			session->paused = FALSE;
+			janus_mutex_unlock(&session->mutex);
+			janus_mutex_unlock(&mp->mutex);
 			/* Done */
 			janus_refcount_decrease(&oldmp->ref);	/* This is for the request being done with it */
 			result = json_object();
@@ -5246,9 +5287,11 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					if(iface->family == AF_INET) {
 						mreq.imr_interface = iface->ipv4;
 						(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
-						JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
-						if(host && hostlen > 0)
-							g_strlcpy(host, janus_network_address_string_from_buffer(&address_representation), hostlen);
+						char *maddr = inet_ntoa(mreq.imr_multiaddr);
+						JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s (%s)\n", mountpointname, listenername,
+							janus_network_address_string_from_buffer(&address_representation), maddr);
+						if(maddr && host && hostlen > 0)
+							g_strlcpy(host, maddr, hostlen);
 					} else {
 						JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 multicast is currently supported by this plugin)\n", mountpointname, listenername);
 						close(fd);
@@ -7877,19 +7920,30 @@ static void *janus_streaming_relay_thread(void *data) {
 	json_object_set_new(event, "result", result);
 	while(viewer) {
 		janus_streaming_session *session = (janus_streaming_session *)viewer->data;
-		if(session != NULL) {
-			session->stopping = TRUE;
-			session->started = FALSE;
-			session->paused = FALSE;
-			session->mountpoint = NULL;
-			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
-			gateway->close_pc(session->handle);
-			janus_refcount_decrease(&session->ref);
-			janus_refcount_decrease(&mountpoint->ref);
+		if(session == NULL) {
+			mountpoint->viewers = g_list_remove_all(mountpoint->viewers, session);
+			viewer = g_list_first(mountpoint->viewers);
+			continue;
 		}
+		janus_mutex_lock(&session->mutex);
+		if(session->mountpoint != mountpoint) {
+			mountpoint->viewers = g_list_remove_all(mountpoint->viewers, session);
+			viewer = g_list_first(mountpoint->viewers);
+			janus_mutex_unlock(&session->mutex);
+			continue;
+		}
+		session->stopping = TRUE;
+		session->started = FALSE;
+		session->paused = FALSE;
+		session->mountpoint = NULL;
+		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+		gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
+		gateway->close_pc(session->handle);
+		janus_refcount_decrease(&session->ref);
+		janus_refcount_decrease(&mountpoint->ref);
 		mountpoint->viewers = g_list_remove_all(mountpoint->viewers, session);
 		viewer = g_list_first(mountpoint->viewers);
+		janus_mutex_unlock(&session->mutex);
 	}
 	json_decref(event);
 	janus_mutex_unlock(&mountpoint->mutex);

@@ -207,14 +207,14 @@ media: {
 	#dtls_timeout = 500
 
 	# If you need DSCP packet marking and prioritization, you can configure
-	# the 'dscp_tos' property to a specific values, and Janus will try to
+	# the 'dscp' property to a specific values, and Janus will try to
 	# set it on all outgoing packets using libnice. Normally, the specs
 	# suggest to use different values depending on whether audio, video
 	# or data are used, but since all PeerConnections in Janus are bundled,
 	# we can only use one. You can refer to this document for more info:
 	# https://tools.ietf.org/html/draft-ietf-tsvwg-rtcweb-qos-18#page-6
 	# That said, DON'T TOUCH THIS IF YOU DON'T KNOW WHAT IT MEANS!
-	#dscp_tos = 46
+	#dscp = 46
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN

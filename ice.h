@@ -151,12 +151,12 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
-/*! \brief Method to modify the DSCP Type of Service (TOS), which is disabled by default
- * @param[in] tos The new TOS value (0 to disable) */
-void janus_set_dscp_tos(int period);
-/*! \brief Method to get the current DSCP Type of Service (see above)
- * @returns The current TOS value (0 if disabled) */
-int janus_get_dscp_tos(void);
+/*! \brief Method to modify the DSCP value to set, which is disabled by default
+ * @param[in] dscp The new DSCP value (0 to disable) */
+void janus_set_dscp(int dscp);
+/*! \brief Method to get the current DSCP value (see above)
+ * @returns The current DSCP value (0 if disabled) */
+int janus_get_dscp(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);

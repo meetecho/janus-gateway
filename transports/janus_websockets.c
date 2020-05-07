@@ -304,8 +304,8 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 }
 
 /* WebSockets ACL list for both Janus and Admin API */
-GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
-janus_mutex access_list_mutex;
+static GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
+static janus_mutex access_list_mutex;
 static void janus_websockets_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
@@ -625,6 +625,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
 				char *password = NULL;
+				char *ciphers = NULL;
 				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
@@ -632,6 +633,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				if(item && item->value)
 					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+				item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
+				if(item && item->value)
+					ciphers = (char *)item->value;
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
@@ -642,6 +646,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
 				info.ssl_private_key_password = password;
+				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
@@ -737,6 +742,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				char *server_pem = (char *)item->value;
 				char *server_key = (char *)item->value;
 				char *password = NULL;
+				char *ciphers = NULL;
 				item = janus_config_get(config, config_certs, janus_config_type_item, "cert_key");
 				if(item && item->value)
 					server_key = (char *)item->value;
@@ -744,6 +750,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				if(item && item->value)
 					password = (char *)item->value;
 				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+				item = janus_config_get(config, config_certs, janus_config_type_item, "ciphers");
+				if(item && item->value)
+					ciphers = (char *)item->value;
 				/* Prepare secure context */
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
@@ -754,6 +763,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
 				info.ssl_private_key_password = password;
+				info.ssl_cipher_list = ciphers;
 				info.gid = -1;
 				info.uid = -1;
 #if LWS_LIBRARY_VERSION_MAJOR >= 2
@@ -1154,6 +1164,23 @@ static int janus_websockets_common_callback(
 			}
 			if(!g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->ts->mutex);
+
+				/* Check if Websockets send pipe is choked */
+				if(lws_send_pipe_choked(wsi)) {
+					if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0) {
+						JANUS_LOG(LOG_WARN, "Websockets choked with buffer: %d, trying again\n", ws_client->bufpending);
+						lws_callback_on_writable(wsi);
+					} else {
+						gint qlen = g_async_queue_length(ws_client->messages);
+						JANUS_LOG(LOG_WARN, "Websockets choked with queue: %d, trying again\n", qlen);
+						if(qlen > 0) {
+							lws_callback_on_writable(wsi);
+						}
+					}
+					janus_mutex_unlock(&ws_client->ts->mutex);
+					return 0;
+				}
+
 				/* Check if we have a pending/partial write to complete first */
 				if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0
 						&& !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
