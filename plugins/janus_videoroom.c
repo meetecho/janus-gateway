@@ -4540,7 +4540,7 @@ admin_response:
 			if(!response) {
 				/* Prepare JSON error event */
 				response = json_object();
-				json_object_set_new(response, "streaming", json_string("event"));
+				json_object_set_new(response, "videoroom", json_string("event"));
 				json_object_set_new(response, "error_code", json_integer(error_code));
 				json_object_set_new(response, "error", json_string(error_cause));
 			}
