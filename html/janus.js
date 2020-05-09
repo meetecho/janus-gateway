@@ -1772,23 +1772,36 @@ function Janus(gatewayCallbacks) {
 				pluginHandle.onremotestream(config.remoteStream);
 				if(event.track.onended)
 					return;
+				var trackMutedTimeoutId = null;
 				Janus.log("Adding onended callback to track:", event.track);
 				event.track.onended = function(ev) {
 					Janus.log("Remote track muted/removed:", ev);
 					if(config.remoteStream) {
-						config.remoteStream.removeTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
+						clearTimeout(trackMutedTimeoutId);
+						trackMutedTimeoutId = setTimeout(function() {
+							Janus.log("Removing remote track");
+							config.remoteStream.removeTrack(ev.target);
+							pluginHandle.onremotestream(config.remoteStream, ev);
+							trackMutedTimeoutId = null;
+						// Chrome seems to raise mute events only at multiples of 834ms;
+						// we set the timeout to three times this value (rounded to 840ms)
+						}, 3 * 840);
 					}
 				};
+
 				event.track.onmute = event.track.onended;
 				event.track.onunmute = function(ev) {
 					Janus.log("Remote track flowing again:", ev);
-					try {
-						config.remoteStream.addTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
-					} catch(e) {
-						Janus.error(e);
-					};
+					if(trackMutedTimeoutId != null) {
+						clearTimeout(trackMutedTimeoutId);
+					} else {
+						try {
+							config.remoteStream.addTrack(ev.target);
+							pluginHandle.onremotestream(config.remoteStream, ev);
+						} catch(e) {
+							Janus.error(e);
+						};
+					}
 				};
 			};
 		}
