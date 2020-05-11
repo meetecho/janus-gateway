@@ -1359,7 +1359,7 @@ typedef struct janus_videoroom {
 	janus_audiocodec acodec[3];	/* Audio codec(s) to force on publishers */
 	janus_videocodec vcodec[3];	/* Video codec(s) to force on publishers */
 	char *vp9_profile;			/* VP9 codec profile to prefer, if more are negotiated */
-	char *h264_profile;			/* H.264 codec profile to preferif more are negotiated */
+	char *h264_profile;			/* H.264 codec profile to prefer, if more are negotiated */
 	gboolean do_opusfec;		/* Whether inband FEC must be negotiated (note: only available for Opus) */
 	gboolean do_svc;			/* Whether SVC must be done for video (note: only available for VP9 right now) */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
@@ -1492,6 +1492,7 @@ typedef struct janus_videoroom_publisher {
 	janus_videocodec vcodec;	/* Video codec this publisher is using */
 	guint32 audio_pt;		/* Audio payload type (Opus) */
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
+	char *vfmtp;			/* Video fmtp that ended up being negotiated, if any */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
 	gboolean do_opusfec;	/* Whether this publisher is sending inband Opus FEC */
@@ -1623,11 +1624,9 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	g_free(p->room_id_str);
 	g_free(p->user_id_str);
 	g_free(p->display);
-	p->display = NULL;
 	g_free(p->sdp);
-	p->sdp = NULL;
+	g_free(p->vfmtp);
 	g_free(p->recording_base);
-	p->recording_base = NULL;
 	janus_recorder_destroy(p->arc);
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
@@ -5131,8 +5130,8 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-video", participant->recording_base);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videocodec_name(participant->vcodec), filename);
+			participant->vrc = janus_recorder_create_full(participant->room->rec_dir,
+				janus_videocodec_name(participant->vcodec), participant->vfmtp, filename);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -5140,8 +5139,8 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%s-user-%s-%"SCNi64"-video",
 				participant->room_id_str, participant->user_id_str, now);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videocodec_name(participant->vcodec), filename);
+			participant->vrc = janus_recorder_create_full(participant->room->rec_dir,
+				janus_videocodec_name(participant->vcodec), participant->vfmtp, filename);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -5282,6 +5281,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
+		g_free(participant->vfmtp);
+		participant->vfmtp = NULL;
 		int i=0;
 		for(i=0; i<3; i++) {
 			participant->ssrc[i] = 0;
@@ -6889,22 +6890,16 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				/* Find out which fmtp was used for video */
-				char *video_profile = NULL;
+				g_free(participant->vfmtp);
+				participant->vfmtp = NULL;
+				const char *video_profile = NULL;
 				if(m != NULL) {
 					int video_pt = -1;
 					if(m->ptypes && m->ptypes->data)
 						video_pt = GPOINTER_TO_INT(m->ptypes->data);
-					GList *ma = m->attributes;
-					while(ma) {
-						janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-						if(a->name && a->value && (atoi(a->value) == video_pt) && !strcasecmp(a->name, "fmtp")) {
-							char *fmtp_value = strstr(a->value, " ");
-							if(fmtp_value)
-								video_profile = fmtp_value+1;
-							break;
-						}
-						ma = ma->next;
-					}
+					video_profile = janus_sdp_get_fmtp(answer, video_pt);
+					if(video_profile != NULL)
+						participant->vfmtp = g_strdup(video_profile);
 				}
 				/* Generate an SDP string we can send back to the publisher */
 				char *answer_sdp = janus_sdp_write(answer);

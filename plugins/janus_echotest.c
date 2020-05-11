@@ -213,6 +213,7 @@ typedef struct janus_echotest_session {
 	gboolean video_active;
 	janus_audiocodec acodec;/* Codec used for audio, if available */
 	janus_videocodec vcodec;/* Codec used for video, if available */
+	char *vfmtp;
 	uint32_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 (or H.264) simulcasting is involved */
@@ -241,6 +242,7 @@ static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->vfmtp);
 	g_free(session);
 }
 
@@ -794,6 +796,8 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->video_active = TRUE;
 	session->acodec = JANUS_AUDIOCODEC_NONE;
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
+	g_free(session->vfmtp);
+	session->vfmtp = NULL;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
 	int i=0;
@@ -1100,6 +1104,13 @@ static void *janus_echotest_handler(void *data) {
 					session->rid[0] = NULL;
 				}
 			}
+			g_free(session->vfmtp);
+			session->vfmtp = NULL;
+			if(session->has_video) {
+				const char *vfmtp = janus_sdp_get_fmtp(answer, janus_sdp_get_codec_pt(answer, vcodec));
+				if(vfmtp != NULL)
+					session->vfmtp = g_strdup(vfmtp);
+			}
 			/* Done */
 			char *sdp = janus_sdp_write(answer);
 			janus_sdp_destroy(offer);
@@ -1154,7 +1165,8 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
+						session->vrc = janus_recorder_create_full(NULL,
+							janus_videocodec_name(session->vcodec), session->vfmtp, filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -1162,7 +1174,8 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create(NULL, janus_videocodec_name(session->vcodec), filename);
+						session->vrc = janus_recorder_create_full(NULL,
+							janus_videocodec_name(session->vcodec), session->vfmtp, filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");

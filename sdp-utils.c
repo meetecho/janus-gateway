@@ -701,7 +701,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					g_snprintf(profile_id, sizeof(profile_id), "profile-id=%s", profile);
 					if(strstr(a->value, profile_id) != NULL) {
 						/* Found */
-						JANUS_LOG(LOG_WARN, "VP9 profile %s found --> %d\n", profile, pt);
+						JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
 						return pt;
 					}
 				} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
@@ -712,7 +712,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					g_free(profile_lower);
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
-						JANUS_LOG(LOG_WARN, "H.264 profile %s found --> %d\n", profile, pt);
+						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
 						return pt;
 					}
 					/* Not found, try converting the profile to upper case */
@@ -721,7 +721,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					g_free(profile_upper);
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
-						JANUS_LOG(LOG_WARN, "H.264 profile %s found --> %d\n", profile, pt);
+						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
 						return pt;
 					}
 				}
