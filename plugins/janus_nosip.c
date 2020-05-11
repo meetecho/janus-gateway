@@ -268,6 +268,8 @@ static char *local_ip = NULL, *sdp_ip = NULL;
 static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
 static uint16_t rtp_range_max = DEFAULT_RTP_RANGE_MAX;
 static uint16_t rtp_range_slider = DEFAULT_RTP_RANGE_MIN;
+static int dscp_audio_rtp = 0;
+static int dscp_video_rtp = 0;
 
 static GThread *handler_thread;
 static void *janus_nosip_handler(void *data);
@@ -722,6 +724,26 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_NOSIP_NAME);
+		}
+
+		/* Is there any DSCP TOS to apply? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_audio_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_audio_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_audio_rtp = val;
+			}
+		}
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_video_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_video_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_video_rtp = val;
+			}
 		}
 
 		janus_config_destroy(config);
@@ -1883,7 +1905,7 @@ static int janus_nosip_bind_socket(int fd, int port) {
 }
 
 /* Bind RTP/RTCP port pair */
-static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
+static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[2]) {
 	uint16_t rtp_port_next = rtp_range_slider; 					/* Read global slider */
 	uint16_t rtp_port_start = rtp_port_next;
 	gboolean rtp_port_wrap = FALSE;
@@ -1891,18 +1913,34 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 	int rtp_fd = -1, rtcp_fd = -1;
 	while(1) {
 		if(rtp_port_wrap && rtp_port_next >= rtp_port_start) {	/* Full range scanned */
-			JANUS_LOG(LOG_ERR, "No ports available for audio/video channel in range: %u -- %u\n",
-				  rtp_range_min, rtp_range_max);
+			JANUS_LOG(LOG_ERR, "No ports available for %s channel in range: %u -- %u\n",
+				  video ? "video" : "audio", rtp_range_min, rtp_range_max);
 			break;
 		}
 		if(rtp_fd == -1) {
 			rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+			/* Set the DSCP value if set in the config file */
+			if(!video && dscp_audio_rtp > 0) {
+				int optval = dscp_audio_rtp << 2;
+				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+				if(ret < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
+						optval, strerror(errno));
+				}
+			} else if(video && dscp_video_rtp > 0) {
+				int optval = dscp_video_rtp << 2;
+				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+				if(ret < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on video RTP socket (error=%s)\n",
+						optval, strerror(errno));
+				}
+			}
 		}
 		if(rtcp_fd == -1) {
 			rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		}
 		if(rtp_fd == -1 || rtcp_fd == -1) {
-			JANUS_LOG(LOG_ERR, "Error creating audio/video sockets...\n");
+			JANUS_LOG(LOG_ERR, "Error creating %s sockets...\n", video ? "video" : "audio");
 			break;
 		}
 	 	int rtp_port = rtp_port_next;
@@ -1991,7 +2029,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 		JANUS_LOG(LOG_VERB, "Allocating audio ports:\n");
 		int fds[2], ports[2];
-		if(janus_nosip_allocate_port_pair(fds, ports)) {
+		if(janus_nosip_allocate_port_pair(FALSE, fds, ports)) {
 			return -1;
 		}
 		JANUS_LOG(LOG_VERB, "Audio RTP listener bound to port %d\n", ports[0]);
@@ -2015,7 +2053,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 		JANUS_LOG(LOG_VERB, "Allocating video ports:\n");
 		int fds[2], ports[2];
-		if(janus_nosip_allocate_port_pair(fds, ports)) {
+		if(janus_nosip_allocate_port_pair(TRUE, fds, ports)) {
 			return -1;
 		}
 		JANUS_LOG(LOG_VERB, "Video RTP listener bound to port %d\n", ports[0]);

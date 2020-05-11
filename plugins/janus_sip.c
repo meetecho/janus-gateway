@@ -5707,12 +5707,13 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				return -1;
 			if(session->media.audio_rtp_fd == -1) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				/* Set the DSCP value if set in the config file */ 
-				if (dscp_audio_rtp > 0) {
+				/* Set the DSCP value if set in the config file */
+				if(dscp_audio_rtp > 0) {
 					int optval = dscp_audio_rtp << 2;
 					int ret = setsockopt(session->media.audio_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
-					if (ret < 0) {
-						JANUS_LOG(LOG_WARN, "Error setting IP_TOS option on audio RTP socket, value=%d, error=%s\n",optval, strerror(errno));
+					if(ret < 0) {
+						JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
+							optval, strerror(errno));
 					}
 				}
 			}
@@ -5764,12 +5765,13 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				return -1;
 			if(session->media.video_rtp_fd == -1) {
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				/* Set the DSCP value if set in the config file */ 
-				if (dscp_video_rtp > 0) {
+				/* Set the DSCP value if set in the config file */
+				if(dscp_video_rtp > 0) {
 					int optval = dscp_video_rtp << 2;
 					int ret = setsockopt(session->media.video_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
-					if (ret < 0) {
-						JANUS_LOG(LOG_WARN, "Error setting IP_TOS option on video RTP socket, value=%d, error=%s\n",optval, strerror(errno));
+					if(ret < 0) {
+						JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on video RTP socket (error=%s)\n",
+							optval, strerror(errno));
 					}
 				}
 			}
