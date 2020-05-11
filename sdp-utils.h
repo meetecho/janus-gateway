@@ -363,4 +363,10 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt);
  * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or -1 otherwise */
 const char *janus_sdp_get_codec_rtpmap(const char *codec);
 
+/*! \brief Helper to get the fmtp associated to a specific payload type
+ * @param sdp The Janus SDP instance to process
+ * @param pt The payload type to find
+ * @returns The fmtp content, if found, or NULL otherwise */
+const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt);
+
 #endif

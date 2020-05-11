@@ -825,6 +825,33 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 	return NULL;
 }
 
+const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt) {
+	if(sdp == NULL || pt < 0)
+		return NULL;
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		/* Look in all rtpmap attributes */
+		GList *ma = m->attributes;
+		while(ma) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
+				int a_pt = atoi(a->value);
+				if(a_pt == pt) {
+					/* Found! */
+					char needle[10];
+					g_snprintf(needle, sizeof(needle), "%d ", pt);
+					if(strstr(a->value, needle) == a->value)
+						return a->value + strlen(needle);
+				}
+			}
+			ma = ma->next;
+		}
+		ml = ml->next;
+	}
+	return NULL;
+}
+
 char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;

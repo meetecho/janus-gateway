@@ -398,9 +398,11 @@ typedef struct janus_recordplay_recording {
 	char *date;					/* Time of the recording */
 	char *arc_file;				/* Audio file name */
 	janus_audiocodec acodec;	/* Codec used for audio, if available */
+	char *afmtp;				/* Audio fmtp, if any */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
 	char *vrc_file;				/* Video file name */
 	janus_videocodec vcodec;	/* Codec used for video, if available */
+	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	GList *viewers;				/* List of users watching this recording */
@@ -472,6 +474,8 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->date);
 	g_free(recording->arc_file);
 	g_free(recording->vrc_file);
+	g_free(recording->afmtp);
+	g_free(recording->vfmtp);
 	g_free(recording->offer);
 	g_free(recording);
 }
@@ -489,7 +493,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define VIDEO_PT		100
 
 /* Helper method to check which codec was used in a specific recording */
-static const char *janus_recordplay_parse_codec(const char *dir, const char *filename) {
+static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen) {
 	if(dir == NULL || filename == NULL)
 		return NULL;
 	char source[1024];
@@ -591,6 +595,10 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					fclose(file);
 					return NULL;
 				}
+				/* Any fmtp? */
+				json_t *f = json_object_get(info, "f");
+				if(f && json_is_string(f) && fmtp && fmtplen > 0)
+					g_snprintf(fmtp, fmtplen, "%s", json_string_value(f));
 				/* What codec was used? */
 				json_t *codec = json_object_get(info, "c");
 				if(!codec || !json_is_string(codec)) {
@@ -636,10 +644,12 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO, offer_audio,
 		JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
+		JANUS_SDP_OA_AUDIO_FMTP, rec->afmtp,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
+		JANUS_SDP_OA_VIDEO_FMTP, rec->vfmtp,
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
@@ -1557,25 +1567,27 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			/* Check which video profiles are available, to see if we can force some */
 			const char *video_profile = json_string_value(videoprofile);
-			if(video_profile == NULL) {
-				if(rec->vcodec == JANUS_VIDEOCODEC_VP9) {
-					/* Check if profile-id=2 is supported */
-					if(janus_sdp_get_codec_pt_full(offer, "vp9", "2") != -1) {
-						/* It is, use it to generate the answer */
-						video_profile = "2";
-					}
-				} else if(rec->vcodec == JANUS_VIDEOCODEC_H264) {
-					/* Check if profile-id=2 is supported */
-					if(janus_sdp_get_codec_pt_full(offer, "h264", "42e01f") != -1) {
-						/* It is, use it to generate the answer */
-						video_profile = "42e01f";
-					}
+			int video_pt = -1;
+			if(video_profile != NULL) {
+				/* Check if the provided profile is supported supported */
+				video_pt = janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(rec->vcodec), video_profile);
+				if(video_pt == -1) {
+					JANUS_LOG(LOG_WARN, "No such video codec with profile %s, falling back to plain %s\n",
+						video_profile, janus_videocodec_name(rec->vcodec));
+					video_profile = NULL;
 				}
 			}
+			if(video && video_pt == -1)
+				video_pt = janus_sdp_get_codec_pt(offer, janus_videocodec_name(rec->vcodec));
 			g_free(session->video_profile);
 			session->video_profile = NULL;
 			if(video_profile != NULL)
 				session->video_profile = g_strdup(video_profile);
+			if(video && video_pt != -1) {
+				const char *video_fmtp = janus_sdp_get_fmtp(offer, video_pt);
+				if(video_fmtp != NULL)
+					rec->vfmtp = g_strdup(video_fmtp);
+			}
 			/* Set payload types */
 			rec->audio_pt = AUDIO_PT;
 			if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
@@ -1612,7 +1624,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, janus_videocodec_name(rec->vcodec), rec->vrc_file);
+				session->vrc = janus_recorder_create_full(recordings_path,
+					janus_videocodec_name(rec->vcodec), rec->vfmtp, rec->vrc_file);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1973,7 +1986,11 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->arc_file));
+			char fmtp[256];
+			fmtp[0] = '\0';
+			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->arc_file, fmtp, sizeof(fmtp)));
+			if(strlen(fmtp) > 0)
+				rec->afmtp = g_strdup(fmtp);
 		}
 		if(video && video->value) {
 			rec->vrc_file = g_strdup(video->value);
@@ -1981,7 +1998,11 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->vrc_file));
+			char fmtp[256];
+			fmtp[0] = '\0';
+			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->vrc_file, fmtp, sizeof(fmtp)));
+			if(strlen(fmtp) > 0)
+				rec->vfmtp = g_strdup(fmtp);
 		}
 		rec->audio_pt = AUDIO_PT;
 		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
