@@ -779,6 +779,7 @@ static char *user_agent;
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
+static int dscp_audio_rtp = 0;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
@@ -1752,6 +1753,17 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_SIP_NAME);
+		}
+
+		/* Is there any DSCP TOS to apply? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_audio_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_audio_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_audio_rtp = val;
+			}
 		}
 
 		janus_config_destroy(config);
@@ -5685,6 +5697,11 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				return -1;
 			if(session->media.audio_rtp_fd == -1) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+				/* Set the DSCP value if set in the config file */ 
+				if (dscp_audio_rtp > 0) {
+					int optval = dscp_audio_rtp << 2;
+					setsockopt(session->media.audio_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+				}
 			}
 			if(session->media.audio_rtcp_fd == -1) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
