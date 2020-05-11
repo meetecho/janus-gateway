@@ -1784,7 +1784,7 @@ function Janus(gatewayCallbacks) {
 				};
 				event.track.onmute = function(ev) {
 					Janus.log("Remote track muted:", ev);
-					if(config.remoteStream) {
+					if(config.remoteStream && trackMutedTimeoutId == null) {
 						trackMutedTimeoutId = setTimeout(function() {
 							Janus.log("Removing remote track");
 							config.remoteStream.removeTrack(ev.target);
@@ -1799,6 +1799,7 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Remote track flowing again:", ev);
 					if(trackMutedTimeoutId != null) {
 						clearTimeout(trackMutedTimeoutId);
+						trackMutedTimeoutId = null;
 					} else {
 						try {
 							config.remoteStream.addTrack(ev.target);
