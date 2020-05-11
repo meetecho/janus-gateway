@@ -82,6 +82,8 @@ JANUSSDP.findCodec = function(sdp, pt) {
 					codec = "h264";
 				} else if(a.value.indexOf("opus") !== -1 || a.value.indexOf("OPUS") !== -1) {
 					codec = "opus";
+				} else if(a.value.indexOf("multiopus") !== -1 || a.value.indexOf("MULTIOPUS") !== -1) {
+					codec = "multiopus";
 				} else if(a.value.indexOf("pcmu") !== -1 || a.value.indexOf("PCMU") !== -1) {
 					codec = "pcmu";
 				} else if(a.value.indexOf("pcma") !== -1 || a.value.indexOf("PCMA") !== -1) {
@@ -136,6 +138,8 @@ JANUSSDP.generateOffer = function(options) {
 			options.audioCodec = "opus";
 		if(options.audioCodec === "opus") {
 			options.audioRtpmap = "opus/48000/2";
+		} else if(options.audioCodec === "multiopus") {
+			options.audioRtpmap = "multiopus/48000/6";
 		} else if(options.audioCodec === "pcmu") {
 			options.audioRtpmap = "PCMU/8000";
 			options.audioPt = 0;
@@ -242,6 +246,8 @@ JANUSSDP.generateAnswer = function(offer, options) {
 	if(options.audio && !options.audioCodec) {
 		if(JANUSSDP.findPayloadType(offer, "opus") !== -1) {
 			options.audioCodec = "opus";
+		} else if(JANUSSDP.findPayloadType(offer, "multiopus") !== -1) {
+			options.audioCodec = "multiopus";
 		} else if(JANUSSDP.findPayloadType(offer, "pcmu") !== -1) {
 			options.audioCodec = "pcmu";
 		} else if(JANUSSDP.findPayloadType(offer, "pcma") !== -1) {

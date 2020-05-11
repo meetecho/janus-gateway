@@ -510,10 +510,14 @@ int main(int argc, char *argv[])
 					if(!strcasecmp(c, "opus")) {
 						opus = TRUE;
 						if(extension && strcasecmp(extension, "opus")) {
-							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
+							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
+					} else if(!strcasecmp(c, "multiopus")) {
+						JANUS_LOG(LOG_ERR, "Surround Opus RTP packets are not supported, at the moment\n");
+						cmdline_parser_free(&args_info);
+						exit(1);
 					} else if(!strcasecmp(c, "g711") || !strcasecmp(c, "pcmu") || !strcasecmp(c, "pcma")) {
 						g711 = TRUE;
 						if(extension && strcasecmp(extension, "wav")) {
@@ -529,7 +533,7 @@ int main(int argc, char *argv[])
 							exit(1);
 						}
 					} else {
-						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus and G.711 audio for now (was '%s')...\n", c);
+						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus, G.711 and G.722 audio for now (was '%s')...\n", c);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
