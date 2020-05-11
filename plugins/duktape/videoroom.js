@@ -200,6 +200,21 @@ function handleMessage(id, tr, msg, jsep) {
 				pokeScheduler();
 				return 1;
 			}
+		}else if(msgT.request==="state"){
+			console.log("state Request !!!!",msgT);
+			var session = getSession(id)
+			session.state= msgT.data;
+			setSession(session)
+			var room = getRoom(session.room)
+			room.publishers.forEach(function (publisher) {
+					var publishersArray = [session];
+					event = { videoroom:"event", event: "PublisherStateUpdate", publisher_state:publishersArray, newStatePublisher:id };
+					console.log("sending",publisher,event);
+					//pushEvent(publisher, null, JSON.stringify(event));
+					tasks.push({ id: publisher, tr: null , msg: event, jsep: null });
+			});
+			pokeScheduler();
+			return 1;
 		}
 		return JSON.stringify(response);
 	}
