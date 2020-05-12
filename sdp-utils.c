@@ -23,7 +23,7 @@
 
 /* Preferred codecs when negotiating audio/video, and number of supported codecs */
 const char *janus_preferred_audio_codecs[] = {
-	"opus", "pcmu", "pcma", "g722", "isac16", "isac32"
+	"opus", "multiopus", "pcmu", "pcma", "g722", "isac16", "isac32"
 };
 uint janus_audio_codecs = sizeof(janus_preferred_audio_codecs)/sizeof(*janus_preferred_audio_codecs);
 const char *janus_preferred_video_codecs[] = {
@@ -642,6 +642,10 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 	if(!strcasecmp(codec, "opus")) {
 		format = "opus/48000/2";
 		format2 = "OPUS/48000/2";
+	} else if(!strcasecmp(codec, "multiopus")) {
+		/* FIXME We're hardcoding to 6 channels, for now */
+		format = "multiopus/48000/6";
+		format2 = "MULTIOPUS/48000/6";
 	} else if(!strcasecmp(codec, "pcmu")) {
 		/* We know the payload type is 0: we just need to make sure it's there */
 		format = "pcmu/8000";
@@ -773,6 +777,8 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "vp9";
 					if(strstr(a->value, "h264") || strstr(a->value, "H264"))
 						return "h264";
+					if(strstr(a->value, "multiopus") || strstr(a->value, "MULTIOPUS"))
+						return "multiopus";
 					if(strstr(a->value, "opus") || strstr(a->value, "OPUS"))
 						return "opus";
 					if(strstr(a->value, "pcmu") || strstr(a->value, "PCMU"))
@@ -803,6 +809,9 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return NULL;
 	if(!strcasecmp(codec, "opus"))
 		return "opus/48000/2";
+	if(!strcasecmp(codec, "multiopus"))
+		/* FIXME We're hardcoding to 6 channels, for now */
+		return "multiopus/48000/6";
 	if(!strcasecmp(codec, "pcmu"))
 		return "PCMU/8000";
 	if(!strcasecmp(codec, "pcma"))
@@ -1350,6 +1359,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 	const char *audio_codec = NULL, *video_codec = NULL,
 		*vp9_profile = NULL, *h264_profile = NULL,
 		*audio_fmtp = NULL, *video_fmtp = NULL;
+	char *custom_audio_fmtp = NULL;
 	GList *extmaps = NULL;
 	janus_sdp_mdirection audio_dir = JANUS_SDP_SENDRECV, video_dir = JANUS_SDP_SENDRECV;
 	int property = va_arg(args, int);
@@ -1529,6 +1539,10 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 									if(janus_sdp_get_codec_pt(offer, codec) < 0) {
 										/* isac32 not found, maybe isac16? */
 										codec = "isac16";
+										if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+											/* isac16 not found, maybe multiopus? */
+											codec = "multiopus";
+										}
 									}
 								}
 							}
@@ -1558,6 +1572,24 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 				temp = temp->next;
 				continue;
 			}
+			if(!strcasecmp(codec, "multiopus") && (audio_fmtp == NULL ||
+					strstr(audio_fmtp, "channel_mapping") == NULL)) {
+				/* Missing channel mapping for the multiopus m-line, check the offer */
+				GList *mo = m->attributes;
+				while(mo) {
+					janus_sdp_attribute *a = (janus_sdp_attribute *)mo->data;
+					if(a->name && strstr(a->name, "fmtp") && a->value) {
+						char *tmp = strchr(a->value, ' ');
+						if(tmp && strlen(tmp) > 1 && custom_audio_fmtp == NULL) {
+							tmp++;
+							custom_audio_fmtp = g_strdup(tmp);
+							/* FIXME We should integrate the existing audio_fmtp */
+						}
+						break;
+					}
+					mo = mo->next;
+				}
+			}
 			am->ptypes = g_list_append(am->ptypes, GINT_TO_POINTER(pt));
 			/* Add the related attributes */
 			if(m->type == JANUS_SDP_AUDIO) {
@@ -1578,8 +1610,9 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					}
 					/* Check if there's a custom fmtp line to add for audio
 					 * FIXME We should actually check if it matches the offer */
-					if(audio_fmtp) {
-						a = janus_sdp_attribute_create("fmtp", "%d %s", pt, audio_fmtp);
+					if(audio_fmtp || custom_audio_fmtp) {
+						a = janus_sdp_attribute_create("fmtp", "%d %s",
+							pt, custom_audio_fmtp ? custom_audio_fmtp : audio_fmtp);
 						am->attributes = g_list_append(am->attributes, a);
 					}
 				}
@@ -1687,6 +1720,7 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 
 	/* Done */
 	g_list_free(extmaps);
+	g_free(custom_audio_fmtp);
 	va_end(args);
 
 	return answer;

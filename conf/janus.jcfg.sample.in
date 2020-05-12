@@ -258,7 +258,11 @@ nat: {
 	# such, use the option with caution and only if you know what you're doing.
 	# Make sure you keep ICE Lite disabled, though, as it's not strictly
 	# speaking a publicly reachable server, and a NAT is still involved.
+	# If you'd rather keep the private IP address in place, rather than
+	# replacing it (and so have both of them as advertised candidates),
+	# then set the 'keep_private_host' property to true.
 	#nat_1_1_mapping = "1.2.3.4"
+	#keep_private_host = true
 
 	# You can configure a TURN server in two different ways: specifying a
 	# statically configured TURN server, and thus provide the address of the
