@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Device Selection Test</title>
+<title>Janus WebRTC Server: Multichannel Opus (surround)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,12 +13,12 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="devicetest.js"></script>
+<script type="text/javascript" src="multiopus.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='devicetest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='multiopus.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Device Selection
+				<h1>Plugin Demo: Multichannel Opus (surround)
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -47,44 +47,33 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This is a variant of the Echo Test demo: everything is exactly
+						<p>This is a variant of the Echo Test demo meant to showcase the support
+						for multichannel Opus, and so surround audio: everything is exactly
 						the same in term of available controls, features, and the like, with
-						the substantial difference that you can select which of the available
-						devices (microphones, webcams) you want to use for the media setup.</p>
-						<p>The demo will start by automatically selecting some default devices,
-						pretty much as the regular Echo Test demo already does. Once done,
-						you'll be able to individually change the capture audio and/or video
-						device: this will result in the Echo Test channel being reset and
-						recreated, in order to use the device(s) you selected instead. Just
-						as with the regular Echo Test demo, the <code>?simulcast=true</code>
-						query string will allow you to test simulcasting as well.</p>
-						<p>The demo exploits a functionality made available in the
-						<code>janus.js</code> library, meaning you should be able to
-						easily adapt all the other demos to follow the same approach as
-						well, and that you'll be able to do the same in your Janus-based
-						web application too.</p>
+						the substantial difference that the media being captured and sent does
+						not come from webcam and microphone, but from a pre-recorded surround
+						file instead. More precisely, we downloaded a surround demo video from
+						<a target="_blank" href="https://www2.iis.fraunhofer.de/AAC/multichannel.html">Fraunhofer's multichannel tests</a>
+						and, using <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/captureStream">captureStream</a>
+						on the video element, get access to the MediaStream to send via WebRTC.
+						As a result, a surround audio/video stream is sent to the EchoTest plugin
+						via WebRTC, which echoes it back, allowing you to demonstrate how the surround
+						properties are preserved through the PeerConnection journey via Janus.
+						The file will loop back to the beginning when it ends, since it's quite short.</p>
+						<p>Notice that you'll need a recent version of Chrome for this to work, since
+						it's only implemented there and not really available publicly. As a matter of
+						fact, Chrome will by default not offer multiopus support by default, and will
+						even reject it when offered: it's up to you to munge the SDP to force multiopus
+						support for a conversation. The <code>janus.js</code> library will <b>NOT</b>
+						do it for you: this demo uses the <code>customizeSdp</code> callback to mess
+						with the SDP in an ugly way. In other contexts (e.g., VideoRoom subscribers)
+						you'll need to do something similar when creating the answer instead.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container">
-				<div class="row hide" id="devices">
-					<form class="form-inline">
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="audio-device">Audio device (input):</label>
-							<select id="audio-device" class="form-control"></select>
-						</div>
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="video-device">Video device (input):</label>
-							<select id="video-device" class="form-control"></select>
-						</div>
-						<div class="form-group">
-							<div id="change-devices" class="form-control btn btn-primary">Change devices</div>
-						</div>
-					</form>
-					<hr>
-				</div>
- 				<div class="row hide" id="videos">
+			<div class="container hide" id="videos">
+				<div class="row">
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
@@ -113,31 +102,19 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled />
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream
-									<span class="label label-primary hide" id="curres"></span>
-									<span class="label label-info hide" id="curbitrate"></span>
-									<div class="btn-group btn-group-xs pull-right hide" id="output-devices">
-										<div class="btn-group btn-group-xs">
-											<button id="outputdeviceset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
-												Output device<span class="caret"></span>
-											</button>
-											<ul id="audiooutput" class="dropdown-menu" role="menu">
-											</ul>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
-							<input class="form-control" type="text" id="datarecv" disabled />
+							<input class="form-control" type="text" id="datarecv" disabled></input>
 						</div>
 					</div>
 				</div>

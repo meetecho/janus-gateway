@@ -87,8 +87,9 @@ uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
 char *janus_ice_get_turn_rest_api(void);
-/*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
-void janus_ice_enable_nat_1_1(void);
+/*! \brief Helper method to force Janus to overwrite all host candidates with the public IP
+ * @param[in] keep_private_host Whether we should keep the original private host as a separate candidate, or replace it */
+void janus_ice_enable_nat_1_1(gboolean keep_private_host);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
  * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),

@@ -95,6 +95,8 @@ function JANUSSDP.findCodec(sdp, pt)
 					codec = "h264"
 				elseif a.value:find("opus") ~= nil or a.value:find("OPUS") ~= nil then
 					codec = "opus"
+				elseif a.value:find("multiopus") ~= nil or a.value:find("MULTIOPUS") ~= nil then
+					codec = "multiopus"
 				elseif a.value:find("pcmu") ~= nil or a.value:find("PCMU") ~= nil then
 					codec = "pcmu"
 				elseif a.value:find("pcma") ~= nil or a.value:find("PCMA") ~= nil then
@@ -182,6 +184,8 @@ function JANUSSDP.generateOffer(options)
 	if options.audio == true then
 		if options.audioCodec == "opus" then
 			options.audioRtpmap = "opus/48000/2"
+		elseif options.audioCodec == "multiopus" then
+			options.audioRtpmap = "multiopus/48000/6"
 		elseif options.audioCodec == "pcmu" then
 			options.audioRtpmap = "PCMU/8000"
 			options.audioPt = 0
@@ -281,6 +285,8 @@ function JANUSSDP.generateAnswer(offer, options)
 	if options.audioCodec == nil then
 		if JANUSSDP.findPayloadType(offer, "opus") > 0 then
 			options.audioCodec = "opus"
+		elseif JANUSSDP.findPayloadType(offer, "multiopus") > 0 then
+			options.audioCodec = "multiopus"
 		elseif JANUSSDP.findPayloadType(offer, "pcmu") > 0 then
 			options.audioCodec = "pcmu"
 		elseif JANUSSDP.findPayloadType(offer, "pcma") > 0 then

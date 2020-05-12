@@ -95,6 +95,7 @@ typedef struct janus_rtp_header_extension {
 typedef enum janus_audiocodec {
 	JANUS_AUDIOCODEC_NONE,
 	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_MULTIOPUS,
 	JANUS_AUDIOCODEC_PCMU,
 	JANUS_AUDIOCODEC_PCMA,
 	JANUS_AUDIOCODEC_G722,
