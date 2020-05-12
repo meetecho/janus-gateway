@@ -779,6 +779,8 @@ static char *user_agent;
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
+static int dscp_audio_rtp = 0;
+static int dscp_video_rtp = 0;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
@@ -1752,6 +1754,26 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			notify_events = janus_is_true(item->value);
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_SIP_NAME);
+		}
+
+		/* Is there any DSCP TOS to apply? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_audio_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_audio_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_audio_rtp = val;
+			}
+		}
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_video_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_video_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_video_rtp = val;
+			}
 		}
 
 		janus_config_destroy(config);
@@ -3914,8 +3936,8 @@ static void *janus_sip_handler(void *data) {
 			char custom_headers[2048];
 			janus_sip_parse_custom_headers(root, (char *)&custom_headers, sizeof(custom_headers));
 			nua_bye(session->stack->s_nh_i,
-			    TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
-			    TAG_END());
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
+				TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
@@ -5685,6 +5707,15 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				return -1;
 			if(session->media.audio_rtp_fd == -1) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+				/* Set the DSCP value if set in the config file */
+				if(dscp_audio_rtp > 0) {
+					int optval = dscp_audio_rtp << 2;
+					int ret = setsockopt(session->media.audio_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+					if(ret < 0) {
+						JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
+							optval, strerror(errno));
+					}
+				}
 			}
 			if(session->media.audio_rtcp_fd == -1) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -5734,6 +5765,15 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				return -1;
 			if(session->media.video_rtp_fd == -1) {
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+				/* Set the DSCP value if set in the config file */
+				if(dscp_video_rtp > 0) {
+					int optval = dscp_video_rtp << 2;
+					int ret = setsockopt(session->media.video_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+					if(ret < 0) {
+						JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on video RTP socket (error=%s)\n",
+							optval, strerror(errno));
+					}
+				}
 			}
 			if(session->media.video_rtcp_fd == -1) {
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -6095,18 +6135,16 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = FALSE, .buffer = buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
-
-					/* Add audio-level extension */
+					/* Add audio-level extension, if present */
 					if(session->media.audio_level_extension_id != -1) {
-					        gboolean vad = FALSE;
-					        int level = -1;
-					        if(janus_rtp_header_extension_parse_audio_level(buffer, bytes,
-					                session->media.audio_level_extension_id, &vad, &level) == 0) {
-					                rtp.extensions.audio_level = level;
-					                rtp.extensions.audio_level_vad = vad;
-					        }
+						gboolean vad = FALSE;
+						int level = -1;
+						if(janus_rtp_header_extension_parse_audio_level(buffer, bytes,
+								session->media.audio_level_extension_id, &vad, &level) == 0) {
+							rtp.extensions.audio_level = level;
+							rtp.extensions.audio_level_vad = vad;
+						}
 					}
-
 					gateway->relay_rtp(session->handle, &rtp);
 					continue;
 				} else if(session->media.audio_rtcp_fd != -1 && fds[i].fd == session->media.audio_rtcp_fd) {
@@ -6167,24 +6205,22 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Relay to application */
 					janus_plugin_rtp rtp = { .video = TRUE, .buffer = buffer, .length = bytes };
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
-
-					/* Add video-orientation extension */
+					/* Add video-orientation extension, if present */
 					if(session->media.video_orientation_extension_id > 0) {
-					        gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
-					        if (janus_rtp_header_extension_parse_video_orientation(buffer, bytes,
-					                session->media.video_orientation_extension_id, &c, &f, &r1, &r0) == 0) {
-					                rtp.extensions.video_rotation = 0;
-					                if (r1 && r0)
-					                        rtp.extensions.video_rotation = 270;
-					                else if (r1)
-					                        rtp.extensions.video_rotation = 180;
-					                else if (r0)
-					                        rtp.extensions.video_rotation = 90;
-					                rtp.extensions.video_back_camera = c;
-					                rtp.extensions.video_flipped = f;
-					        }
+						gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
+						if(janus_rtp_header_extension_parse_video_orientation(buffer, bytes,
+								session->media.video_orientation_extension_id, &c, &f, &r1, &r0) == 0) {
+							rtp.extensions.video_rotation = 0;
+							if(r1 && r0)
+								rtp.extensions.video_rotation = 270;
+							else if(r1)
+								rtp.extensions.video_rotation = 180;
+							else if(r0)
+								rtp.extensions.video_rotation = 90;
+							rtp.extensions.video_back_camera = c;
+							rtp.extensions.video_flipped = f;
+						}
 					}
-
 					gateway->relay_rtp(session->handle, &rtp);
 					continue;
 				} else if(session->media.video_rtcp_fd != -1 && fds[i].fd == session->media.video_rtcp_fd) {
