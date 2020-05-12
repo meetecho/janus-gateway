@@ -237,6 +237,11 @@ function processRequest(id, msg) {
 		if(!fnbase) {
 			fnbase = "duktape-echotest-" + id + "-" + new Date().getTime();
 		}
+		// For the sake of simplicity, we're assuming Opus/VP8 here; in
+		// practice, you'll need to check what was negotiated. If you
+		// want the codec-specific info to be saved to the .mjr file as
+		// well, you'll need to add the '/fmtp=<info>' to the codec name,
+		// e.g.:    "vp9/fmtp=profile-id=2"
 		startRecording(id,
 			"audio", "opus", "/tmp", fnbase + "-audio",
 			"video", "vp8", "/tmp", fnbase + "-video",
