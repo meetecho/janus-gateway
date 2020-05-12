@@ -4254,6 +4254,9 @@ gint main(int argc, char *argv[])
 	if(args_info.nat_1_1_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("nat_1_1_mapping", args_info.nat_1_1_arg));
 	}
+	if(args_info.keep_private_host_given) {
+		janus_config_add(config, config_nat, janus_config_item_create("keep_private_host", "true"));
+	}
 	if(args_info.ice_enforce_list_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", args_info.ice_enforce_list_arg));
 	}
@@ -4537,13 +4540,20 @@ gint main(int argc, char *argv[])
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
-		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public IP - %s\n", item->value);
+		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
 		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
 			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
 		} else {
 			nat_1_1_mapping = item->value;
-			janus_set_public_ip(item->value);
-			janus_ice_enable_nat_1_1();
+			janus_set_public_ip(nat_1_1_mapping);
+			/* Check if we should replace the private host, or advertise both candidates */
+			gboolean keep_private_host = FALSE;
+			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
+			if(item && item->value && janus_is_true(item->value)) {
+				JANUS_LOG(LOG_INFO, "  -- Going to keep the private host too (separate candidates)\n");
+				keep_private_host = TRUE;
+			}
+			janus_ice_enable_nat_1_1(keep_private_host);
 		}
 	}
 	/* Any TURN server to use in Janus? */
