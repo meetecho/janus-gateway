@@ -2221,8 +2221,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				g_clear_pointer(&list, g_strfreev);
 			}
 			/* By default, we force VP8 as the only video codec */
-			videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
-			videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
+			videoroom->vcodec[0] = JANUS_VIDEOCODEC_H264;//JANUS_VIDEOCODEC_VP8;
+			videoroom->vcodec[1] = JANUS_VIDEOCODEC_VP8;//JANUS_VIDEOCODEC_NONE;
 			videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
 			/* Check if we're forcing a different single codec, or allowing more than one */
 			if(videocodec && videocodec->value) {
@@ -2995,7 +2995,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 
                     JANUS_LOG(LOG_INFO, " create:plugin token:  %s\n", vr_token_text);
                     if(FALSE ==  janus_auth_check_signature(vr_token_text,(const char *)room_id_str)) {
-                       error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+                       error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
                        g_snprintf(error_cause, JANUS_ERROR_CAUSE_STRING_SIZE, "UNAUTHORIZED, mismatch token");
                     }
                     if(error_code != 0)
@@ -3096,8 +3096,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			g_clear_pointer(&list, g_strfreev);
 		}
 		/* By default, we force VP8 as the only video codec */
-		videoroom->vcodec[0] = JANUS_VIDEOCODEC_VP8;
-		videoroom->vcodec[1] = JANUS_VIDEOCODEC_NONE;
+		videoroom->vcodec[0] = JANUS_VIDEOCODEC_H264;//JANUS_VIDEOCODEC_VP8;
+		videoroom->vcodec[1] = JANUS_VIDEOCODEC_VP8;//JANUS_VIDEOCODEC_NONE;
 		videoroom->vcodec[2] = JANUS_VIDEOCODEC_NONE;
 		/* Check if we're forcing a different single codec, or allowing more than one */
 		if(videocodec) {
@@ -4851,9 +4851,12 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                          GError * error = NULL;
                          g_thread_try_new ("gst", &janus_gst_gst_thread, session, &error);
                          if (error != NULL) {
-                            JANUS_LOG (LOG_ERR, "Got error %d (%s) trying to launch the gstreamer gstr thread...\n", error->code, error->message ? error->message : "??");
-                            gst_object_unref (GST_OBJECT(gstr->pipeline));
-                            g_free (gstr);
+                         	JANUS_LOG (LOG_ERR, "Got error %d (%s) trying to launch the gstreamer gstr thread...\n", error->code, error->message ? error->message : "??");
+                         	gst_object_unref (GST_OBJECT(gstr->pipeline));
+                         	g_free (gstr);
+				close(fd);
+                         	janus_refcount_decrease(&participant->ref);
+                         	goto error;
                         }
                 }
                 janus_videoroom_reqpli(participant, "New rtp_forward engaged");
@@ -7721,7 +7724,7 @@ static gboolean janus_auth_check_signature(const char *token, const char *room) 
         JANUS_LOG(LOG_ERR, "janus_videoroom: auth: fail, Token split fail \n");
         goto fail;
     }
-    /*SGW  Token should have exactly 3 parts */
+    /*WGW  Token should have exactly 3 parts */
     if(!parts[0] || !parts[1] || !parts[2] || parts[3]) {
         JANUS_LOG(LOG_ERR, "janus_videoroom: auth: fail, Token should have exactly one data and middle and  one hash part \n");
         goto fail;
