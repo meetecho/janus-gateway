@@ -55,7 +55,8 @@ static AVStream *vStream;
 #ifdef USE_CODECPAR
 static AVCodecContext *vEncoder;
 #endif
-static int max_width = 0, max_height = 0, fps = 0;
+static uint16_t max_width = 0, max_height = 0;
+int fps = 0;
 
 
 int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
@@ -105,6 +106,7 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 	vEncoder->time_base = (AVRational){ 1, fps };
 	vEncoder->pix_fmt = AV_PIX_FMT_YUV420P;
 	vEncoder->flags |= CODEC_FLAG_GLOBAL_HEADER;
+	vEncoder->strict_std_compliance = -2;
 	if(avcodec_open2(vEncoder, codec, NULL) < 0) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder error\n");
@@ -152,6 +154,135 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 	return 0;
 }
 
+/* Helper to decode a leb128 integer  */
+static uint32_t janus_pp_av1_lev128_decode(uint8_t *base, uint16_t maxlen, size_t *read) {
+	uint32_t val = 0;
+	uint8_t *cur = base;
+	while((cur-base) < maxlen) {
+		/* We only read the 7 least significant bits of each byte */
+		val |= ((uint32_t)(*cur & 0x7f)) << ((cur-base)*7);
+		if((*cur & 0x80) == 0) {
+			/* Most significant bit is 0, we're done */
+			*read = (cur-base)+1;
+			return val;
+		}
+		cur++;
+	}
+	/* If we got here, we read all bytes, but no one with 0 as MSB? */
+	return 0;
+}
+/* Helper to encode a leb128 integer  */
+static void janus_pp_av1_lev128_encode(uint32_t value, uint8_t *base, size_t *written) {
+	uint8_t *cur = base;
+	while(value >= 0x80) {
+		/* All these bytes need MSB=1 */
+		*cur = (0x80 | (value & 0x7F));
+		cur++;
+		value >>= 7;
+	}
+	/* Last byte will have MSB=0 */
+	*cur = value;
+	*written = (cur-base)+1;
+}
+
+/* Helpers to read a bit, or group of bits, in a Sequence Header */
+static uint32_t janus_pp_av1_getbit(uint8_t *base, uint32_t offset) {
+	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
+}
+static uint32_t janus_pp_av1_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
+	uint32_t res = 0;
+	int32_t i = 0;
+	for(i=num-1; i>=0; i--) {
+		res |= janus_pp_av1_getbit(base, (*offset)++) << i;
+	}
+	return res;
+}
+/* Helper to parse a Sequence Header (only to get the video resolution) */
+static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *height) {
+	/* Evaluate/skip everything until we get to the resolution */
+	uint32_t offset = 0, value = 0, i = 0;
+	uint8_t *base = (uint8_t *)(buffer);
+	/* Skip seq_profile (3 bits) */
+	janus_pp_av1_getbits(base, 3, &offset);
+	/* Skip still_picture (1 bit) */
+	janus_pp_av1_getbit(base, offset);
+	/* Skip reduced_still_picture_header (1 bit) */
+	value = janus_pp_av1_getbit(base, offset);
+	if(value) {
+		/* Skip seq_level_idx (5 bits) */
+		janus_pp_av1_getbits(base, 5, &offset);
+	} else {
+		gboolean decoder_model_info = FALSE, initial_display_delay = FALSE;
+		uint32_t bdlm1 = 0;
+		/* Skip timing_info_present_flag (1 bit) */
+		value = janus_pp_av1_getbit(base, offset);
+		if(value) {
+			/* Skip num_units_in_display_tick (32 bits) */
+			janus_pp_av1_getbits(base, 32, &offset);
+			/* Skip time_scale (32 bits) */
+			janus_pp_av1_getbits(base, 32, &offset);
+			/* Skip equal_picture_interval (1 bit)*/
+			value = janus_pp_av1_getbit(base, offset);
+			if(value) {
+				/* TODO Skip num_ticks_per_picture_minus_1 (uvlc) */
+			}
+			/* Skip decoder_model_info_present_flag (1 bit) */
+			value = janus_pp_av1_getbit(base, offset);
+			if(value) {
+				decoder_model_info = TRUE;
+				/* Skip buffer_delay_length_minus_1 (5 bits) */
+				bdlm1 = janus_pp_av1_getbits(base, 5, &offset);
+				/* Skip num_units_in_decoding_tick (32 bits) */
+				janus_pp_av1_getbits(base, 32, &offset);
+				/* Skip buffer_removal_time_length_minus_1 (5 bits) */
+				janus_pp_av1_getbits(base, 5, &offset);
+				/* Skip frame_presentation_time_length_minus_1 (5 bits) */
+				janus_pp_av1_getbits(base, 5, &offset);
+			}
+		}
+		/* Skip initial_display_delay_present_flag (1 bit) */
+		value = janus_pp_av1_getbit(base, offset);
+		if(value)
+			initial_display_delay = TRUE;
+		/* Skip operating_points_cnt_minus_1 (5 bits) */
+		value = janus_pp_av1_getbits(base, 5, &offset);
+		for(i=0; i<value; i++) {
+			/* Skip operating_point_idc[i] (12 bits) */
+			janus_pp_av1_getbits(base, 12, &offset);
+			/* Skip seq_level_idx[1] (5 bits) */
+			value = janus_pp_av1_getbits(base, 12, &offset);
+			if(value) {
+				/* Skip seq_tier[1] (5 bits) */
+				janus_pp_av1_getbit(base, offset);
+			}
+			if(decoder_model_info) {
+				/* Skip decoder_model_present_for_this_op[i] (1 bit) */
+				value = janus_pp_av1_getbit(base, offset);
+				if(value) {
+					/* Skip operating_parameters_info(i) */
+					janus_pp_av1_getbits(base, (2*bdlm1)+1, &offset);
+				}
+			}
+			if(initial_display_delay) {
+				/* Skip initial_display_delay_present_for_this_op[i] (1 bit) */
+				value = janus_pp_av1_getbit(base, offset);
+				if(value) {
+					/* Skip initial_display_delay_minus_1[i] (4 bits) */
+					janus_pp_av1_getbits(base, 4, &offset);
+				}
+			}
+		}
+	}
+	/* Read frame_width_bits_minus_1 (4 bits) */
+	uint32_t fwbm1 = janus_pp_av1_getbits(base, 4, &offset);
+	/* Read frame_height_bits_minus_1 (4 bits) */
+	uint32_t fhbm1 = janus_pp_av1_getbits(base, 4, &offset);
+	/* Read max_frame_width_minus_1 (n bits) */
+	*width = janus_pp_av1_getbits(base, fwbm1+1, &offset);
+	/* Read max_frame_height_minus_1 (n bits) */
+	*height = janus_pp_av1_getbits(base, fhbm1+1, &offset);
+}
+
 int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(!file || !list)
 		return -1;
@@ -174,8 +305,72 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
-		/* Parse AV1 header now */
-			/* TODO */
+		/* Read the packet */
+		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
+		int len = tmp->len-12-tmp->skip;
+		if(len < 3) {
+			tmp = tmp->next;
+			continue;
+		}
+		bytes = fread(prebuffer, sizeof(char), len, file);
+		if(bytes != len) {
+			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp->drop = TRUE;
+			tmp = tmp->next;
+			continue;
+		}
+		/* Parse AV1 header now: first byte is the aggregation header */
+		char *payload = prebuffer;
+		uint8_t aggrh = *payload;
+		uint8_t zbit = (aggrh & 0x80) >> 7;
+		uint8_t ybit = (aggrh & 0x40) >> 6;
+		uint8_t w = (aggrh & 0x30) >> 4;
+		uint8_t nbit = (aggrh & 0x08) >> 3;
+		JANUS_LOG(LOG_HUGE, "[%04d] z=%u, y=%u, w=%u, n=%u\n", len, zbit, ybit, w, nbit);
+		payload++;
+		len--;
+		uint8_t obus = 0;
+		uint32_t obusize = 0;
+		while(!zbit && len > 0) {
+			obus++;
+			if(w == 0 || w > obus) {
+				/* Then the OBU size (leb128) */
+				size_t read = 0;
+				obusize = janus_pp_av1_lev128_decode((uint8_t *)payload, len, &read);
+				JANUS_LOG(LOG_HUGE, "  -- OBU size: %"SCNu32"/%d (in %zu leb128 bytes)\n", obusize, len, read);
+				payload += read;
+				len -= read;
+			} else {
+				obusize = len;
+				JANUS_LOG(LOG_HUGE, "  -- OBU size: %d (last OBU)\n", len);
+			}
+			/* Then we have the OBU header */
+			uint8_t obuh = *payload;
+			uint8_t fbit = (obuh & 0x80) >> 7;
+			uint8_t type = (obuh & 0x78) >> 3;
+			uint8_t ebit = (obuh & 0x04) >> 2;
+			uint8_t sbit = (obuh & 0x02) >> 1;
+			JANUS_LOG(LOG_HUGE, "  -- OBU header: f=%u, type=%u, e=%u, s=%u\n", fbit, type, ebit, sbit);
+			if(ebit) {
+				/* Skip the extension, if present */
+				payload++;
+				len--;
+				obusize--;
+			}
+			if(type == 1) {
+				/* Sequence header */
+				uint16_t width = 0, height = 0;
+				/* TODO Fix currently broken parsing of SH */
+				//~ janus_pp_av1_parse_sh(payload+1, &width, &height);
+				if(width > max_width)
+					max_width = width;
+				if(height > max_height)
+					max_height = height;
+				JANUS_LOG(LOG_INFO, "  -- Detected new resolution: %"SCNu16"x%"SCNu16"\n", width, height);
+			}
+			payload += obusize;
+			len -= obusize;
+		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
 			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
@@ -190,7 +385,7 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
-	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
+	JANUS_LOG(LOG_INFO, "  -- %"SCNu16"x%"SCNu16" (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
 	if(max_width == 0 && max_height == 0) {
 		JANUS_LOG(LOG_WARN, "No resolution info?? assuming 640x480...\n");
 		max_width = 640;
@@ -217,15 +412,16 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 	janus_pp_frame_packet *tmp = list;
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
-	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
-	int len = 0, frameLen = 0;
+	uint8_t *received_frame = g_malloc0(numBytes), *obu_data = g_malloc0(numBytes);
+	uint8_t *buffer = g_malloc0(1500), *start = buffer;
+	int len = 0, frameLen = 0, total = 0, dataLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
 
 	while(*working && tmp != NULL) {
 		keyFrame = 0;
 		frameLen = 0;
+		dataLen = 0;
 		len = 0;
 		while(tmp != NULL) {
 			if(tmp->drop) {
@@ -253,16 +449,93 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 				tmp = tmp->next;
 				continue;
 			}
-			/* AV1 depay */
-				/* TODO */
+			/* Parse AV1 header now: first byte is the aggregation header */
+			uint8_t aggrh = *buffer;
+			uint8_t zbit = (aggrh & 0x80) >> 7;
+			uint8_t ybit = (aggrh & 0x40) >> 6;
+			uint8_t w = (aggrh & 0x30) >> 4;
+			uint8_t nbit = (aggrh & 0x08) >> 3;
+			/* FIXME Ugly hack: we consider a packet with Z=0 and N=1 a keyframe */
+			keyFrame = (!zbit && nbit);
+			if(keyFrame && !keyframe_found) {
+				keyframe_found = TRUE;
+				JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+			}
+			buffer++;
+			len--;
+			uint8_t obus = 0;
+			uint32_t obusize = 0;
+			while(!zbit && len > 0) {
+				obus++;
+				if(w == 0 || w > obus) {
+					/* Read the OBU size (leb128) */
+					size_t read = 0;
+					obusize = janus_pp_av1_lev128_decode((uint8_t *)buffer, len, &read);
+					buffer += read;
+					len -= read;
+				} else {
+					obusize = len;
+				}
+				/* Update the OBU header to set the S bit */
+				uint8_t obuh = *buffer;
+				obuh |= (1 << 1);
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU header: 1\n", tmp->ts);
+				memcpy(received_frame + frameLen, &obuh, sizeof(uint8_t));
+				frameLen++;
+				buffer++;
+				len--;
+				obusize--;
+				if(w == 0 || w > obus || !ybit) {
+					/* We have the whole OBU, write the OBU size */
+					size_t written = 0;
+					uint8_t leb[8];
+					janus_pp_av1_lev128_encode(obusize, leb, &written);
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU size (%"SCNu32"): %zu\n", tmp->ts, obusize, written);
+					memcpy(received_frame + frameLen, leb, written);
+					frameLen += written;
+					/* Copy the actual data */
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data: %"SCNu32"\n", tmp->ts, obusize);
+					memcpy(received_frame + frameLen, buffer, obusize);
+					frameLen += obusize;
+				} else {
+					/* OBU will continue in another packet, buffer the data */
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data (part.): %d\n", tmp->ts, obusize);
+					memcpy(obu_data + dataLen, buffer, obusize);
+					dataLen += obusize;
+				}
+				/* Move to the next OBU, if any */
+				buffer += obusize;
+				len -= obusize;
+			}
+			/* Frame manipulation */
+			if(len > 0) {
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data (cont.): %d\n", tmp->ts, len);
+				memcpy(obu_data + dataLen, buffer, len);
+				dataLen += len;
+			}
 			/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 			if(tmp->next == NULL || tmp->next->ts > tmp->ts)
 				break;
 			tmp = tmp->next;
 		}
+		if(dataLen > 0) {
+			/* We have a buffered OBU, write the OBU size */
+			size_t written = 0;
+			uint8_t leb[8];
+			janus_pp_av1_lev128_encode(dataLen, leb, &written);
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU size (%d): %zu\n", tmp->ts, dataLen, written);
+			memcpy(received_frame + frameLen, leb, written);
+			frameLen += written;
+			/* Copy the actual data */
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] OBU data: %"SCNu32"\n", tmp->ts, dataLen);
+			memcpy(received_frame + frameLen, obu_data, dataLen);
+			frameLen += dataLen;
+		}
 		if(frameLen > 0) {
 			/* Save the frame */
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+			total += frameLen;
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Saving frame: %d (tot=%d)\n", tmp->ts, frameLen, total);
 
 			AVPacket packet;
 			av_init_packet(&packet);
@@ -287,6 +560,7 @@ int janus_pp_av1_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 		tmp = tmp->next;
 	}
 	g_free(received_frame);
+	g_free(obu_data);
 	g_free(start);
 	return 0;
 }

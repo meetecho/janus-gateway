@@ -826,8 +826,14 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_av1_is_keyframe(const char *buffer, int len) {
-	/* TODO Just a placeholder: always returns FALSE, for now */
-	return FALSE;
+	if(!buffer || len < 3)
+		return FALSE;
+	/* Read the aggregation header */
+	uint8_t aggrh = *buffer;
+	uint8_t zbit = (aggrh & 0x80) >> 7;
+	uint8_t nbit = (aggrh & 0x08) >> 3;
+	/* FIXME Ugly hack: we consider a packet with Z=0 and N=1 a keyframe */
+	return (!zbit && nbit);
 }
 
 gboolean janus_h265_is_keyframe(const char *buffer, int len) {

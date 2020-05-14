@@ -271,7 +271,7 @@ int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
-		/* Parse H265 header now */
+		/* Read the packet */
 		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 		int len = tmp->len-12-tmp->skip;
 		if(len < 1) {
