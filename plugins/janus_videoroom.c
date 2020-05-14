@@ -4413,7 +4413,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if(error_code != 0)
 			goto prepare_response;
 		json_t *record = json_object_get(root, "record");
-		int recording_active = json_is_true(record);
+		gboolean recording_active = json_is_true(record);
 		JANUS_LOG(LOG_VERB, "Enable Recording : %d \n", (recording_active ? 1 : 0));
 		/* Lookup room */
 		janus_mutex_lock(&rooms_mutex);
@@ -4427,7 +4427,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&videoroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Set recording status */
-		gboolean room_prev_recording_active = recording_active ? TRUE : FALSE;
+		gboolean room_prev_recording_active = recording_active;
 		if (room_prev_recording_active != videoroom->record) {
 			/* Room recording state has changed */
 			videoroom->record = room_prev_recording_active;
