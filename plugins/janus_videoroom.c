@@ -4427,39 +4427,43 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_mutex_lock(&videoroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Set recording status */
-		videoroom->record = recording_active ? TRUE : FALSE;
-		/* Iterate over all participants */
-		gpointer value;
-		GHashTableIter iter;
-		g_hash_table_iter_init(&iter, videoroom->participants);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_videoroom_publisher *participant = value;
-			if(participant && participant->session) {
-				janus_mutex_lock(&participant->rec_mutex);
-				gboolean prev_recording_active = participant->recording_active;
-				participant->recording_active = recording_active;
-				JANUS_LOG(LOG_VERB, "Setting record property: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_active ? "true" : "false", participant->room_id, participant->user_id);
-				/* Do we need to do something with the recordings right now? */
-				if(participant->recording_active != prev_recording_active) {
-					/* Something changed */
-					if(!participant->recording_active) {
-						/* Not recording (anymore?) */
-						janus_videoroom_recorder_close(participant);
-					} else if(participant->recording_active && participant->sdp) {
-						/* We've started recording, send a PLI/FIR and go on */
-						janus_videoroom_recorder_create(
-							participant, strstr(participant->sdp, "m=audio") != NULL,
-							strstr(participant->sdp, "m=video") != NULL,
-							strstr(participant->sdp, "m=application") != NULL);
-						if(strstr(participant->sdp, "m=video")) {
-							/* Send a FIR */
-							janus_videoroom_reqpli(participant, "Recording video");
+		gboolean room_prev_recording_active = recording_active ? TRUE : FALSE;
+		if (room_prev_recording_active != videoroom->record) {
+			/* Room recording state has changed */
+			videoroom->record = room_prev_recording_active;
+			/* Iterate over all participants */
+			gpointer value;
+			GHashTableIter iter;
+			g_hash_table_iter_init(&iter, videoroom->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_videoroom_publisher *participant = value;
+				if(participant && participant->session) {
+					janus_mutex_lock(&participant->rec_mutex);
+					gboolean prev_recording_active = participant->recording_active;
+					participant->recording_active = recording_active;
+					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_active ? "true" : "false", participant->room_id, participant->user_id);
+					/* Do we need to do something with the recordings right now? */
+					if(participant->recording_active != prev_recording_active) {
+						/* Something changed */
+						if(!participant->recording_active) {
+							/* Not recording (anymore?) */
+							janus_videoroom_recorder_close(participant);
+						} else if(participant->recording_active && participant->sdp) {
+							/* We've started recording, send a PLI/FIR and go on */
+							janus_videoroom_recorder_create(
+								participant, strstr(participant->sdp, "m=audio") != NULL,
+								strstr(participant->sdp, "m=video") != NULL,
+								strstr(participant->sdp, "m=application") != NULL);
+							if(strstr(participant->sdp, "m=video")) {
+								/* Send a FIR */
+								janus_videoroom_reqpli(participant, "Recording video");
+							}
 						}
 					}
+					janus_mutex_unlock(&participant->rec_mutex);
 				}
-				janus_mutex_unlock(&participant->rec_mutex);
-			}
 		}
+        }
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
