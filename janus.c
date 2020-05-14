@@ -1102,10 +1102,11 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* If the auth token mechanism is enabled, we should check if this token can access this plugin */
+		const char *token_value = NULL;
 		if(janus_auth_is_enabled()) {
 			json_t *token = json_object_get(root, "token");
 			if(token != NULL) {
-				const char *token_value = json_string_value(token);
+				token_value = json_string_value(token);
 				if(token_value && !janus_auth_check_plugin(token_value, plugin_t)) {
 					JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token_value, plugin_text);
 					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
@@ -1116,7 +1117,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *opaque = json_object_get(root, "opaque_id");
 		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session, opaque_id);
+		handle = janus_ice_handle_create(session, opaque_id, token_value);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -2633,6 +2634,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
+		if(handle->token)
+			json_object_set_new(info, "token", json_string(handle->token));
 		json_object_set_new(info, "loop-running", (handle->mainloop != NULL &&
 			g_main_loop_is_running(handle->mainloop)) ? json_true() : json_false());
 		json_object_set_new(info, "created", json_integer(handle->created));

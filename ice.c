@@ -1167,7 +1167,7 @@ static void *janus_ice_handle_thread(void *data) {
 	return NULL;
 }
 
-janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id) {
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id, const char *token) {
 	if(core_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)core_session;
@@ -1189,6 +1189,8 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->session = core_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
+	if(token)
+		handle->token = g_strdup(token);
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
@@ -1271,7 +1273,7 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, JANUS_EVENT_SUBTYPE_NONE,
-			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id);
+			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id, handle->token);
 	return 0;
 }
 
@@ -1357,6 +1359,7 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 		janus_refcount_decrease(&session->ref);
 	}
 	g_free(handle->opaque_id);
+	g_free(handle->token);
 	g_free(handle);
 }
 
