@@ -787,16 +787,16 @@ room-<unique room ID>: {
 }
 \endverbatim *
  *
- * To enable or disable recording while the conference is in progress,
- * you can make use of the \c enable_recording request, which has to be
- * formatted as follows:
+ * To enable or disable recording on all participants while the conference 
+ * is in progress, you can make use of the \c enable_recording request, 
+ * which has to be formatted as follows:
  *
 \verbatim
 {
 	"request" : "enable_recording",
 	"room" : <unique numeric ID of the room>,
 	"secret" : "<room secret; mandatory if configured>"
-	"record" : <true|false, whether this room should be recorded or not>,
+	"record" : <true|false, whether participants in this room should be automatically recorded or not>,
 }
 \endverbatim *
  *
