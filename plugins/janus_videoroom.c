@@ -787,6 +787,19 @@ room-<unique room ID>: {
 }
 \endverbatim *
  *
+ * To enable or disable recording on all participants while the conference 
+ * is in progress, you can make use of the \c enable_recording request, 
+ * which has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "enable_recording",
+	"room" : <unique numeric ID of the room>,
+	"secret" : "<room secret; mandatory if configured>"
+	"record" : <true|false, whether participants in this room should be automatically recorded or not>,
+}
+\endverbatim *
+ *
  * To conclude, you can leave a room you previously joined as publisher
  * using the \c leave request. This will also implicitly unpublish you
  * if you were an active publisher in the room. The \c leave request
@@ -1248,6 +1261,9 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
 };
+static struct janus_json_parameter record_parameters[] = {
+	{"record", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video_rtcp_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1577,6 +1593,9 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	gboolean textdata;
 } janus_videoroom_rtp_relay_packet;
 
+/* Start / stop recording */
+static void janus_videoroom_recorder_create(janus_videoroom_publisher *participant, gboolean audio, gboolean video, gboolean data);
+static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant);
 
 /* Freeing stuff */
 static void janus_videoroom_subscriber_destroy(janus_videoroom_subscriber *s) {
@@ -4386,6 +4405,69 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		json_object_set_new(response, "videoroom", json_string("forwarders"));
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		json_object_set_new(response, "rtp_forwarders", list);
+		goto prepare_response;
+	} else if(!strcasecmp(request_text, "enable_recording")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, record_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto prepare_response;
+		json_t *record = json_object_get(root, "record");
+		gboolean recording_active = json_is_true(record);
+		JANUS_LOG(LOG_VERB, "Enable Recording : %d \n", (recording_active ? 1 : 0));
+		/* Lookup room */
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, FALSE, TRUE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			JANUS_LOG(LOG_ERR, "Failed to access videoroom\n");
+			janus_mutex_unlock(&rooms_mutex);
+			goto prepare_response;
+		}
+		janus_mutex_lock(&videoroom->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+		/* Set recording status */
+		gboolean room_prev_recording_active = recording_active;
+		if (room_prev_recording_active != videoroom->record) {
+			/* Room recording state has changed */
+			videoroom->record = room_prev_recording_active;
+			/* Iterate over all participants */
+			gpointer value;
+			GHashTableIter iter;
+			g_hash_table_iter_init(&iter, videoroom->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_videoroom_publisher *participant = value;
+				if(participant && participant->session) {
+					janus_mutex_lock(&participant->rec_mutex);
+					gboolean prev_recording_active = participant->recording_active;
+					participant->recording_active = recording_active;
+					JANUS_LOG(LOG_VERB, "Setting record property: %s (room %"SCNu64", user %"SCNu64")\n", participant->recording_active ? "true" : "false", participant->room_id, participant->user_id);
+					/* Do we need to do something with the recordings right now? */
+					if(participant->recording_active != prev_recording_active) {
+						/* Something changed */
+						if(!participant->recording_active) {
+							/* Not recording (anymore?) */
+							janus_videoroom_recorder_close(participant);
+						} else if(participant->recording_active && participant->sdp) {
+							/* We've started recording, send a PLI/FIR and go on */
+							janus_videoroom_recorder_create(
+								participant, strstr(participant->sdp, "m=audio") != NULL,
+								strstr(participant->sdp, "m=video") != NULL,
+								strstr(participant->sdp, "m=application") != NULL);
+							if(strstr(participant->sdp, "m=video")) {
+								/* Send a FIR */
+								janus_videoroom_reqpli(participant, "Recording video");
+							}
+						}
+					}
+					janus_mutex_unlock(&participant->rec_mutex);
+				}
+		}
+        }
+		janus_mutex_unlock(&videoroom->mutex);
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		json_object_set_new(response, "record", json_boolean(recording_active));
 		goto prepare_response;
 	} else {
 		/* Not a request we recognize, don't do anything */
