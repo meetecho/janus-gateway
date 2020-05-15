@@ -30,6 +30,8 @@
 #		negotiated/used or not for new publishers, default=true)
 # record = true|false (whether this room should be recorded, default=false)
 # rec_dir = <folder where recordings should be stored, when enabled>
+# lock_record = true|false (whether recording can only be started/stopped if the secret
+#            is provided, or using the global enable_recording request, default=false)
 # notify_joining = true|false (optional, whether to notify all participants when a new
 #               participant joins the room. The Videoroom plugin by design only notifies
 #               new feeds (publishers), and enabling this may result extra notification
