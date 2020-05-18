@@ -315,6 +315,8 @@ typedef struct janus_nosip_media {
 	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
+	int video_orientation_extension_id;
+	int audio_level_extension_id;
 } janus_nosip_media;
 
 typedef struct janus_nosip_session {
@@ -604,6 +606,8 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
+	session->media.video_orientation_extension_id = -1;
+	session->media.audio_level_extension_id = -1;
 	janus_rtp_switching_context_reset(&session->media.context);
 }
 
@@ -665,7 +669,8 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			janus_network_address iface;
 			janus_network_address_string_buffer ibuf;
 			if(getifaddrs(&ifas) == -1) {
-				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
+				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
+					errno, strerror(errno));
 			} else {
 				if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -886,6 +891,8 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
+	session->media.video_orientation_extension_id = -1;
+	session->media.audio_level_extension_id = -1;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.context);
 	session->media.pipefd[0] = -1;
@@ -1379,6 +1386,10 @@ static void *janus_nosip_handler(void *data) {
 					}
 				}
 			}
+			/* Get video-orientation extension id from SDP we got */
+			session->media.video_orientation_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+			/* Get audio-level extension id from SDP we got */
+			session->media.audio_level_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
 			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
@@ -2410,7 +2421,31 @@ static void *janus_nosip_relay_thread(void *data) {
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
 					janus_plugin_rtp rtp = { .video = video, .buffer = buffer, .length = bytes };
+					/* Add audio-level extension, if present */
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
+					if(!video && session->media.audio_level_extension_id != -1) {
+						gboolean vad = FALSE;
+						int level = -1;
+						if(janus_rtp_header_extension_parse_audio_level(buffer, bytes,
+								session->media.audio_level_extension_id, &vad, &level) == 0) {
+							rtp.extensions.audio_level = level;
+							rtp.extensions.audio_level_vad = vad;
+						}
+					} else if(video && session->media.video_orientation_extension_id > 0) {
+						gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
+						if(janus_rtp_header_extension_parse_video_orientation(buffer, bytes,
+								session->media.video_orientation_extension_id, &c, &f, &r1, &r0) == 0) {
+							rtp.extensions.video_rotation = 0;
+							if(r1 && r0)
+								rtp.extensions.video_rotation = 270;
+							else if(r1)
+								rtp.extensions.video_rotation = 180;
+							else if(r0)
+								rtp.extensions.video_rotation = 90;
+							rtp.extensions.video_back_camera = c;
+							rtp.extensions.video_flipped = f;
+						}
+					}
 					gateway->relay_rtp(session->handle, &rtp);
 					continue;
 				} else {

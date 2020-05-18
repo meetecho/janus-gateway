@@ -1353,8 +1353,6 @@ static void janus_audiobridge_room_destroy(janus_audiobridge_room *audiobridge) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&audiobridge->destroyed, 0, 1))
 		return;
-	/* Wait for the thread to finish */
-	g_thread_join(audiobridge->thread);
 	/* Decrease the counter */
 	janus_refcount_decrease(&audiobridge->ref);
 }
