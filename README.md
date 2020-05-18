@@ -265,6 +265,9 @@ or on the command line:
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
                                   assuming a 1:1 NAT is in place (e.g., Amazon
                                   EC2 instances, default=none)
+	-2, --keep-private-host       When nat-1-1 is used (e.g., Amazon EC2
+                                  instances), don't remove the private host,
+                                  but keep both to simulate STUN  (default=off)
 	-E, --ice-enforce-list=list   Comma-separated list of the only interfaces to
                                   use for ICE gathering; partial strings are
                                   supported (e.g., eth0 or eno1,wlan0,
@@ -316,6 +319,9 @@ or on the command line:
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
 	-e, --event-handlers          Enable event handlers  (default=off)
+	-w, --no-webrtc-encryption    Disable WebRTC encryption, so no DTLS or SRTP
+                                  (only for debugging!)  (default=off)
+
 
 Options passed through the command line have the precedence on those specified in the configuration file. To start the server, simply run:
 
