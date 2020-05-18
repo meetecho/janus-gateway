@@ -629,8 +629,8 @@ room-<unique room ID>: {
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
-	"audio_level_average" : "<>",
-	"audio_active_packets" : "<>",
+	"audio_level_average" : "<overwrite, only for this user, global room value of average level of microphone activity>",
+	"audio_active_packets" : "<overwrite, only for this user, global room value of number of packets to be evaluated>",
 }
 \endverbatim
  *
