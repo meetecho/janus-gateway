@@ -48,7 +48,7 @@ function JANUSSDP.render(sdp)
 	return sdpString
 end
 
-function JANUSSDP.findPayloadType(sdp, codec)
+function JANUSSDP.findPayloadType(sdp, codec, profile)
 	if sdp == nil or codec == nil then
 		return -1
 	end
@@ -57,12 +57,37 @@ function JANUSSDP.findPayloadType(sdp, codec)
 	local codecLower = codec:lower()
 	local index = nil
 	local a = nil
+	local checkProfile = false
 	for index,a in pairs(sdp) do
-		if a.name == "rtpmap" and a.value ~= nil then
+		if checkProfile and a.name == "fmtp" and a.value ~= nil then
+			checkProfile = false
+			if codec == "vp9" then
+				if a.value:find("profile%-id%=" .. profile) ~= nil then
+					-- Found
+					break
+				end
+				pt = -1
+			elseif codec == "h264" then
+				if a.value:find("profile%-level%-id%=" .. profile:lower()) ~= nil then
+					-- Found
+					break
+				elseif a.value:find("profile%-level%-id%=" .. profile:upper()) ~= nil then
+					-- Found
+					break
+				end
+				pt = -1
+			end
+		elseif a.name == "rtpmap" and a.value ~= nil then
 			if a.value:find(codecLower) ~= nil or a.value:find(codecUpper) ~= nil then
 				local n = a.value:gmatch("[^ ]+")
 				pt = tonumber(n())
-				break
+				if profile == nil then
+					-- We're done
+					break
+				else
+					-- We need to make sure the profile matches
+					checkProfile = true
+				end
 			end
 		end
 	end
@@ -95,6 +120,8 @@ function JANUSSDP.findCodec(sdp, pt)
 					codec = "h264"
 				elseif a.value:find("opus") ~= nil or a.value:find("OPUS") ~= nil then
 					codec = "opus"
+				elseif a.value:find("multiopus") ~= nil or a.value:find("MULTIOPUS") ~= nil then
+					codec = "multiopus"
 				elseif a.value:find("pcmu") ~= nil or a.value:find("PCMU") ~= nil then
 					codec = "pcmu"
 				elseif a.value:find("pcma") ~= nil or a.value:find("PCMA") ~= nil then
@@ -182,6 +209,8 @@ function JANUSSDP.generateOffer(options)
 	if options.audio == true then
 		if options.audioCodec == "opus" then
 			options.audioRtpmap = "opus/48000/2"
+		elseif options.audioCodec == "multiopus" then
+			options.audioRtpmap = "multiopus/48000/6"
 		elseif options.audioCodec == "pcmu" then
 			options.audioRtpmap = "PCMU/8000"
 			options.audioPt = 0
@@ -245,20 +274,29 @@ function JANUSSDP.generateOffer(options)
 		offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
 		offer[#offer+1] = { type = "a", name = options.audioDir }
 		offer[#offer+1] = { type = "a", name = "rtpmap", value = options.audioPt .. " " .. options.audioRtpmap }
+		if options.audioFmtp ~= nil then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.audioPt .. " " .. options.audioFmtp }
+		end
 	end
 	if options.video == true then
 		offer[#offer+1] = { type = "m", name = "video 9 UDP/TLS/RTP/SAVPF " .. options.videoPt }
 		offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
 		offer[#offer+1] = { type = "a", name = options.videoDir }
 		offer[#offer+1] = { type = "a", name = "rtpmap", value = options.videoPt .. " " .. options.videoRtpmap }
-		if options.videoCodec == "h264" then
-			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " profile-level-id=42e01f;packetization-mode=1" }
-		end
 		if options.videoRtcpfb == true then
 			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " ccm fir" }
 			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " nack" }
 			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " nack pli" }
 			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " goog-remb" }
+		end
+		if options.videoCodec == "vp9" and options.vp9Profile ~= nil then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " profile-id=" .. options.vp9Profile }
+		elseif options.videoCodec == "h264" and options.h264Profile then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " profile-level-id=" .. options.h264Profile .. ";packetization-mode=1" }
+		elseif options.videoFmtp ~= nil then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " " .. options.videoFmtp }
+		elseif options.videoCodec == "h264" then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " profile-level-id=42e01f;packetization-mode=1" }
 		end
 	end
 	if options.data == true then
@@ -281,6 +319,8 @@ function JANUSSDP.generateAnswer(offer, options)
 	if options.audioCodec == nil then
 		if JANUSSDP.findPayloadType(offer, "opus") > 0 then
 			options.audioCodec = "opus"
+		elseif JANUSSDP.findPayloadType(offer, "multiopus") > 0 then
+			options.audioCodec = "multiopus"
 		elseif JANUSSDP.findPayloadType(offer, "pcmu") > 0 then
 			options.audioCodec = "pcmu"
 		elseif JANUSSDP.findPayloadType(offer, "pcma") > 0 then
@@ -297,9 +337,9 @@ function JANUSSDP.generateAnswer(offer, options)
 	if options.videoCodec == nil then
 		if JANUSSDP.findPayloadType(offer, "vp8") > 0 then
 			options.videoCodec = "vp8"
-		elseif JANUSSDP.findPayloadType(offer, "vp9") > 0 then
+		elseif JANUSSDP.findPayloadType(offer, "vp9", options.vp9Profile) > 0 then
 			options.videoCodec = "vp9"
-		elseif JANUSSDP.findPayloadType(offer, "h264") > 0 then
+		elseif JANUSSDP.findPayloadType(offer, "h264", options.h264Profile) > 0 then
 			options.videoCodec = "h264"
 		end
 	end
@@ -345,7 +385,13 @@ function JANUSSDP.generateAnswer(offer, options)
 				medium = "video"
 				video = video+1
 				if videoPt < 0 then
-					videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec)
+					if options.videoCodec == "vp9" then
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec, options.vp9Profile)
+					elseif options.videoCodec == "h264" then
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec, options.h264Profile)
+					else
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec)
+					end
 				end
 				if videoPt < 0 then
 					video = video+1

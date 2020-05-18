@@ -127,7 +127,11 @@
 {
 	"request" : "record",
 	"id" : <unique numeric ID for the recording; optional, will be chosen by the server if missing>
-	"name" : "<Pretty name for the recording>"
+	"name" : "<Pretty name for the recording>",
+	"filename" : "<Base path/name for the file (media type and extension added by the plugin); optional>",
+	"audiocodec" : "<name of the audio codec we prefer for the recording; optional>",
+	"videocodec" : "<name of the video codec we prefer for the recording; optional>",
+	"videoprofile" : "<in case the video codec supports, profile to use (e.g., "2" for VP9, or "42e01f" for H.264); optional>"
 }
 \endverbatim
  *
@@ -295,8 +299,8 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_recordplay_handle_admin_message(json_t *message);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
@@ -346,6 +350,9 @@ static struct janus_json_parameter record_parameters[] = {
 	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"filename", JSON_STRING, 0},
+	{"audiocodec", JSON_STRING, 0},
+	{"videocodec", JSON_STRING, 0},
+	{"videoprofile", JSON_STRING, 0},
 	{"update", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter play_parameters[] = {
@@ -391,9 +398,11 @@ typedef struct janus_recordplay_recording {
 	char *date;					/* Time of the recording */
 	char *arc_file;				/* Audio file name */
 	janus_audiocodec acodec;	/* Codec used for audio, if available */
+	char *afmtp;				/* Audio fmtp, if any */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
 	char *vrc_file;				/* Video file name */
 	janus_videocodec vcodec;	/* Codec used for video, if available */
+	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	GList *viewers;				/* List of users watching this recording */
@@ -412,6 +421,7 @@ typedef struct janus_recordplay_session {
 	gboolean active;
 	gboolean recorder;		/* Whether this session is used to record or to replay a WebRTC session */
 	gboolean firefox;		/* We send Firefox users a different kind of FIR */
+	char *video_profile;	/* Codec-specific video profile to use, if any */
 	janus_recordplay_recording *recording;
 	janus_recorder *arc;	/* Audio recorder */
 	janus_recorder *vrc;	/* Video recorder */
@@ -447,6 +457,7 @@ static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->video_profile);
 	g_free(session);
 }
 
@@ -463,6 +474,8 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->date);
 	g_free(recording->arc_file);
 	g_free(recording->vrc_file);
+	g_free(recording->afmtp);
+	g_free(recording->vfmtp);
 	g_free(recording->offer);
 	g_free(recording);
 }
@@ -480,7 +493,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define VIDEO_PT		100
 
 /* Helper method to check which codec was used in a specific recording */
-static const char *janus_recordplay_parse_codec(const char *dir, const char *filename) {
+static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen) {
 	if(dir == NULL || filename == NULL)
 		return NULL;
 	char source[1024];
@@ -582,6 +595,10 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					fclose(file);
 					return NULL;
 				}
+				/* Any fmtp? */
+				json_t *f = json_object_get(info, "f");
+				if(f && json_is_string(f) && fmtp && fmtplen > 0)
+					g_snprintf(fmtp, fmtplen, "%s", json_string_value(f));
 				/* What codec was used? */
 				json_t *codec = json_object_get(info, "c");
 				if(!codec || !json_is_string(codec)) {
@@ -627,11 +644,15 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO, offer_audio,
 		JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(rec->acodec),
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
+		JANUS_SDP_OA_AUDIO_FMTP, rec->afmtp,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
+		JANUS_SDP_OA_VIDEO_FMTP, rec->vfmtp,
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_DATA, FALSE,
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);
@@ -1134,7 +1155,6 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		return;	/* We just do this for video, for now */
 
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-	char rtcpbuf[24];
 
 	/* Send a RR+SDES+REMB every five seconds, or ASAP while we are still
 	 * ramping up (first 4 RTP packets) */
@@ -1151,9 +1171,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		}
 
 		/* Send a new REMB back */
-		char rtcpbuf[24];
-		janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 24);
+		gateway->send_remb(handle, bitrate);
 
 		session->video_remb_last = now;
 	}
@@ -1163,16 +1181,13 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 	gint64 interval = (gint64)(session->video_keyframe_interval / 1000) * G_USEC_PER_SEC;
 
 	if(elapsed >= interval) {
-		/* Send both a FIR and a PLI, just to be sure */
-		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
-		janus_rtcp_pli((char *)&rtcpbuf, 12);
-		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+		/* Send a PLI */
+		gateway->send_pli(handle);
 		session->video_keyframe_request_last = now;
 	}
 }
 
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
@@ -1184,6 +1199,9 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		return;
 	if(!session->recorder || !session->recording)
 		return;
+	gboolean video = packet->video;
+	char *buf = packet->buffer;
+	uint16_t len = packet->length;
 	if(video && (session->ssrc[0] != 0 || session->rid[0] != NULL)) {
 		/* Handle simulcast: backup the header information first */
 		janus_rtp_header *header = (janus_rtp_header *)buf;
@@ -1196,10 +1214,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		if(session->sim_context.need_pli) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-			char rtcpbuf[12];
-			memset(rtcpbuf, 0, 12);
-			janus_rtcp_pli((char *)&rtcpbuf, 12);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
+			gateway->send_pli(handle);
 		}
 		/* Do we need to drop this? */
 		if(!save)
@@ -1228,13 +1243,13 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 	janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
 }
 
-void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 }
 
 void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {
-	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 
 	janus_mutex_lock(&sessions_mutex);
@@ -1370,6 +1385,8 @@ static void janus_recordplay_hangup_media_internal(janus_plugin_session *handle)
 		g_free(session->rid[i]);
 		session->rid[i] = NULL;
 	}
+	g_free(session->video_profile);
+	session->video_profile = NULL;
 	g_atomic_int_set(&session->hangingup, 0);
 }
 
@@ -1456,6 +1473,9 @@ static void *janus_recordplay_handler(void *data) {
 			if(filename) {
 				filename_text = json_string_value(filename);
 			}
+			json_t *audiocodec = json_object_get(root, "audiocodec");
+			json_t *videocodec = json_object_get(root, "videocodec");
+			json_t *videoprofile = json_object_get(root, "videoprofile");
 			json_t *update = json_object_get(root, "update");
 			gboolean do_update = update ? json_is_true(update) : FALSE;
 			if(do_update && !sdp_update) {
@@ -1524,7 +1544,11 @@ static void *janus_recordplay_handler(void *data) {
 			/* Check which codec we should record for audio and/or video */
 			const char *acodec = NULL, *vcodec = NULL;
 			janus_sdp_find_preferred_codecs(offer, &acodec, &vcodec);
+			if(audiocodec != NULL)
+				acodec = json_string_value(audiocodec);
 			rec->acodec = janus_audiocodec_from_name(acodec);
+			if(videocodec != NULL)
+				vcodec = json_string_value(videocodec);
 			rec->vcodec = janus_videocodec_from_name(vcodec);
 			/* We found preferred codecs: let's just make sure the direction is what we need */
 			janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
@@ -1541,6 +1565,30 @@ static void *janus_recordplay_handler(void *data) {
 			if(video) {
 				JANUS_LOG(LOG_VERB, "Video codec: %s\n", janus_videocodec_name(rec->vcodec));
 			}
+			/* Check which video profiles are available, to see if we can force some */
+			const char *video_profile = json_string_value(videoprofile);
+			int video_pt = -1;
+			if(video_profile != NULL) {
+				/* Check if the provided profile is supported supported */
+				video_pt = janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(rec->vcodec), video_profile);
+				if(video_pt == -1) {
+					JANUS_LOG(LOG_WARN, "No such video codec with profile %s, falling back to plain %s\n",
+						video_profile, janus_videocodec_name(rec->vcodec));
+					video_profile = NULL;
+				}
+			}
+			if(video && video_pt == -1)
+				video_pt = janus_sdp_get_codec_pt(offer, janus_videocodec_name(rec->vcodec));
+			g_free(session->video_profile);
+			session->video_profile = NULL;
+			if(video_profile != NULL)
+				session->video_profile = g_strdup(video_profile);
+			if(video && video_pt != -1) {
+				const char *video_fmtp = janus_sdp_get_fmtp(offer, video_pt);
+				if(video_fmtp != NULL)
+					rec->vfmtp = g_strdup(video_fmtp);
+			}
+			/* Set payload types */
 			rec->audio_pt = AUDIO_PT;
 			if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
 				/* Some audio codecs have a fixed payload type that we can't mess with */
@@ -1576,7 +1624,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, janus_videocodec_name(rec->vcodec), rec->vrc_file);
+				session->vrc = janus_recorder_create_full(recordings_path,
+					janus_videocodec_name(rec->vcodec), rec->vfmtp, rec->vrc_file);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1592,6 +1641,8 @@ recdone:
 				JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_VIDEO, video,
 				JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
+				JANUS_SDP_OA_VP9_PROFILE, session->video_profile,
+				JANUS_SDP_OA_H264_PROFILE, session->video_profile,
 				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 				JANUS_SDP_OA_DATA, FALSE,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
@@ -1935,7 +1986,11 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->arc_file));
+			char fmtp[256];
+			fmtp[0] = '\0';
+			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->arc_file, fmtp, sizeof(fmtp)));
+			if(strlen(fmtp) > 0)
+				rec->afmtp = g_strdup(fmtp);
 		}
 		if(video && video->value) {
 			rec->vrc_file = g_strdup(video->value);
@@ -1943,7 +1998,11 @@ void janus_recordplay_update_recordings_list(void) {
 			if(ext != NULL)
 				*ext = '\0';
 			/* Check which codec is in this recording */
-			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->vrc_file));
+			char fmtp[256];
+			fmtp[0] = '\0';
+			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path, rec->vrc_file, fmtp, sizeof(fmtp)));
+			if(strlen(fmtp) > 0)
+				rec->vfmtp = g_strdup(fmtp);
 		}
 		rec->audio_pt = AUDIO_PT;
 		if(rec->acodec != JANUS_AUDIOCODEC_NONE) {
@@ -2405,7 +2464,9 @@ static void *janus_recordplay_playout_thread(void *data) {
 				/* Update payload type */
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
-				gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+				janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
+				janus_plugin_rtp_extensions_reset(&prtp.extensions);
+				gateway->relay_rtp(session->handle, &prtp);
 				gettimeofday(&now, NULL);
 				abefore.tv_sec = now.tv_sec;
 				abefore.tv_usec = now.tv_usec;
@@ -2445,7 +2506,9 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
-					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
+					janus_plugin_rtp prtp = { .video = FALSE, .buffer = (char *)buffer, .length = bytes };
+					janus_plugin_rtp_extensions_reset(&prtp.extensions);
+					gateway->relay_rtp(session->handle, &prtp);
 					asent = TRUE;
 					audio = audio->next;
 				}
@@ -2463,7 +2526,9 @@ static void *janus_recordplay_playout_thread(void *data) {
 					/* Update payload type */
 					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
-					gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+					janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
+					janus_plugin_rtp_extensions_reset(&prtp.extensions);
+					gateway->relay_rtp(session->handle, &prtp);
 					video = video->next;
 				}
 				vsent = TRUE;
@@ -2507,7 +2572,9 @@ static void *janus_recordplay_playout_thread(void *data) {
 						/* Update payload type */
 						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
-						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
+						janus_plugin_rtp prtp = { .video = TRUE, .buffer = (char *)buffer, .length = bytes };
+						janus_plugin_rtp_extensions_reset(&prtp.extensions);
+						gateway->relay_rtp(session->handle, &prtp);
 						video = video->next;
 					}
 					vsent = TRUE;

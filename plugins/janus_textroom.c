@@ -532,9 +532,10 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_textroom_handle_admin_message(json_t *message);
 void janus_textroom_setup_media(janus_plugin_session *handle);
-void janus_textroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_textroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_textroom_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+void janus_textroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_textroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
+void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_textroom_data_ready(janus_plugin_session *handle);
 void janus_textroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_textroom_hangup_media(janus_plugin_session *handle);
 void janus_textroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -561,6 +562,7 @@ static janus_plugin janus_textroom_plugin =
 		.incoming_rtp = janus_textroom_incoming_rtp,
 		.incoming_rtcp = janus_textroom_incoming_rtcp,
 		.incoming_data = janus_textroom_incoming_data,
+		.data_ready = janus_textroom_data_ready,
 		.slow_link = janus_textroom_slow_link,
 		.hangup_media = janus_textroom_hangup_media,
 		.destroy_session = janus_textroom_destroy_session,
@@ -585,11 +587,19 @@ static struct janus_json_parameter transaction_parameters[] = {
 static struct janus_json_parameter room_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter roomopt_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter roomstr_parameters[] = {
+	{"room", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter roomstropt_parameters[] = {
+	{"room", JSON_STRING, 0}
+};
 static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"description", JSON_STRING, 0},
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
@@ -599,11 +609,9 @@ static struct janus_json_parameter create_parameters[] = {
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter edit_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
 	{"new_description", JSON_STRING, 0},
 	{"new_secret", JSON_STRING, 0},
@@ -613,31 +621,26 @@ static struct janus_json_parameter edit_parameters[] = {
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
 	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"allowed", JSON_ARRAY, 0}
 };
 static struct janus_json_parameter kick_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"pin", JSON_STRING, 0},
 	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter message_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"to", JSON_STRING, 0},
 	{"tos", JSON_ARRAY, 0},
 	{"ack", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter announcement_parameters[] = {
-	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
@@ -650,6 +653,7 @@ static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
+static gboolean string_ids = FALSE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_textroom_handler(void *data);
@@ -660,7 +664,8 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
 
 typedef struct janus_textroom_room {
-	guint64 room_id;			/* Unique room ID */
+	guint64 room_id;			/* Unique room ID (when using integers) */
+	gchar *room_id_str;			/* Unique room ID (when using strings) */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
@@ -673,7 +678,7 @@ typedef struct janus_textroom_room {
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 	janus_refcount ref;
 } janus_textroom_room;
-static GHashTable *rooms;
+static GHashTable *rooms = NULL;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 
@@ -684,6 +689,7 @@ typedef struct janus_textroom_session {
 	GHashTable *rooms;			/* Map of rooms this user is in, and related participant instance */
 	janus_mutex mutex;			/* Mutex to lock this session */
 	volatile gint setup;
+	volatile gint dataready;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -708,6 +714,7 @@ static void janus_textroom_room_destroy(janus_textroom_room *textroom) {
 static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	janus_textroom_room *textroom = janus_refcount_containerof(textroom_ref, janus_textroom_room, ref);
 	/* This room can be destroyed, free all the resources */
+	g_free(textroom->room_id_str);
 	g_free(textroom->room_name);
 	g_free(textroom->room_secret);
 	g_free(textroom->room_pin);
@@ -786,9 +793,9 @@ static void janus_textroom_message_free(janus_textroom_message *msg) {
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
 		"s=Janus TextRoom plugin\r\n" \
 		"t=0 0\r\n" \
-		"m=application 1 DTLS/SCTP 5000\r\n" \
+		"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
-		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
+		"a=sctp-port:5000\r\n"
 
 
 /* Error codes */
@@ -856,7 +863,6 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_textroom_session_destroy);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_textroom_message_free);
 	/* This is the callback we'll need to invoke to contact the Janus core */
@@ -892,7 +898,17 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 		if(!notify_events && callback->events_is_enabled()) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_TEXTROOM_NAME);
 		}
-		/* Iterate on all rooms */
+		janus_config_item *ids = janus_config_get(config, config_general, janus_config_type_item, "string_ids");
+		if(ids != NULL && ids->value != NULL)
+			string_ids = janus_is_true(ids->value);
+		if(string_ids) {
+			JANUS_LOG(LOG_INFO, "TextRoom will use alphanumeric IDs, not numeric\n");
+		}
+	}
+	/* Iterate on all rooms */
+	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
+	if(config != NULL) {
 		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
@@ -900,7 +916,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Adding text room '%s'\n", cat->name);
+			JANUS_LOG(LOG_VERB, "Adding TextRoom room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get(config, cat, janus_config_type_item, "description");
 			janus_config_item *priv = janus_config_get(config, cat, janus_config_type_item, "is_private");
 			janus_config_item *secret = janus_config_get(config, cat, janus_config_type_item, "secret");
@@ -911,7 +927,36 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			const char *room_num = cat->name;
 			if(strstr(room_num, "room-") == room_num)
 				room_num += 5;
-			textroom->room_id = g_ascii_strtoull(room_num, NULL, 0);
+			if(!string_ids) {
+				textroom->room_id = g_ascii_strtoull(room_num, NULL, 0);
+				if(textroom->room_id == 0) {
+					JANUS_LOG(LOG_ERR, "Can't add the TextRoom room, invalid ID 0...\n");
+					g_free(textroom);
+					cl = cl->next;
+					continue;
+				}
+				/* Make sure the ID is completely numeric */
+				char room_id_str[30];
+				g_snprintf(room_id_str, sizeof(room_id_str), "%"SCNu64, textroom->room_id);
+				if(strcmp(room_num, room_id_str)) {
+					JANUS_LOG(LOG_ERR, "Can't add the TextRoom room, ID '%s' is not numeric...\n", room_num);
+					g_free(textroom);
+					cl = cl->next;
+					continue;
+				}
+			}
+			/* Let's make sure the room doesn't exist already */
+			janus_mutex_lock(&rooms_mutex);
+			if(g_hash_table_lookup(rooms, string_ids ? (gpointer)room_num : (gpointer)&textroom->room_id) != NULL) {
+				/* It does... */
+				janus_mutex_unlock(&rooms_mutex);
+				JANUS_LOG(LOG_ERR, "Can't add the TextRoom room, room %s already exists...\n", room_num);
+				g_free(textroom);
+				cl = cl->next;
+				continue;
+			}
+			janus_mutex_unlock(&rooms_mutex);
+			textroom->room_id_str = g_strdup(room_num);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -939,12 +984,14 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			textroom->destroyed = 0;
 			janus_mutex_init(&textroom->mutex);
 			janus_refcount_init(&textroom->ref, janus_textroom_room_free);
-			JANUS_LOG(LOG_VERB, "Created textroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
-				textroom->room_id, textroom->room_name,
+			JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s)\n",
+				textroom->room_id_str, textroom->room_name,
 				textroom->is_private ? "private" : "public",
 				textroom->room_secret ? textroom->room_secret : "no secret",
 				textroom->room_pin ? textroom->room_pin : "no pin");
-			g_hash_table_insert(rooms, janus_uint64_dup(textroom->room_id), textroom);
+			g_hash_table_insert(rooms,
+				string_ids ? (gpointer)g_strdup(textroom->room_id_str) : (gpointer)janus_uint64_dup(textroom->room_id),
+				textroom);
 			cl = cl->next;
 		}
 		g_list_free(clist);
@@ -958,7 +1005,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, rooms);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_textroom_room *tr = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s]\n", tr->room_id, tr->room_name);
+		JANUS_LOG(LOG_VERB, "  ::: [%s][%s]\n", tr->room_id_str, tr->room_name);
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
@@ -1059,11 +1106,13 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_textroom_session *session = g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
-	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_participant_dereference);
+	session->rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_participant_dereference);
 	session->destroyed = 0;
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_textroom_session_free);
 	g_atomic_int_set(&session->setup, 0);
+	g_atomic_int_set(&session->dataready, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -1285,7 +1334,7 @@ admin_response:
 }
 
 void janus_textroom_setup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_mutex_lock(&sessions_mutex);
@@ -1303,18 +1352,18 @@ void janus_textroom_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&sessions_mutex);
 }
 
-void janus_textroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_textroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	/* We don't do audio/video */
 }
 
-void janus_textroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_textroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	/* We don't do audio/video */
 }
 
-void janus_textroom_incoming_data(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len) {
+void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	if(!textdata) {
+	if(packet->binary) {
 		/* We don't support binary data in the TextRoom plugin, it has to be text */
 		JANUS_LOG(LOG_ERR, "Binary data received, dropping...\n");
 		return;
@@ -1330,6 +1379,8 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *label, gbo
 		janus_refcount_decrease(&session->ref);
 		return;
 	}
+	char *buf = packet->buffer;
+	uint16_t len = packet->length;
 	if(buf == NULL || len <= 0) {
 		janus_refcount_decrease(&session->ref);
 		return;
@@ -1340,6 +1391,19 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *label, gbo
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
 	janus_textroom_handle_incoming_request(handle, text, NULL, FALSE);
 	janus_refcount_decrease(&session->ref);
+}
+
+void janus_textroom_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable: we shouldn't send anything before this happens */
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_TEXTROOM_PACKAGE, handle);
+	}
 }
 
 /* Helper method to handle incoming messages from the data channel */
@@ -1375,27 +1439,48 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
-		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms, &room_id);
+		janus_mutex_lock(&textroom->mutex);
+		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&textroom->mutex);
 			janus_refcount_decrease(&textroom->ref);
-			JANUS_LOG(LOG_ERR, "Not in room %"SCNu64"\n", room_id);
+			JANUS_LOG(LOG_ERR, "Not in room %s\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NOT_IN_ROOM;
-			g_snprintf(error_cause, 512, "Not in room %"SCNu64, room_id);
+			g_snprintf(error_cause, 512, "Not in room %s", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&participant->ref);
@@ -1414,7 +1499,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		/* Prepare outgoing message */
 		json_t *msg = json_object();
 		json_object_set_new(msg, "textroom", json_string("message"));
-		json_object_set_new(msg, "room", json_integer(room_id));
+		json_object_set_new(msg, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		json_object_set_new(msg, "from", json_string(participant->username));
 		time_t timer;
 		time(&timer);
@@ -1435,15 +1520,16 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* A single user */
 			json_t *sent = json_object();
 			const char *to = json_string_value(username);
-			JANUS_LOG(LOG_VERB, "To %s in %"SCNu64": %s\n", to, room_id, message);
+			JANUS_LOG(LOG_VERB, "To %s in %s: %s\n", to, room_id_str, message);
 			janus_textroom_participant *top = g_hash_table_lookup(textroom->participants, to);
 			if(top) {
 				janus_refcount_increase(&top->ref);
-				gateway->relay_data(top->session->handle, NULL, TRUE, msg_text, strlen(msg_text));
+				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+				gateway->relay_data(top->session->handle, &data);
 				janus_refcount_decrease(&top->ref);
 				json_object_set_new(sent, to, json_true());
 			} else {
-				JANUS_LOG(LOG_WARN, "User %s is not in room %"SCNu64", failed to send message\n", to, room_id);
+				JANUS_LOG(LOG_WARN, "User %s is not in room %s, failed to send message\n", to, room_id_str);
 				json_object_set_new(sent, to, json_false());
 			}
 			json_object_set_new(reply, "sent", sent);
@@ -1454,31 +1540,33 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			for(i=0; i<json_array_size(usernames); i++) {
 				json_t *u = json_array_get(usernames, i);
 				const char *to = json_string_value(u);
-				JANUS_LOG(LOG_VERB, "To %s in %"SCNu64": %s\n", to, room_id, message);
+				JANUS_LOG(LOG_VERB, "To %s in %s: %s\n", to, room_id_str, message);
 				janus_textroom_participant *top = g_hash_table_lookup(textroom->participants, to);
 				if(top) {
 					janus_refcount_increase(&top->ref);
-					gateway->relay_data(top->session->handle, NULL, TRUE, msg_text, strlen(msg_text));
+					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+					gateway->relay_data(top->session->handle, &data);
 					janus_refcount_decrease(&top->ref);
 					json_object_set_new(sent, to, json_true());
 				} else {
-					JANUS_LOG(LOG_WARN, "User %s is not in room %"SCNu64", failed to send message\n", to, room_id);
+					JANUS_LOG(LOG_WARN, "User %s is not in room %s, failed to send message\n", to, room_id_str);
 					json_object_set_new(sent, to, json_false());
 				}
 			}
 			json_object_set_new(reply, "sent", sent);
 		} else {
 			/* Everybody in the room */
-			JANUS_LOG(LOG_VERB, "To everybody in %"SCNu64": %s\n", room_id, message);
+			JANUS_LOG(LOG_VERB, "To everybody in %s: %s\n", room_id_str, message);
 			if(textroom->participants) {
 				GHashTableIter iter;
 				gpointer value;
 				g_hash_table_iter_init(&iter, textroom->participants);
 				while(g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_textroom_participant *top = value;
-					JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64": %s\n", top->username, room_id, message);
+					JANUS_LOG(LOG_VERB, "  >> To %s in %s: %s\n", top->username, room_id_str, message);
 					janus_refcount_increase(&top->ref);
-					gateway->relay_data(top->session->handle, NULL, TRUE, msg_text, strlen(msg_text));
+					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+					gateway->relay_data(top->session->handle, &data);
 					janus_refcount_decrease(&top->ref);
 				}
 			}
@@ -1532,20 +1620,40 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		/* A PIN may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_pin, root, "pin", error_code, error_cause,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
@@ -1555,13 +1663,13 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		janus_mutex_lock(&session->mutex);
-		if(g_hash_table_lookup(session->rooms, &room_id) != NULL) {
+		if(g_hash_table_lookup(session->rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id) != NULL) {
 			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&textroom->mutex);
 			janus_refcount_decrease(&textroom->ref);
-			JANUS_LOG(LOG_ERR, "Already in room %"SCNu64"\n", room_id);
+			JANUS_LOG(LOG_ERR, "Already in room %s\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_ALREADY_IN_ROOM;
-			g_snprintf(error_cause, 512, "Already in room %"SCNu64, room_id);
+			g_snprintf(error_cause, 512, "Already in room %s", room_id_str);
 			goto msg_response;
 		}
 		json_t *username = json_object_get(root, "username");
@@ -1588,7 +1696,9 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_mutex_init(&participant->mutex);
 		janus_refcount_init(&participant->ref, janus_textroom_participant_free);
 		janus_refcount_increase(&participant->ref);
-		g_hash_table_insert(session->rooms, janus_uint64_dup(textroom->room_id), participant);
+		g_hash_table_insert(session->rooms,
+			string_ids ? (gpointer)g_strdup(textroom->room_id_str) : (gpointer)janus_uint64_dup(textroom->room_id),
+			participant);
 		janus_refcount_increase(&participant->ref);
 		g_hash_table_insert(textroom->participants, participant->username, participant);
 		/* Notify all participants */
@@ -1598,13 +1708,14 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Prepare event */
 			json_t *event = json_object();
 			json_object_set_new(event, "textroom", json_string("join"));
-			json_object_set_new(event, "room", json_integer(textroom->room_id));
+			json_object_set_new(event, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(event, "username", json_string(username_text));
 			if(display_text != NULL)
 				json_object_set_new(event, "display", json_string(display_text));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			gateway->relay_data(handle, NULL, TRUE, event_text, strlen(event_text));
+			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
 			gpointer value;
@@ -1614,8 +1725,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				if(top == participant)
 					continue;	/* Skip us */
 				janus_refcount_increase(&top->ref);
-				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
-				gateway->relay_data(top->session->handle, NULL, TRUE, event_text, strlen(event_text));
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, room_id_str);
+				gateway->relay_data(top->session->handle, &data);
 				/* Take note of this user */
 				json_t *p = json_object();
 				json_object_set_new(p, "username", json_string(top->username));
@@ -1639,45 +1750,61 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("join"));
-			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(info, "username", json_string(username_text));
 			if(display_text)
 				json_object_set_new(info, "display", json_string(display_text));
 			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 	} else if(!strcasecmp(request_text, "leave")) {
-		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
-			error_code, error_cause, TRUE,
-			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_lock(&session->mutex);
-		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms, &room_id);
+		janus_textroom_participant *participant = g_hash_table_lookup(session->rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&textroom->mutex);
 			janus_refcount_decrease(&textroom->ref);
-			JANUS_LOG(LOG_ERR, "Not in room %"SCNu64"\n", room_id);
+			JANUS_LOG(LOG_ERR, "Not in room %s\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NOT_IN_ROOM;
-			g_snprintf(error_cause, 512, "Not in room %"SCNu64, room_id);
+			g_snprintf(error_cause, 512, "Not in room %s", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&participant->ref);
-		g_hash_table_remove(session->rooms, &room_id);
+		g_hash_table_remove(session->rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		g_hash_table_remove(textroom->participants, participant->username);
 		participant->session = NULL;
 		participant->room = NULL;
@@ -1687,11 +1814,12 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Prepare event */
 			json_t *event = json_object();
 			json_object_set_new(event, "textroom", json_string("leave"));
-			json_object_set_new(event, "room", json_integer(textroom->room_id));
+			json_object_set_new(event, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(event, "username", json_string(participant->username));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			gateway->relay_data(handle, NULL, TRUE, event_text, strlen(event_text));
+			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
 			gpointer value;
@@ -1701,8 +1829,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				if(top == participant)
 					continue;	/* Skip us */
 				janus_refcount_increase(&top->ref);
-				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
-				gateway->relay_data(top->session->handle, NULL, TRUE, event_text, strlen(event_text));
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, room_id_str);
+				gateway->relay_data(top->session->handle, &data);
 				janus_refcount_decrease(&top->ref);
 			}
 			free(event_text);
@@ -1711,7 +1839,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("leave"));
-			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(info, "username", json_string(participant->username));
 			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
@@ -1747,7 +1875,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				continue;
 			}
 			json_t *rl = json_object();
-			json_object_set_new(rl, "room", json_integer(room->room_id));
+			json_object_set_new(rl, "room", string_ids ? json_string(room->room_id_str) : json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
@@ -1764,20 +1892,35 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		}
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room */
-		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
-			error_code, error_cause, TRUE,
-			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL || g_atomic_int_get(&textroom->destroyed)) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
@@ -1799,14 +1942,25 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
-			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "participants", list);
 		}
 	} else if(!strcasecmp(request_text, "allowed")) {
-		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing textroom room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing TextRoom room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, allowed_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		json_t *action = json_object_get(root, "action");
@@ -1820,14 +1974,23 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "Unsupported action '%s' (allowed)", action_text);
 			goto msg_response;
 		}
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_mutex_lock(&textroom->mutex);
@@ -1840,10 +2003,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		if(!strcasecmp(action_text, "enable")) {
-			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens for room %"SCNu64"\n", room_id);
+			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens for room %s\n", room_id_str);
 			textroom->check_tokens = TRUE;
 		} else if(!strcasecmp(action_text, "disable")) {
-			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens for room %"SCNu64" (free entry)\n", room_id);
+			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens for room %s (free entry)\n", room_id_str);
 			textroom->check_tokens = FALSE;
 		} else {
 			gboolean add = !strcasecmp(action_text, "add");
@@ -1884,7 +2047,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Send response back */
 			reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
-			json_object_set_new(reply, "room", json_integer(textroom->room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_t *list = json_array();
 			if(strcasecmp(action_text, "disable")) {
 				if(g_hash_table_size(textroom->allowed) > 0) {
@@ -1903,22 +2066,42 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_LOG(LOG_VERB, "TextRoom room allowed list updated\n");
 		}
 	} else if(!strcasecmp(request_text, "kick")) {
-		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing textroom room\n");
+		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing TextRoom room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, kick_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto msg_response;
 		json_t *room = json_object_get(root, "room");
 		json_t *username = json_object_get(root, "username");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_mutex_lock(&textroom->mutex);
@@ -1935,9 +2118,9 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(participant == NULL) {
 			janus_mutex_unlock(&textroom->mutex);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such participant %s in room %"SCNu64"\n", user_id, room_id);
+			JANUS_LOG(LOG_ERR, "No such participant %s in room %s\n", user_id, room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_USER;
-			g_snprintf(error_cause, 512, "No such user %s in room %"SCNu64, user_id, room_id);
+			g_snprintf(error_cause, 512, "No such user %s in room %s", user_id, room_id_str);
 			goto msg_response;
 		}
 		/* Notify all participants */
@@ -1946,7 +2129,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Prepare event */
 			json_t *event = json_object();
 			json_object_set_new(event, "textroom", json_string("kicked"));
-			json_object_set_new(event, "room", json_integer(textroom->room_id));
+			json_object_set_new(event, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(event, "username", json_string(participant->username));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
@@ -1956,8 +2139,9 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_hash_table_iter_init(&iter, textroom->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_textroom_participant *top = value;
-				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
-				gateway->relay_data(top->session->handle, NULL, TRUE, event_text, strlen(event_text));
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, room_id_str);
+				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+				gateway->relay_data(top->session->handle, &data);
 			}
 			free(event_text);
 		}
@@ -1965,12 +2149,12 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "textroom", json_string("kicked"));
-			json_object_set_new(info, "room", json_integer(textroom->room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(info, "username", json_string(participant->username));
 			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 		/* Remove user from list */
-		g_hash_table_remove(participant->session->rooms, &room_id);
+		g_hash_table_remove(participant->session->rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		g_hash_table_remove(textroom->participants, participant->username);
 		participant->session = NULL;
 		participant->room = NULL;
@@ -1986,26 +2170,46 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(reply, "textbridge", json_string("success"));
 		}
 	} else if(!strcasecmp(request_text, "announcement")) {
-		JANUS_LOG(LOG_VERB, "Attempt to send a textroom announcement\n");
+		JANUS_LOG(LOG_VERB, "Attempt to send a TextRoom announcement\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, announcement_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
+		if(error_code != 0)
+			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
-		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		janus_mutex_lock(&textroom->mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(textroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
@@ -2019,7 +2223,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		/* Prepare outgoing message */
 		json_t *msg = json_object();
 		json_object_set_new(msg, "textroom", json_string("announcement"));
-		json_object_set_new(msg, "room", json_integer(room_id));
+		json_object_set_new(msg, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		time_t timer;
 		time(&timer);
 		struct tm *tm_info = localtime(&timer);
@@ -2036,9 +2240,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_hash_table_iter_init(&iter, textroom->participants);
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_textroom_participant *top = value;
-				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64": %s\n", top->username, room_id, message);
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s: %s\n", top->username, room_id_str, message);
 				janus_refcount_increase(&top->ref);
-				gateway->relay_data(top->session->handle, NULL, TRUE, msg_text, strlen(msg_text));
+				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+				gateway->relay_data(top->session->handle, &data);
 				janus_refcount_decrease(&top->ref);
 			}
 		}
@@ -2083,6 +2288,17 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomopt_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstropt_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		if(admin_key != NULL) {
@@ -2133,26 +2349,34 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		guint64 room_id = 0;
-		room_id = json_integer_value(room);
-		if(room_id == 0) {
-			JANUS_LOG(LOG_WARN, "Desired room ID is 0, which is not allowed... picking random ID instead\n");
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
+		if(room_id == 0 && room_id_str == NULL) {
+			JANUS_LOG(LOG_WARN, "Desired room ID is empty, which is not allowed... picking random ID instead\n");
 		}
 		janus_mutex_lock(&rooms_mutex);
-		if(room_id > 0) {
+		if(room_id > 0 || room_id_str != NULL) {
 			/* Let's make sure the room doesn't exist already */
-			if(g_hash_table_lookup(rooms, &room_id) != NULL) {
+			if(g_hash_table_lookup(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id) != NULL) {
 				/* It does... */
 				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Room %"SCNu64" already exists!\n", room_id);
 				error_code = JANUS_TEXTROOM_ERROR_ROOM_EXISTS;
-				g_snprintf(error_cause, 512, "Room %"SCNu64" already exists", room_id);
+				JANUS_LOG(LOG_ERR, "Room %s already exists!\n", room_id_str);
+				g_snprintf(error_cause, 512, "Room %s already exists", room_id_str);
 				goto msg_response;
 			}
 		}
 		/* Create the text room */
 		janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
 		/* Generate a random ID */
-		if(room_id == 0) {
+		gboolean room_id_allocated = FALSE;
+		if(!string_ids && room_id == 0) {
 			while(room_id == 0) {
 				room_id = janus_random_uint64();
 				if(g_hash_table_lookup(rooms, &room_id) != NULL) {
@@ -2160,14 +2384,26 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 					room_id = 0;
 				}
 			}
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else if(string_ids && room_id_str == NULL) {
+			while(room_id_str == NULL) {
+				room_id_str = janus_random_uuid();
+				if(g_hash_table_lookup(rooms, room_id_str) != NULL) {
+					/* Room ID already taken, try another one */
+					g_clear_pointer(&room_id_str, g_free);
+				}
+			}
+			room_id_allocated = TRUE;
 		}
 		textroom->room_id = room_id;
+		textroom->room_id_str = room_id_str ? g_strdup(room_id_str) : NULL;
 		char *description = NULL;
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 			description = g_strdup(json_string_value(desc));
 		} else {
 			char roomname[255];
-			g_snprintf(roomname, 255, "Room %"SCNu64"", textroom->room_id);
+			g_snprintf(roomname, 255, "Room %s", textroom->room_id_str);
 			description = g_strdup(roomname);
 		}
 		textroom->room_name = description;
@@ -2201,20 +2437,22 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		textroom->destroyed = 0;
 		janus_mutex_init(&textroom->mutex);
 		janus_refcount_init(&textroom->ref, janus_textroom_room_free);
-		g_hash_table_insert(rooms, janus_uint64_dup(textroom->room_id), textroom);
-		JANUS_LOG(LOG_VERB, "Created textroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
-			textroom->room_id, textroom->room_name,
+		g_hash_table_insert(rooms,
+			string_ids ? (gpointer)g_strdup(textroom->room_id_str) : (gpointer)janus_uint64_dup(textroom->room_id),
+			textroom);
+		JANUS_LOG(LOG_VERB, "Created TextRoom: %s (%s, %s, secret: %s, pin: %s)\n",
+			textroom->room_id_str, textroom->room_name,
 			textroom->is_private ? "private" : "public",
 			textroom->room_secret ? textroom->room_secret : "no secret",
 			textroom->room_pin ? textroom->room_pin : "no pin");
 		if(save) {
 			/* This room is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
-			JANUS_LOG(LOG_VERB, "Saving room %"SCNu64" permanently in config file\n", textroom->room_id);
+			JANUS_LOG(LOG_VERB, "Saving room %s permanently in config file\n", textroom->room_id_str);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, textroom->room_id);
+			g_snprintf(cat, BUFSIZ, "room-%s", textroom->room_id_str);
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, cat);
 			/* Now for the values */
 			janus_config_add(config, c, janus_config_item_create("description", textroom->room_name));
@@ -2237,7 +2475,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		g_hash_table_iter_init(&iter, rooms);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_textroom_room *tr = value;
-			JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s]\n", tr->room_id, tr->room_name);
+			JANUS_LOG(LOG_VERB, "  ::: [%s][%s]\n", tr->room_id_str, tr->room_name);
 		}
 		janus_mutex_unlock(&rooms_mutex);
 		if(!internal) {
@@ -2245,38 +2483,65 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "created"));
-			json_object_set_new(reply, "room", json_integer(textroom->room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
-			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
+		if(room_id_allocated)
+			g_free(room_id_str);
 	} else if(!strcasecmp(request_text, "exists")) {
-		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
-			error_code, error_cause, TRUE,
-			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		json_t *room = json_object_get(root, "room");
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		gboolean room_exists = g_hash_table_contains(rooms, &room_id);
+		gboolean room_exists = g_hash_table_contains(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		janus_mutex_unlock(&rooms_mutex);
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
-			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "exists", room_exists ? json_true() : json_false());
 		}
 	} else if(!strcasecmp(request_text, "edit")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		/* We only allow for a limited set of properties to be edited */
@@ -2294,14 +2559,23 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No configuration file, can't edit room permanently");
 			goto msg_response;
 		}
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_mutex_lock(&textroom->mutex);
@@ -2343,11 +2617,11 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(save) {
 			/* This change is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
-			JANUS_LOG(LOG_VERB, "Modifying room %"SCNu64" permanently in config file\n", room_id);
+			JANUS_LOG(LOG_VERB, "Modifying room %s permanently in config file\n", room_id_str);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, room_id);
+			g_snprintf(cat, BUFSIZ, "room-%s", room_id_str);
 			/* Remove the old category first */
 			janus_config_remove(config, NULL, cat);
 			/* Now write the room details again */
@@ -2373,20 +2647,31 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "edited"));
-			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("edited"));
-			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		if(!string_ids) {
+			JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		} else {
+			JANUS_VALIDATE_JSON_OBJECT(root, roomstr_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		}
 		if(error_code != 0)
 			goto msg_response;
 		json_t *room = json_object_get(root, "room");
@@ -2398,14 +2683,23 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(error_cause, 512, "No configuration file, can't destroy room permanently");
 			goto msg_response;
 		}
-		guint64 room_id = json_integer_value(room);
+		guint64 room_id = 0;
+		char room_id_num[30], *room_id_str = NULL;
+		if(!string_ids) {
+			room_id = json_integer_value(room);
+			g_snprintf(room_id_num, sizeof(room_id_num), "%"SCNu64, room_id);
+			room_id_str = room_id_num;
+		} else {
+			room_id_str = (char *)json_string_value(room);
+		}
 		janus_mutex_lock(&rooms_mutex);
-		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms,
+			string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(textroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id_str);
 			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id_str);
 			goto msg_response;
 		}
 		janus_refcount_increase(&textroom->ref);
@@ -2420,15 +2714,15 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			goto msg_response;
 		}
 		/* Remove room */
-		g_hash_table_remove(rooms, &room_id);
+		g_hash_table_remove(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 		if(save) {
 			/* This change is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
-			JANUS_LOG(LOG_VERB, "Destroying room %"SCNu64" permanently in config file\n", room_id);
+			JANUS_LOG(LOG_VERB, "Destroying room %s permanently in config file\n", room_id_str);
 			janus_mutex_lock(&config_mutex);
 			char cat[BUFSIZ];
 			/* The room ID is the category (prefixed by "room-") */
-			g_snprintf(cat, BUFSIZ, "room-%"SCNu64, room_id);
+			g_snprintf(cat, BUFSIZ, "room-%s", room_id_str);
 			janus_config_remove(config, NULL, cat);
 			/* Save modified configuration */
 			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
@@ -2441,10 +2735,11 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			/* Prepare event */
 			json_t *event = json_object();
 			json_object_set_new(event, "textroom", json_string("destroyed"));
-			json_object_set_new(event, "room", json_integer(textroom->room_id));
+			json_object_set_new(event, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			gateway->relay_data(handle, NULL, TRUE, event_text, strlen(event_text));
+			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
 			gpointer value;
@@ -2452,10 +2747,10 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_textroom_participant *top = value;
 				janus_refcount_increase(&top->ref);
-				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
-				gateway->relay_data(top->session->handle, NULL, TRUE, event_text, strlen(event_text));
+				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, room_id_str);
+				gateway->relay_data(top->session->handle, &data);
 				janus_mutex_lock(&top->session->mutex);
-				g_hash_table_remove(top->session->rooms, &room_id);
+				g_hash_table_remove(top->session->rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 				janus_mutex_unlock(&top->session->mutex);
 				janus_refcount_decrease(&top->ref);
 				janus_textroom_participant_destroy(top);
@@ -2470,14 +2765,14 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "destroyed"));
-			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
-			json_object_set_new(info, "room", json_integer(room_id));
+			json_object_set_new(info, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 			gateway->notify_event(&janus_textroom_plugin, session ? session->handle : NULL, info);
 		}
 	} else {
@@ -2508,7 +2803,8 @@ msg_response:
 					/* Reply via data channels */
 					char *reply_text = json_dumps(reply, json_format);
 					json_decref(reply);
-					gateway->relay_data(handle, NULL, TRUE, reply_text, strlen(reply_text));
+					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = reply_text, .length = strlen(reply_text) };
+					gateway->relay_data(handle, &data);
 					free(reply_text);
 				} else {
 					/* Reply via Janus API */
@@ -2532,7 +2828,7 @@ void janus_textroom_hangup_media(janus_plugin_session *handle) {
 }
 
 static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_textroom_session *session = janus_textroom_lookup_session(handle);
@@ -2544,6 +2840,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	g_atomic_int_set(&session->dataready, 0);
 	/* Get rid of all participants */
 	janus_mutex_lock(&session->mutex);
 	GList *list = NULL;
@@ -2555,8 +2852,10 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_textroom_participant *p = value;
 			janus_mutex_lock(&p->mutex);
-			if(p->room)
-				list = g_list_append(list, janus_uint64_dup(p->room->room_id));
+			if(p->room) {
+				list = g_list_append(list, string_ids ?
+					(gpointer)g_strdup(p->room->room_id_str) : (gpointer)janus_uint64_dup(p->room->room_id));
+			}
 			janus_mutex_unlock(&p->mutex);
 		}
 		janus_mutex_unlock(&rooms_mutex);
@@ -2566,8 +2865,13 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 	char request[100];
 	GList *first = list;
 	while(list) {
-		guint64 room_id = *((guint64 *)list->data);
-		g_snprintf(request, sizeof(request), "{\"textroom\":\"leave\",\"transaction\":\"internal\",\"room\":%"SCNu64"}", room_id);
+		char *room_id_str = (char *)list->data;
+		if(string_ids) {
+			g_snprintf(request, sizeof(request), "{\"textroom\":\"leave\",\"transaction\":\"internal\",\"room\":\"%s\"}", room_id_str);
+		} else {
+			guint64 room_id = *(guint64 *)room_id_str;
+			g_snprintf(request, sizeof(request), "{\"textroom\":\"leave\",\"transaction\":\"internal\",\"room\":%"SCNu64"}", room_id);
+		}
 		janus_textroom_handle_incoming_request(handle, g_strdup(request), NULL, TRUE);
 		list = list->next;
 	}

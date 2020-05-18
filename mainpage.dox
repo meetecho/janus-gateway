@@ -43,7 +43,8 @@
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page. Event handler
- * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
+ * plugins can also be used for the purpose: refer to the \ref eventhandlers
+ * and, for more developer oriented info, to the \ref eventhandlerapi
  * page if you're interested in creating your own. For what concerns logging,
  * out of the box Janus supports printing the output to \c stdout and saving
  * to a local file, but logging can also be extended via additional plugins:
@@ -88,11 +89,11 @@
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
@@ -1053,7 +1054,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets API
  *
- * Since version \c 0.0.6, there are three different ways to interact with a
+ * Since version \c 0.0.6, there are different ways to interact with a
  * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref apimqtt, \ref apinanomsg
  * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
@@ -1692,11 +1693,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * event, as Janus would never be receiving media, but only send it.
  *
  * \section WS WebSockets Interface
- * In recent version of Janus we added support for WebSockets to control
- * the server, along the already existing (and still the default) REST
- * API. In fact, while WebSockets still present some more issues in terms
- * of reachability when compared to plain HTTP, they definitely provide
- * a more efficient means for implementing a bidirectional communication.
+ * WebSockets provide a more efficient means for implementing a bidirectional communication.
  * This is especially useful if you're wrapping the Janus API on your
  * servers, as it allows you to avoid all the noise and overhead introduced
  * by several concurrent HTTP transactions and long polls by relying on
@@ -2083,6 +2080,11 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section signed HMAC-Signed token authentication
+ *
+ * <div class="well"><b>NOTE WELL:</b> At the time of writing, HMAC-Signed
+ * tokens are ONLY available for the VideoRoom plugin. If you need authentication
+ * for other plugins, you should use the \ref token instead.</div>
+ *
  * Simple token based authentication requires the application host to
  * continuously update the Janus instance on permission changes.
  * Since Janus stores the tokens in memory, it can be problematic to guarantee
@@ -2271,7 +2273,7 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * the reference counters in Janus on the fly (useful if you're experiencing
  * memory leaks in the Janus structures and want to investigate them);
  * - \c set_libnice_debug: selectively enable/disable libnice debugging;
- * - \c set_max_nack_queue: change the value of the max NACK queue window;
+ * - \c set_min_nack_queue: change the value of the min NACK queue window;
  * - \c set_no_media_timer: change the value of the no-media timer property;
  * - \c set_slowlink_threshold: change the value of the slowlink-threshold property.
  *
@@ -3064,7 +3066,7 @@ gdb bt
  * Once you've installed libasan, reconfigure Janus like this:
  *
  \verbatim
-CFLAGS="-fsanitize=address -fno-omit-frame-pointer" LDFLAGS="-lasan" ./configure --prefix=/opt/janus
+CFLAGS="-O1 -g3 -ggdb3 -fno-omit-frame-pointer -fsanitize=address -fno-sanitize-recover=all -fsanitize-address-use-after-scope" LDFLAGS="-fsanitize=address" ./configure --prefix=/opt/janus
  \endverbatim
  *
  * Of course you're free to add whatever additional configuration parameter
@@ -3108,8 +3110,7 @@ ldd janus | grep asan
  * - \ref echotest
  * - \ref streaming
  * - \ref videocall
- * - \ref sipsofia
- * - \ref sipre
+ * - \ref sip
  * - \ref nosip
  * - \ref audiobridge
  * - \ref videoroom
@@ -3118,6 +3119,159 @@ ldd janus | grep asan
  * - \ref voicemail
  * - \ref lua
  * - \ref duktape
+ */
+
+/*! \page eventhandlers Event handlers documentation
+ * Controlling and monitoring a Janus instance can be done using the
+ * \ref admin which includes ways to query information related to the
+ * state of ongoing PeerConnections (ICE/DTLS state, stats, etc.).
+ * That said, while powerful and useful the Admin API is a poll-based
+ * protocol: this means that you have to query for information yourself,
+ * and if you want to keep up-to-date with what is happening, you have
+ * to do that on a regular basis. As such, things can get problematic
+ * when dealing with many sessions and handles running in your application,
+ * as you may not be immediately aware of which session/handle corresponds
+ * to what, or which of them belong to the same scenario (e.g., all
+ * PeerConnections established in the context of the same VideoRoom).
+ *
+ * This is where Event Handlers can help. Just like media and transport
+ * plugins, Event Handlers plugins in Janus themselves, meaning their
+ * modular nature allows for extensibility. When enabling Event handlers,
+ * Janus and other plugins generate real-time events related to several
+ * different aspects that may be happening during its lifetime: these
+ * events are then passed to all the available event handler plugins,
+ * plugins that can then decide to do with these events whatever they want.
+ * They might choose to store these events somehow, aggregate, dump or
+ * process them, format and send them to an external application, and so
+ * on. This really depends on what these events should be used for.
+ *
+ * Janus will generate events related to:
+ * - session related events (e.g., session created/destroyed, etc.);
+ * - handle related events (e.g., handle attached/detached, etc.);
+ * - JSEP related events (e.g., got/sent offer/answer);
+ * - WebRTC related events (e.g., PeerConnection up/down, ICE updates, DTLS updates, etc.);
+ * - media related events (e.g., media started/stopped flowing, stats on packets/bytes, etc.);
+ * - generic events originated by the Janus core (e.g., Janus started/stopped);
+ * - events originated by plugins (content specific plugins themselves);
+ * - events originated by transports (see above);
+ * - events originated by external applications via the Admin API (content specific to source).
+ *
+ * \section evhsyntax Events format
+ * All events generated by Janus are JSON object, which have a shared
+ * header and a custom body that will depend on the type (and in some
+ * cases subtype) of the event itself.
+ *
+ * The header of the event will contain some information that is usually
+ * common to all events: this includes \c type and (when needed) \c subtype
+ * of the event, a timestamp in microseconds (so that you can know exactly
+ * when the event was generated in the first place from the server's perspective,
+ * no matter it was received), and various IDs. These IDs include the
+ * session identifier (Janus session the event refers to), the handle
+ * identifier (Janus handle the event refers to) and an opaque ID (set
+ * by whoever controls the Janus API): as we'll see, all these IDs are
+ * optional, as there are events that are not related to a session in
+ * particular (e.g., a server shutdown event), but can be very important
+ * for correlation purposes when they're used.
+ *
+ * The generic format of events is the following:
+\verbatim
+    {
+        "emitter" : "<string identifying the source of the event, if configured (optional)>",
+        "type" : <numeric event type identifier>,
+        "subtype" : <numeric event subtype identifier (specific to the event type; optional)>,
+        "timestamp" : <time of when the event was generated>,
+        "session_id" : <unique session identifier, if provided/available (optional)>,
+        "handle_id" : <unique handle identifier, if provided/available (optional)>,
+        "opaque_id" : "<user-provided opaque identifier, if provided/available (optional)>",
+        "event" : {
+             <event body, custom depending on event type>
+        }
+    }
+\endverbatim
+ *
+ * For instance, this is what an event related to a new session being created
+ * would look like:
+ *
+\verbatim
+    {
+        "emitter": "MyJanusInstance",
+        "type": 1,
+        "timestamp": 1582211094846980,
+        "session_id": 3439056127855429,
+        "event": {
+            "name": "created",
+            "transport": {
+                "transport": "janus.transport.http",
+                "id": "0x60400002c2d0"
+            }
+        }
+    }
+\endverbatim
+ *
+ * Since \c type \c 1 is related to session events, this event basically
+ * tells us that a new session with ID \c 3439056127855429 was created
+ * (we know this from the \c name property in the event body) on the Janus
+ * instance called \c MyJanusInstance at the timestamp \c 1582211094846980 .
+ * There are no \c subtype , \c handle_id or \c opaque_id properties as
+ * they were unneeded or not applicable here.
+ *
+ * \section evhtypes Event types
+ * As we've seen from the previous example, event types are numeric. In
+ * order to figure out what you're receiving, you can refer to the
+ * following table as a reference:
+ *
+ * <table class="table table-striped">
+ * <tr><th>Type</th><th>Category of event</th></tr>
+ * <tr><td>1</td><td>Session related event</td></tr>
+ * <tr><td>2</td><td>Handle related event</td></tr>
+ * <tr><td>4</td><td>External event (injected via Admin API)</td></tr>
+ * <tr><td>8</td><td>JSEP event (SDP offer/answer)</td></tr>
+ * <tr><td>16</td><td>WebRTC state event (ICE/DTLS states, candidates, etc.)</td></tr>
+ * <tr><td>32</td><td>Media event (media state, reports, etc.)</td></tr>
+ * <tr><td>64</td><td>Plugin-originated event (e.g., event coming from VideoRoom)</td></tr>
+ * <tr><td>128</td><td>Transport-originated event (e.g., WebSocket connection state)</td></tr>
+ * <tr><td>256</td><td>Core event (server startup/shutdown)</td></tr>
+ * </table>
+ *
+ * The types of events are not monotonically increasing as, internally,
+ * they're represented as a mask: this allows event handler plugins to
+ * only subscribe to a subset of them, rather than them all, when needed.
+ *
+ * The event \c type property dictates the syntax of the \c event body ,
+ * meaning that the body for a JSEP event (type \c 8 ) will for instance
+ * be very different from a media event (type \c 32 ). That said, the
+ * format of some events can change even within the same type: for instance,
+ * a WebRTC state event includes a lot of different notifications, including
+ * ICE states, DTLS states, local and remote candidates, selected pair, etc.
+ * In order to allow event handler recipients written in strongly typed
+ * languages to be able to use different classes for the different events,
+ * a different property called \c subtype can help further discriminate
+ * an event of a specified \c type. At the time of writing, a \c subtype
+ * attribute will only be present if the event is of type \c 256 (core),
+ * \c 16 (WebRTC) and \c 32 (media): all other event types have a consistent
+ * format, and so don't need this differentiation (e.g., type \c 8 includes
+ * both SDP offers and answers, but the nature of the SDP is indicated
+ * in an attribute that has the same name in both cases).
+ *
+ * The available subtypes are the following:
+ *
+ * <table class="table table-striped">
+ * <tr><th colspan=2>Core subtype</th></tr>
+ * <tr><td>1</td><td>Server startup</td></tr>
+ * <tr><td>2</td><td>Server shutdown</td></tr>
+ * <tr><th colspan=2>WebRTC subtype</th></tr>
+ * <tr><td>1</td><td>ICE state</td></tr>
+ * <tr><td>2</td><td>Local candidate</td></tr>
+ * <tr><td>3</td><td>Remote candidate</td></tr>
+ * <tr><td>4</td><td>Selected pair</td></tr>
+ * <tr><td>5</td><td>DTLS state</td></tr>
+ * <tr><td>6</td><td>PeerConnection state</td></tr>
+ * <tr><th colspan=2>Media subtype</th></tr>
+ * <tr><td>1</td><td>Medium state</td></tr>
+ * <tr><td>2</td><td>Slow link</td></tr>
+ * <tr><td>3</td><td>Report/stats</td></tr>
+ * </table>
+ *
  */
 
 /*! \page recordings Recordings
@@ -3253,6 +3407,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/RSATom">Sergey Radionov</a></td>
  * 		<td><a href="https://github.com/RSATom/janus-gateway-snap">janus-gateway-snap</a></td>
  *		<td>Helper repo for build Janus WebRTC Server on build.snapcraft.io</td>
+ * </tr>
+ * <tr>
+ * 		<td>openSUSE/SUSE</td>
+ * 		<td><a href="https://github.com/ancorgs">Ancor Gonzalez Sosa</a></td>
+ * 		<td><a href="https://build.opensuse.org/project/show/network:jangouts">Janus packages</a></td>
+ *		<td>Repositories for several versions of SUSE and openSUSE</td>
  * </tr>
  * </table>
  * <br/>
@@ -3417,6 +3577,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Janus WebRTC server Docker Image for Media Streaming Expert User</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
+ * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
+ *		<td>Docker image for the Janus WebRTC Server</td>
+ * </tr>
  * </table>
  * <br/>
  *
@@ -3468,6 +3633,18 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
+ * \section orchestration Orchestration
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/OpenSight">OpenSight</a></td>
+ * 		<td><a href="https://github.com/OpenSight/janus-cloud">janus-cloud</a></td>
+ * 		<td>An API proxy for Janus WebRTC server cluster</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
  */
 
 
@@ -3489,11 +3666,11 @@ ldd janus | grep asan
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.15 suggested, master recommended)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0 for MQTT v3.1 & v3.1.1 or v1.3.0 for MQTT v5)
@@ -3586,6 +3763,8 @@ ldd janus | grep asan
  * -# <a href="#writeplugin">I want to write my own plugin, where do I start?</a>\n
  * -# <a href="#ulimit">I'm using the VideoRoom plugin and, when several users are handled, I get
  *    a "Too many open files" errors and Janus crashes</a>\n
+ * -# <a href="#aesgcm">I get an undefined reference to <code>srtp_crypto_policy_set_aes_gcm_256_16_auth</code>
+ *    when building Janus</a>\n
  * -# <a href="#https">When I enable the HTTPS web server in Janus, the CPU goes crazy</a>\n
  * -# <a href="#turn">I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</a>\n
  * -# <a href="#benchmark">Is there any benchmark on Janus performances?</a>\n
@@ -3665,9 +3844,10 @@ ldd janus | grep asan
  *    - Presentation on RTC fuzzing in Janus at <a href="https://www.youtube.com/watch?v=YTN88fUiGoI">Kamailio World 2019</a>;
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
- *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>. \n\n
+ *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
+ *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
- *    and presentations from <a href="https://januscon.it">JanusCon</a>,
+ *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.
  *    \n\n
  *    .
@@ -3957,6 +4137,17 @@ ldd janus | grep asan
  *    using the \c ulimit application. For a simple and quick way to handle
  *    this refer to the guide provided by the MongoDB developers:
  *    http://docs.mongodb.org/manual/reference/ulimit/ \n\n
+ *    .
+ * \anchor aesgcm
+ * -# <b>I get an undefined reference to <code>srtp_crypto_policy_set_aes_gcm_256_16_auth</code>
+ *    when building Janus</b>\n
+ *    .
+ *    As explained in the README, you have to build libsrtp or libsrtp2 with
+ *    the <code>--enable-openssl</code> or <code>--enable-nss</code> flags,
+ *    since they're needed to support AES-GCM in our SRTP streams. If you
+ *    don't want AES-GCM support, pass the <code>--disable-aes-gcm</code>
+ *    option when configuring Janus instead: remember to do a
+ *    <code>make clean</code> before recompiling Janus after the change. \n\n
  *    .
  * \anchor https
  * -# <b>When I enable the HTTPS web server in Janus, the CPU goes crazy</b>\n

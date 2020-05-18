@@ -24,6 +24,7 @@
 
 #include "utils.h"
 #include "debug.h"
+#include "mutex.h"
 
 #if __MACH__
 #include "mach_gettime.h"
@@ -87,6 +88,45 @@ guint64 janus_random_uint64(void) {
 	guint64 num = g_random_int() & 0x1FFFFF;
 	num = (num << 32) | g_random_int();
 	return num;
+}
+
+char *janus_random_uuid(void) {
+#if GLIB_CHECK_VERSION(2, 52, 0)
+	return g_uuid_string_random();
+#else
+	/* g_uuid_string_random is only available from glib 2.52, so if it's
+	 * not available we have to do it manually: the following code is
+	 * heavily based on https://github.com/rxi/uuid4 (MIT license) */
+	const char *template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+	const char *samples = "0123456789abcdef";
+	union { unsigned char b[16]; uint64_t word[2]; } rnd;
+	rnd.word[0] = janus_random_uint64();
+	rnd.word[1] = janus_random_uint64();
+	/* Generate the string */
+	char uuid[37], *dst = uuid;
+	const char *p = template;
+	int i = 0, n = 0;
+	while(*p) {
+		n = rnd.b[i >> 1];
+		n = (i & 1) ? (n >> 4) : (n & 0xf);
+		switch (*p) {
+			case 'x':
+				*dst = samples[n];
+				i++;
+				break;
+			case 'y':
+				*dst = samples[(n & 0x3) + 8];
+				i++;
+				break;
+			default:
+				*dst = *p;
+		}
+		p++;
+		dst++;
+	}
+	uuid[36] = '\0';
+	return g_strdup(uuid);
+#endif
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
@@ -448,6 +488,58 @@ int janus_pidfile_remove(void) {
 	return 0;
 }
 
+/* Protected folders management */
+static GList *protected_folders = NULL;
+static janus_mutex pf_mutex = JANUS_MUTEX_INITIALIZER;
+
+void janus_protected_folder_add(const char *folder) {
+	if(folder == NULL)
+		return;
+	janus_mutex_lock(&pf_mutex);
+	protected_folders = g_list_append(protected_folders, g_strdup(folder));
+	janus_mutex_unlock(&pf_mutex);
+}
+
+gboolean janus_is_folder_protected(const char *path) {
+	/* We need a valid pathname (can't start with a space, we don't trim) */
+	if(path == NULL || *path == ' ')
+		return TRUE;
+	/* Resolve the pathname to its real path first */
+	char resolved[PATH_MAX+1];
+	resolved[0] = '\0';
+	if(realpath(path, resolved) == NULL && errno != ENOENT) {
+		JANUS_LOG(LOG_ERR, "Error resolving path '%s'... %d (%s)\n",
+			path, errno, strerror(errno));
+		return TRUE;
+	}
+	/* Traverse the list of protected folders to see if any match */
+	janus_mutex_lock(&pf_mutex);
+	if(protected_folders == NULL) {
+		/* No protected folder in the list */
+		janus_mutex_unlock(&pf_mutex);
+		return FALSE;
+	}
+	gboolean protected = FALSE;
+	GList *temp = protected_folders;
+	while(temp) {
+		char *folder = (char *)temp->data;
+		if(folder && (strstr(resolved, folder) == resolved)) {
+			protected = TRUE;
+			break;
+		}
+		temp = temp->next;
+	}
+	janus_mutex_unlock(&pf_mutex);
+	return protected;
+}
+
+void janus_protected_folders_clear(void) {
+	janus_mutex_lock(&pf_mutex);
+	g_list_free_full(protected_folders, (GDestroyNotify)g_free);
+	janus_mutex_unlock(&pf_mutex);
+}
+
+
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
 	/* Longest possible combination is "a non-empty boolean" plus one for null char */
 	gsize req_size = 20;
@@ -689,7 +781,7 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 }
 
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
-	if(!buffer || len < 16)
+	if(!buffer || len < 6)
 		return FALSE;
 	/* Parse H264 header now */
 	uint8_t fragment = *buffer & 0x1F;

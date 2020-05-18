@@ -9,6 +9,7 @@
 # audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 # audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 # audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
+# default_prebuffering = number of packets to buffer before decoding each particiant (default=6)
 # record = true|false (whether this room should be recorded, default=false)
 # record_file = "/path/to/recording.wav" (where to save the recording)
 #
@@ -21,7 +22,8 @@
 # rtp_forward_host_family = "<ipv4|ipv6; by default, first family returned by DNS request>"
 # rtp_forward_port = port to forward RTP packets of mixed audio to
 # rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
-# rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
+# rtp_forward_codec = opus (default), pcma (A-Law) or pcmu (mu-Law)
+# rtp_forward_ptype = payload type to use when streaming (optional: only read for Opus, 100 used if missing)
 # rtp_forward_srtp_suite = length of authentication tag (32 or 80)
 # rtp_forward_srtp_crypto = "<key to use as crypto (base64 encoded key as in SDES)>"
 # rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
@@ -32,11 +34,17 @@ general: {
 									# if this key is provided in the request
 	#lock_rtp_forward = true		# Whether the admin_key above should be
 									# enforced for RTP forwarding requests too
+	#lock_play_file = true			# Whether the admin_key above should be
+									# enforced for playing .opus files too
 	#record_tmp_ext = "tmp"			# Optional temporary extension to add to filenames
 									# while recording: e.g., setting "tmp" would mean
 									# .wav --> .wav.tmp until the file is closed
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
+
+	# By default, integers are used as a unique ID for both rooms and participants.
+	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
+	#string_ids = true
 }
 
 room-1234: {

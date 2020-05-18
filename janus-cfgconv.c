@@ -34,6 +34,8 @@
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = TRUE;
+char *janus_log_global_prefix = NULL;
+int lock_debug = 0;
 
 /* Main Code */
 int main(int argc, char *argv[])

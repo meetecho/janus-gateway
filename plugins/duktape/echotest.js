@@ -185,6 +185,14 @@ function incomingBinaryData(id, buf, len) {
 	relayBinaryData(id, buf, len);
 }
 
+function dataReady(id) {
+	// This callback is invoked when the datachannel first becomes
+	// available (meaning you should never send data before it has been
+	// invoked at least once), but also when the datachannel is ready to
+	// receive more data (buffers are empty), which means it can be used
+	// to throttle outgoing data and not send too much at a time.
+}
+
 function resumeScheduler() {
 	// This is the function responsible for resuming coroutines associated
 	// with whatever is relevant to the JS script, e.g., for this script,
@@ -237,6 +245,11 @@ function processRequest(id, msg) {
 		if(!fnbase) {
 			fnbase = "duktape-echotest-" + id + "-" + new Date().getTime();
 		}
+		// For the sake of simplicity, we're assuming Opus/VP8 here; in
+		// practice, you'll need to check what was negotiated. If you
+		// want the codec-specific info to be saved to the .mjr file as
+		// well, you'll need to add the '/fmtp=<info>' to the codec name,
+		// e.g.:    "vp9/fmtp=profile-id=2"
 		startRecording(id,
 			"audio", "opus", "/tmp", fnbase + "-audio",
 			"video", "vp8", "/tmp", fnbase + "-video",
@@ -263,7 +276,9 @@ function processAsync(task) {
 	}
 	var offer = sdpUtils.parse(jsep.sdp)
 	console.log("Got offer:", offer);
-	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true });
+	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true,
+		audioCodec: msg["audiocodec"], videoCodec: msg["videocodec"],
+		vp9Profile: msg["videoprofile"], h264Profile: msg["videoprofile"] });
 	console.log("Generated answer:", answer);
 	console.log("Processing request:", msg);
 	processRequest(id, msg);

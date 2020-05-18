@@ -18,6 +18,7 @@
 extern int janus_log_level;
 extern gboolean janus_log_timestamps;
 extern gboolean janus_log_colors;
+extern char *janus_log_global_prefix;
 
 /** @name Janus log colors
  */
@@ -100,7 +101,8 @@ do { \
 			snprintf(janus_log_src, sizeof(janus_log_src), \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
-		JANUS_PRINT("%s%s%s" format, \
+		JANUS_PRINT("%s%s%s%s" format, \
+			janus_log_global_prefix ? janus_log_global_prefix : "", \
 			janus_log_ts, \
 			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
 			janus_log_src, \

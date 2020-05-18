@@ -59,6 +59,9 @@ STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)
 .BR \-1 ", " \-\-nat-1-1=\fIip\fR
 Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)
 .TP
+.BR \-2 ", " \-\-keep-private-host
+When nat-1-1 is used (e.g., Amazon EC2 instances), don't remove the private host, but keep both to simulate STUN (default=off)
+.TP
 .BR \-E ", " \-\-ice-enforce-list=\fIlist\fR
 Comma-separated list of the only interfaces to use for ICE gathering; partial strings are supported (e.g., eth0 or eno1,wlan0, default=none)
 .TP
@@ -80,8 +83,8 @@ Whether to enable the ICE Lite mode or not (default=off)
 .BR \-T ", " \-\-ice-tcp
 Whether to enable ICE-TCP or not (warning: only works with ICE Lite) (default=off)
 .TP
-.BR \-q ", " \-\-max-nack-queue=\fInumber\fR
-Maximum size of the NACK queue per user for retransmissions
+.BR \-Q ", " \-\-min-nack-queue=\fInumber\fR
+Minimum size of the NACK queue (in ms) per user for retransmissions, no matter the RTT
 .TP
 .BR \-t ", " \-\-no-media-timer=\fInumber\fR
 Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this

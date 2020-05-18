@@ -65,6 +65,7 @@ janus_plugin *create(void) {
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
  * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
+ * - \c data_ready(): a callback to notify you data can be sent on the SCTP DataChannel;
  * - \c slow_link(): a callback to notify you a peer has sent a lot of NACKs recently, and the media path may be slow;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
  * - \c query_session(): this method is called by the core to get plugin-specific info on a session between you and a peer;
@@ -170,7 +171,7 @@ janus_plugin *create(void) {
  * Janus instance or it will crash.
  *
  */
-#define JANUS_PLUGIN_API_VERSION	14
+#define JANUS_PLUGIN_API_VERSION	15
 
 /*! \brief Initialization of all plugin properties to NULL
  *
@@ -205,6 +206,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_rtp = NULL,			\
 		.incoming_rtcp = NULL,			\
 		.incoming_data = NULL,			\
+		.data_ready = NULL,				\
 		.slow_link = NULL,				\
 		.hangup_media = NULL,			\
 		.destroy_session = NULL,		\
@@ -220,6 +222,15 @@ typedef struct janus_plugin janus_plugin;
 typedef struct janus_plugin_session janus_plugin_session;
 /*! \brief Result of individual requests passed to plugins */
 typedef struct janus_plugin_result janus_plugin_result;
+
+/*! \brief RTP packet exchanged with the core */
+typedef struct janus_plugin_rtp janus_plugin_rtp;
+/*! \brief RTP extensions parsed in an RTP packet */
+typedef struct janus_plugin_rtp_extensions janus_plugin_rtp_extensions;
+/*! \brief RTCP message exchanged with the core */
+typedef struct janus_plugin_rtcp janus_plugin_rtcp;
+/*! \brief Data message exchanged with the core */
+typedef struct janus_plugin_data janus_plugin_data;
 
 /* Use forward declaration to avoid including jansson.h */
 typedef struct json_t json_t;
@@ -288,26 +299,24 @@ struct janus_plugin {
 	void (* const setup_media)(janus_plugin_session *handle);
 	/*! \brief Method to handle an incoming RTP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @param[in] video Whether this is an audio or a video frame
-	 * @param[in] buf The packet data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
+	 * @param[in] packet The RTP packet and related data */
+	void (* const incoming_rtp)(janus_plugin_session *handle, janus_plugin_rtp *packet);
 	/*! \brief Method to handle an incoming RTCP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @param[in] video Whether this is related to an audio or a video stream
-	 * @param[in] buf The message data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const incoming_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	 * @param[in] packet The RTP packet and related data */
+	void (* const incoming_rtcp)(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 	/*! \brief Method to handle incoming SCTP/DataChannel data from a peer (text only, for the moment)
 	 * \note We currently only support text data, binary data will follow... please also notice that
 	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to
 	 * use them.
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @param[in] label The label of the data channel to use
-	 * @param[in] textdata Whether the buffer is text (domstring) or binary data
-	 * @param[in] buf The message data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const incoming_data)(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+	 * @param[in] packet The message data and related info */
+	void (* const incoming_data)(janus_plugin_session *handle, janus_plugin_data *packet);
+	/*! \brief Method to be notified about the fact that the datachannel is ready to be written
+	 * \note This is not only called when the PeerConnection first becomes available, but also
+	 * when the SCTP socket becomes writable again, e.g., because the internal buffer is empty.
+	 * @param[in] handle The plugin/gateway session used for this peer */
+	void (* const data_ready)(janus_plugin_session *handle);
 	/*! \brief Method to be notified by the core when too many NACKs have
 	 * been received or sent by Janus, and so a slow or potentially
 	 * unreliable network is to be expected for this peer
@@ -324,7 +333,7 @@ struct janus_plugin {
 	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
 	 * or downlink (peer to Janus)
 	 * @param[in] video Whether this is related to an audio or a video stream */
-	void (* const slow_link)(janus_plugin_session *handle, int uplink, int video);
+	void (* const slow_link)(janus_plugin_session *handle, gboolean uplink, gboolean video);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
@@ -356,23 +365,28 @@ struct janus_callbacks {
 
 	/*! \brief Callback to relay RTP packets to a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @param[in] video Whether this is an audio or a video frame
-	 * @param[in] buf The packet data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const relay_rtp)(janus_plugin_session *handle, int video, char *buf, int len);
+	 * @param[in] packet The RTP packet and related data */
+	void (* const relay_rtp)(janus_plugin_session *handle, janus_plugin_rtp *packet);
 	/*! \brief Callback to relay RTCP messages to a peer
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
-	 * @param[in] video Whether this is related to an audio or a video stream
-	 * @param[in] buf The message data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const relay_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	 * @param[in] packet The RTCP packet and related data */
+	void (* const relay_rtcp)(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 	/*! \brief Callback to relay SCTP/DataChannel messages to a peer
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
-	 * @param[in] label The label of the data channel to use
-	 * @param[in] textdata Whether the buffer is text (domstring) or binary data
-	 * @param[in] buf The message data (buffer)
-	 * @param[in] len The buffer lenght */
-	void (* const relay_data)(janus_plugin_session *handle, char *label, gboolean textdata, char *buf, int len);
+	 * @param[in] packet The message data and related info */
+	void (* const relay_data)(janus_plugin_session *handle, janus_plugin_data *packet);
+
+	/*! \brief Helper to ask for a keyframe via a RTCP PLI
+	 * @note This is a shortcut, as it is also possible to do the same by crafting
+	 * an RTCP PLI message manually, and passing it to the core via relay_rtcp
+	 * @param[in] handle The plugin/gateway session that will be used for this peer */
+	void (* const send_pli)(janus_plugin_session *handle);
+	/*! \brief Helper to ask for a keyframe via a RTCP PLI
+	 * @note This is a shortcut, as it is also possible to do the same by crafting
+	 * an RTCP REMB message manually, and passing it to the core via relay_rtcp
+	 * @param[in] handle The plugin/gateway session that will be used for this peer
+	 * @param[in] bitrate The bitrate value to send in the REMB message */
+	void (* const send_remb)(janus_plugin_session *handle, guint32 bitrate);
 
 	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
 	 * \note A call to this method will result in the core invoking the hangup_media
@@ -473,6 +487,133 @@ janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, cons
  * @param[in] result The janus_plugin_result instance to destroy
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
 void janus_plugin_result_destroy(janus_plugin_result *result);
+///@}
+
+
+/** @name Janus plugin media packets
+ * @brief The Janus core and plugins exchange different kind of media
+ * packets, specifically RTP packets, RTCP messages and datachannel data.
+ * While previously these were exchanged between core and plugins using
+ * generic pointers and their length, Janus now uses a dedicated structure
+ * for each of them: this allows metadata and other info to be carried
+ * along the media data itself, making the exchange process extensible
+ * as a result (the signature remains the same, the data contained in
+ * the struct can change).
+ *
+ * The janus_plugin_rtp structure represents an RTP packet. When creating
+ * a new packet, it should be initialized with janus_plugin_rtp_init. Besides
+ * the data and its length, it also contains info on whether the packet is
+ * audio or video, and a list of the parsed RTP extensions provided in
+ * an instance of the janus_plugin_rtp_extensions structure. Notice that,
+ * while this list of extensions is mostly a commodity when receiving a
+ * packet, making it easier to access their values (the RTP extensions
+ * will still be part of the incoming RTP packet, so plugins are still free
+ * to parse them manually), they're very important when it comes to
+ * outgoing packets instead: in fact, since the Janus core may needs to
+ * terminate its own extensions with the peer, all RTP extensions that
+ * are in an RTP packet sent by a plugin are stripped when relay_rtp is
+ * called. This means that any attempt to inject an RTP extension in an
+ * outgoing packet will fail if the RTP extension is added to the payload
+ * manually, and will need to be set in the janus_plugin_rtp_extensions
+ * structure instead. It's also important to initialize the extensions
+ * structure before passing the packet to the core, as for each extension
+ * there may be a different way of telling the core whether the extension
+ * needs to be added or not (e.f., \c -1 instead of \c 0 or \c NULL ) .
+ * If the RTP extension management you need is not supported, it must be
+ * added to the core to get it working.
+ *
+ * The janus_plugin_rtcp, instead, represents an RTCP packet, which may
+ * contain one or more RTCP compound messages. The only info it contains
+ * are whether it's related to the audio or video stream, and a pointer
+ * to the data itself and its length. When creating a new packet, it should
+ * be initialized with janus_plugin_rtcp_init. To make the generation of
+ * some of the most common RTCP messages easier, a few helper core
+ * callbacks are provided: this means that, while you can craft RTCP
+ * messages yourself using the methods available in rtcp.h, it might be
+ * easier to send, e.g., a keyframe request using the dedicated method,
+ * which will leave the RTCP crafting process up tp the core.
+ *
+ * Finally, the janus_plugin_data represents a datachannel message. The
+ * only info it contains are the label the message came from, a pointer
+ * to the data itself and its length. When creating a new packet, it MUST
+ * be initialized with janus_plugin_data_init.
+ *
+ */
+///@{
+/*! \brief Janus plugin RTP extensions */
+struct janus_plugin_rtp_extensions {
+	/*! \brief Audio level, in DB (0-127, 127=silence); -1 means no extension */
+	int8_t audio_level;
+	/*! \brief Whether the encoder detected voice activity (part of audio-level extension)
+	 * @note Browsers apparently always set this to 1, so it's unreliable and should be ignored */
+	gboolean audio_level_vad;
+	/*! \brief Video orientation rotation (0, 90, 180, 270); -1 means no extension */
+	int16_t video_rotation;
+	/*! \brief Whether the video orientation extension says this is the back camera
+	 * @note Will be ignored if no rotation value is set */
+	gboolean video_back_camera;
+	/*! \brief Whether the video orientation extension says it's flipped horizontally
+	 * @note Will be ignored if no rotation value is set */
+	gboolean video_flipped;
+};
+/*! \brief Helper method to initialise/reset the RTP extensions field
+ * @note This is important because each of the supported extensions may
+ * use a different value to specify an "extension missing" state, which
+ * may be different from a 0 or a NULL (e.g., a -1 instead)
+ * @param[in] extensions Pointer to the janus_plugin_rtp_extensions instance to reset
+*/
+void janus_plugin_rtp_extensions_reset(janus_plugin_rtp_extensions *extensions);
+
+/*! \brief Janus plugin RTP packet */
+struct janus_plugin_rtp {
+	/*! \brief Whether this is an audio or video RTP packet */
+	gboolean video;
+	/*! \brief The packet data */
+	char *buffer;
+	/*! \brief The packet length */
+	uint16_t length;
+	/*! \brief RTP extensions */
+	janus_plugin_rtp_extensions extensions;
+};
+/*! \brief Helper method to initialise/reset the RTP packet
+ * @note The main motivation for this method comes from the presence of the
+ * extensions as a janus_plugin_rtp_extensions instance.
+ * @param[in] packet Pointer to the janus_plugin_rtp packet to reset
+*/
+void janus_plugin_rtp_reset(janus_plugin_rtp *packet);
+
+/*! \brief Janus plugin RTCP packet */
+struct janus_plugin_rtcp {
+	/*! \brief Whether this is an audio or video RTCP packet */
+	gboolean video;
+	/*! \brief The packet data */
+	char *buffer;
+	/*! \brief The packet length */
+	uint16_t length;
+};
+/*! \brief Helper method to initialise/reset the RTCP packet
+ * @param[in] packet Pointer to the janus_plugin_rtcp packet to reset
+*/
+void janus_plugin_rtcp_reset(janus_plugin_rtcp *packet);
+
+/*! \brief Janus plugin data message
+ * @note At the moment, we only support text based datachannels. In the
+ * future, once we add support for binary data, this structure may be
+ * extended to include info on the nature of the data itself */
+struct janus_plugin_data {
+	/*! \brief The label this message belongs to */
+	char *label;
+	/*! \brief Whether the message data is text (default=FALSE) or binary */
+	gboolean binary;
+	/*! \brief The message data */
+	char *buffer;
+	/*! \brief The message length */
+	uint16_t length;
+};
+/*! \brief Helper method to initialise/reset the data message
+ * @param[in] packet Pointer to the janus_plugin_data message to reset
+*/
+void janus_plugin_data_reset(janus_plugin_data *packet);
 ///@}
 
 

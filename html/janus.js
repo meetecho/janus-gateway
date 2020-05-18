@@ -130,7 +130,7 @@ Janus.useDefaultDependencies = function (deps) {
 						return reject({message: 'Request timed out', timeout: options.timeout});
 					}, options.timeout);
 				});
-				fetching = p.race([fetching,timeout]);
+				fetching = p.race([fetching, timeout]);
 			}
 
 			fetching.then(function(response) {
@@ -190,7 +190,7 @@ Janus.useOldDependencies = function (deps) {
 					}
 				}
 			}));
-		},
+		}
 	};
 };
 
@@ -210,8 +210,9 @@ Janus.init = function(options) {
 		// Already initialized
 		options.callback();
 	} else {
-		if(typeof console == "undefined" || typeof console.log == "undefined")
+		if(typeof console == "undefined" || typeof console.log == "undefined") {
 			console = { log: function() {} };
+		}
 		// Console logging (all debugging disabled by default)
 		Janus.trace = Janus.noop;
 		Janus.debug = Janus.noop;
@@ -292,7 +293,7 @@ Janus.init = function(options) {
 				Janus.warn("navigator.mediaDevices unavailable");
 				callback([]);
 			}
-		}
+		};
 		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
 		Janus.attachMediaStream = function(element, stream) {
 			try {
@@ -330,8 +331,9 @@ Janus.init = function(options) {
 					Janus.sessions[s].destroy({unload: true, notifyDestroyed: false});
 				}
 			}
-			if(oldOBF && typeof oldOBF == "function")
+			if(oldOBF && typeof oldOBF == "function") {
 				oldOBF();
+			}
 		});
 		// If this is a Safari Technology Preview, check if VP8 is supported
 		Janus.safariVp8 = false;
@@ -355,7 +357,7 @@ Janus.init = function(options) {
 			} else {
 				// We do it in a very ugly way, as there's no alternative...
 				// We create a PeerConnection to see if VP8 is in an offer
-				var testpc = new RTCPeerConnection({}, {});
+				var testpc = new RTCPeerConnection({});
 				testpc.createOffer({offerToReceiveVideo: true}).then(function(offer) {
 					Janus.safariVp8 = offer.sdp.indexOf("VP8") !== -1;
 					if(Janus.safariVp8) {
@@ -386,7 +388,7 @@ Janus.init = function(options) {
 			Janus.unifiedPlan = false;
 		} else {
 			// Check if addTransceiver() throws an exception
-			const tempPc = new RTCPeerConnection();
+			var tempPc = new RTCPeerConnection();
 			try {
 				tempPc.addTransceiver('audio');
 				Janus.unifiedPlan = true;
@@ -400,11 +402,11 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection ? true : false;
+	return !!window.RTCPeerConnection;
 };
 // Helper method to check whether devices can be accessed by this browser (e.g., not possible via plain HTTP)
 Janus.isGetUserMediaAvailable = function() {
-    return (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? true : false;
+	return navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
 };
 
 // Helper method to create random identifiers (e.g., transaction)
@@ -416,8 +418,7 @@ Janus.randomString = function(len) {
 		randomString += charSet.substring(randomPoz,randomPoz+1);
 	}
 	return randomString;
-}
-
+};
 
 function Janus(gatewayCallbacks) {
 	gatewayCallbacks = gatewayCallbacks || {};
@@ -441,8 +442,8 @@ function Janus(gatewayCallbacks) {
 	var ws = null;
 	var wsHandlers = {};
 	var wsKeepaliveTimeoutId = null;
-
-	var servers = null, serversIndex = 0;
+	var servers = null;
+	var serversIndex = 0;
 	var server = gatewayCallbacks.server;
 	if(Janus.isArray(server)) {
 		Janus.log("Multiple servers provided (" + server.length + "), will use the first that works");
@@ -842,7 +843,7 @@ function Janus(gatewayCallbacks) {
 					Janus.error("Error connecting to the Janus WebSockets server... " + server);
 					if (Janus.isArray(servers) && !callbacks["reconnect"]) {
 						serversIndex++;
-						if (serversIndex == servers.length) {
+						if (serversIndex === servers.length) {
 							// We tried all the servers the user gave us and they all failed
 							callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 							return;
@@ -926,7 +927,7 @@ function Janus(gatewayCallbacks) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
 				if(Janus.isArray(servers) && !callbacks["reconnect"]) {
 					serversIndex++;
-					if(serversIndex == servers.length) {
+					if(serversIndex === servers.length) {
 						// We tried all the servers the user gave us and they all failed
 						callbacks.error("Error connecting to any of the provided Janus servers: Is the server down?");
 						return;
@@ -949,6 +950,7 @@ function Janus(gatewayCallbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
+		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		var unload = (callbacks.unload === true);
 		var notifyDestroyed = true;
 		if(callbacks.notifyDestroyed !== undefined && callbacks.notifyDestroyed !== null)
@@ -1171,7 +1173,7 @@ function Janus(gatewayCallbacks) {
 						ondetached : callbacks.ondetached,
 						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
 						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
-					}
+					};
 				pluginHandles[handleId] = pluginHandle;
 				callbacks.success(pluginHandle);
 			};
@@ -1262,6 +1264,10 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(textStatus, errorThrown) {
 				Janus.error(textStatus + ":", errorThrown);	// FIXME
+				if(errorThrown === "")
+					callbacks.error(textStatus + ": Is the server down?");
+				else
+					callbacks.error(textStatus + ": " + errorThrown);
 			}
 		});
 	}
@@ -1425,7 +1431,7 @@ function Janus(gatewayCallbacks) {
 			Janus.log('Received message on data channel:', event);
 			var label = event.target.label;
 			pluginHandle.ondata(event.data, label);
-		}
+		};
 		var onDataChannelStateChange = function(event) {
 			Janus.log('Received state change on data channel:', event);
 			var label = event.target.label;
@@ -1445,11 +1451,11 @@ function Janus(gatewayCallbacks) {
 				// Notify the open data channel
 				pluginHandle.ondataopen(label);
 			}
-		}
+		};
 		var onDataChannelError = function(error) {
 			Janus.error('Got error on data channel:', error);
 			// TODO
-		}
+		};
 		if(!incoming) {
 			// FIXME Add options (ordered, maxRetransmits, etc.)
 			config.dataChannel[dclabel] = config.pc.createDataChannel(dclabel, {ordered: true});
@@ -1766,23 +1772,42 @@ function Janus(gatewayCallbacks) {
 				pluginHandle.onremotestream(config.remoteStream);
 				if(event.track.onended)
 					return;
+				var trackMutedTimeoutId = null;
 				Janus.log("Adding onended callback to track:", event.track);
 				event.track.onended = function(ev) {
-					Janus.log("Remote track muted/removed:", ev);
+					Janus.log("Remote track removed:", ev);
 					if(config.remoteStream) {
+						clearTimeout(trackMutedTimeoutId);
 						config.remoteStream.removeTrack(ev.target);
 						pluginHandle.onremotestream(config.remoteStream);
 					}
 				};
-				event.track.onmute = event.track.onended;
+				event.track.onmute = function(ev) {
+					Janus.log("Remote track muted:", ev);
+					if(config.remoteStream && trackMutedTimeoutId == null) {
+						trackMutedTimeoutId = setTimeout(function() {
+							Janus.log("Removing remote track");
+							config.remoteStream.removeTrack(ev.target);
+							pluginHandle.onremotestream(config.remoteStream);
+							trackMutedTimeoutId = null;
+						// Chrome seems to raise mute events only at multiples of 834ms;
+						// we set the timeout to three times this value (rounded to 840ms)
+						}, 3 * 840);
+					}
+				};
 				event.track.onunmute = function(ev) {
 					Janus.log("Remote track flowing again:", ev);
-					try {
-						config.remoteStream.addTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
-					} catch(e) {
-						Janus.error(e);
-					};
+					if(trackMutedTimeoutId != null) {
+						clearTimeout(trackMutedTimeoutId);
+						trackMutedTimeoutId = null;
+					} else {
+						try {
+							config.remoteStream.addTrack(ev.target);
+							pluginHandle.onremotestream(config.remoteStream);
+						} catch(e) {
+							Janus.error(e);
+						};
+					}
 				};
 			};
 		}
@@ -1798,7 +1823,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTrack(track, stream);
 					} else {
 						Janus.log('Enabling rid-based simulcasting:', track);
-						const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+						var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 						config.pc.addTransceiver(track, {
 							direction: "sendrecv",
 							streams: [stream],
@@ -1822,8 +1847,9 @@ function Janus(gatewayCallbacks) {
 			};
 		}
 		// If there's a new local stream, let's notify the application
-		if(config.myStream)
+		if(config.myStream) {
 			pluginHandle.onlocalstream(config.myStream);
+		}
 		// Create offer/answer now
 		if(!jsep) {
 			createOffer(handleId, media, callbacks);
@@ -1939,7 +1965,7 @@ function Janus(gatewayCallbacks) {
 							media.audioSend = true;
 						}
 						if(isAudioSendEnabled(media)) {
-							media.keepVideo = false;
+							media.keepAudio = false;
 							media.addAudio = true;
 						}
 					} else {
@@ -1999,15 +2025,15 @@ function Janus(gatewayCallbacks) {
 						}
 					} else {
 						// We have a video track: should we keep it as it is?
-						if(isVideoSendEnabled(media) &&
-								!media.removeVideo && !media.replaceVideo) {
+						if(isVideoSendEnabled(media) && !media.removeVideo && !media.replaceVideo) {
 							media.keepVideo = true;
 						}
 					}
 				}
 				// Data channels can only be added
-				if(media.addData)
+				if(media.addData) {
 					media.data = true;
+				}
 			}
 			// If we're updating and keeping all tracks, let's skip the getUserMedia part
 			if((isAudioSendEnabled(media) && media.keepAudio) &&
@@ -2021,12 +2047,12 @@ function Janus(gatewayCallbacks) {
 		if(media.update && !config.streamExternal) {
 			if(media.removeAudio || media.replaceAudio) {
 				if(config.myStream && config.myStream.getAudioTracks() && config.myStream.getAudioTracks().length) {
-					var s = config.myStream.getAudioTracks()[0];
-					Janus.log("Removing audio track:", s);
-					config.myStream.removeTrack(s);
+					var at = config.myStream.getAudioTracks()[0];
+					Janus.log("Removing audio track:", at);
+					config.myStream.removeTrack(at);
 					try {
-						s.stop();
-					} catch(e) {};
+						at.stop();
+					} catch(e) {}
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var ra = true;
@@ -2035,10 +2061,10 @@ function Janus(gatewayCallbacks) {
 						ra = false;
 					}
 					if(ra) {
-						for(var s of config.pc.getSenders()) {
-							if(s && s.track && s.track.kind === "audio") {
-								Janus.log("Removing audio sender:", s);
-								config.pc.removeTrack(s);
+						for(var asnd of config.pc.getSenders()) {
+							if(asnd && asnd.track && asnd.track.kind === "audio") {
+								Janus.log("Removing audio sender:", asnd);
+								config.pc.removeTrack(asnd);
 							}
 						}
 					}
@@ -2046,12 +2072,12 @@ function Janus(gatewayCallbacks) {
 			}
 			if(media.removeVideo || media.replaceVideo) {
 				if(config.myStream && config.myStream.getVideoTracks() && config.myStream.getVideoTracks().length) {
-					var s = config.myStream.getVideoTracks()[0];
-					Janus.log("Removing video track:", s);
-					config.myStream.removeTrack(s);
+					var vt = config.myStream.getVideoTracks()[0];
+					Janus.log("Removing video track:", vt);
+					config.myStream.removeTrack(vt);
 					try {
-						s.stop();
-					} catch(e) {};
+						vt.stop();
+					} catch(e) {}
 				}
 				if(config.pc.getSenders() && config.pc.getSenders().length) {
 					var rv = true;
@@ -2060,10 +2086,10 @@ function Janus(gatewayCallbacks) {
 						rv = false;
 					}
 					if(rv) {
-						for(var s of config.pc.getSenders()) {
-							if(s && s.track && s.track.kind === "video") {
-								Janus.log("Removing video sender:", s);
-								config.pc.removeTrack(s);
+						for(var vsnd of config.pc.getSenders()) {
+							if(vsnd && vsnd.track && vsnd.track.kind === "video") {
+								Janus.log("Removing video sender:", vsnd);
+								config.pc.removeTrack(vsnd);
 							}
 						}
 					}
@@ -2150,7 +2176,7 @@ function Janus(gatewayCallbacks) {
 							// Normal resolution, 4:3
 							height = 480;
 							maxHeight = 480;
-							width  = 640;
+							width = 640;
 						} else if(media.video === 'stdres-16:9') {
 							// Normal resolution, 16:9
 							height = 360;
@@ -2165,19 +2191,27 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Adding media constraint:", media.video);
 						videoSupport = {
 							'height': {'ideal': height},
-							'width':  {'ideal': width}
+							'width': {'ideal': width}
 						};
 						Janus.log("Adding video constraint:", videoSupport);
 					}
 				} else if(media.video === 'screen' || media.video === 'window') {
-					if(!media.screenshareFrameRate) {
-						media.screenshareFrameRate = 3;
-					}
 					if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
 						// The new experimental getDisplayMedia API is available, let's use that
 						// https://groups.google.com/forum/#!topic/discuss-webrtc/Uf0SrR4uxzk
 						// https://webrtchacks.com/chrome-screensharing-getdisplaymedia/
-						navigator.mediaDevices.getDisplayMedia({ video: true, audio: media.captureDesktopAudio })
+						constraints.video = {};
+						if(media.screenshareFrameRate) {
+							constraints.video.frameRate = media.screenshareFrameRate;
+						}
+						if(media.screenshareHeight) {
+							constraints.video.height = media.screenshareHeight;
+						}
+						if(media.screenshareWidth) {
+							constraints.video.width = media.screenshareWidth;
+						}
+						constraints.audio = media.captureDesktopAudio;
+						navigator.mediaDevices.getDisplayMedia(constraints)
 							.then(function(stream) {
 								pluginHandle.consentDialog(false);
 								if(isAudioSendEnabled(media) && !media.keepAudio) {
@@ -2204,7 +2238,7 @@ function Janus(gatewayCallbacks) {
 						} else {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
-					};
+					}
 					function getScreenMedia(constraints, gsmCallback, useAudio) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
@@ -2221,7 +2255,7 @@ function Janus(gatewayCallbacks) {
 								}
 							})
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
-					};
+					}
 					if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
 						var chromever = Janus.webRTCAdapter.browserDetails.version;
 						var maxver = 33;
@@ -2449,14 +2483,16 @@ function Janus(gatewayCallbacks) {
 				for(var t of transceivers) {
 					if((t.sender && t.sender.track && t.sender.track.kind === "audio") ||
 							(t.receiver && t.receiver.track && t.receiver.track.kind === "audio")) {
-						if(!audioTransceiver)
+						if(!audioTransceiver) {
 							audioTransceiver = t;
+						}
 						continue;
 					}
 					if((t.sender && t.sender.track && t.sender.track.kind === "video") ||
 							(t.receiver && t.receiver.track && t.receiver.track.kind === "video")) {
-						if(!videoTransceiver)
+						if(!videoTransceiver) {
 							videoTransceiver = t;
+						}
 						continue;
 					}
 				}
@@ -2571,14 +2607,13 @@ function Janus(gatewayCallbacks) {
 		if(sendVideo && simulcast && Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
 			Janus.log("Enabling Simulcasting for Firefox (RID)");
-			var sender = config.pc.getSenders().find(function(s) {return s.track.kind == "video"});
+			var sender = config.pc.getSenders().find(function(s) {return s.track.kind === "video"});
 			if(sender) {
 				var parameters = sender.getParameters();
-				if(!parameters)
+				if(!parameters) {
 					parameters = {};
-
-
-				const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+				}
+				var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 				parameters.encodings = [
 					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
@@ -2818,7 +2853,7 @@ function Janus(gatewayCallbacks) {
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
 
-			const maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+			var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
 			sender.setParameters({encodings: [
 				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
 				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
@@ -2897,8 +2932,10 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		if(!config.volume[stream])
 			config.volume[stream] = { value: 0 };
-		// Start getting the volume, if getStats is supported
-		if(config.pc.getStats && Janus.webRTCAdapter.browserDetails.browser === "chrome") {
+		// Start getting the volume, if audioLevel in getStats is supported (apparently
+		// they're only available in Chrome/Safari right now: https://webrtc-stats.callstats.io/)
+		if(config.pc.getStats && (Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 			if(remote && !config.remoteStream) {
 				Janus.warn("Remote stream unavailable");
 				return 0;
@@ -2911,16 +2948,13 @@ function Janus(gatewayCallbacks) {
 				config.volume[stream].timer = setInterval(function() {
 					config.pc.getStats()
 						.then(function(stats) {
-							var results = stats.result();
-							for(var i=0; i<results.length; i++) {
-								var res = results[i];
-								if(res.type == 'ssrc') {
-									if(remote && res.stat('audioOutputLevel'))
-										config.volume[stream].value = parseInt(res.stat('audioOutputLevel'));
-									else if(!remote && res.stat('audioInputLevel'))
-										config.volume[stream].value = parseInt(res.stat('audioInputLevel'));
-								}
-							}
+							stats.forEach(function (res) {
+								if(!res || res.kind !== "audio")
+									return;
+								if((remote && !res.remoteSource) || (!remote && res.type !== "media-source"))
+									return;
+								config.volume[stream].value = (res.audioLevel ? res.audioLevel : 0);
+							});
 						});
 				}, 200);
 				return 0;	// We don't have a volume to return yet
@@ -2987,7 +3021,7 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No video track");
 				return false;
 			}
-			config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+			config.myStream.getVideoTracks()[0].enabled = !mute;
 			return true;
 		} else {
 			// Mute/unmute audio track
@@ -2995,7 +3029,7 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No audio track");
 				return false;
 			}
-			config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+			config.myStream.getAudioTracks()[0].enabled = !mute;
 			return true;
 		}
 	}
@@ -3282,7 +3316,7 @@ function Janus(gatewayCallbacks) {
 						continue;
 					}
 				}
-				if(lines[i].length == 0) {
+				if(lines[i].length === 0) {
 					lines.splice(i, 1); i--;
 					continue;
 				}
@@ -3447,4 +3481,4 @@ function Janus(gatewayCallbacks) {
 		Janus.debug("isTrickleEnabled:", trickle);
 		return (trickle === false) ? false : true;
 	}
-};
+}

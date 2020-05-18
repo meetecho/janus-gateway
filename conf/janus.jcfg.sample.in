@@ -18,6 +18,11 @@ general: {
 	#debug_timestamps = true				# Whether to show a timestamp for each log line
 	#debug_colors = false					# Whether colors should be disabled in the log
 	#debug_locks = true						# Whether to enable debugging of locks (very verbose!)
+	#log_prefix = "[janus] "				# In case you want log lines to be prefixed by some
+											# custom text, you can use the 'log_prefix' property.
+											# It supports terminal colors, meaning something like
+											# "[\x1b[32mjanus\x1b[0m] " would show a green "janus"
+											# string in square brackets (assuming debug_colors=true).
 
 		# This is what you configure if you want to launch Janus as a daemon
 	#daemonize = true						# Whether Janus should run as a daemon
@@ -117,22 +122,67 @@ general: {
 		# e.g., to look at unencrypted live traffic with a browser. By
 		# default it is obviously disabled, as WebRTC mandates encryption.
 	#no_webrtc_encryption = true
+
+		# Janus provides ways via its API to specify custom paths to save
+		# files to (e.g., recordings, pcap captures and the like). In order
+		# to avoid people can mess with folders they're not supposed to,
+		# you can configure an array of folders that Janus should prevent
+		# creating files in. If the 'protected_folder' property below is
+		# commented, no folder is protected.
+		# Notice that at the moment this only covers attempts to start
+		# an .mjr recording and pcap/text2pcap packet captures.
+	protected_folders = [
+		"/bin",
+		"/boot",
+		"/dev",
+		"/etc",
+		"/initrd",
+		"/lib",
+		"/lib32",
+		"/lib64",
+		"/proc",
+		"/sbin",
+		"/sys",
+		"/usr",
+		"/var",
+			# We add what are usually the folders Janus is installed to
+			# as well: we don't just put "/opt/janus" because that would
+			# include folders like "/opt/janus/share" that is where
+			# recordings might be saved to by some plugins
+		"/opt/janus/bin",
+		"/opt/janus/etc",
+		"/opt/janus/include",
+		"/opt/janus/lib",
+		"/opt/janus/lib32",
+		"/opt/janus/lib64",
+		"/opt/janus/sbin"
+	]
 }
 
 # Certificate and key to use for DTLS (and passphrase if needed). If missing,
 # Janus will autogenerate a self-signed certificate to use. Notice that
 # self-signed certificates are fine for the purpose of WebRTC DTLS
 # connectivity, for the time being, at least until Identity Providers
-# are standardized and implemented in browsers.
+# are standardized and implemented in browsers. If for some reason you
+# want to enforce the DTLS stack in Janus to enforce valid certificates
+# from peers, though, you can do that setting 'dtls_accept_selfsigned' to
+# 'false' below: DO NOT TOUCH THAT IF YOU DO NOT KNOW WHAT YOU'RE DOING!
+# You can also configure the DTLS ciphers to offer: the default if not
+# set is "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK"
+# Finally, by default NIST P-256 certificates are generated (see #1997),
+# but RSA generation is still supported if you set 'rsa_private_key' to 'true'.
 certificates: {
 	#cert_pem = "/path/to/certificate.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#dtls_accept_selfsigned = false
+	#dtls_ciphers = "your-desired-openssl-ciphers"
+	#rsa_private_key = false
 }
 
 # Media-related stuff: you can configure whether if you want
-# to enable IPv6 support, the maximum size of the NACK queue (in
-# milliseconds, defaults to 500ms) for retransmissions, the range of
+# to enable IPv6 support, the minimum size of the NACK queue (in ms,
+# defaults to 200ms) for retransmissions no matter the RTT, the range of
 # ports to use for RTP and RTCP (by default, no range is envisaged), the
 # starting MTU for DTLS (1200 by default, it adapts automatically),
 # how much time, in seconds, should pass with no media (audio or
@@ -148,13 +198,23 @@ certificates: {
 # you should pick a reasonable trade-off (usually 2*max expected RTT).
 media: {
 	#ipv6 = true
-	#max_nack_queue = 500
+	#min_nack_queue = 500
 	#rtp_port_range = "20000-40000"
 	#dtls_mtu = 1200
 	#no_media_timer = 1
 	#slowlink_threshold = 4
 	#twcc_period = 100
 	#dtls_timeout = 500
+
+	# If you need DSCP packet marking and prioritization, you can configure
+	# the 'dscp' property to a specific values, and Janus will try to
+	# set it on all outgoing packets using libnice. Normally, the specs
+	# suggest to use different values depending on whether audio, video
+	# or data are used, but since all PeerConnections in Janus are bundled,
+	# we can only use one. You can refer to this document for more info:
+	# https://tools.ietf.org/html/draft-ietf-tsvwg-rtcweb-qos-18#page-6
+	# That said, DON'T TOUCH THIS IF YOU DON'T KNOW WHAT IT MEANS!
+	#dscp = 46
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -169,8 +229,8 @@ media: {
 # users) rather than the default half-trickle (Janus supports trickle
 # candidates from users, but sends its own within the SDP), and whether
 # it should work in ICE-Lite mode (by default it doesn't). Finally,
-# you can also enable ICE-TCP support (beware that it currently *only*
-# works if you enable ICE Lite as well), choose which interfaces should
+# you can also enable ICE-TCP support (beware that this may lead to problems
+# if you do not enable ICE Lite as well), choose which interfaces should
 # be used for gathering candidates, and enable or disable the
 # internal libnice debugging, if needed.
 nat: {
@@ -181,6 +241,15 @@ nat: {
 	#ice_lite = true
 	#ice_tcp = true
 
+	# By default Janus tries to resolve mDNS (.local) candidates: even
+	# though this is now done asynchronously and shouldn't keep the API
+	# busy, even in case mDNS resolution takes a long time to timeout,
+	# you can choose to drop all .local candidates instead, which is
+	# helpful in case you know clients will never be in the same private
+	# network as the one the Janus instance is running from. Notice that
+	# this will cause ICE to fail if mDNS is the only way to connect!
+	#ignore_mdns = true
+
 	# In case you're deploying Janus on a server which is configured with
 	# a 1:1 NAT (e.g., Amazon EC2), you might want to also specify the public
 	# address of the machine using the setting below. This will result in
@@ -189,7 +258,11 @@ nat: {
 	# such, use the option with caution and only if you know what you're doing.
 	# Make sure you keep ICE Lite disabled, though, as it's not strictly
 	# speaking a publicly reachable server, and a NAT is still involved.
+	# If you'd rather keep the private IP address in place, rather than
+	# replacing it (and so have both of them as advertised candidates),
+	# then set the 'keep_private_host' property to true.
 	#nat_1_1_mapping = "1.2.3.4"
+	#keep_private_host = true
 
 	# You can configure a TURN server in two different ways: specifying a
 	# statically configured TURN server, and thus provide the address of the
@@ -252,7 +325,7 @@ nat: {
 	# your machine is ready. Note that Linux distributions offer such directives.
 	# You could use the following directive in systemd: 'After=network-online.target'
 	# https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=
-	# ignore_unreachable_ice_server = true
+	#ignore_unreachable_ice_server = true
 }
 
 # You can choose which of the available plugins should be

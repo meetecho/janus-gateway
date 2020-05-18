@@ -16,6 +16,7 @@
 # is disabled by default, so set enabled=true if you want to use it.
 general: {
 	enabled = false						# Whether the support must be enabled
+	#events = true						# Whether to notify event handlers about transport events (default=true)
 	json = "indented"					# Whether the JSON messages should be indented (default),
 										# plain (no indentation) or compact (no indentation and no spaces)
 	host = "localhost"					# The address of the RabbitMQ server
@@ -26,6 +27,7 @@ general: {
 	to_janus = "to-janus"				# Name of the queue for incoming messages
 	from_janus = "from-janus"			# Name of the queue for outgoing messages
 	#janus_exchange = "janus-exchange"	# Exchange for outgoing messages, using default if not provided
+	#janus_exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
 	#ssl_enabled = false					# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled
 	#ssl_verify_hostname = true			# Whether hostname verification must be enabled

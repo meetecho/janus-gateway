@@ -10,6 +10,8 @@
 int janus_log_level = LOG_NONE;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
+char *janus_log_global_prefix = NULL;
+int lock_debug = 0;
 
 /* This is to avoid linking with openSSL */
 int RAND_bytes(uint8_t *key, int len) {
@@ -65,7 +67,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	char sdes_item[16];
 	guint16 transport_seq_num;
 	guint8 temporal_layer_id;
-	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL);
+	janus_rtp_header_extension_parse_audio_level((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_playout_delay((char *)data, size, 1, NULL, NULL);
 	janus_rtp_header_extension_parse_rid((char *)data, size, 1, sdes_item, sizeof(sdes_item));
 	janus_rtp_header_extension_parse_mid((char *)data, size, 1, sdes_item, sizeof(sdes_item));

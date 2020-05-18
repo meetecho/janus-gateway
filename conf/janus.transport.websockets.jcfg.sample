@@ -1,6 +1,7 @@
 # WebSockets stuff: whether they should be enabled, which ports they
 # should use, and so on.
 general: {
+	#events = true					# Whether to notify event handlers about transport events (default=true)
 	json = "indented"				# Whether the JSON messages should be indented (default),
 									# plain (no indentation) or compact (no indentation and no spaces)
 	#pingpong_trigger = 30			# After how many seconds of idle, a PING should be sent
@@ -37,8 +38,12 @@ admin: {
 }
 
 # Certificate and key to use for any secure WebSocket server, if enabled (and passphrase if needed).
+# You can also disable insecure protocols and ciphers by configuring the
+# 'ciphers' property accordingly (no limitation by default).
+# Examples of recommended cipher strings at https://cheatsheetseries.owasp.org/cheatsheets/TLS_Cipher_String_Cheat_Sheet.html
 certificates: {
 	#cert_pem = "/path/to/cert.pem"
 	#cert_key = "/path/to/key.pem"
 	#cert_pwd = "secretpassphrase"
+	#ciphers = "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256"
 }

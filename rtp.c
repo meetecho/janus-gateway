@@ -174,14 +174,16 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 	return -1;
 }
 
-int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level) {
+int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, gboolean *vad, int *level) {
 	uint8_t byte = 0;
 	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL, NULL) < 0)
 		return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
-	int v = (byte & 0x80) >> 7;
+	gboolean v = (byte & 0x80) >> 7;
 	int value = byte & 0x7F;
 	JANUS_LOG(LOG_DBG, "%02x --> v=%d, level=%d\n", byte, v, value);
+	if(vad)
+		*vad = v;
 	if(level)
 		*level = value;
 	return 0;
@@ -301,11 +303,24 @@ int janus_rtp_header_extension_parse_transport_wide_cc(char *buf, int len, int i
 	if(ext == NULL)
 		return -2;
 	int val_len = (*ext & 0x0F) + 1;
-	if (val_len < 2 || val_len > len-(ext-buf)-1) {
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
 		return -3;
-	}
 	memcpy(transSeqNum, ext+1, sizeof(uint16_t));
 	*transSeqNum = ntohs(*transSeqNum);
+	return 0;
+}
+
+int janus_rtp_header_extension_set_transport_wide_cc(char *buf, int len, int id, uint16_t transSeqNum) {
+	char *ext = NULL;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, NULL, &ext) < 0)
+		return -1;
+	if(ext == NULL)
+		return -2;
+	int val_len = (*ext & 0x0F) + 1;
+	if (val_len < 2 || val_len > len-(ext-buf)-1)
+		return -3;
+	transSeqNum = htons(transSeqNum);
+	memcpy(ext+1, &transSeqNum, sizeof(uint16_t));
 	return 0;
 }
 
@@ -766,6 +781,7 @@ const char *janus_srtp_error_str(int error) {
 
 /* Payload types we'll offer internally */
 #define OPUS_PT		111
+#define MULTIOPUS_PT	OPUS_PT
 #define ISAC32_PT	104
 #define ISAC16_PT	103
 #define PCMU_PT		0
@@ -780,6 +796,8 @@ const char *janus_audiocodec_name(janus_audiocodec acodec) {
 			return "none";
 		case JANUS_AUDIOCODEC_OPUS:
 			return "opus";
+		case JANUS_AUDIOCODEC_MULTIOPUS:
+			return "multiopus";
 		case JANUS_AUDIOCODEC_PCMU:
 			return "pcmu";
 		case JANUS_AUDIOCODEC_PCMA:
@@ -800,6 +818,8 @@ janus_audiocodec janus_audiocodec_from_name(const char *name) {
 		return JANUS_AUDIOCODEC_NONE;
 	else if(!strcasecmp(name, "opus"))
 		return JANUS_AUDIOCODEC_OPUS;
+	else if(!strcasecmp(name, "multiopus"))
+		return JANUS_AUDIOCODEC_MULTIOPUS;
 	else if(!strcasecmp(name, "isac32"))
 		return JANUS_AUDIOCODEC_ISAC_32K;
 	else if(!strcasecmp(name, "isac16"))
@@ -819,6 +839,8 @@ int janus_audiocodec_pt(janus_audiocodec acodec) {
 			return -1;
 		case JANUS_AUDIOCODEC_OPUS:
 			return OPUS_PT;
+		case JANUS_AUDIOCODEC_MULTIOPUS:
+			return MULTIOPUS_PT;
 		case JANUS_AUDIOCODEC_ISAC_32K:
 			return ISAC32_PT;
 		case JANUS_AUDIOCODEC_ISAC_16K:
@@ -982,9 +1004,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		/* Let's start slow */
 		context->last_relayed = janus_get_monotonic_time();
 	} else {
-		/* Check if 250ms went by with no packet relayed */
+		/* Check if too much time went by with no packet relayed */
 		gint64 now = janus_get_monotonic_time();
-		if(now-context->last_relayed >= 250000) {
+		if(now-context->last_relayed >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			int substream = context->substream-1;
 			if(substream < 0)

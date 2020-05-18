@@ -144,6 +144,8 @@ janus_SOURCES = \
 janus_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
+	$(LIBSRTP_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DEVENTDIR=\"$(eventdir)\" \
@@ -156,6 +158,8 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
+	$(LIBSRTP_LDFLAGS) $(LIBSRTP_LIBS) \
+	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
 dist_man1_MANS = janus.1
@@ -317,9 +321,9 @@ events_libadd = \
 if ENABLE_SAMPLEEVH
 event_LTLIBRARIES += events/libjanus_sampleevh.la
 events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
-events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
-events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl -lm
-events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags) $(LIBCURL_CFLAGS)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) -lm
+events_libjanus_sampleevh_la_LIBADD = $(events_libadd) $(LIBCURL_LIBADD)
 conf_DATA += conf/janus.eventhandler.sampleevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.sampleevh.jcfg.sample
 endif
@@ -413,9 +417,9 @@ plugins_libadd = \
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
-plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS)
-plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS)
-plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD)
+plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS)
+plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
+plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD) $(OGG_LIBADD)
 conf_DATA += conf/janus.plugin.audiobridge.jcfg.sample
 EXTRA_DIST += conf/janus.plugin.audiobridge.jcfg.sample
 endif
@@ -470,9 +474,9 @@ endif
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS)
-plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS)
-plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD)
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) $(LIBCURL_CFLAGS) $(OGG_CFLAGS)
+plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) $(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
+plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd) $(LIBCURL_LIBADD) $(OGG_LIBADD)
 conf_DATA += conf/janus.plugin.streaming.jcfg.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \
@@ -566,6 +570,9 @@ endif
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
 bin_PROGRAMS += mjr2pcap
+if ENABLE_PCAP2MJR
+bin_PROGRAMS += pcap2mjr
+endif
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-cmdline.c \
@@ -592,11 +599,13 @@ janus_pp_rec_SOURCES = \
 
 janus_pp_rec_CFLAGS = \
 	$(AM_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
 	$(NULL)
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
+	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
 BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
@@ -626,8 +635,44 @@ mjr2pcap_LDADD = \
 	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
 
+if ENABLE_PCAP2MJR
+pcap2mjr_SOURCES = \
+	postprocessing/p2m-cmdline.c \
+	postprocessing/p2m-cmdline.h \
+	postprocessing/pp-rtp.h \
+	postprocessing/pcap2mjr.c \
+	log.c \
+	utils.c \
+	$(NULL)
+
+pcap2mjr_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(POST_PROCESSING_CFLAGS) \
+	$(PCAP_CFLAGS) \
+	$(NULL)
+
+pcap2mjr_LDADD = \
+	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
+	$(PCAP_LIBS) \
+	$(NULL)
+
+BUILT_SOURCES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
+
+postprocessing/p2m-cmdline.h: postprocessing/p2m-cmdline.c
+
+postprocessing/p2m-cmdline.c: postprocessing/pcap2mjr.c
+	gengetopt --set-package="pcap2mjr" --set-version="$(VERSION)" -F postprocessing/p2m-cmdline < postprocessing/pcap2mjr.ggo
+
+EXTRA_DIST += postprocessing/pcap2mjr.ggo
+CLEANFILES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
+endif
+
 dist_man1_MANS += postprocessing/janus-pp-rec.1
 dist_man1_MANS += postprocessing/mjr2pcap.1
+if ENABLE_PCAP2MJR
+dist_man1_MANS += postprocessing/pcap2mjr.1
+endif
 
 endif
 
