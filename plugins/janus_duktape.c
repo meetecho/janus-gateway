@@ -1158,7 +1158,18 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		const char *filename = duk_get_string(ctx, i);
 		if(type == NULL)
 			continue;
-		janus_recorder *rc = janus_recorder_create(folder, codec, filename);
+		/* Check if the codec contains some fmtp stuff too */
+		const char *c = codec, *f = NULL;
+		gchar **parts = NULL;
+		if(strstr(codec, "/fmtp=") != NULL) {
+			parts = g_strsplit(codec, "/fmtp=", 2);
+			c = parts[0];
+			f = parts[1];
+		}
+		/* Create the recorder */
+		janus_recorder *rc = janus_recorder_create_full(folder, c, f, filename);
+		if(parts != NULL)
+			g_strfreev(parts);
 		if(rc == NULL) {
 			JANUS_LOG(LOG_ERR, "Error creating '%s' recorder...\n", type);
 			goto error;

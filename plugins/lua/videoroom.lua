@@ -162,6 +162,8 @@ function handleMessage(id, tr, msg, jsep)
 		if(videoCodec == nil) then
 			videoCodec = "vp8"
 		end
+		local vp9Profile = msgT["vp9_profile"]
+		local h264Profile = msgT["h264_profile"]
 		local bitrate = msgT["bitrate"]
 		local pliFreq = msgT["fir_freq"]
 		local requirePvtId = msgT["require_pvtid"]
@@ -178,6 +180,8 @@ function handleMessage(id, tr, msg, jsep)
 			publishers = publishers,
 			audioCodec = split(audioCodec, ","),
 			videoCodec = split(videoCodec, ","),
+			vp9Profile = vp9Profile,
+			h264Profile = h264Profile,
 			bitrate = bitrate,
 			pliFreq = pliFreq,
 			requirePvtId = requirePvtId,
@@ -561,6 +565,7 @@ function handleMessage(id, tr, msg, jsep)
 										else
 											logger.print("  -- Publisher audio codec found")
 											s.audioCodec = codec
+											break
 										end
 									end
 								end
@@ -588,11 +593,21 @@ function handleMessage(id, tr, msg, jsep)
 								for index,codec in ipairs(room.videoCodec) do
 									if s.videoCodec == nil then
 										logger.print("Looking for video codec " .. codec)
+										if codec == "vp9" and room.vp9Profile ~= nil and sdp.findPayloadType(offer, codec, room.vp9Profile) == 0 then
+											logger.print("  -- Publisher video codec found")
+											s.videoCodec = codec
+											break
+										elseif codec == "h264" and room.h264Profile ~= nil and sdp.findPayloadType(offer, codec, room.h264Profile) == 0 then
+											logger.print("  -- Publisher video codec found")
+											s.videoCodec = codec
+											break
+										end
 										if sdp.findPayloadType(offer, codec) == -1 then
 											logger.print("  -- Not found, trying next video codec...")
 										else
 											logger.print("  -- Publisher video codec found")
 											s.videoCodec = codec
+											break
 										end
 									end
 								end
@@ -601,6 +616,7 @@ function handleMessage(id, tr, msg, jsep)
 							local answer = sdp.generateAnswer(offer, {
 								audio = (s.audioCodec ~= nil), audioCodec = s.audioCodec,
 								video = (s.videoCodec ~= nil), videoCodec = s.videoCodec,
+									vp9Profile = room.vp9Profile, h264Profile = room.h264Profile,
 								data = true })
 							logger.print("Generated answer for publisher: " .. sdp.render(answer))
 							local jsepanswer = { type = "answer", sdp = sdp.render(answer) }

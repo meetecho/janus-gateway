@@ -549,6 +549,8 @@ int main(int argc, char *argv[])
 						exit(1);
 					}
 				}
+				/* Any codec-specific info? (just informational) */
+				const char *f = json_string_value(json_object_get(info, "f"));
 				/* When was the file created? */
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
@@ -568,6 +570,8 @@ int main(int argc, char *argv[])
 				/* Summary */
 				JANUS_LOG(LOG_INFO, "This is %s recording:\n", video ? "a video" : (data ? "a text data" : "an audio"));
 				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
+				if(f != NULL)
+					JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
 				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
 				/* Save the original string as a metadata to save in the media container, if possible */

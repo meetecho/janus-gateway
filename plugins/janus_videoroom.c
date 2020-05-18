@@ -64,6 +64,8 @@ room-<unique room ID>: {
 				can be a comma separated list in order of preference, e.g., opus,pcmu)
 	videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8
 				can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
+	vp9_profile = VP9-specific profile to prefer (e.g., "2" for "profile-id=2")
+	h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
 	opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=false)
 	video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
@@ -1179,6 +1181,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audiocodec", JSON_STRING, 0},
 	{"videocodec", JSON_STRING, 0},
+	{"vp9_profile", JSON_STRING, 0},
+	{"h264_profile", JSON_STRING, 0},
 	{"opus_fec", JANUS_JSON_BOOL, 0},
 	{"video_svc", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
@@ -1388,6 +1392,8 @@ typedef struct janus_videoroom {
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
 	janus_audiocodec acodec[3];	/* Audio codec(s) to force on publishers */
 	janus_videocodec vcodec[3];	/* Video codec(s) to force on publishers */
+	char *vp9_profile;			/* VP9 codec profile to prefer, if more are negotiated */
+	char *h264_profile;			/* H.264 codec profile to prefer, if more are negotiated */
 	gboolean do_opusfec;		/* Whether inband FEC must be negotiated (note: only available for Opus) */
 	gboolean do_svc;			/* Whether SVC must be done for video (note: only available for VP9 right now) */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
@@ -1521,6 +1527,7 @@ typedef struct janus_videoroom_publisher {
 	janus_videocodec vcodec;	/* Video codec this publisher is using */
 	guint32 audio_pt;		/* Audio payload type (Opus) */
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
+	char *vfmtp;			/* Video fmtp that ended up being negotiated, if any */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
 	gboolean do_opusfec;	/* Whether this publisher is sending inband Opus FEC */
@@ -1655,11 +1662,9 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	g_free(p->room_id_str);
 	g_free(p->user_id_str);
 	g_free(p->display);
-	p->display = NULL;
 	g_free(p->sdp);
-	p->sdp = NULL;
+	g_free(p->vfmtp);
 	g_free(p->recording_base);
-	p->recording_base = NULL;
 	janus_recorder_destroy(p->arc);
 	janus_recorder_destroy(p->vrc);
 	janus_recorder_destroy(p->drc);
@@ -1708,6 +1713,8 @@ static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	g_free(room->room_secret);
 	g_free(room->room_pin);
 	g_free(room->rec_dir);
+	g_free(room->vp9_profile);
+	g_free(room->h264_profile);
 	g_hash_table_destroy(room->participants);
 	g_hash_table_destroy(room->private_ids);
 	g_hash_table_destroy(room->allowed);
@@ -2093,6 +2100,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *firfreq = janus_config_get(config, cat, janus_config_type_item, "fir_freq");
 			janus_config_item *audiocodec = janus_config_get(config, cat, janus_config_type_item, "audiocodec");
 			janus_config_item *videocodec = janus_config_get(config, cat, janus_config_type_item, "videocodec");
+			janus_config_item *vp9profile = janus_config_get(config, cat, janus_config_type_item, "vp9_profile");
+			janus_config_item *h264profile = janus_config_get(config, cat, janus_config_type_item, "h264_profile");
 			janus_config_item *fec = janus_config_get(config, cat, janus_config_type_item, "opus_fec");
 			janus_config_item *svc = janus_config_get(config, cat, janus_config_type_item, "video_svc");
 			janus_config_item *audiolevel_ext = janus_config_get(config, cat, janus_config_type_item, "audiolevel_ext");
@@ -2214,6 +2223,16 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					}
 				}
 				g_clear_pointer(&list, g_strfreev);
+			}
+			if(vp9profile && vp9profile->value && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 ||
+					videoroom->vcodec[1] == JANUS_VIDEOCODEC_VP9 ||
+					videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9)) {
+				videoroom->vp9_profile = g_strdup(vp9profile->value);
+			}
+			if(h264profile && h264profile->value && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_H264 ||
+					videoroom->vcodec[1] == JANUS_VIDEOCODEC_H264 ||
+					videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264)) {
+				videoroom->h264_profile = g_strdup(h264profile->value);
 			}
 			if(fec && fec->value) {
 				videoroom->do_opusfec = janus_is_true(fec->value);
@@ -2873,6 +2892,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 			g_clear_pointer(&list, g_strfreev);
 		}
+		json_t *vp9profile = json_object_get(root, "vp9_profile");
+		json_t *h264profile = json_object_get(root, "h264_profile");
 		json_t *fec = json_object_get(root, "opus_fec");
 		json_t *svc = json_object_get(root, "video_svc");
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
@@ -3044,6 +3065,18 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 			g_clear_pointer(&list, g_strfreev);
 		}
+		const char *vp9_profile = json_string_value(vp9profile);
+		if(vp9_profile && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_VP9 ||
+				videoroom->vcodec[1] == JANUS_VIDEOCODEC_VP9 ||
+				videoroom->vcodec[2] == JANUS_VIDEOCODEC_VP9)) {
+			videoroom->vp9_profile = g_strdup(vp9_profile);
+		}
+		const char *h264_profile = json_string_value(h264profile);
+		if(h264_profile && (videoroom->vcodec[0] == JANUS_VIDEOCODEC_H264 ||
+				videoroom->vcodec[1] == JANUS_VIDEOCODEC_H264 ||
+				videoroom->vcodec[2] == JANUS_VIDEOCODEC_H264)) {
+			videoroom->h264_profile = g_strdup(h264_profile);
+		}
 		if(fec) {
 			videoroom->do_opusfec = json_is_true(fec);
 			if(videoroom->acodec[0] != JANUS_AUDIOCODEC_OPUS &&
@@ -3155,6 +3188,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
 			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
 			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
+			if(videoroom->vp9_profile)
+				janus_config_add(config, c, janus_config_item_create("vp9_profile", videoroom->vp9_profile));
+			if(videoroom->h264_profile)
+				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
 			if(videoroom->do_opusfec)
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_svc)
@@ -3331,6 +3368,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			janus_videoroom_codecstr(videoroom, audio_codecs, video_codecs, sizeof(audio_codecs), ",");
 			janus_config_add(config, c, janus_config_item_create("audiocodec", audio_codecs));
 			janus_config_add(config, c, janus_config_item_create("videocodec", video_codecs));
+			if(videoroom->vp9_profile)
+				janus_config_add(config, c, janus_config_item_create("vp9_profile", videoroom->vp9_profile));
+			if(videoroom->h264_profile)
+				janus_config_add(config, c, janus_config_item_create("h264_profile", videoroom->h264_profile));
 			if(videoroom->do_opusfec)
 				janus_config_add(config, c, janus_config_item_create("opus_fec", "yes"));
 			if(videoroom->do_svc)
@@ -5206,8 +5247,8 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-video", participant->recording_base);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videocodec_name(participant->vcodec), filename);
+			participant->vrc = janus_recorder_create_full(participant->room->rec_dir,
+				janus_videocodec_name(participant->vcodec), participant->vfmtp, filename);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -5215,8 +5256,8 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%s-user-%s-%"SCNi64"-video",
 				participant->room_id_str, participant->user_id_str, now);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videocodec_name(participant->vcodec), filename);
+			participant->vrc = janus_recorder_create_full(participant->room->rec_dir,
+				janus_videocodec_name(participant->vcodec), participant->vfmtp, filename);
 			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
@@ -5357,6 +5398,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
+		g_free(participant->vfmtp);
+		participant->vfmtp = NULL;
 		int i=0;
 		for(i=0; i<3; i++) {
 			participant->ssrc[i] = 0;
@@ -6882,11 +6925,35 @@ static void *janus_videoroom_handler(void *data) {
 					g_free(audio_fmtp);
 					audio_fmtp = NULL;
 				}
+				char *vp9_profile = videoroom->vp9_profile;
+				char *h264_profile = videoroom->h264_profile;
 				if(participant->vcodec == JANUS_VIDEOCODEC_NONE) {
 					int i=0;
 					for(i=0; i<3; i++) {
 						if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_NONE)
 							continue;
+						if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_VP9 && vp9_profile) {
+							/* Check if this VP9 profile is available */
+							if(janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(videoroom->vcodec[i]), vp9_profile) != -1) {
+								/* It is */
+								h264_profile = NULL;
+								participant->vcodec = videoroom->vcodec[i];
+								break;
+							}
+							/* It isn't, fallback to checking whether VP9 is available without the profile */
+							vp9_profile = NULL;
+						} else if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_H264 && h264_profile) {
+							/* Check if this VP9 profile is available */
+							if(janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(videoroom->vcodec[i]), h264_profile) != -1) {
+								/* It is */
+								vp9_profile = NULL;
+								participant->vcodec = videoroom->vcodec[i];
+								break;
+							}
+							/* It isn't, fallback to checking whether H.264 is available without the profile */
+							h264_profile = NULL;
+						}
+						/* Check if the codec is available */
 						if(janus_sdp_get_codec_pt(offer, janus_videocodec_name(videoroom->vcodec[i])) != -1) {
 							participant->vcodec = videoroom->vcodec[i];
 							break;
@@ -6900,6 +6967,8 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
 					JANUS_SDP_OA_AUDIO_FMTP, audio_fmtp ? audio_fmtp : (participant->do_opusfec ? "useinbandfec=1" : NULL),
 					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
+					JANUS_SDP_OA_VP9_PROFILE, vp9_profile,
+					JANUS_SDP_OA_H264_PROFILE, h264_profile,
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
 					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
@@ -6958,6 +7027,18 @@ static void *janus_videoroom_handler(void *data) {
 						m->b_value = videoroom->bitrate/1000;
 					}
 				}
+				/* Find out which fmtp was used for video */
+				g_free(participant->vfmtp);
+				participant->vfmtp = NULL;
+				const char *video_profile = NULL;
+				if(m != NULL) {
+					int video_pt = -1;
+					if(m->ptypes && m->ptypes->data)
+						video_pt = GPOINTER_TO_INT(m->ptypes->data);
+					video_profile = janus_sdp_get_fmtp(answer, video_pt);
+					if(video_profile != NULL)
+						participant->vfmtp = g_strdup(video_profile);
+				}
 				/* Generate an SDP string we can send back to the publisher */
 				char *answer_sdp = janus_sdp_write(answer);
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
@@ -6990,6 +7071,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_VIDEO, participant->video,
 					JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(participant->vcodec),
 					JANUS_SDP_OA_VIDEO_PT, janus_videocodec_pt(participant->vcodec),
+					JANUS_SDP_OA_VIDEO_FMTP, video_profile,
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, mid_ext_id,
 					JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,

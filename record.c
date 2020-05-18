@@ -75,10 +75,16 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->file = NULL;
 	g_free(recorder->codec);
 	recorder->codec = NULL;
+	g_free(recorder->fmtp);
+	recorder->fmtp = NULL;
 	g_free(recorder);
 }
 
 janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
+	/* Same as janus_recorder_create_full, but with no fmtp */
+	return janus_recorder_create_full(dir, codec, NULL, filename);
+}
+janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename) {
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
@@ -105,6 +111,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->filename = NULL;
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
+	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
@@ -275,6 +282,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			type = "d";
 		json_object_set_new(info, "t", json_string(type));								/* Audio/Video/Data */
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
+		if(recorder->fmtp)
+			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);

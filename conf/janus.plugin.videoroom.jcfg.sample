@@ -15,6 +15,8 @@
 #			can be a comma separated list in order of preference, e.g., opus,pcmu)
 # videocodec = vp8|vp9|h264 (video codec(s) to force on publishers, default=vp8
 #			can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
+# vp9_profile = VP9-specific profile to prefer (e.g., "2" for "profile-id=2")
+# h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
 # opus_fec = true|false (whether inband FEC must be negotiated; only works for Opus, default=false)
 # video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 # audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must
