@@ -60,12 +60,22 @@ var videoenabled = false;
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
-var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var acodec = "multiopus";
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
-var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
 
+// We'll use a pre-recorded with surround audio as our local stream
+var localStream = null;
+
 $(document).ready(function() {
+	// Preload the video
+	$('#videoleft').append(
+		'<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="true" loop>' +
+		'	<source src="surround/ChID-BLITS-EBU.mp4" type="video/mp4">' +
+		'</video>'
+	);
+	var myvideo = $('#myvideo').get(0);
+
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
@@ -99,6 +109,9 @@ $(document).ready(function() {
 									$('#details').remove();
 									echotest = pluginHandle;
 									Janus.log("Plugin attached! (" + echotest.getPlugin() + ", id=" + echotest.getId() + ")");
+									// Use the surround video as our local stream
+									localStream = myvideo.captureStream();
+									myvideo.play();
 									// Negotiate WebRTC
 									var body = { "audio": true, "video": true };
 									// We can try and force a specific codec, by telling the plugin what we'd prefer
@@ -107,15 +120,13 @@ $(document).ready(function() {
 										body["audiocodec"] = acodec;
 									if(vcodec)
 										body["videocodec"] = vcodec;
-									// For the codecs that support them (VP9 and H.264) you can specify a codec
-									// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
-									if(vprofile)
-										body["videoprofile"] = vprofile;
 									Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 									echotest.send({"message": body});
 									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
 									echotest.createOffer(
 										{
+											// Use our stream, don't do a getUserMedia
+											stream: localStream,
 											// No media provided: by default, it's sendrecv for audio and video
 											media: { data: true },	// Let's negotiate data channels as well
 											// If you want to test simulcasting (Chrome and Firefox only), then
@@ -123,6 +134,13 @@ $(document).ready(function() {
 											// the following 'simulcast' property to pass to janus.js to true
 											simulcast: doSimulcast,
 											simulcast2: doSimulcast2,
+											customizeSdp(jsep) {
+												// Offer multiopus
+												jsep.sdp = jsep.sdp
+													.replace("opus/48000/2", "multiopus/48000/6")
+													.replace("useinbandfec=1",
+														"useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2");
+											},
 											success: function(jsep) {
 												Janus.debug("Got SDP!");
 												Janus.debug(jsep);
@@ -228,12 +246,8 @@ $(document).ready(function() {
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
 									Janus.debug(stream);
-									if($('#myvideo').length === 0) {
-										$('#videos').removeClass('hide').show();
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
-									}
-									Janus.attachMediaStream($('#myvideo').get(0), stream);
-									$("#myvideo").get(0).muted = "muted";
+									Janus.debug(stream.getAudioTracks());
+									Janus.debug(stream.getVideoTracks());
 									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videoleft").parent().block({
@@ -387,6 +401,18 @@ $(document).ready(function() {
 									$('#datasend').attr('disabled', true);
 									simulcastStarted = false;
 									$('#simulcast').remove();
+									// Get rid of the local stream
+									try {
+										var tracks = localStream.getTracks();
+										for(var mst of tracks) {
+											Janus.log(mst);
+											if(mst)
+												mst.stop();
+										}
+									} catch(e) {
+										// Do nothing if this fails
+									}
+									localStream = null;
 								}
 							});
 					},

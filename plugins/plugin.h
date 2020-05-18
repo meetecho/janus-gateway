@@ -65,6 +65,7 @@ janus_plugin *create(void) {
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
  * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
+ * - \c data_ready(): a callback to notify you data can be sent on the SCTP DataChannel;
  * - \c slow_link(): a callback to notify you a peer has sent a lot of NACKs recently, and the media path may be slow;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
  * - \c query_session(): this method is called by the core to get plugin-specific info on a session between you and a peer;
@@ -205,6 +206,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_rtp = NULL,			\
 		.incoming_rtcp = NULL,			\
 		.incoming_data = NULL,			\
+		.data_ready = NULL,				\
 		.slow_link = NULL,				\
 		.hangup_media = NULL,			\
 		.destroy_session = NULL,		\
@@ -310,6 +312,11 @@ struct janus_plugin {
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] packet The message data and related info */
 	void (* const incoming_data)(janus_plugin_session *handle, janus_plugin_data *packet);
+	/*! \brief Method to be notified about the fact that the datachannel is ready to be written
+	 * \note This is not only called when the PeerConnection first becomes available, but also
+	 * when the SCTP socket becomes writable again, e.g., because the internal buffer is empty.
+	 * @param[in] handle The plugin/gateway session used for this peer */
+	void (* const data_ready)(janus_plugin_session *handle);
 	/*! \brief Method to be notified by the core when too many NACKs have
 	 * been received or sent by Janus, and so a slow or potentially
 	 * unreliable network is to be expected for this peer

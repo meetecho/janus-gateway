@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Echo Test</title>
+<title>Janus WebRTC Server: Multichannel Opus (surround)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,12 +13,12 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="echotest.js"></script>
+<script type="text/javascript" src="multiopus.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='echotest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='multiopus.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Echo Test
+				<h1>Plugin Demo: Multichannel Opus (surround)
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -47,31 +47,27 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This Echo Test demo just blindly sends you back whatever you
-						send to it. You're basically attached to yourself, and so your audio
-						and video you send to Janus are echoed back to you. The same
-						is done for RTCP packets as well, with the information properly updated.</p>
-						<p>The demo also provides a few controls to manipulate the media
-						before you send them. You can mute audio and video, for instance,
-						which will tell the server to drop the frames and not echo them
-						back to you. You can also try and cap the bitrate: such control
-						will tell the server to manipulate the RTCP REMB packets passing
-						through, in order to simulate a bandwidth limitation. In case
-						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
-						query string to the url of this page and reload it: buttons will appear
-						to allow you to try and switch between lower and higher quality
-						versions of the video you're capturing: notice that you may have
-						to increase the bandwidth indicator to have the higher quality
-						versions appear, as the browser will not encode them otherwise.</p>
-						<p>Finally, this demo also includes Data Channels: whatever you
-						write in the text box under your local video, will be sent via
-						Data Channels to the plugins, modified by adding a fixed prefix,
-						and sent back to you in the text area below the remote video.</p>
-						<div class="alert alert-info">This demo, as all the others, for the
-						sake of simplicity accesses the default devices you have available on
-						your machine. If you're interested in a demo that shows you how you
-						can select specific devices with <code>janus.js</code>, open the
-						<a class="alert-link" href="devicetest.html">Devices</a> demo instead.</div>
+						<p>This is a variant of the Echo Test demo meant to showcase the support
+						for multichannel Opus, and so surround audio: everything is exactly
+						the same in term of available controls, features, and the like, with
+						the substantial difference that the media being captured and sent does
+						not come from webcam and microphone, but from a pre-recorded surround
+						file instead. More precisely, we downloaded a surround demo video from
+						<a target="_blank" href="https://www2.iis.fraunhofer.de/AAC/multichannel.html">Fraunhofer's multichannel tests</a>
+						and, using <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/captureStream">captureStream</a>
+						on the video element, get access to the MediaStream to send via WebRTC.
+						As a result, a surround audio/video stream is sent to the EchoTest plugin
+						via WebRTC, which echoes it back, allowing you to demonstrate how the surround
+						properties are preserved through the PeerConnection journey via Janus.
+						The file will loop back to the beginning when it ends, since it's quite short.</p>
+						<p>Notice that you'll need a recent version of Chrome for this to work, since
+						it's only implemented there and not really available publicly. As a matter of
+						fact, Chrome will by default not offer multiopus support by default, and will
+						even reject it when offered: it's up to you to munge the SDP to force multiopus
+						support for a conversation. The <code>janus.js</code> library will <b>NOT</b>
+						do it for you: this demo uses the <code>customizeSdp</code> callback to mess
+						with the SDP in an ugly way. In other contexts (e.g., VideoRoom subscribers)
+						you'll need to do something similar when creating the answer instead.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
@@ -106,7 +102,7 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled />
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
@@ -118,7 +114,7 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
-							<input class="form-control" type="text" id="datarecv" disabled />
+							<input class="form-control" type="text" id="datarecv" disabled></input>
 						</div>
 					</div>
 				</div>

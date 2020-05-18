@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 	gboolean video = FALSE;
 	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
 		video = TRUE;
-	} else if(!strcasecmp(codec, "opus")
+	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "multiopus")
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		video = FALSE;

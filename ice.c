@@ -221,8 +221,10 @@ void janus_ice_debugging_disable(void) {
 
 /* NAT 1:1 stuff */
 static gboolean nat_1_1_enabled = FALSE;
-void janus_ice_enable_nat_1_1(void) {
+static gboolean keep_private_host = FALSE;
+void janus_ice_enable_nat_1_1(gboolean kph) {
 	nat_1_1_enabled = TRUE;
+	keep_private_host = kph;
 }
 
 /* Interface/IP enforce/ignore lists */
@@ -322,7 +324,8 @@ static janus_ice_queued_packet
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
 	janus_ice_hangup_peerconnection,
-	janus_ice_detach_handle;
+	janus_ice_detach_handle,
+	janus_ice_data_ready;
 
 /* Janus NACKed packet we're tracking (to avoid duplicates) */
 typedef struct janus_ice_nacked_packet {
@@ -479,7 +482,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_hangup_peerconnection ||
-			pkt == &janus_ice_detach_handle) {
+			pkt == &janus_ice_detach_handle ||
+			pkt == &janus_ice_data_ready) {
 		return;
 	}
 	g_free(pkt->data);
@@ -1167,7 +1171,7 @@ static void *janus_ice_handle_thread(void *data) {
 	return NULL;
 }
 
-janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id) {
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id, const char *token) {
 	if(core_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)core_session;
@@ -1189,6 +1193,8 @@ janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque
 	handle->session = core_session;
 	if(opaque_id)
 		handle->opaque_id = g_strdup(opaque_id);
+	if(token)
+		handle->token = g_strdup(token);
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
@@ -1271,7 +1277,7 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, JANUS_EVENT_SUBTYPE_NONE,
-			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id);
+			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id, handle->token);
 	return 0;
 }
 
@@ -1357,6 +1363,7 @@ static void janus_ice_handle_free(const janus_refcount *handle_ref) {
 		janus_refcount_decrease(&session->ref);
 	}
 	g_free(handle->opaque_id);
+	g_free(handle->token);
 	g_free(handle);
 }
 
@@ -1968,7 +1975,7 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 }
 
 /* Candidates management */
-static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate);
+static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate, gboolean force_private);
 #ifndef HAVE_LIBNICE_TCP
 static void janus_ice_cb_new_local_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *foundation, gpointer ice) {
 #else
@@ -2042,12 +2049,21 @@ static void janus_ice_cb_new_local_candidate (NiceAgent *agent, NiceCandidate *c
 	}
 #endif
 	char buffer[200];
-	if(janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE) == 0) {
+	if(janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, FALSE) == 0) {
 		/* Candidate encoded, send a "trickle" event to the browser (but only if it's not a 'prflx') */
 		if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 		} else {
 			janus_ice_notify_trickle(handle, buffer);
+			/* If nat-1-1 is enabled but we want to keep the private host, add another candidate */
+			if(nat_1_1_enabled && keep_private_host &&
+					janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, TRUE) == 0) {
+				if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
+				} else {
+					janus_ice_notify_trickle(handle, buffer);
+				}
+			}
 		}
 	}
 
@@ -3005,7 +3021,7 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *protoc
 
 
 /* Helper: encoding local candidates to string/SDP */
-static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate) {
+static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate *c, char *buffer, int buflen, gboolean log_candidate, gboolean force_private) {
 	if(!handle || !handle->agent || !c || !buffer || buflen < 1)
 		return -1;
 	janus_ice_stream *stream = handle->stream;
@@ -3015,8 +3031,8 @@ static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate
 	if(!component)
 		return -3;
 	char *host_ip = NULL;
-	if(nat_1_1_enabled) {
-		/* A 1:1 NAT mapping was specified, overwrite all the host addresses with the public IP */
+	if(nat_1_1_enabled && !force_private) {
+		/* A 1:1 NAT mapping was specified, either overwrite all the host addresses with the public IP, or add new candidates */
 		host_ip = janus_get_public_ip();
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
 	}
@@ -3185,13 +3201,23 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 	gboolean log_candidates = (component->local_candidates == NULL);
 	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
-		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates) == 0) {
+		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, FALSE) == 0) {
 			/* Candidate encoded, add to the SDP (but only if it's not a 'prflx') */
 			if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 			} else {
 				janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
 				mline->attributes = g_list_append(mline->attributes, a);
+				if(nat_1_1_enabled && keep_private_host &&
+						janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, TRUE) == 0) {
+					/* Candidate with private host encoded, add to the SDP (but only if it's not a 'prflx') */
+					if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
+					} else {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
+						mline->attributes = g_list_append(mline->attributes, a);
+					}
+				}
 			}
 		}
 		nice_candidate_free(c);
@@ -3382,7 +3408,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	int family, s, n;
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces...", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error getting list of interfaces... %d (%s)\n",
+			handle->handle_id, errno, strerror(errno));
 	} else {
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
@@ -3600,9 +3627,15 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
 		if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE)
 			continue;
-		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), FALSE) == 0) {
+		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), FALSE, FALSE) == 0) {
 			/* Candidate encoded, send a "trickle" event to the browser */
 			janus_ice_notify_trickle(handle, buffer);
+			/* If nat-1-1 is enabled but we want to keep the private host, add another candidate */
+			if(nat_1_1_enabled && keep_private_host &&
+					janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), FALSE, TRUE) == 0) {
+				/* Candidate encoded, send a "trickle" event to the browser */
+				janus_ice_notify_trickle(handle, buffer);
+			}
 		}
 		nice_candidate_free(c);
 	}
@@ -4103,6 +4136,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				session->session_id, handle->handle_id, "detached",
 				plugin ? plugin->get_package() : NULL, handle->opaque_id);
 		return G_SOURCE_REMOVE;
+	} else if(pkt == &janus_ice_data_ready) {
+		/* Data is writable on this PeerConnection, notify the plugin */
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin != NULL && plugin->data_ready != NULL && handle->app_handle != NULL) {
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Telling the plugin about the data channel being ready (%s)\n",
+				handle->handle_id, plugin ? plugin->get_name() : "??");
+			plugin->data_ready(handle->app_handle);
+		}
 	}
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		janus_ice_free_queued_packet(pkt);
@@ -4745,6 +4786,20 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->protocol = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
+#endif
+}
+
+void janus_ice_notify_data_ready(janus_ice_handle *handle) {
+#ifdef HAVE_SCTP
+	if(!handle || handle->queued_packets == NULL)
+		return;
+	/* Queue this event */
+#if GLIB_CHECK_VERSION(2, 46, 0)
+	g_async_queue_push_front(handle->queued_packets, &janus_ice_data_ready);
+#else
+	g_async_queue_push(handle->queued_packets, &janus_ice_data_ready);
+#endif
+	g_main_context_wakeup(handle->mainctx);
 #endif
 }
 

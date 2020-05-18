@@ -599,7 +599,7 @@ static void janus_request_unref(janus_request *request) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
-	if(session_timeout < 1)		/* Session timeouts are disabled */
+	if(session_timeout < 1 && reclaim_session_timeout < 1)		/* Session timeouts are disabled */
 		return G_SOURCE_CONTINUE;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -612,7 +612,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if ((now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+			if ((session_timeout > 0 && (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC) &&
 					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) ||
 					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
 							!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1))) {
@@ -1102,10 +1102,11 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* If the auth token mechanism is enabled, we should check if this token can access this plugin */
+		const char *token_value = NULL;
 		if(janus_auth_is_enabled()) {
 			json_t *token = json_object_get(root, "token");
 			if(token != NULL) {
-				const char *token_value = json_string_value(token);
+				token_value = json_string_value(token);
 				if(token_value && !janus_auth_check_plugin(token_value, plugin_t)) {
 					JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token_value, plugin_text);
 					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
@@ -1116,7 +1117,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *opaque = json_object_get(root, "opaque_id");
 		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session, opaque_id);
+		handle = janus_ice_handle_create(session, opaque_id, token_value);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -2633,6 +2634,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
+		if(handle->token)
+			json_object_set_new(info, "token", json_string(handle->token));
 		json_object_set_new(info, "loop-running", (handle->mainloop != NULL &&
 			g_main_loop_is_running(handle->mainloop)) ? json_true() : json_false());
 		json_object_set_new(info, "created", json_integer(handle->created));
@@ -4254,6 +4257,9 @@ gint main(int argc, char *argv[])
 	if(args_info.nat_1_1_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("nat_1_1_mapping", args_info.nat_1_1_arg));
 	}
+	if(args_info.keep_private_host_given) {
+		janus_config_add(config, config_nat, janus_config_item_create("keep_private_host", "true"));
+	}
 	if(args_info.ice_enforce_list_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", args_info.ice_enforce_list_arg));
 	}
@@ -4372,7 +4378,8 @@ gint main(int argc, char *argv[])
 		janus_network_address iface;
 		janus_network_address_string_buffer ibuf;
 		if(getifaddrs(&ifas) == -1) {
-			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
+			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
+				errno, strerror(errno));
 		} else {
 			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -4537,13 +4544,20 @@ gint main(int argc, char *argv[])
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
-		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public IP - %s\n", item->value);
+		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
 		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
 			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
 		} else {
 			nat_1_1_mapping = item->value;
-			janus_set_public_ip(item->value);
-			janus_ice_enable_nat_1_1();
+			janus_set_public_ip(nat_1_1_mapping);
+			/* Check if we should replace the private host, or advertise both candidates */
+			gboolean keep_private_host = FALSE;
+			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
+			if(item && item->value && janus_is_true(item->value)) {
+				JANUS_LOG(LOG_INFO, "  -- Going to keep the private host too (separate candidates)\n");
+				keep_private_host = TRUE;
+			}
+			janus_ice_enable_nat_1_1(keep_private_host);
 		}
 	}
 	/* Any TURN server to use in Janus? */

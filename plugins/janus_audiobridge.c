@@ -1353,8 +1353,6 @@ static void janus_audiobridge_room_destroy(janus_audiobridge_room *audiobridge) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&audiobridge->destroyed, 0, 1))
 		return;
-	/* Wait for the thread to finish */
-	g_thread_join(audiobridge->thread);
 	/* Decrease the counter */
 	janus_refcount_decrease(&audiobridge->ref);
 }
@@ -4447,7 +4445,7 @@ admin_response:
 			if(!response) {
 				/* Prepare JSON error event */
 				response = json_object();
-				json_object_set_new(response, "streaming", json_string("event"));
+				json_object_set_new(response, "audiobridge", json_string("event"));
 				json_object_set_new(response, "error_code", json_integer(error_code));
 				json_object_set_new(response, "error", json_string(error_cause));
 			}
@@ -6283,13 +6281,13 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_mutex_unlock_nodebug(&audiobridge->mutex);
 			/* No participant and RTP forwarders, do nothing */
 			if(prev_count > 0) {
-				JANUS_LOG(LOG_WARN, "Last user/forwarder/file just left room %s, going idle...\n", audiobridge->room_id_str);
+				JANUS_LOG(LOG_INFO, "Last user/forwarder/file just left room %s, going idle...\n", audiobridge->room_id_str);
 				prev_count = 0;
 			}
 			continue;
 		}
 		if(prev_count == 0) {
-			JANUS_LOG(LOG_WARN, "First user/forwarder/file just joined room %s, waking it up...\n", audiobridge->room_id_str);
+			JANUS_LOG(LOG_INFO, "First user/forwarder/file just joined room %s, waking it up...\n", audiobridge->room_id_str);
 		}
 		prev_count = count+rf_count+pf_count;
 		/* Update RTP header information */
