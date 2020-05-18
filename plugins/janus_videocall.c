@@ -881,6 +881,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_da
 		/* Forward the packet to the peer */
 		janus_plugin_data r = {
 			.label = label,
+			.protocol = NULL,
 			.binary = packet->binary,
 			.buffer = buf,
 			.length = len

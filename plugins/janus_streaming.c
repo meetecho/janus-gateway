@@ -8215,8 +8215,13 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(!session->data)
 			return;
 		if(gateway != NULL && packet->data != NULL && g_atomic_int_get(&session->dataready)) {
-			janus_plugin_data data = { .label = NULL, .binary = !packet->textdata,
-				.buffer = (char *)packet->data, .length = packet->length };
+			janus_plugin_data data = {
+				.label = NULL,
+				.protocol = NULL,
+				.binary = !packet->textdata,
+				.buffer = (char *)packet->data,
+				.length = packet->length
+			};
 			gateway->relay_data(session->handle, &data);
 		}
 	}

@@ -372,6 +372,9 @@ struct janus_callbacks {
 	 * @param[in] packet The RTCP packet and related data */
 	void (* const relay_rtcp)(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 	/*! \brief Callback to relay SCTP/DataChannel messages to a peer
+	 * @note The protocol is only used for the first message sent on a new data
+	 * channel, as it will be used to create it; it will be ignored for following
+	 * messages on the same label, so you can set NULL after that
 	 * @param[in] handle The plugin/gateway session that will be used for this peer
 	 * @param[in] packet The message data and related info */
 	void (* const relay_data)(janus_plugin_session *handle, janus_plugin_data *packet);
@@ -603,6 +606,8 @@ void janus_plugin_rtcp_reset(janus_plugin_rtcp *packet);
 struct janus_plugin_data {
 	/*! \brief The label this message belongs to */
 	char *label;
+	/*! \brief The subprotocol this message refers to */
+	char *protocol;
 	/*! \brief Whether the message data is text (default=FALSE) or binary */
 	gboolean binary;
 	/*! \brief The message data */

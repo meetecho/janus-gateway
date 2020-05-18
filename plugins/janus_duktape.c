@@ -1079,7 +1079,13 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 		return duk_throw(ctx);
 	}
 	/* Send the data */
-	janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = (char *)payload, .length = len };
+	janus_plugin_data data = {
+		.label = NULL,
+		.protocol = NULL,
+		.binary = TRUE,
+		.buffer = (char *)payload,
+		.length = len
+	};
 	janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -1126,7 +1132,13 @@ static duk_ret_t janus_duktape_method_relaybinarydata(duk_context *ctx) {
 		duk_push_error_object(ctx, DUK_ERR_ERROR, "Datachannel not ready yet for session %"SCNu32, id);
 		return duk_throw(ctx);
 	}
-	janus_plugin_data data = { .label = NULL, .binary = TRUE, .buffer = (char *)payload, .length = len };
+	janus_plugin_data data = {
+		.label = NULL,
+		.protocol = NULL,
+		.binary = TRUE,
+		.buffer = (char *)payload,
+		.length = len
+	};
 	janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	duk_push_int(ctx, 0);
@@ -2488,8 +2500,13 @@ static void janus_duktape_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to session %"SCNu32"\n",
 			packet->textdata ? "text" : "binary", packet->length, session->id);
-		janus_plugin_data data = { .label = NULL, .binary = !packet->textdata,
-			.buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_data data = {
+			.label = NULL,
+			.protocol = NULL,
+			.binary = !packet->textdata,
+			.buffer = (char *)packet->data,
+			.length = packet->length
+		};
 		janus_core->relay_data(session->handle, &data);
 	}
 	return;
