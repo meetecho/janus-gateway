@@ -963,7 +963,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"secret", JSON_STRING, 0},
-	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
