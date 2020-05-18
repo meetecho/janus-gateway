@@ -323,7 +323,8 @@ static janus_ice_queued_packet
 	janus_ice_add_candidates,
 	janus_ice_dtls_handshake,
 	janus_ice_hangup_peerconnection,
-	janus_ice_detach_handle;
+	janus_ice_detach_handle,
+	janus_ice_data_ready;
 
 /* Janus NACKed packet we're tracking (to avoid duplicates) */
 typedef struct janus_ice_nacked_packet {
@@ -480,7 +481,8 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 			pkt == &janus_ice_add_candidates ||
 			pkt == &janus_ice_dtls_handshake ||
 			pkt == &janus_ice_hangup_peerconnection ||
-			pkt == &janus_ice_detach_handle) {
+			pkt == &janus_ice_detach_handle ||
+			pkt == &janus_ice_data_ready) {
 		return;
 	}
 	g_free(pkt->data);
@@ -4131,6 +4133,14 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				session->session_id, handle->handle_id, "detached",
 				plugin ? plugin->get_package() : NULL, handle->opaque_id);
 		return G_SOURCE_REMOVE;
+	} else if(pkt == &janus_ice_data_ready) {
+		/* Data is writable on this PeerConnection, notify the plugin */
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin != NULL && plugin->data_ready != NULL && handle->app_handle != NULL) {
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Telling the plugin about the data channel being ready (%s)\n",
+				handle->handle_id, plugin ? plugin->get_name() : "??");
+			plugin->data_ready(handle->app_handle);
+		}
 	}
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		janus_ice_free_queued_packet(pkt);
@@ -4768,6 +4778,20 @@ void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length) {
 	pkt->label = NULL;
 	pkt->added = janus_get_monotonic_time();
 	janus_ice_queue_packet(handle, pkt);
+#endif
+}
+
+void janus_ice_notify_data_ready(janus_ice_handle *handle) {
+#ifdef HAVE_SCTP
+	if(!handle || handle->queued_packets == NULL)
+		return;
+	/* Queue this event */
+#if GLIB_CHECK_VERSION(2, 46, 0)
+	g_async_queue_push_front(handle->queued_packets, &janus_ice_data_ready);
+#else
+	g_async_queue_push(handle->queued_packets, &janus_ice_data_ready);
+#endif
+	g_main_context_wakeup(handle->mainctx);
 #endif
 }
 

@@ -123,6 +123,8 @@ typedef struct janus_sctp_association {
 	size_t buflen;
 	/*! \brief Current offset of the buffer for handling partial messages */
 	size_t offset;
+	/*! \brief Buffer of pending messages */
+	GQueue *pending_messages;
 #ifdef DEBUG_SCTP
 	FILE *debug_dump;
 #endif

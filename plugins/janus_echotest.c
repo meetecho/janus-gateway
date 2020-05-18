@@ -148,6 +148,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_echotest_data_ready(janus_plugin_session *handle);
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
@@ -174,6 +175,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_rtp = janus_echotest_incoming_rtp,
 		.incoming_rtcp = janus_echotest_incoming_rtcp,
 		.incoming_data = janus_echotest_incoming_data,
+		.data_ready = janus_echotest_data_ready,
 		.slow_link = janus_echotest_slow_link,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
@@ -687,6 +689,13 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 		gateway->relay_data(handle, &r);
 		g_free(reply);
 	}
+}
+
+void janus_echotest_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable */
 }
 
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video) {

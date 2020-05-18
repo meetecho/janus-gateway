@@ -737,6 +737,7 @@ json_t *janus_streaming_handle_admin_message(json_t *message);
 void janus_streaming_setup_media(janus_plugin_session *handle);
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
+void janus_streaming_data_ready(janus_plugin_session *handle);
 void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
@@ -762,6 +763,7 @@ static janus_plugin janus_streaming_plugin =
 		.setup_media = janus_streaming_setup_media,
 		.incoming_rtp = janus_streaming_incoming_rtp,
 		.incoming_rtcp = janus_streaming_incoming_rtcp,
+		.data_ready = janus_streaming_data_ready,
 		.hangup_media = janus_streaming_hangup_media,
 		.destroy_session = janus_streaming_destroy_session,
 		.query_session = janus_streaming_query_session,
@@ -1187,8 +1189,8 @@ typedef struct janus_streaming_session {
 	janus_streaming_mountpoint *mountpoint;
 	gint64 sdp_sessid;
 	gint64 sdp_version;
-	gboolean started;
-	gboolean paused;
+	volatile gint started;
+	volatile gint paused;
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this listener */
 	janus_rtp_switching_context context;
 	janus_rtp_simulcasting_context sim_context;
@@ -1198,8 +1200,9 @@ typedef struct janus_streaming_session {
 	int spatial_layer, target_spatial_layer;
 	gint64 last_spatial_layer[3];
 	int temporal_layer, target_temporal_layer;
-	gboolean stopping;
 	janus_mutex mutex;
+	volatile gint dataready;
+	volatile gint stopping;
 	volatile gint renegotiating;
 	volatile gint hangingup;
 	volatile gint destroyed;
@@ -2254,9 +2257,9 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	janus_streaming_session *session = g_malloc0(sizeof(janus_streaming_session));
 	session->handle = handle;
 	session->mountpoint = NULL;	/* This will happen later */
-	session->started = FALSE;	/* This will happen later */
-	session->paused = FALSE;
 	janus_mutex_init(&session->mutex);
+	g_atomic_int_set(&session->started, 0);
+	g_atomic_int_set(&session->paused, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
@@ -2340,7 +2343,10 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 		}
 		janus_refcount_decrease(&mp->ref);
 	}
-	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
+	json_object_set_new(info, "started", json_integer(g_atomic_int_get(&session->started)));
+	json_object_set_new(info, "dataready", json_integer(g_atomic_int_get(&session->dataready)));
+	json_object_set_new(info, "paused", json_integer(g_atomic_int_get(&session->paused)));
+	json_object_set_new(info, "stopping", json_integer(g_atomic_int_get(&session->stopping)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
 	return info;
@@ -3711,9 +3717,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				janus_mutex_unlock(&session->mutex);
 				continue;
 			}
-			s->stopping = TRUE;
-			s->started = FALSE;
-			s->paused = FALSE;
+			g_atomic_int_set(&s->stopping, 1);
+			g_atomic_int_set(&s->started, 0);
+			g_atomic_int_set(&s->paused, 0);
 			s->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 			gateway->push_event(s->handle, &janus_streaming_plugin, NULL, event, NULL);
@@ -4315,7 +4321,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 			janus_mutex_unlock(&source->buffermsg_mutex);
 		}
 	}
-	session->started = TRUE;
+	g_atomic_int_set(&session->started, 1);
 	/* Prepare JSON event */
 	json_t *event = json_object();
 	json_object_set_new(event, "streaming", json_string("event"));
@@ -4338,7 +4344,8 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
-	if(!session || g_atomic_int_get(&session->destroyed) || session->stopping || !session->started || session->paused)
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->stopping) ||
+			!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused))
 		return;
 	janus_streaming_mountpoint *mp = (janus_streaming_mountpoint *)session->mountpoint;
 	if(mp->streaming_source != janus_streaming_source_rtp)
@@ -4370,6 +4377,19 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rt
 	}
 }
 
+void janus_streaming_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable: we shouldn't send any datachannel message before this happens */
+	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_STREAMING_PACKAGE, handle);
+	}
+}
+
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_STREAMING_PACKAGE, handle);
 	janus_mutex_lock(&sessions_mutex);
@@ -4389,6 +4409,10 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	g_atomic_int_set(&session->dataready, 0);
+	g_atomic_int_set(&session->stopping, 1);
+	g_atomic_int_set(&session->started, 0);
+	g_atomic_int_set(&session->paused, 0);
 	janus_rtp_switching_context_reset(&session->context);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	janus_vp8_simulcast_context_reset(&session->vp8_context);
@@ -4399,9 +4423,6 @@ static void janus_streaming_hangup_media_internal(janus_plugin_session *handle) 
 	session->last_spatial_layer[2] = 0;
 	session->temporal_layer = -1;
 	session->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
-	session->stopping = TRUE;
-	session->started = FALSE;
-	session->paused = FALSE;
 	janus_mutex_lock(&session->mutex);
 	janus_streaming_mountpoint *mp = session->mountpoint;
 	session->mountpoint = NULL;
@@ -4575,7 +4596,7 @@ static void *janus_streaming_handler(void *data) {
 					goto error;
 				} else {
 					/* Make sure it's not an API error */
-					if(!session->started) {
+					if(!g_atomic_int_get(&session->started)) {
 						/* Can't be a renegotiation, PeerConnection isn't up yet */
 						JANUS_LOG(LOG_ERR, "Already watching mountpoint %s\n", session->mountpoint->id_str);
 						error_code = JANUS_STREAMING_ERROR_INVALID_STATE;
@@ -4613,7 +4634,7 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already watching a stream");
 				goto error;
 			}
-			session->stopping = FALSE;
+			g_atomic_int_set(&session->stopping, 1);
 			session->mountpoint = mp;
 			session->sdp_version = 1;	/* This needs to be increased when it changes */
 			session->sdp_sessid = janus_get_real_time();
@@ -4855,10 +4876,10 @@ done:
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Starting the streaming\n");
-			session->paused = FALSE;
+			g_atomic_int_set(&session->paused, 0);
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
-			json_object_set_new(result, "status", json_string(session->started ? "started" : "starting"));
+			json_object_set_new(result, "status", json_string(g_atomic_int_get(&session->started) ? "started" : "starting"));
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -4876,7 +4897,7 @@ done:
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Pausing the streaming\n");
-			session->paused = TRUE;
+			g_atomic_int_set(&session->paused, 1);
 			result = json_object();
 			json_object_set_new(result, "status", json_string("pausing"));
 			/* Also notify event handlers */
@@ -5075,7 +5096,7 @@ done:
 			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "Request to switch to mountpoint/stream %s (old: %s)\n", mp->id_str, oldmp->id_str);
-			session->paused = TRUE;
+			g_atomic_int_set(&session->paused, 1);
 			/* Unsubscribe from the previous mountpoint and subscribe to the new one */
 			session->mountpoint = NULL;
 			janus_mutex_unlock(&session->mutex);
@@ -5124,7 +5145,7 @@ done:
 				janus_mutex_unlock(&helper->mutex);
 			}
 			session->mountpoint = mp;
-			session->paused = FALSE;
+			g_atomic_int_set(&session->paused, 1);
 			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&mp->mutex);
 			/* Done */
@@ -5140,7 +5161,7 @@ done:
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "stop")) {
-			if(session->stopping || !session->started) {
+			if(g_atomic_int_get(&session->stopping) || !g_atomic_int_get(&session->started)) {
 				/* Been there, done that: ignore */
 				janus_streaming_message_free(msg);
 				continue;
@@ -6973,7 +6994,8 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Loop */
 	gint read = 0, plen = (sizeof(buf)-RTP_HEADER_SIZE);
 	janus_streaming_rtp_relay_packet packet;
-	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mountpoint->destroyed) && !session->stopping && !g_atomic_int_get(&session->destroyed)) {
+	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mountpoint->destroyed) &&
+			!g_atomic_int_get(&session->stopping) && !g_atomic_int_get(&session->destroyed)) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -6994,7 +7016,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 			before.tv_usec -= 1000000;
 		}
 		/* If not started or paused, wait some more */
-		if(!session->started || session->paused || !mountpoint->enabled)
+		if(!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused) || !mountpoint->enabled)
 			continue;
 		if(source->opus) {
 #ifdef HAVE_LIBOGG
@@ -7900,9 +7922,9 @@ static void *janus_streaming_relay_thread(void *data) {
 			janus_mutex_unlock(&session->mutex);
 			continue;
 		}
-		session->stopping = TRUE;
-		session->started = FALSE;
-		session->paused = FALSE;
+		g_atomic_int_set(&session->stopping, 1);
+		g_atomic_int_set(&session->started, 0);
+		g_atomic_int_set(&session->paused, 0);
 		session->mountpoint = NULL;
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
@@ -7943,7 +7965,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		//~ JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(!packet->is_keyframe && (!session->started || session->paused)) {
+	if(!packet->is_keyframe && (!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused))) {
 		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
@@ -8192,7 +8214,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		/* We're broadcasting a data channel message */
 		if(!session->data)
 			return;
-		if(gateway != NULL && packet->data != NULL) {
+		if(gateway != NULL && packet->data != NULL && g_atomic_int_get(&session->dataready)) {
 			janus_plugin_data data = { .label = NULL, .binary = !packet->textdata,
 				.buffer = (char *)packet->data, .length = packet->length };
 			gateway->relay_data(session->handle, &data);
@@ -8214,7 +8236,7 @@ static void janus_streaming_relay_rtcp_packet(gpointer data, gpointer user_data)
 		//~ JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(!session->started || session->paused) {
+	if(!g_atomic_int_get(&session->started) || g_atomic_int_get(&session->paused)) {
 		//~ JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}

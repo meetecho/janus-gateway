@@ -185,6 +185,14 @@ function incomingBinaryData(id, buf, len) {
 	relayBinaryData(id, buf, len);
 }
 
+function dataReady(id) {
+	// This callback is invoked when the datachannel first becomes
+	// available (meaning you should never send data before it has been
+	// invoked at least once), but also when the datachannel is ready to
+	// receive more data (buffers are empty), which means it can be used
+	// to throttle outgoing data and not send too much at a time.
+}
+
 function resumeScheduler() {
 	// This is the function responsible for resuming coroutines associated
 	// with whatever is relevant to the JS script, e.g., for this script,

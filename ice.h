@@ -634,13 +634,16 @@ void janus_ice_send_remb(janus_ice_handle *handle, uint32_t bitrate);
  * @param[in] label The label of the data channel the message is from
  * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buffer The message data (buffer)
- * @param[in] length The buffer lenght */
+ * @param[in] length The buffer length */
 void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length);
 /*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)
- * @param[in] length The buffer lenght */
+ * @param[in] length The buffer length */
 void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when data can be written
+ * @param[in] handle The Janus ICE handle associated with the peer */
+void janus_ice_notify_data_ready(janus_ice_handle *handle);
 ///@}
 
 
