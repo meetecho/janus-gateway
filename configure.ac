@@ -1040,9 +1040,6 @@ AM_COND_IF([ENABLE_MQTTEVH],
 AM_COND_IF([ENABLE_NANOMSGEVH],
 	[echo "    Nanomsg event handler: yes"],
 	[echo "    Nanomsg event handler: no"])
-AM_COND_IF([ENABLE_GELFEVH],
-	[echo "    GELF event handler:    yes"],
-	[echo "    GELF event handler:    no"])
 echo "External loggers:"
 AM_COND_IF([ENABLE_JSONLOGGER],
 	[echo "    JSON file logger:      yes"],
