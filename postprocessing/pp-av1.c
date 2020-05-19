@@ -205,9 +205,9 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 	/* Skip seq_profile (3 bits) */
 	janus_pp_av1_getbits(base, 3, &offset);
 	/* Skip still_picture (1 bit) */
-	janus_pp_av1_getbit(base, offset);
+	janus_pp_av1_getbit(base, offset++);
 	/* Skip reduced_still_picture_header (1 bit) */
-	value = janus_pp_av1_getbit(base, offset);
+	value = janus_pp_av1_getbit(base, offset++);
 	if(value) {
 		/* Skip seq_level_idx (5 bits) */
 		janus_pp_av1_getbits(base, 5, &offset);
@@ -215,19 +215,19 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 		gboolean decoder_model_info = FALSE, initial_display_delay = FALSE;
 		uint32_t bdlm1 = 0;
 		/* Skip timing_info_present_flag (1 bit) */
-		value = janus_pp_av1_getbit(base, offset);
+		value = janus_pp_av1_getbit(base, offset++);
 		if(value) {
 			/* Skip num_units_in_display_tick (32 bits) */
 			janus_pp_av1_getbits(base, 32, &offset);
 			/* Skip time_scale (32 bits) */
 			janus_pp_av1_getbits(base, 32, &offset);
 			/* Skip equal_picture_interval (1 bit)*/
-			value = janus_pp_av1_getbit(base, offset);
+			value = janus_pp_av1_getbit(base, offset++);
 			if(value) {
 				/* TODO Skip num_ticks_per_picture_minus_1 (uvlc) */
 			}
 			/* Skip decoder_model_info_present_flag (1 bit) */
-			value = janus_pp_av1_getbit(base, offset);
+			value = janus_pp_av1_getbit(base, offset++);
 			if(value) {
 				decoder_model_info = TRUE;
 				/* Skip buffer_delay_length_minus_1 (5 bits) */
@@ -241,23 +241,23 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 			}
 		}
 		/* Skip initial_display_delay_present_flag (1 bit) */
-		value = janus_pp_av1_getbit(base, offset);
+		value = janus_pp_av1_getbit(base, offset++);
 		if(value)
 			initial_display_delay = TRUE;
 		/* Skip operating_points_cnt_minus_1 (5 bits) */
-		value = janus_pp_av1_getbits(base, 5, &offset);
+		value = janus_pp_av1_getbits(base, 5, &offset)+1;
 		for(i=0; i<value; i++) {
 			/* Skip operating_point_idc[i] (12 bits) */
 			janus_pp_av1_getbits(base, 12, &offset);
-			/* Skip seq_level_idx[1] (5 bits) */
-			value = janus_pp_av1_getbits(base, 12, &offset);
-			if(value) {
-				/* Skip seq_tier[1] (5 bits) */
-				janus_pp_av1_getbit(base, offset);
+			/* Skip seq_level_idx[i] (5 bits) */
+			value = janus_pp_av1_getbits(base, 5, &offset);
+			if(value > 7) {
+				/* Skip seq_tier[i] (1 bit) */
+				janus_pp_av1_getbit(base, offset++);
 			}
 			if(decoder_model_info) {
 				/* Skip decoder_model_present_for_this_op[i] (1 bit) */
-				value = janus_pp_av1_getbit(base, offset);
+				value = janus_pp_av1_getbit(base, offset++);
 				if(value) {
 					/* Skip operating_parameters_info(i) */
 					janus_pp_av1_getbits(base, (2*bdlm1)+1, &offset);
@@ -265,7 +265,7 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 			}
 			if(initial_display_delay) {
 				/* Skip initial_display_delay_present_for_this_op[i] (1 bit) */
-				value = janus_pp_av1_getbit(base, offset);
+				value = janus_pp_av1_getbit(base, offset++);
 				if(value) {
 					/* Skip initial_display_delay_minus_1[i] (4 bits) */
 					janus_pp_av1_getbits(base, 4, &offset);
@@ -278,9 +278,9 @@ static void janus_pp_av1_parse_sh(char *buffer, uint16_t *width, uint16_t *heigh
 	/* Read frame_height_bits_minus_1 (4 bits) */
 	uint32_t fhbm1 = janus_pp_av1_getbits(base, 4, &offset);
 	/* Read max_frame_width_minus_1 (n bits) */
-	*width = janus_pp_av1_getbits(base, fwbm1+1, &offset);
+	*width = janus_pp_av1_getbits(base, fwbm1+1, &offset)+1;
 	/* Read max_frame_height_minus_1 (n bits) */
-	*height = janus_pp_av1_getbits(base, fhbm1+1, &offset);
+	*height = janus_pp_av1_getbits(base, fhbm1+1, &offset)+1;
 }
 
 int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
@@ -361,12 +361,12 @@ int janus_pp_av1_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				/* Sequence header */
 				uint16_t width = 0, height = 0;
 				/* TODO Fix currently broken parsing of SH */
-				//~ janus_pp_av1_parse_sh(payload+1, &width, &height);
+				janus_pp_av1_parse_sh(payload+1, &width, &height);
 				if(width > max_width)
 					max_width = width;
 				if(height > max_height)
 					max_height = height;
-				JANUS_LOG(LOG_INFO, "  -- Detected new resolution: %"SCNu16"x%"SCNu16"\n", width, height);
+				JANUS_LOG(LOG_INFO, "  -- Detected new resolution: %"SCNu16"x%"SCNu16" (seq=%"SCNu16")\n", width, height, tmp->seq);
 			}
 			payload += obusize;
 			len -= obusize;
