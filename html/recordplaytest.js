@@ -62,6 +62,9 @@ var recordingId = null;
 var selectedRecording = null;
 var selectedRecordingInfo = null;
 
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
@@ -431,6 +434,16 @@ function startRecording() {
 					Janus.debug("Got SDP!");
 					Janus.debug(jsep);
 					var body = { "request": "record", "name": myname };
+					// We can try and force a specific codec, by telling the plugin what we'd prefer
+					// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
+					if(acodec)
+						body["audiocodec"] = acodec;
+					if(vcodec)
+						body["videocodec"] = vcodec;
+					// For the codecs that support them (VP9 and H.264) you can specify a codec
+					// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
+					if(vprofile)
+						body["videoprofile"] = vprofile;
 					recordplay.send({"message": body, "jsep": jsep});
 				},
 				error: function(error) {

@@ -62,6 +62,7 @@ var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringV
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
 var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
 
 $(document).ready(function() {
@@ -106,6 +107,10 @@ $(document).ready(function() {
 										body["audiocodec"] = acodec;
 									if(vcodec)
 										body["videocodec"] = vcodec;
+									// For the codecs that support them (VP9 and H.264) you can specify a codec
+									// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
+									if(vprofile)
+										body["videoprofile"] = vprofile;
 									Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 									echotest.send({"message": body});
 									Janus.debug("Trying a createOffer too (audio/video sendrecv)");

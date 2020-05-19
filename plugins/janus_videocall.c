@@ -292,6 +292,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_videocall_data_ready(janus_plugin_session *handle);
 void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
@@ -317,6 +318,7 @@ static janus_plugin janus_videocall_plugin =
 		.incoming_rtp = janus_videocall_incoming_rtp,
 		.incoming_rtcp = janus_videocall_incoming_rtcp,
 		.incoming_data = janus_videocall_incoming_data,
+		.data_ready = janus_videocall_data_ready,
 		.slow_link = janus_videocall_slow_link,
 		.hangup_media = janus_videocall_hangup_media,
 		.destroy_session = janus_videocall_destroy_session,
@@ -385,6 +387,7 @@ typedef struct janus_videocall_session {
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	volatile gint incall;
+	volatile gint dataready;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -863,7 +866,8 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_da
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&peer->destroyed))
+		if(g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&peer->destroyed) ||
+				!g_atomic_int_get(&peer->dataready))
 			return;
 		if(packet->buffer == NULL || packet->length == 0)
 			return;
@@ -877,11 +881,25 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_da
 		/* Forward the packet to the peer */
 		janus_plugin_data r = {
 			.label = label,
+			.protocol = NULL,
 			.binary = packet->binary,
 			.buffer = buf,
 			.length = len
 		};
 		gateway->relay_data(peer->handle, &r);
+	}
+}
+
+void janus_videocall_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable */
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_VIDEOCALL_PACKAGE, handle);
 	}
 }
 
@@ -967,6 +985,7 @@ static void janus_videocall_hangup_media_internal(janus_plugin_session *handle) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	g_atomic_int_set(&session->dataready, 0);
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
 	janus_videocall_recorder_close(session);

@@ -9,7 +9,6 @@ all: html-local
 html-local:
 	doxygen janus-doxygen.cfg
 	cp doxy-boot.js html/
-	cp dynsections.js html/
 	mkdir -p html/css
 	cp ../html/css/demo.css html/css/
 	mkdir -p html/js
