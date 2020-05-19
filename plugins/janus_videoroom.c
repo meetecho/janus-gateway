@@ -5974,7 +5974,6 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->paused = TRUE;	/* We need an explicit start from the subscriber */
 					g_atomic_int_set(&subscriber->destroyed, 0);
 					janus_refcount_init(&subscriber->ref, janus_videoroom_subscriber_free);
-					janus_refcount_increase(&subscriber->ref);	/* This reference is for handling the setup */
 					janus_refcount_increase(&subscriber->ref);	/* The publisher references the new subscriber too */
 					/* Check if a simulcasting-related request is involved */
 					janus_rtp_simulcasting_context_reset(&subscriber->sim_context);
@@ -6054,10 +6053,8 @@ static void *janus_videoroom_handler(void *data) {
 						json_decref(event);
 						json_decref(jsep);
 						janus_videoroom_message_free(msg);
-						janus_refcount_decrease(&subscriber->ref);
 						continue;
 					}
-					janus_refcount_decrease(&subscriber->ref);
 					janus_mutex_unlock(&publisher->subscribers_mutex);
 				}
 			} else {
@@ -7495,7 +7492,13 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 	if(gateway != NULL && packet->data != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to viewer\n",
 			packet->textdata ? "text" : "binary", packet->length);
-		janus_plugin_data data = { .label = NULL, .binary = !packet->textdata, .buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_data data = {
+			.label = NULL,
+			.protocol = NULL,
+			.binary = !packet->textdata,
+			.buffer = (char *)packet->data,
+			.length = packet->length
+		};
 		gateway->relay_data(session->handle, &data);
 	}
 	return;

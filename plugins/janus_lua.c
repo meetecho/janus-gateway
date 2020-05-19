@@ -955,7 +955,13 @@ static int janus_lua_method_relaytextdata(lua_State *s) {
 		return 1;
 	}
 	/* Send the data */
-	janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = (char *)payload, .length = len };
+	janus_plugin_data data = {
+		.label = NULL,
+		.protocol = NULL,
+		.binary = FALSE,
+		.buffer = (char *)payload,
+		.length = len
+	};
 	janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -996,7 +1002,13 @@ static int janus_lua_method_relaybinarydata(lua_State *s) {
 		return 1;
 	}
 	/* Send the data */
-	janus_plugin_data data = { .label = NULL, .binary = TRUE, .buffer = (char *)payload, .length = len };
+	janus_plugin_data data = {
+		.label = NULL,
+		.protocol = NULL,
+		.binary = TRUE,
+		.buffer = (char *)payload,
+		.length = len
+	};
 	janus_core->relay_data(session->handle, &data);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -2158,8 +2170,13 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 	if(janus_core != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to session %"SCNu32"\n",
 			packet->textdata ? "text" : "binary", packet->length, session->id);
-		janus_plugin_data data = { .label = NULL, .binary = !packet->textdata,
-			.buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_data data = {
+			.label = NULL,
+			.protocol = NULL,
+			.binary = !packet->textdata,
+			.buffer = (char *)packet->data,
+			.length = packet->length
+		};
 		janus_core->relay_data(session->handle, &data);
 	}
 	return;
