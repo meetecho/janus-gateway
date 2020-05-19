@@ -4320,6 +4320,8 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 			}
 			janus_mutex_unlock(&source->buffermsg_mutex);
 		}
+		/* If this mountpoint has RTCP support, send a PLI */
+		janus_streaming_rtcp_pli_send(source);
 	}
 	g_atomic_int_set(&session->started, 1);
 	/* Prepare JSON event */
