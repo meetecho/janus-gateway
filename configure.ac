@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.9.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.0],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=95
+JANUS_VERSION=100
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.9.5"
+JANUS_VERSION_STRING="0.10.0"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -470,10 +470,16 @@ AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 if test "x$enable_docs" = "xyes"; then
 	doxygen_version=$($DOXYGEN --version)
 	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
-					   [],
-					   [],
-					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
-					  )
+                           [],
+                           [],
+                           [
+                            AS_VERSION_COMPARE([$doxygen_version], [1.8.14],
+                                               [AC_MSG_ERROR([Doxygen $doxygen_version not usable: versions between 1.8.12 and 1.8.14 are known to render poorly.])],
+                                               [],
+                                               []
+                                              )
+                           ]
+                          )
 fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
