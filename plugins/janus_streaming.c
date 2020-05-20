@@ -2365,8 +2365,22 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 	struct ifaddrs *ifas = NULL;
 
 	if(!strcasecmp(request_text, "list")) {
-		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
+		gboolean lock_mp_list = TRUE;
+		if(admin_key != NULL) {
+			json_t *admin_key_json = json_object_get(root, "admin_key");
+			/* Verify admin_key if it was provided */
+			if(admin_key_json != NULL && json_is_string(admin_key_json) && strlen(json_string_value(admin_key_json)) > 0) {
+				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+				if(error_code != 0) {
+					goto prepare_response;
+				} else {
+					lock_mp_list = FALSE;
+				}
+			}
+		}
+		json_t *list = json_array();
 		/* Return a list of all available mountpoints */
 		janus_mutex_lock(&mountpoints_mutex);
 		GHashTableIter iter;
@@ -2374,8 +2388,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		g_hash_table_iter_init(&iter, mountpoints);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_streaming_mountpoint *mp = value;
-			if(mp->is_private) {
-				/* Skip private stream */
+			if(mp->is_private && lock_mp_list) {
+				/* Skip private stream if no valid admin_key was provided */
 				JANUS_LOG(LOG_VERB, "Skipping private mountpoint '%s'\n", mp->description);
 				continue;
 			}

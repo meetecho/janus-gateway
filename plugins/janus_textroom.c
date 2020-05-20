@@ -1855,8 +1855,22 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		}
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
-		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list for all text rooms\n");
+		gboolean lock_room_list = TRUE;
+		if(admin_key != NULL) {
+			json_t *admin_key_json = json_object_get(root, "admin_key");
+			/* Verify admin_key if it was provided */
+			if(admin_key_json != NULL && json_is_string(admin_key_json) && strlen(json_string_value(admin_key_json)) > 0) {
+				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+					JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+				if(error_code != 0) {
+					goto msg_response;
+				} else {
+					lock_room_list = FALSE;
+				}
+			}
+		}
+		json_t *list = json_array();
 		janus_mutex_lock(&rooms_mutex);
 		GHashTableIter iter;
 		gpointer value;
@@ -1867,8 +1881,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				continue;
 			janus_refcount_increase(&room->ref);
 			janus_mutex_lock(&room->mutex);
-			if(room->is_private) {
-				/* Skip private room */
+			if(room->is_private && lock_room_list) {
+				/* Skip private room if no valid admin_key was provided */
 				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
 				janus_mutex_unlock(&room->mutex);
 				janus_refcount_decrease(&room->ref);

@@ -3540,12 +3540,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		goto prepare_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
-		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Getting the list of VideoRoom rooms\n");
-		janus_mutex_lock(&rooms_mutex);
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, rooms);
 		gboolean lock_room_list = TRUE;
 		if(admin_key != NULL) {
 			json_t *admin_key_json = json_object_get(root, "admin_key");
@@ -3554,13 +3549,17 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 				if(error_code != 0) {
-					janus_mutex_unlock(&rooms_mutex);
 					goto prepare_response;
 				} else {
 					lock_room_list = FALSE;
 				}
 			}
 		}
+		json_t *list = json_array();
+		janus_mutex_lock(&rooms_mutex);
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, rooms);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom *room = value;
 			if(!room)
