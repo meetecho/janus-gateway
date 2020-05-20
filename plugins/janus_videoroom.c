@@ -3551,12 +3551,33 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			if(!room)
 				continue;
 			janus_refcount_increase(&room->ref);
-			if(room->is_private) {
-				/* Skip private room */
-				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
-				janus_refcount_decrease(&room->ref);
-				continue;
-			}
+      if(room->is_private) {
+        /* only if admin_key isset */
+        if(admin_key != NULL) {
+          json_t *admin_key_json = json_object_get(root, "admin_key");
+          /* verify admin_key was provided */
+          if(admin_key_json != NULL && strlen(json_string_value(admin_key_json)) > 0) {
+            JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+            JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+            if(error_code != 0) {
+              JANUS_LOG(LOG_VERB, "No room list, wrong admin_key provided\n");
+              goto end_loop;
+            }
+          }
+          else {
+            /* Skip private room */
+            JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
+            janus_refcount_decrease(&room->ref);
+            continue;
+          }
+        }
+        else {
+          /* Skip private room */
+          JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
+          janus_refcount_decrease(&room->ref);
+          continue;
+        }
+      }
 			if(!g_atomic_int_get(&room->destroyed)) {
 				json_t *rl = json_object();
 				json_object_set_new(rl, "room", string_ids ? json_string(room->room_id_str) : json_integer(room->room_id));
@@ -3596,6 +3617,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 			janus_refcount_decrease(&room->ref);
 		}
+    end_loop:
 		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
