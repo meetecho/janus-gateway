@@ -46,6 +46,7 @@ addons:
       - libsofia-sip-ua-dev
       - libssl-dev
       - libvorbis-dev
+      - ninja-build
       - openssl
       - python3
       - python3-pip
