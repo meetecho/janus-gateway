@@ -52,6 +52,7 @@ addons:
       - python3-setuptools
 
 before_install:
+  - pip3 install wheel
   - pip3 install meson
 
 before_script:
