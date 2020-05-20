@@ -514,6 +514,8 @@ room-<unique room ID>: {
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
 	"display" : "<new display name to use in the room; optional>"
+	"audio_active_packets" : "<audio_active_packets to overwrite in the room one; optional>",
+	"audio_level_average" : "<audio_level_average to overwrite the room one; optional>",
 }
 \endverbatim
  *
@@ -623,7 +625,9 @@ room-<unique room ID>: {
 	"keyframe" : <true|false, whether we should send this publisher a keyframe request>,
 	"record" : <true|false, whether this publisher should be recorded or not; optional>,
 	"filename" : "<if recording, the base path/file to use for the recording files; optional>",
-	"display" : "<new display name to use in the room; optional>"
+	"display" : "<new display name to use in the room; optional>",
+	"audio_active_packets" : "<new audio_active_packets to overwrite in the room one; optional>",
+	"audio_level_average" : "<new audio_level_average to overwrite the room one; optional>",
 }
 \endverbatim
  *
@@ -1001,7 +1005,9 @@ room-<unique room ID>: {
 	"temporal" : <temporal layers to receive (0-2), in case simulcasting is enabled; optional>,
 	"fallback" : <How much time (in us, default 250000) without receiving packets will make us drop to the substream below>,
 	"spatial_layer" : <spatial layer to receive (0-2), in case VP9-SVC is enabled; optional>,
-	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>
+	"temporal_layer" : <temporal layers to receive (0-2), in case VP9-SVC is enabled; optional>,
+	"audio_level_average" : "<overwrite, only for this publisher, global room value of average level of microphone activity>",
+	"audio_active_packets" : "<overwrite, only for this publisher, global room value of number of packets to be evaluated>"
 }
 \endverbatim
  *
@@ -1281,6 +1287,8 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"filename", JSON_STRING, 0},
 	{"display", JSON_STRING, 0},
 	{"secret", JSON_STRING, 0},
+	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* The following are just to force a renegotiation and/or an ICE restart */
 	{"update", JANUS_JSON_BOOL, 0},
 	{"restart", JANUS_JSON_BOOL, 0}
@@ -1329,6 +1337,8 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	/* The following is to handle a renegotiation */
 	{"update", JANUS_JSON_BOOL, 0},
+	{"audio_level_averge", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -1546,7 +1556,9 @@ typedef struct janus_videoroom_publisher {
 	int audio_dBov_level;		/* Value in dBov of the audio level (last value from extension) */
 	int audio_active_packets;	/* Participant's number of audio packets to accumulate */
 	int audio_dBov_sum;			/* Participant's accumulated dBov value for audio level*/
-	gboolean talking;			/* Whether this participant is currently talking (uses audio levels extension) */
+	int user_audio_active_packets;	/* Participant's audio_active_packets overwriting global room setting */
+	int user_audio_level_average;	/* Participant's audio_level_average overwriting global room setting */ 
+	gboolean talking; /* Whether this participant is currently talking (uses audio levels extension) */
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint32_t bitrate;
@@ -4816,10 +4828,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 			participant->audio_dBov_sum += level;
 			participant->audio_active_packets++;
 			participant->audio_dBov_level = level;
-			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
+			int audio_active_packets = participant->user_audio_active_packets ? participant->user_audio_active_packets : videoroom->audio_active_packets;
+			int audio_level_average = participant->user_audio_level_average ? participant->user_audio_level_average : videoroom->audio_level_average;
+			if(participant->audio_active_packets > 0 && participant->audio_active_packets == audio_active_packets) {					
 				gboolean notify_talk_event = FALSE;
 				float audio_dBov_avg = (float)participant->audio_dBov_sum/(float)participant->audio_active_packets;
-				if(audio_dBov_avg < videoroom->audio_level_average) {
+				if(audio_dBov_avg < audio_level_average) {
 					/* Participant talking, should we notify all participants? */
 					if(!participant->talking)
 						notify_talk_event = TRUE;
@@ -5408,6 +5422,8 @@ static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) 
 		participant->video_active = FALSE;
 		participant->data_active = FALSE;
 		participant->audio_active_packets = 0;
+		participant->user_audio_active_packets = 0;
+		participant->user_audio_level_average = 0;
 		participant->audio_dBov_sum = 0;
 		participant->audio_dBov_level = 0;
 		participant->talking = FALSE;
@@ -5648,7 +5664,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Process the request */
 				json_t *audio = NULL, *video = NULL, *data = NULL,
-					*bitrate = NULL, *record = NULL, *recfile = NULL;
+					*bitrate = NULL, *record = NULL, *recfile = NULL,
+					*user_audio_active_packets = NULL, *user_audio_level_average = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
 					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
 					/* join_parameters were validated earlier. */
@@ -5659,6 +5676,8 @@ static void *janus_videoroom_handler(void *data) {
 					record = json_object_get(root, "record");
 					recfile = json_object_get(root, "filename");
 				}
+				user_audio_active_packets = json_object_get(root, "audio_active_packets");
+				user_audio_level_average = json_object_get(root, "audio_level_average");
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
 				publisher->session = session;
 				publisher->room_id = videoroom->room_id;
@@ -5746,6 +5765,16 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Setting recording basename: %s (room %s, user %s)\n",
 						publisher->recording_base, publisher->room_id_str, publisher->user_id_str);
 				}
+				if(user_audio_active_packets) {
+					publisher->user_audio_active_packets = json_integer_value(user_audio_active_packets);
+					JANUS_LOG(LOG_ERR, "Setting user audio_active_packets: %d (room %s, user %s)\n",
+							  publisher->user_audio_active_packets, publisher->room_id_str, publisher->user_id_str);
+				}
+				if(user_audio_level_average) {
+					publisher->user_audio_level_average = json_integer_value(user_audio_level_average);
+					JANUS_LOG(LOG_ERR, "Setting user audio_level_average: %d (room %s, user %s)\n",
+							  publisher->user_audio_level_average, publisher->room_id_str, publisher->user_id_str);
+				}
 				/* Done */
 				janus_mutex_lock(&session->mutex);
 				session->participant_type = janus_videoroom_p_type_publisher;
@@ -5797,6 +5826,10 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "id", string_ids ? json_string(user_id_str) : json_integer(user_id));
 				json_object_set_new(event, "private_id", json_integer(publisher->pvt_id));
 				json_object_set_new(event, "publishers", list);
+				if (publisher->user_audio_active_packets)
+					json_object_set_new(event, "audio_active_packets", json_integer(publisher->user_audio_active_packets));
+				if (publisher->user_audio_level_average)
+					json_object_set_new(event, "audio_level_average", json_integer(publisher->user_audio_level_average));
 				if(attendees != NULL)
 					json_object_set_new(event, "attendees", attendees);
 				/* See if we need to notify about a new participant joined the room (by default, we don't). */
@@ -5812,6 +5845,10 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "private_id", json_integer(publisher->pvt_id));
 					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
+					if (publisher->user_audio_active_packets)
+						json_object_set_new(info, "audio_active_packets", json_integer(publisher->user_audio_active_packets));
+					if (publisher->user_audio_level_average)
+						json_object_set_new(info, "audio_level_average", json_integer(publisher->user_audio_level_average));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
 				janus_mutex_unlock(&publisher->room->mutex);
@@ -6125,6 +6162,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
 				json_t *update = json_object_get(root, "update");
+				json_t *user_audio_active_packets = json_object_get(root, "audio_active_packets");
+				json_t *user_audio_level_average = json_object_get(root, "audio_level_average");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(session->started && audio_active && !participant->audio_active) {
@@ -6215,6 +6254,14 @@ static void *janus_videoroom_handler(void *data) {
 				if(keyframe && json_is_true(keyframe)) {
 					/* Send a FIR */
 					janus_videoroom_reqpli(participant, "Keyframe request");
+				}
+				if(user_audio_active_packets) {
+					participant->user_audio_active_packets = json_integer_value(user_audio_active_packets);
+					JANUS_LOG(LOG_ERR, "user_audio_active_packets: %llu \n", json_integer_value(user_audio_active_packets));
+				}
+				if(user_audio_level_average) {
+					participant->user_audio_level_average = json_integer_value(user_audio_level_average);
+					JANUS_LOG(LOG_ERR, "user_audio_level_average: %llu \n", json_integer_value(user_audio_level_average));
 				}
 				gboolean record_locked = FALSE;
 				if((record || recfile) && participant->room->lock_record && participant->room->room_secret) {
