@@ -629,8 +629,8 @@ room-<unique room ID>: {
 	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"secret" : "<room management password; optional, if provided the user is an admin and can't be globally muted with mute_room>",
-	"audio_level_average" : "<overwrite, only for this user, global room value of average level of microphone activity>",
-	"audio_active_packets" : "<overwrite, only for this user, global room value of number of packets to be evaluated>",
+	"audio_level_average" : "<if provided, overrides the room audio_level_average for this user; optional>",
+	"audio_active_packets" : "<if provided, overrides the room audio_active_packets for this user; optional>"
 }
 \endverbatim
  *
@@ -962,9 +962,9 @@ static struct janus_json_parameter join_parameters[] = {
 	{"prebuffer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"secret", JSON_STRING, 0},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
@@ -4608,12 +4608,11 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					/* We also need to detect who's talking: update our monitoring stuff */
 					int audio_active_packets = participant->room ? participant->room->audio_active_packets : 100;
 					int audio_level_average = participant->room ? participant->room->audio_level_average : 25;
-					/* Override with user join parameters*/
-					if (participant->user_audio_active_packets && participant->user_audio_active_packets > 0)
+					/* Check if we need to override those with user specific properties */
+					if(participant->user_audio_active_packets > 0)
 						audio_active_packets = participant->user_audio_active_packets;
-					if (participant->user_audio_level_average && participant->user_audio_level_average > 0)
+					if(participant->user_audio_level_average > 0)
 						audio_level_average = participant->user_audio_level_average;
-					JANUS_LOG(LOG_ERR, "audio_active_packets: %d\n", audio_active_packets);
 					participant->audio_dBov_sum += level;
 					participant->audio_active_packets++;
 					participant->dBov_level = level;
