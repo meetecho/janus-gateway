@@ -49,6 +49,7 @@ addons:
       - openssl
       - python3
       - python3-pip
+      - python3-setuptools
 
 before_install:
   - pip3 install meson
