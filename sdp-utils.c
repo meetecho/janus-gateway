@@ -687,12 +687,27 @@ int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec) {
 		GList *ma = m->attributes;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
-				int pt = atoi(a->value);
-				if(pt < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
-				} else if(strstr(a->value, format) || strstr(a->value, format2)) {
-					return pt;
+			if(a->name != NULL && a->value != NULL ) {
+				if(!strcasecmp(a->name, "rtpmap")) {
+					int pt = atoi(a->value);
+					if(pt < 0) {
+						JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
+					} else if(strstr(a->value, format) || strstr(a->value, format2)) {
+						if(strcasecmp(codec, "h264")) {
+                                                	 JANUS_LOG(LOG_INFO, "found codec payload:  %s\n", a->value);
+	                                         	return pt;
+						}
+					}
+				} else if(!strcasecmp(a->name, "fmtp")) {
+					int pt = atoi(a->value);
+                                	if(pt < 0) {
+                                        	JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
+                                	} else if(strstr(a->value, "packetization-mode=1") && strstr(a->value, "42e01f")) {
+                                        	if(!strcasecmp(codec, "h264")) {
+                                                	JANUS_LOG(LOG_INFO, "found codec payload:  %s\n", a->value);
+                                                	return pt;
+                                        	}
+                                	}
 				}
 			}
 			ma = ma->next;

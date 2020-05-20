@@ -4792,10 +4792,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                             } else if (participant->vcodec == JANUS_VIDEOCODEC_H264) {
                                JANUS_LOG (LOG_INFO, "CARBYNE:::::--------------- JANUS_VIDEOCODEC_H264 --------------\n");
                                gstr->wvsource = gst_element_factory_make ("udpsrc","udp_src");
-                               gstr->wvjitter = gst_element_factory_make ("rtpjitterbuffer","rtp_jitter_buffer");
                                gstr->wvrtpdepay = gst_element_factory_make ("rtph264depay","rtp_h264_depay");
                                gstr->wvparse    = gst_element_factory_make ("h264parse","h264_parse");
-                               gstr->wvqueue = gst_element_factory_make ("queue","video_queue");
                                gstr->wvsink = gst_element_factory_make ("rtspclientsink","rtsp_client_sink");
                             } else if (participant->vcodec == JANUS_VIDEOCODEC_VP9) {
                                JANUS_LOG (LOG_INFO, "CARBYNE:::::--------------- JANUS_VIDEOCODEC_VP9 --------------\n");
@@ -4804,7 +4802,9 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                           gstr->vfiltercaps = NULL;
                           gstr->isvCapsSet = FALSE;
                           gstr->pipeline = gst_pipeline_new("pipeline");
-                          g_object_set(gstr->wvsource, "port", rtpforwardport, NULL);
+			  char  udpline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
+                          g_snprintf(udpline,JANUS_RTP_FORWARD_STRING_SIZE, "udp://127.0.0.1:%d",rtpforwardport);
+                          g_object_set(gstr->wvsource, "uri", udpline, NULL);
                           g_object_set(gstr->wvsink, "name", "sink", NULL);
                           char  rtspline[JANUS_RTP_FORWARD_STRING_SIZE] = {0};
                           if(rtsp_url != NULL) {
@@ -4813,38 +4813,58 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
                               } else {
                                 g_snprintf(rtspline, JANUS_RTP_FORWARD_STRING_SIZE, "%s%s",rtsp_url,participant->room_id_str );
                               }
-                          } 
+                          }
                           g_object_set(gstr->wvsink, "location",rtspline, NULL);
-                          GstCaps * caps;
-                          caps = gst_caps_new_simple ("application/x-rtp",
+                          GstCaps * source_caps = NULL;
+                          if(participant->vcodec == JANUS_VIDEOCODEC_VP8) {
+                               source_caps = gst_caps_new_simple ("application/x-rtp",
                                                       "media", G_TYPE_STRING, "video",
-                                                     //  "clock-rate", G_TYPE_INT, 90000,
-                                                     //  "encoding-name", G_TYPE_STRING, "VP8",
-                                                     //  "payload", G_TYPE_INT,100, //session->video_pt,
+                                                      "encoding-name", G_TYPE_STRING, "VP8",
+                                                       NULL);
+                            } else if (participant->vcodec == JANUS_VIDEOCODEC_H264) {
+				JANUS_LOG (LOG_INFO, "CARBYNE:::::JANUS_VIDEOCODEC_H264 profile:42e01f\n");
+                               source_caps = gst_caps_new_simple ("application/x-rtp",
+                                                      "media", G_TYPE_STRING, "video",
+						      "clock-rate",G_TYPE_INT,90000,
+                                                      "profile-level-id", G_TYPE_STRING,"42e01f",
+                                                      "encoding-name", G_TYPE_STRING, "H264",
+                                                       NULL);
+                            } else if (participant->vcodec == JANUS_VIDEOCODEC_VP9) {
+                               source_caps = gst_caps_new_simple ("application/x-rtp",
+                                                      "media", G_TYPE_STRING, "video",
+                                                      "encoding-name", G_TYPE_STRING, "VP9",
                                                      NULL);
-                          g_object_set (gstr->wvsource, "caps", caps, NULL);
-                          gst_caps_unref (caps);
+ 			  }else {
+				JANUS_LOG (LOG_ERR, "Unsupported codec !!!\n");
+				g_free (gstr);
+				close(fd);
+				janus_refcount_decrease(&participant->ref);
+				goto error;
+                          }
+			  GST_LOG ("caps are %" GST_PTR_FORMAT, source_caps);
+                          g_object_set (G_OBJECT (gstr->wvsource), "caps", source_caps, NULL);
+                          gst_caps_unref (source_caps);
 
-                         if(participant->vcodec == JANUS_VIDEOCODEC_VP8) {
-                            gst_bin_add_many(GST_BIN(gstr->pipeline),gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvqueue,gstr->wvsink,NULL);
-                            if (gst_element_link_many (gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvqueue,gstr->wvsink,  NULL) != TRUE) {
+                          if(participant->vcodec == JANUS_VIDEOCODEC_VP8) {
+                          	gst_bin_add_many(GST_BIN(gstr->pipeline),gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvqueue,gstr->wvsink,NULL);
+                            	if (gst_element_link_many (gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvqueue,gstr->wvsink,  NULL) != TRUE) {
                                                      JANUS_LOG (LOG_ERR, "Failed to link GSTREAMER elements in gstr!!!\n");
-                               gst_object_unref (GST_OBJECT(gstr->pipeline));
-                               g_free (gstr);
-			       close(fd);
-                               janus_refcount_decrease(&participant->ref);
-                               goto error;
-                            }
-                         } else if (participant->vcodec == JANUS_VIDEOCODEC_H264) {
-                            gst_bin_add_many(GST_BIN(gstr->pipeline),gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvparse,gstr->wvqueue,gstr->wvsink,NULL);
-                            if (gst_element_link_many (gstr->wvsource,gstr->wvjitter,gstr->wvrtpdepay,gstr->wvparse,gstr->wvqueue,gstr->wvsink,  NULL) != TRUE) {
-                                                     JANUS_LOG (LOG_ERR, "Failed to link GSTREAMER elements in gstr!!!\n");
-                               gst_object_unref (GST_OBJECT(gstr->pipeline));
-                               g_free (gstr);
-                               close(fd);
-                               janus_refcount_decrease(&participant->ref);
-                               goto error;
-                            }
+                               		gst_object_unref (GST_OBJECT(gstr->pipeline));
+                               		g_free (gstr);
+			       		close(fd);
+                               		janus_refcount_decrease(&participant->ref);
+                               		goto error;
+                            	}
+			  } else if (participant->vcodec == JANUS_VIDEOCODEC_H264) {
+				gst_bin_add_many(GST_BIN(gstr->pipeline),gstr->wvsource,gstr->wvrtpdepay,gstr->wvparse,gstr->wvsink,NULL);
+				if (gst_element_link_many (gstr->wvsource,gstr->wvrtpdepay,gstr->wvparse,gstr->wvsink,  NULL) != TRUE) {
+                                	JANUS_LOG (LOG_ERR, "Failed to link GSTREAMER elements in gstr!!!\n");
+                               		gst_object_unref (GST_OBJECT(gstr->pipeline));
+                               		g_free (gstr);
+                               		close(fd);
+                               		janus_refcount_decrease(&participant->ref);
+                               		goto error;
+                            	}
                          }
                          gstr->bus = gst_pipeline_get_bus (GST_PIPELINE (gstr->pipeline));
                          session->gstr = gstr;
@@ -5195,7 +5215,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 #define GST_WAIT_TIMEOUT_FROM_IDLE_TO_PLAY_NSEC 500000000
 
 static void * janus_gst_gst_thread (void * data) {
-    JANUS_LOG (LOG_ERR, "---------------START GST THREAD --------------\n");
+    JANUS_LOG (LOG_INFO, "---------------START GST THREAD --------------\n");
     janus_videoroom_session * session = (janus_videoroom_session *) data;
     if (session == NULL) {
         JANUS_LOG (LOG_ERR, "invalid session!\n");
@@ -5224,12 +5244,12 @@ static void * janus_gst_gst_thread (void * data) {
         g_thread_unref (g_thread_self());
         return NULL;
     }
-    JANUS_LOG (LOG_ERR, "---------------START GST THREAD WHILE --------------\n");
-    JANUS_LOG (LOG_VERB, "Joining gstr thread..\n");
+    JANUS_LOG (LOG_INFO, "---------------START GST THREAD WHILE --------------\n");
+    JANUS_LOG (LOG_INFO, "Joining gstr thread..\n");
     while (!g_atomic_int_get (&stopping) && g_atomic_int_get(&initialized) && !g_atomic_int_get(&session->hangingup)) {
 
     }
-    JANUS_LOG (LOG_ERR, "---------------STOP GST THREAD WHILE --------------\n");
+    JANUS_LOG (LOG_INFO, "---------------STOP GST THREAD WHILE --------------\n");
     gst_object_unref (player->bus);
     gst_element_set_state (player->pipeline, GST_STATE_NULL);
     if (gst_element_get_state (player->pipeline, NULL, NULL, GST_CLOCK_TIME_NONE) == GST_STATE_CHANGE_FAILURE) {
@@ -5239,8 +5259,8 @@ static void * janus_gst_gst_thread (void * data) {
     g_free (player);
     session->gstr = NULL;
 
-    JANUS_LOG (LOG_ERR, "---------------LEAVING GST THREAD  --------------\n");
-    JANUS_LOG (LOG_VERB, "Leaving gstr pipeline thread..\n");
+    JANUS_LOG (LOG_INFO, "---------------LEAVING GST THREAD  --------------\n");
+    JANUS_LOG (LOG_INFO, "Leaving gstr pipeline thread..\n");
     g_thread_unref (g_thread_self());
 
     return NULL;
@@ -6280,6 +6300,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(publisher->sdp != NULL) {
 						/* Check if there's something the original SDP has that we should remove */
 						janus_sdp *offer = janus_sdp_parse(publisher->sdp, NULL, 0);
+/*PVLH264 */
 						subscriber->sdp = offer;
 						session->sdp_version = 1;
 						subscriber->sdp->o_version = session->sdp_version;
@@ -7238,6 +7259,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Generate an SDP string we can send back to the publisher */
 				char *answer_sdp = janus_sdp_write(answer);
+				/*CARBYNE-H264 */
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
 				int mid_ext_id = 1;
 				while(mid_ext_id < 15) {
