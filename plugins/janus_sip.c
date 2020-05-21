@@ -4575,6 +4575,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			/* If this is a re-INVITE, take note of that */
 			if(reinvite) {
+				session->media.update = TRUE;
 				/* Mark status as janus_sip_call_status_incall_reinvited only when handling reinvites ourselves*/
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinvited);
 			}
