@@ -5545,7 +5545,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 		temp = temp->next;
 	}
 
-	if(update && changed && *changed && (answer || session->media.autoaccept_reinvites)) {
+	if(update && changed && *changed) {
 		/* Something changed: mark this on the session, so that the thread can update the sockets */
 		session->media.updated = TRUE;
 		if(session->media.pipefd[1] > 0) {
