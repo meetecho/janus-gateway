@@ -1368,7 +1368,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean answer, gboolean update, gboolean *changed);
 char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gboolean answer);
 /* Media */
-static int janus_sip_allocate_local_ports(janus_sip_session *session);
+static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean update);
 static void *janus_sip_relay_thread(void *data);
 static void janus_sip_media_cleanup(janus_sip_session *session);
 
@@ -3204,7 +3204,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(janus_sip_allocate_local_ports(session) < 0) {
+			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
@@ -3466,7 +3466,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(janus_sip_allocate_local_ports(session) < 0) {
+			if(janus_sip_allocate_local_ports(session, FALSE) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
@@ -3612,6 +3612,27 @@ static void *janus_sip_handler(void *data) {
 
 			if(offer)
 				session->sdp->o_version++;
+
+			gboolean audio_added = strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0") && session->media.local_audio_rtp_port == 0;
+			gboolean video_added = strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0") && session->media.local_video_rtp_port == 0;
+
+			if(audio_added)
+				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
+
+			if(video_added)
+				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
+
+			if(audio_added || video_added) {
+				if(janus_sip_allocate_local_ports(session, TRUE) < 0) {
+					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
+					janus_sdp_destroy(parsed_sdp);
+					error_code = JANUS_SIP_ERROR_IO_ERROR;
+					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
+					goto error;
+				}
+				if(!offer)
+					session->media.updated = TRUE;
+			}
 			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, !offer);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error manipulating SDP\n");
@@ -4554,7 +4575,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			/* If this is a re-INVITE, take note of that */
 			if(reinvite) {
-				session->media.update = TRUE;
 				/* Mark status as janus_sip_call_status_incall_reinvited only when handling reinvites ourselves*/
 				janus_sip_call_update_status(session, janus_sip_call_status_incall_reinvited);
 			}
@@ -5480,11 +5500,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			g_free(session->media.remote_video_ip);
 			session->media.remote_video_ip = g_strdup(m->c_addr);
 		}
-		if(update) {
-			/* FIXME This is a session update, we only accept changes in IP/ports */
-			temp = temp->next;
-			continue;
-		}
+
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
@@ -5528,7 +5544,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 		temp = temp->next;
 	}
 
-	if(update && changed && *changed) {
+	if(update && changed && *changed && (answer || session->media.autoaccept_reinvites)) {
 		/* Something changed: mark this on the session, so that the thread can update the sockets */
 		session->media.updated = TRUE;
 		if(session->media.pipefd[1] > 0) {
@@ -5639,41 +5655,43 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 }
 
  /* Bind local RTP/RTCP sockets */
-static int janus_sip_allocate_local_ports(janus_sip_session *session) {
+static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean update) {
 	if(session == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
 		return -1;
 	}
-	/* Reset status */
-	if(session->media.audio_rtp_fd != -1) {
-		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
-	}
-	if(session->media.audio_rtcp_fd != -1) {
-		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
-	}
-	session->media.local_audio_rtp_port = 0;
-	session->media.local_audio_rtcp_port = 0;
-	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd != -1) {
-		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
-	}
-	if(session->media.video_rtcp_fd != -1) {
-		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
-	}
-	session->media.local_video_rtp_port = 0;
-	session->media.local_video_rtcp_port = 0;
-	session->media.video_ssrc = 0;
-	if(session->media.pipefd[0] > 0) {
-		close(session->media.pipefd[0]);
-		session->media.pipefd[0] = -1;
-	}
-	if(session->media.pipefd[1] > 0) {
-		close(session->media.pipefd[1]);
-		session->media.pipefd[1] = -1;
+	if(!update) {
+		/* Reset status */
+		if(session->media.audio_rtp_fd != -1) {
+			close(session->media.audio_rtp_fd);
+			session->media.audio_rtp_fd = -1;
+		}
+		if(session->media.audio_rtcp_fd != -1) {
+			close(session->media.audio_rtcp_fd);
+			session->media.audio_rtcp_fd = -1;
+		}
+		session->media.local_audio_rtp_port = 0;
+		session->media.local_audio_rtcp_port = 0;
+		session->media.audio_ssrc = 0;
+		if(session->media.video_rtp_fd != -1) {
+			close(session->media.video_rtp_fd);
+			session->media.video_rtp_fd = -1;
+		}
+		if(session->media.video_rtcp_fd != -1) {
+			close(session->media.video_rtcp_fd);
+			session->media.video_rtcp_fd = -1;
+		}
+		session->media.local_video_rtp_port = 0;
+		session->media.local_video_rtcp_port = 0;
+		session->media.video_ssrc = 0;
+		if(session->media.pipefd[0] > 0) {
+			close(session->media.pipefd[0]);
+			session->media.pipefd[0] = -1;
+		}
+		if(session->media.pipefd[1] > 0) {
+			close(session->media.pipefd[1]);
+			session->media.pipefd[1] = -1;
+		}
 	}
 	/* Start */
 	int attempts = 100;	/* FIXME Don't retry forever */
@@ -5784,10 +5802,6 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 static void janus_sip_connect_sockets(janus_sip_session *session, struct sockaddr_in *audio_server_addr, struct sockaddr_in *video_server_addr) {
 	if(!session || (!audio_server_addr && !video_server_addr))
 		return;
-
-	if(session->media.updated) {
-		JANUS_LOG(LOG_VERB, "Updating session sockets\n");
-	}
 
 	/* Connect peers (FIXME This pretty much sucks right now) */
 	if(session->media.remote_audio_rtp_port && audio_server_addr && session->media.audio_rtp_fd != -1) {
