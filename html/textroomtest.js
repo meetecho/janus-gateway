@@ -84,9 +84,9 @@ $(document).ready(function() {
 									textroom = pluginHandle;
 									Janus.log("Plugin attached! (" + textroom.getPlugin() + ", id=" + textroom.getId() + ")");
 									// Setup the DataChannel
-									var body = { "request": "setup" };
-									Janus.debug("Sending message (" + JSON.stringify(body) + ")");
-									textroom.send({"message": body});
+									var body = { request: "setup" };
+									Janus.debug("Sending message:", body);
+									textroom.send({ message: body });
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
@@ -97,31 +97,34 @@ $(document).ready(function() {
 									console.error("  -- Error attaching plugin...", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
-									$("#videoleft").parent().unblock();
 								},
 								onmessage: function(msg, jsep) {
-									Janus.debug(" ::: Got a message :::");
-									Janus.debug(msg);
-									if(msg["error"] !== undefined && msg["error"] !== null) {
+									Janus.debug(" ::: Got a message :::", msg);
+									if(msg["error"]) {
 										bootbox.alert(msg["error"]);
 									}
-									if(jsep !== undefined && jsep !== null) {
+									if(jsep) {
 										// Answer
 										textroom.createAnswer(
 											{
 												jsep: jsep,
 												media: { audio: false, video: false, data: true },	// We only use datachannels
 												success: function(jsep) {
-													Janus.debug("Got SDP!");
-													Janus.debug(jsep);
-													var body = { "request": "ack" };
-													textroom.send({"message": body, "jsep": jsep});
+													Janus.debug("Got SDP!", jsep);
+													var body = { request: "ack" };
+													textroom.send({ message: body, jsep: jsep });
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
-													bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													bootbox.alert("WebRTC error... " + error.message);
 												}
 											});
 									}
@@ -135,7 +138,7 @@ $(document).ready(function() {
 									$('#username').focus();
 								},
 								ondata: function(data) {
-									Janus.debug("We got data from the DataChannel! " + data);
+									Janus.debug("We got data from the DataChannel!", data);
 									//~ $('#datarecv').val(data);
 									var json = JSON.parse(data);
 									var transaction = json["transaction"];
