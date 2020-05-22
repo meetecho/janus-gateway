@@ -5346,6 +5346,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				return -1;
 			}
 			/* TODO IPv6 */
+			family = AF_INET;
 			address.sin_addr.s_addr = mcast;
 		} else {
 			if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
