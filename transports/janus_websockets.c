@@ -531,8 +531,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
 #if (LWS_LIBRARY_VERSION_MAJOR >= 4)
-		JANUS_LOG(LOG_WARN, "Ping-pong syntax changed in libwebsockets 4.x, and is currently unsupported in Janus...\n");
-
+		/* libwebsockets 4 has a different API, that works differently
+		 * https://github.com/warmcat/libwebsockets/blob/master/READMEs/README.lws_retry.md */
+		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+			wscinfo.retry_and_idle_policy = {
+				.secs_since_valid_ping = pingpong_trigger,
+				.secs_since_valid_hangup = pingpong_trigger + pingpong_timeout
+			}
+		}
 #else
 #if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR == 3)
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
