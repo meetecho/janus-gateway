@@ -271,6 +271,10 @@ static const char *janus_websockets_reason_string(enum lws_callback_reasons reas
 	return NULL;
 }
 
+#if (LWS_LIBRARY_VERSION_MAJOR >= 4)
+static lws_retry_bo_t pingpong = { 0 };
+#endif
+
 /* Helper method to return the interface associated with a local IP address */
 static char *janus_websockets_get_interface_name(const char *ip) {
 	struct ifaddrs *addrs = NULL, *iap = NULL;
@@ -534,10 +538,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		/* libwebsockets 4 has a different API, that works differently
 		 * https://github.com/warmcat/libwebsockets/blob/master/READMEs/README.lws_retry.md */
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
-			wscinfo.retry_and_idle_policy = {
-				.secs_since_valid_ping = pingpong_trigger,
-				.secs_since_valid_hangup = pingpong_trigger + pingpong_timeout
-			}
+			pingpong.secs_since_valid_ping = pingpong_trigger;
+			pingpong.secs_since_valid_hangup = pingpong_trigger + pingpong_timeout;
+			wscinfo.retry_and_idle_policy = &pingpong;
 		}
 #else
 #if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR == 3)
