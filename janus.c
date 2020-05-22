@@ -3160,7 +3160,9 @@ static void *janus_transport_requests(void *data) {
 			g_thread_pool_push(tasks, request, &tperror);
 			if(tperror != NULL) {
 				/* Something went wrong... */
-				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n",
+					tperror->code, tperror->message ? tperror->message : "??");
+				g_error_free(tperror);
 				json_t *transaction = json_object_get(message, "transaction");
 				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
 				janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");

@@ -338,7 +338,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	/* Start the Unix Sockets service thread */
 	GError *error = NULL;
 	pfunix_thread = g_thread_try_new("pfunix thread", &janus_pfunix_thread, NULL, &error);
-	if(!pfunix_thread) {
+	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n",
 			error->code, error->message ? error->message : "??");
