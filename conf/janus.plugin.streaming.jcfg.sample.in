@@ -175,6 +175,7 @@ file-ondemand-sample: {
 	#videopt = 126
 	#videortpmap = "H264/90000"
 	#videofmtp = "profile-level-id=42e01f;packetization-mode=1"
+	#secret = "adminpwd"
 #}
 
 #
@@ -195,6 +196,7 @@ file-ondemand-sample: {
 	#data = true
 	#dataport = 5008
 	#datatype = "text"
+	#secret = "adminpwd"
 #}
 
 #
@@ -216,6 +218,7 @@ file-ondemand-sample: {
 	#videomcast = "232.3.4.5"
 	#videopt = 100
 	#videortpmap = "VP8/90000"
+	#secret = "adminpwd"
 #}
 
 #
@@ -236,4 +239,5 @@ file-ondemand-sample: {
 	#url = "rtsp://127.0.0.1:8554/unicast"
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
+	#secret = "adminpwd"
 #}
