@@ -820,7 +820,9 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		ws_thread = g_thread_try_new("ws thread", &janus_websockets_thread, wsc, &error);
 		if(!ws_thread) {
 			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			return -1;
 		}
 	}

@@ -505,6 +505,7 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua pushevent thread...\n",
 				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			json_decref(event);
 			json_decref(jsep);
 			g_free(asev->transaction);
@@ -1352,6 +1353,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&lua_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua scheduler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		lua_close(lua_state);
 		g_free(lua_folder);
 		g_free(lua_file);
@@ -1366,6 +1368,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&lua_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua timer loop thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		if(timer_loop != NULL)
 			g_main_loop_unref(timer_loop);
 		if(timer_context != NULL)

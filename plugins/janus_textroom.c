@@ -1020,7 +1020,9 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("textroom handler", janus_textroom_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the TextRoom handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the TextRoom handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_TEXTROOM_NAME);

@@ -2171,7 +2171,9 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("streaming handler", janus_streaming_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_config_destroy(config);
 		return -1;
 	}
@@ -4695,6 +4697,7 @@ static void *janus_streaming_handler(void *data) {
 					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread",
 						error->code, error->message ? error->message : "??");
+					g_error_free(error);
 					goto error;
 				}
 			} else if(mp->streaming_source == janus_streaming_source_rtp) {
@@ -5938,6 +5941,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
 					error->code, error->message ? error->message : "??");
+				g_error_free(error);
 				janus_refcount_decrease(&live_rtp->ref);	/* This is for the helper thread */
 				g_async_queue_unref(helper->queued_packets);
 				janus_refcount_decrease(&helper->ref);
@@ -5956,7 +5960,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_refcount_increase(&live_rtp->ref);
 	live_rtp->thread = g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtp, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_refcount_decrease(&live_rtp->ref);	/* This is for the failed thread */
 		janus_streaming_mountpoint_destroy(live_rtp);
 		return NULL;
@@ -6076,7 +6082,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		janus_refcount_increase(&file_source->ref);
 		file_source->thread = g_thread_try_new(tname, &janus_streaming_filesource_thread, file_source, &error);
 		if(error != NULL) {
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_refcount_decrease(&file_source->ref);		/* This is for the failed thread */
 			janus_refcount_decrease(&file_source->ref);
 			return NULL;
@@ -6890,7 +6898,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	janus_refcount_increase(&live_rtsp->ref);
 	live_rtsp->thread = g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_mutex_lock(&mountpoints_mutex);
 		g_hash_table_remove(mountpoints_temp, &id);
 		janus_mutex_unlock(&mountpoints_mutex);

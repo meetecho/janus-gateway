@@ -781,7 +781,9 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("nosip handler", janus_nosip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_NOSIP_NAME);
@@ -1513,7 +1515,9 @@ static void *janus_nosip_handler(void *data) {
 					session->relayer_thread = NULL;
 					session->media.ready = 0;
 					janus_refcount_decrease(&session->ref);
-					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n",
+						error->code, error->message ? error->message : "??");
+					g_error_free(error);
 				}
 			}
 		} else if(!strcasecmp(request_text, "hangup")) {

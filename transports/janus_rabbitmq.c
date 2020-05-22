@@ -487,7 +487,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->in_thread = g_thread_try_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -496,7 +498,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->out_thread = g_thread_try_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
