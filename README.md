@@ -125,11 +125,12 @@ For what concerns usrsctp, which is needed for Data Channels support, it is usua
 
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure script if you're installing on a x86_64 distribution.
 
-The same applies for libwebsockets, which is needed for the optional WebSockets support. If you're interested in supporting WebSockets to control Janus, as an alternative (or replacement) to the default plain HTTP REST API, you'll have to install it manually. We suggest version 3.2, as the latest master has some API changes we don't support yet:
+The same applies for libwebsockets, which is needed for the optional WebSockets support. If you're interested in supporting WebSockets to control Janus, as an alternative (or replacement) to the default plain HTTP REST API, you'll have to install it manually:
 
 	git clone https://libwebsockets.org/repo/libwebsockets
 	cd libwebsockets
-	git checkout v3.2-stable
+	# If you want the stable version of libwebsockets, uncomment the next line
+	# git checkout v3.2-stable
 	mkdir build
 	cd build
 	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
