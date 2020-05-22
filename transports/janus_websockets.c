@@ -530,11 +530,16 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
-#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+#if (LWS_LIBRARY_VERSION_MAJOR >= 4)
+		JANUS_LOG(LOG_WARN, "Ping-pong syntax changed in libwebsockets 4.x, and is currently unsupported in Janus...\n");
+
+#else
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR == 3)
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
 			wscinfo.ws_ping_pong_interval = pingpong_trigger;
 			wscinfo.timeout_secs = pingpong_timeout;
 		}
+#endif
 #endif
 		/* Force single-thread server */
 		wscinfo.count_threads = 1;
