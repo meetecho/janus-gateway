@@ -163,7 +163,7 @@ static int janus_gelfevh_connect(void) {
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		if(res)
 			freeaddrinfo(res);
-		JANUS_LOG(LOG_ERR, "Could not resolve address (%s)...\n", backend);
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %s\n", backend, strerror(errno));
 		return -1;
 	}
 	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
@@ -171,6 +171,7 @@ static int janus_gelfevh_connect(void) {
 
 	if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
 		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
+		g_free(host);
 		return -1;
 	}
 
@@ -182,10 +183,12 @@ static int janus_gelfevh_connect(void) {
 
 	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
 		JANUS_LOG(LOG_ERR, "Connect to GELF host failed\n");
+		g_free(host);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "Connected to GELF backend: [%s:%s]\n", host, port);
-	return 1;
+	g_free(host);
+	return 0;
 }
 
 static int janus_gelfevh_send(char *message) {
@@ -239,7 +242,7 @@ static int janus_gelfevh_send(char *message) {
 				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
 				return -1;
 			}
-			return 1;
+			return 0;
 		} else {
 			int offset = 0;
 			char *rnd = randstring(8);
@@ -266,7 +269,7 @@ static int janus_gelfevh_send(char *message) {
 			g_free(rnd);
 		}
 	}
-	return 1;
+	return 0;
 }
 
 int janus_gelfevh_init(const char *config_path) {
