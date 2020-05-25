@@ -3645,13 +3645,10 @@ static void *janus_sip_handler(void *data) {
 
 			gboolean audio_added = strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0") && session->media.local_audio_rtp_port == 0;
 			gboolean video_added = strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0") && session->media.local_video_rtp_port == 0;
-
 			if(audio_added)
 				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
-
 			if(video_added)
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
-
 			if(audio_added || video_added) {
 				if(janus_sip_allocate_local_ports(session, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
