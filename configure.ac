@@ -321,7 +321,7 @@ AC_ARG_ENABLE([gelf-event-handler],
                               [Disable gelf event handler ])],
               [AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
                      [enable_gelf_event_handler=no])],
-              [enable_gelf_event_handler=maybe])
+              [enable_gelf_event_handler=yes])
 
 AC_ARG_ENABLE([json-logger],
               [AS_HELP_STRING([--enable-json-logger],
