@@ -871,7 +871,8 @@ room-<unique room ID>: {
  * publisher goes away, the subscriber handle is removed as well. As such,
  * these subscriber sessions are dependent on feedback obtained by
  * publishers, and can't exist on their own, unless you feed them the
- * right info out of band.
+ * right info out of band (which is impossible in rooms configured with
+ * \c require_pvtid).
  *
  * To specify a handle will be associated with a subscriber, you must use
  * the \c join request with \c ptype set to \c subscriber and specify which
