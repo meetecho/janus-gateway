@@ -2,13 +2,13 @@
  * \author Mirko Brankovic <mirkobrankovic@gmail.com>
  * \copyright GNU General Public License v3
  * \brief  Janus GelfEventHandler plugin
- * \details  This is a GELF event handler plugin for Janus, which is supposed 
- * to send json events to GELF 
- * (Graylog logger https://docs.graylog.org/en/3.2/pages/gelf.html). 
+ * \details  This is a GELF event handler plugin for Janus, which is supposed
+ * to send json events to GELF
+ * (Graylog logger https://docs.graylog.org/en/3.2/pages/gelf.html).
  * Necessary headers are prepended.
  * For sending, you can use TCP which is not recommended in case there will be
- * a lot of messages. There is also UDP support, but you need to limit the payload 
- * size with max_message_len and remember to leave room for 12 bytes for special 
+ * a lot of messages. There is also UDP support, but you need to limit the payload
+ * size with max_message_len and remember to leave room for 12 bytes for special
  * headers. UDP messages will be chunked automatically.
  * There is also compression available for UDP protocol, to save network bandwidth
  * while using a bit more CPU. This is not available for TCP due to GELF limitations
@@ -142,7 +142,7 @@ static char *randstring(size_t length) {
 	if(length) {
 		randomString = g_malloc(sizeof(char) * (length + 1));
 		if(randomString) {
-			for (int n = 0; n < (int)length; n++) {
+			for(int n = 0; n < (int)length; n++) {
 				int key = rand() % (int)(sizeof(charset) - 1);
 				randomString[n] = charset[key];
 			}
@@ -163,14 +163,14 @@ static int janus_gelfevh_connect(void) {
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		if(res)
 			freeaddrinfo(res);
-		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %s\n", backend, strerror(errno));
+		JANUS_LOG(LOG_ERR, "Could not resolve address (%s): %d (%s)\n", backend, errno, strerror(errno));
 		return -1;
 	}
-	const char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
+	char *host = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	freeaddrinfo(res);
 
 	if((sockfd = socket(AF_INET, transport, 0)) < 0 ) {
-		JANUS_LOG(LOG_ERR, "Socket creation failed: %s\n", strerror(errno));
+		JANUS_LOG(LOG_ERR, "Socket creation failed: %d (%s)\n", errno, strerror(errno));
 		g_free(host);
 		return -1;
 	}
@@ -204,7 +204,7 @@ static int janus_gelfevh_send(char *message) {
 		while(length > 0) {
 			out_bytes = send(sockfd, buffer, length + 1, 0);
 			if(out_bytes <= 0) {
-				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %s \n", strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending TCP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
 				close(sockfd);
 				return -1;
 			}
@@ -222,7 +222,7 @@ static int janus_gelfevh_send(char *message) {
 				message, strlen(message),
 				compressed_text, sizeof(compressed_text));
 			if(compressed_len == 0) {
-				JANUS_LOG(LOG_WARN, "Failed to compress event (%zu bytes). Sending message uncompressed\n", strlen(message));
+				JANUS_LOG(LOG_WARN, "Failed to compress event (%zu bytes), sending message uncompressed\n", strlen(message));
 				/* Sending message uncompressed */
 			} else {
 				len = compressed_len;
@@ -239,15 +239,15 @@ static int janus_gelfevh_send(char *message) {
 		if(total == 1) {
 			int n = send(sockfd, buf, len, 0);
 			if(n < 0) {
-				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %s \n", strerror(errno));
+				JANUS_LOG(LOG_WARN, "Sending UDP message failed, dropping event: %d (%s)\n", errno, strerror(errno));
 				return -1;
 			}
 			return 0;
 		} else {
 			int offset = 0;
 			char *rnd = randstring(8);
-			for (int i = 0; i < total; i++) {
-				int bytesToSend = offset + max_gelf_msg_len < len ? max_gelf_msg_len : len - offset;
+			for(int i = 0; i < total; i++) {
+				int bytesToSend = ((offset + max_gelf_msg_len) < len) ? max_gelf_msg_len : (len - offset);
 				/* Prepend the necessary headers (imitate TCP) */
 				char chunk[bytesToSend + 12];
 				chunk[0] = 0x1e;
@@ -260,7 +260,7 @@ static int janus_gelfevh_send(char *message) {
 				buf += bytesToSend;
 				int n = send(sockfd, head, bytesToSend + 12, 0);
 				if(n < 0) {
-					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %s \n", strerror(errno));
+					JANUS_LOG(LOG_WARN, "Sending UDP message failed: %d (%s)\n", errno, strerror(errno));
 					return -1;
 				}
 				offset += bytesToSend;
@@ -348,7 +348,7 @@ int janus_gelfevh_init(const char *config_path) {
 		if(item && item->value && janus_is_true(item->value)) {
 			if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 				compress = FALSE;
-				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling ... \n");
+				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling...\n");
 			} else {
 				compress = TRUE;
 				item = janus_config_get(config, config_general, janus_config_type_item, "compression");
@@ -390,7 +390,9 @@ done:
 	handler_thread = g_thread_try_new("janus gelfevh handler", janus_gelfevh_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the GelfEventHandler handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the GelfEventHandler handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_GELFEVH_NAME);
@@ -415,7 +417,7 @@ void janus_gelfevh_destroy(void) {
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
-	
+
 	close(sockfd);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_GELFEVH_NAME);
@@ -528,7 +530,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if(req_compress > -1) {
 			if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 				compress = FALSE;
-				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling ... \n");
+				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling...\n");
 			} else {
 				compress = req_compress ? TRUE : FALSE;
 			}
@@ -596,7 +598,8 @@ static void *janus_gelfevh_handler(void *data) {
 			json_object_set(output, "full_message", event);
 
 			if(janus_gelfevh_send(json_dumps(output, json_format)) < 0) {
-				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n", json_dumps(output, json_format));
+				JANUS_LOG(LOG_WARN, "Couldn't send event to GELF, reconnect?, or event was null: %s\n",
+					json_dumps(output, json_format));
 			}
 			json_decref(output);
 			output = NULL;
