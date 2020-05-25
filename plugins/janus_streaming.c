@@ -7704,9 +7704,9 @@ static void *janus_streaming_relay_thread(void *data) {
 							memcpy(pkt->data, buffer, bytes);
 							pkt->data->ssrc = htons(1);
 							pkt->data->type = mountpoint->codecs.video_pt;
-							packet.is_rtp = TRUE;
-							packet.is_video = TRUE;
-							packet.is_keyframe = TRUE;
+							pkt->is_rtp = TRUE;
+							pkt->is_video = TRUE;
+							pkt->is_keyframe = TRUE;
 							pkt->length = bytes;
 							pkt->timestamp = source->keyframe.temp_ts;
 							pkt->seq_number = ntohs(rtp->seq_number);
@@ -7746,9 +7746,9 @@ static void *janus_streaming_relay_thread(void *data) {
 									memcpy(pkt->data, buffer, bytes);
 									pkt->data->ssrc = htons(1);
 									pkt->data->type = mountpoint->codecs.video_pt;
-									packet.is_rtp = TRUE;
-									packet.is_video = TRUE;
-									packet.is_keyframe = TRUE;
+									pkt->is_rtp = TRUE;
+									pkt->is_video = TRUE;
+									pkt->is_keyframe = TRUE;
 									pkt->length = bytes;
 									pkt->timestamp = source->keyframe.temp_ts;
 									pkt->seq_number = ntohs(rtp->seq_number);
