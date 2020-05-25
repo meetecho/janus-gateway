@@ -842,17 +842,21 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * Other participants will receive a different event depending on whether
- * you were currently an active publisher ("unpublished") or simply
- * lurking ("leaving"):
+ * Other participants will receive a "leaving" event to notify them the
+ * circumstance:
  *
 \verbatim
 {
 	"videoroom" : "event",
 	"room" : <room ID>,
-	"leaving|unpublished" : <unique ID of the publisher who left>
+	"leaving : <unique ID of the participant who left>
 }
 \endverbatim
+ *
+ * If you were an active publisher, other users will also receive the
+ * corresponding "unpublished" event to notify them the stream is not longer
+ * available, as explained above. If you were simply lurking and not
+ * publishing, the other participants will only receive the "leaving" event.
  *
  * \subsection vroomsub VideoRoom Subscribers
  *
