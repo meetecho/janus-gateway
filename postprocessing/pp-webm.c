@@ -63,7 +63,6 @@ static AVStream *vStream;
 static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
-static int max_prev_width = 0, max_prev_height = 0;
 
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8)
 {
@@ -286,29 +285,13 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						int vp8h = swap2(*(unsigned short *)(c + 5)) & 0x3fff;
 						int vp8hs = swap2(*(unsigned short *)(c + 5)) >> 14;
 						JANUS_LOG(LOG_VERB, "(seq=%" SCNu16 ", ts=%" SCNu64 ") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-						/* FIX the situation where we get an incorrect final frame */
-						if (vp8w > max_width)
+						/* FIX revered fram dimensions */
+						if (vp8w > max_width && (vp8h > max_height ||  vp8h == max_height))
 						{
-							if (max_width > 0)
-							{
-								max_prev_width = max_width;
-							} 
-							else
-							{
-								max_prev_width = vp8w;
-							}
 							max_width = vp8w;
 						}
-						if (vp8h > max_height)
+						if (vp8h > max_height && (vp8w > max_width ||  vp8w == max_width))
 						{
-							if (max_width > 0)
-							{
-								max_prev_height = max_height;
-							} 
-							else
-							{
-								max_prev_height = vp8h;
-							}
 							max_height = vp8h;
 						}
 					}
@@ -404,15 +387,6 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 			}
 		}
 		tmp = tmp->next;
-	}
-
-	/* FIX the situation where we get an incorrect final frame */
-	if (max_width < max_prev_width) {
-		max_width = max_prev_width;
-	}
-	
-	if (max_height == max_width && max_prev_height > 0) {
-		max_height = max_prev_height;
 	}
 
 	int mean_ts = min_ts_diff; /* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
