@@ -1742,6 +1742,7 @@ function Janus(gatewayCallbacks) {
 				config.receiverTransforms = callbacks.receiverTransforms;
 				pc_config["forceEncodedAudioInsertableStreams"] = true;
 				pc_config["forceEncodedVideoInsertableStreams"] = true;
+				pc_config["encodedInsertableStreams"] = true;
 			}
 			Janus.log("Creating PeerConnection");
 			Janus.debug(pc_constraints);
