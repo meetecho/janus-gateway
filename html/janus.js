@@ -86,6 +86,20 @@ var defaultExtension = {
 	}
 };
 
+function stopAllTracks (stream) {
+	try {
+		// Try a MediaStreamTrack.stop() for each track
+		var tracks = stream.getTracks();
+		for(var mst of tracks) {
+			Janus.log(mst);
+			if(mst)
+				mst.stop();
+		}
+	} catch(e) {
+		// Do nothing if this fails
+	}
+}
+
 Janus.useDefaultDependencies = function (deps) {
 	var f = (deps && deps.fetch) || fetch;
 	var p = (deps && deps.Promise) || Promise;
@@ -276,13 +290,7 @@ Janus.init = function(options) {
 						Janus.debug(devices);
 						callback(devices);
 						// Get rid of the now useless stream
-						try {
-							var tracks = stream.getTracks();
-							for(var mst of tracks) {
-								if(mst)
-									mst.stop();
-							}
-						} catch(e) {}
+						stopAllTracks(stream);
 					});
 				})
 				.catch(function(err) {
@@ -2088,17 +2096,7 @@ function Janus(gatewayCallbacks) {
 			if(media.update) {
 				if(config.myStream && config.myStream !== callbacks.stream && !config.streamExternal) {
 					// We're replacing a stream we captured ourselves with an external one
-					try {
-						// Try a MediaStreamTrack.stop() for each track
-						var tracks = config.myStream.getTracks();
-						for(var mst of tracks) {
-							Janus.log(mst);
-							if(mst)
-								mst.stop();
-						}
-					} catch(e) {
-						// Do nothing if this fails
-					}
+					stopAllTracks(config.myStream);
 					config.myStream = null;
 				}
 			}
@@ -3083,20 +3081,6 @@ function Janus(gatewayCallbacks) {
 
 	function webrtcError(error) {
 		Janus.error("WebRTC error:", error);
-	}
-
-	function stopAllTracks(stream) {
-		try {
-			// Try a MediaStreamTrack.stop() for each track
-			var tracks = stream.getTracks();
-			for(var mst of tracks) {
-				Janus.log(mst);
-				if(mst)
-					mst.stop();
-			}
-		} catch(e) {
-			// Do nothing if this fails
-		}
 	}
 
 	function cleanupWebrtc(handleId, hangupRequest) {
