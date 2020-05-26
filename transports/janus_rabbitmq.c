@@ -20,7 +20,7 @@
  * these requests addressed to Janus should include as part of their payload,
  * when needed, additional pieces of information like \c session_id and
  * \c handle_id. That is, where you'd send a Janus request related to a
- * specific session to the \c /janus/<session> path, with RabbitMQ
+ * specific session to the \c /janus/\<session> path, with RabbitMQ
  * you'd have to send the same request with an additional \c session_id
  * field in the JSON payload.
  * \note When you create a session using RabbitMQ, a subscription to the

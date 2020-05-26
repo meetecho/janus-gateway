@@ -13,7 +13,7 @@
  * WebSockets interface will need to include, when needed, additional
  * pieces of information like \c session_id and \c handle_id. That is,
  * where you'd send a Janus request related to a specific session to the
- * \c /janus/<session> path, with WebSockets you'd have to send the same
+ * \c /janus/\<session> path, with WebSockets you'd have to send the same
  * request with an additional \c session_id field in the JSON payload.
  * The same applies for the handle. The JavaScript library (janus.js)
  * implements all of this on the client side automatically.

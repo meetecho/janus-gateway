@@ -14,7 +14,7 @@
  * REST path, requests sent through the Unix Sockets interface will need
  * to include, when needed, additional pieces of information like
  * \c session_id and \c handle_id. That is, where you'd send a Janus
- * request related to a specific session to the \c /janus/<session> path,
+ * request related to a specific session to the \c /janus/\<session> path,
  * with Unix Sockets you'd have to send the same request with an additional
  * \c session_id field in the JSON payload. The same applies for the handle.
  * \note When you create a session using Unix Sockets, a subscription to
