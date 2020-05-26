@@ -57,7 +57,9 @@ int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers)
 			eventsenabled = FALSE;
 			g_free(server);
 			g_async_queue_unref(events);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			return -1;
 		}
 	}

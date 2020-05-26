@@ -2187,7 +2187,9 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("streaming handler", janus_streaming_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_config_destroy(config);
 		return -1;
 	}
@@ -2384,8 +2386,22 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 	struct ifaddrs *ifas = NULL;
 
 	if(!strcasecmp(request_text, "list")) {
-		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
+		gboolean lock_mp_list = TRUE;
+		if(admin_key != NULL) {
+			json_t *admin_key_json = json_object_get(root, "admin_key");
+			/* Verify admin_key if it was provided */
+			if(admin_key_json != NULL && json_is_string(admin_key_json) && strlen(json_string_value(admin_key_json)) > 0) {
+				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+				if(error_code != 0) {
+					goto prepare_response;
+				} else {
+					lock_mp_list = FALSE;
+				}
+			}
+		}
+		json_t *list = json_array();
 		/* Return a list of all available mountpoints */
 		janus_mutex_lock(&mountpoints_mutex);
 		GHashTableIter iter;
@@ -2393,8 +2409,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		g_hash_table_iter_init(&iter, mountpoints);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_streaming_mountpoint *mp = value;
-			if(mp->is_private) {
-				/* Skip private stream */
+			if(mp->is_private && lock_mp_list) {
+				/* Skip private stream if no valid admin_key was provided */
 				JANUS_LOG(LOG_VERB, "Skipping private mountpoint '%s'\n", mp->description);
 				continue;
 			}
@@ -4709,6 +4725,7 @@ static void *janus_streaming_handler(void *data) {
 					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread",
 						error->code, error->message ? error->message : "??");
+					g_error_free(error);
 					goto error;
 				}
 			} else if(mp->streaming_source == janus_streaming_source_rtp) {
@@ -5362,6 +5379,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 				return -1;
 			}
 			/* TODO IPv6 */
+			family = AF_INET;
 			address.sin_addr.s_addr = mcast;
 		} else {
 			if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
@@ -5958,6 +5976,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
 					error->code, error->message ? error->message : "??");
+				g_error_free(error);
 				janus_refcount_decrease(&live_rtp->ref);	/* This is for the helper thread */
 				g_async_queue_unref(helper->queued_packets);
 				janus_refcount_decrease(&helper->ref);
@@ -5976,7 +5995,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_refcount_increase(&live_rtp->ref);
 	live_rtp->thread = g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtp, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_refcount_decrease(&live_rtp->ref);	/* This is for the failed thread */
 		janus_streaming_mountpoint_destroy(live_rtp);
 		return NULL;
@@ -6096,7 +6117,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		janus_refcount_increase(&file_source->ref);
 		file_source->thread = g_thread_try_new(tname, &janus_streaming_filesource_thread, file_source, &error);
 		if(error != NULL) {
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_refcount_decrease(&file_source->ref);		/* This is for the failed thread */
 			janus_refcount_decrease(&file_source->ref);
 			return NULL;
@@ -6910,7 +6933,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	janus_refcount_increase(&live_rtsp->ref);
 	live_rtsp->thread = g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		janus_mutex_lock(&mountpoints_mutex);
 		g_hash_table_remove(mountpoints_temp, &id);
 		janus_mutex_unlock(&mountpoints_mutex);
@@ -7713,9 +7738,9 @@ static void *janus_streaming_relay_thread(void *data) {
 							memcpy(pkt->data, buffer, bytes);
 							pkt->data->ssrc = htons(1);
 							pkt->data->type = mountpoint->codecs.video_pt;
-							packet.is_rtp = TRUE;
-							packet.is_video = TRUE;
-							packet.is_keyframe = TRUE;
+							pkt->is_rtp = TRUE;
+							pkt->is_video = TRUE;
+							pkt->is_keyframe = TRUE;
 							pkt->length = bytes;
 							pkt->timestamp = source->keyframe.temp_ts;
 							pkt->seq_number = ntohs(rtp->seq_number);
@@ -7755,9 +7780,9 @@ static void *janus_streaming_relay_thread(void *data) {
 									memcpy(pkt->data, buffer, bytes);
 									pkt->data->ssrc = htons(1);
 									pkt->data->type = mountpoint->codecs.video_pt;
-									packet.is_rtp = TRUE;
-									packet.is_video = TRUE;
-									packet.is_keyframe = TRUE;
+									pkt->is_rtp = TRUE;
+									pkt->is_video = TRUE;
+									pkt->is_keyframe = TRUE;
 									pkt->length = bytes;
 									pkt->timestamp = source->keyframe.temp_ts;
 									pkt->seq_number = ntohs(rtp->seq_number);

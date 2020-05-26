@@ -13,7 +13,7 @@
  * WebSockets interface will need to include, when needed, additional
  * pieces of information like \c session_id and \c handle_id. That is,
  * where you'd send a Janus request related to a specific session to the
- * \c /janus/<session> path, with WebSockets you'd have to send the same
+ * \c /janus/\<session> path, with WebSockets you'd have to send the same
  * request with an additional \c session_id field in the JSON payload.
  * The same applies for the handle. The JavaScript library (janus.js)
  * implements all of this on the client side automatically.
@@ -270,6 +270,10 @@ static const char *janus_websockets_reason_string(enum lws_callback_reasons reas
 	}
 	return NULL;
 }
+
+#if (LWS_LIBRARY_VERSION_MAJOR >= 4)
+static lws_retry_bo_t pingpong = { 0 };
+#endif
 
 /* Helper method to return the interface associated with a local IP address */
 static char *janus_websockets_get_interface_name(const char *ip) {
@@ -530,11 +534,21 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
-#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+#if (LWS_LIBRARY_VERSION_MAJOR >= 4)
+		/* libwebsockets 4 has a different API, that works differently
+		 * https://github.com/warmcat/libwebsockets/blob/master/READMEs/README.lws_retry.md */
+		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+			pingpong.secs_since_valid_ping = pingpong_trigger;
+			pingpong.secs_since_valid_hangup = pingpong_trigger + pingpong_timeout;
+			wscinfo.retry_and_idle_policy = &pingpong;
+		}
+#else
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1) || (LWS_LIBRARY_VERSION_MAJOR == 3)
 		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
 			wscinfo.ws_ping_pong_interval = pingpong_trigger;
 			wscinfo.timeout_secs = pingpong_timeout;
 		}
+#endif
 #endif
 		/* Force single-thread server */
 		wscinfo.count_threads = 1;
@@ -804,9 +818,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	/* Start the WebSocket service thread */
 	if(ws_janus_api_enabled || ws_admin_api_enabled) {
 		ws_thread = g_thread_try_new("ws thread", &janus_websockets_thread, wsc, &error);
-		if(!ws_thread) {
+		if(error != NULL) {
 			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			return -1;
 		}
 	}

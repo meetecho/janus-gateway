@@ -321,6 +321,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler client thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 	/* Start another thread to handle incoming events */
@@ -330,6 +331,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 

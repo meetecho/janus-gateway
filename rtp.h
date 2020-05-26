@@ -322,7 +322,6 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *fra
  * @param[in] len The length of the RTP packet (header, extension and payload)
  * @param[in] ssrcs The simulcast SSRCs to refer to (may be updated if rids are involved)
  * @param[in] rids The simulcast rids to refer to, if any
- * @param[in] rid_ext_id The rid RTP extension id to check, if any
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */

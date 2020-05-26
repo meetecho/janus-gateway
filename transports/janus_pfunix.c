@@ -14,7 +14,7 @@
  * REST path, requests sent through the Unix Sockets interface will need
  * to include, when needed, additional pieces of information like
  * \c session_id and \c handle_id. That is, where you'd send a Janus
- * request related to a specific session to the \c /janus/<session> path,
+ * request related to a specific session to the \c /janus/\<session> path,
  * with Unix Sockets you'd have to send the same request with an additional
  * \c session_id field in the JSON payload. The same applies for the handle.
  * \note When you create a session using Unix Sockets, a subscription to
@@ -32,7 +32,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/un.h>
- 
+
 #ifdef  HAVE_LIBSYSTEMD
 #include "systemd/sd-daemon.h"
 #endif /* HAVE_LIBSYSTEMD */
@@ -338,9 +338,11 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	/* Start the Unix Sockets service thread */
 	GError *error = NULL;
 	pfunix_thread = g_thread_try_new("pfunix thread", &janus_pfunix_thread, NULL, &error);
-	if(!pfunix_thread) {
+	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 
