@@ -1629,6 +1629,8 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
+			// close all tracks if the given stream has been created internally
+			if (!callbacks.stream) stopAllTracks(stream);
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -3083,6 +3085,20 @@ function Janus(gatewayCallbacks) {
 		Janus.error("WebRTC error:", error);
 	}
 
+	function stopAllTracks(stream) {
+		try {
+			// Try a MediaStreamTrack.stop() for each track
+			var tracks = stream.getTracks();
+			for(var mst of tracks) {
+				Janus.log(mst);
+				if(mst)
+					mst.stop();
+			}
+		} catch(e) {
+			// Do nothing if this fails
+		}
+	}
+
 	function cleanupWebrtc(handleId, hangupRequest) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
@@ -3130,19 +3146,9 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.tsnow = null;
 			config.bitrate.tsbefore = null;
 			config.bitrate.value = null;
-			try {
-				// Try a MediaStreamTrack.stop() for each track
-				if(!config.streamExternal && config.myStream) {
-					Janus.log("Stopping local stream tracks");
-					var tracks = config.myStream.getTracks();
-					for(var mst of tracks) {
-						Janus.log(mst);
-						if(mst)
-							mst.stop();
-					}
-				}
-			} catch(e) {
-				// Do nothing if this fails
+			if(!config.streamExternal && config.myStream) {
+				Janus.log("Stopping local stream tracks");
+				stopAllTracks(config.myStream);
 			}
 			config.streamExternal = false;
 			config.myStream = null;
