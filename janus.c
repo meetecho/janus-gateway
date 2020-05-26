@@ -3160,7 +3160,9 @@ static void *janus_transport_requests(void *data) {
 			g_thread_pool_push(tasks, request, &tperror);
 			if(tperror != NULL) {
 				/* Something went wrong... */
-				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n",
+					tperror->code, tperror->message ? tperror->message : "??");
+				g_error_free(tperror);
 				json_t *transaction = json_object_get(message, "transaction");
 				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
 				janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
@@ -4784,14 +4786,18 @@ gint main(int argc, char *argv[])
 	GError *error = NULL;
 	GThread *watchdog = g_thread_try_new("timeout watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Start the thread that will dispatch incoming requests */
 	requests = g_async_queue_new_full((GDestroyNotify)janus_request_destroy);
 	GThread *requests_thread = g_thread_try_new("sessions requests", &janus_transport_requests, NULL, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
@@ -4799,7 +4805,9 @@ gint main(int argc, char *argv[])
 	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Wait 120 seconds before stopping idle threads to avoid the creation of too many threads for AddressSanitizer. */

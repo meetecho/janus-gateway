@@ -576,6 +576,7 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Duktape pushevent thread...\n",
 				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			json_decref(event);
 			json_decref(jsep);
 			g_free(asev->transaction);
@@ -1524,6 +1525,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&duktape_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Duktape scheduler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		duk_destroy_heap(duktape_ctx);
 		g_free(duktape_folder);
 		g_free(duktape_file);
@@ -1538,6 +1540,7 @@ int janus_duktape_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&duktape_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Duktape timer loop thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		if(timer_loop != NULL)
 			g_main_loop_unref(timer_loop);
 		if(timer_context != NULL)

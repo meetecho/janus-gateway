@@ -147,7 +147,7 @@ void janus_set_slowlink_threshold(uint packets);
  * @returns The current slowlink-threshold value */
 uint janus_get_slowlink_threshold(void);
 /*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
- * @param[in] timer The new period value, in milliseconds */
+ * @param[in] period The new period value, in milliseconds */
 void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
