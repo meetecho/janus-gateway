@@ -909,7 +909,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug(json);
 				if(json["janus"] !== "success") {
 					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
-					callbacks.error(json["error"].reason);
+					callbacks.error(json["error"]);
 					return;
 				}
 				connected = true;
