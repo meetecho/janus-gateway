@@ -7037,7 +7037,7 @@ static void *janus_videoroom_handler(void *data) {
 							/* It isn't, fallback to checking whether VP9 is available without the profile */
 							vp9_profile = NULL;
 						} else if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_H264 && h264_profile) {
-							/* Check if this VP9 profile is available */
+							/* Check if this H.264 profile is available */
 							if(janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(videoroom->vcodec[i]), h264_profile) != -1) {
 								/* It is */
 								vp9_profile = NULL;
