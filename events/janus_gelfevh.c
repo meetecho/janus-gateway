@@ -139,10 +139,11 @@ static struct janus_json_parameter tweak_parameters[] = {
 static char *randstring(size_t length) {
 	static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	char *randomString = NULL;
+	int n;
 	if(length) {
 		randomString = g_malloc(sizeof(char) * (length + 1));
 		if(randomString) {
-			for(int n = 0; n < (int)length; n++) {
+			for(n = 0; n < (int)length; n++) {
 				int key = rand() % (int)(sizeof(charset) - 1);
 				randomString[n] = charset[key];
 			}
@@ -246,7 +247,8 @@ static int janus_gelfevh_send(char *message) {
 		} else {
 			int offset = 0;
 			char *rnd = randstring(8);
-			for(int i = 0; i < total; i++) {
+			int i;
+			for(i = 0; i < total; i++) {
 				int bytesToSend = ((offset + max_gelf_msg_len) < len) ? max_gelf_msg_len : (len - offset);
 				/* Prepend the necessary headers (imitate TCP) */
 				char chunk[bytesToSend + 12];
