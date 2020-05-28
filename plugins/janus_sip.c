@@ -1060,12 +1060,10 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->account.authuser);
 		session->account.authuser = NULL;
 	}
-	janus_mutex_lock(&session->mutex);
 	if(session->callee) {
 		g_free(session->callee);
 		session->callee = NULL;
 	}
-	janus_mutex_unlock(&session->mutex);
 	if(session->callid) {
 		g_hash_table_remove(callids, session->callid);
 		g_free(session->callid);
