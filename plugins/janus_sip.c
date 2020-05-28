@@ -2447,6 +2447,9 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 	/* Involve SIP if needed */
 	janus_mutex_lock(&session->mutex);
 	if(session->stack->s_nh_i != NULL && session->callee != NULL) {
+		g_free(session->callee);
+		session->callee = NULL;
+		janus_mutex_unlock(&session->mutex);
 		/* Send a BYE */
 		session->media.earlymedia = FALSE;
 		session->media.update = FALSE;
@@ -2455,8 +2458,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.on_hold = FALSE;
 		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 		nua_bye(session->stack->s_nh_i, TAG_END());
-		g_free(session->callee);
-		session->callee = NULL;
 		/* Notify the operation */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -2467,8 +2468,9 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(event);
+	} else {
+		janus_mutex_unlock(&session->mutex);
 	}
-	janus_mutex_unlock(&session->mutex);
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -3378,9 +3380,9 @@ static void *janus_sip_handler(void *data) {
 			janus_mutex_lock(&session->mutex);
 			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
+			janus_mutex_unlock(&session->mutex);
 			g_free(session->callid);
 			session->callid = callid;
-			janus_mutex_unlock(&session->mutex);
 			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
@@ -4218,6 +4220,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
@@ -4227,11 +4230,9 @@ static void *janus_sip_handler(void *data) {
 			}
 			const char *msg_content = json_string_value(json_object_get(root, "content"));
 			nua_message(session->stack->s_nh_i,
-				NUTAG_URL(session->callee),
 				SIPTAG_CONTENT_TYPE_STR("text/plain"),
 				SIPTAG_PAYLOAD_STR(msg_content),
 				TAG_END());
-			janus_mutex_unlock(&session->mutex);
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("messagesent"));
