@@ -2122,7 +2122,6 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	janus_mutex_lock(&session->mutex);
 	if(session->helpers != NULL)
 		json_object_set_new(info, "helpers", json_integer(g_list_length(session->helpers)));
-	janus_mutex_unlock(&session->mutex);
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee));
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
@@ -2131,6 +2130,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "sdes-remote-audio", json_string(session->media.has_srtp_remote_audio ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote-video", json_string(session->media.has_srtp_remote_video ? "yes" : "no"));
 	}
+	janus_mutex_unlock(&session->mutex);
 	if(session->arc || session->vrc || session->arc_peer || session->vrc_peer) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
@@ -2467,7 +2467,11 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	}
 	/* Involve SIP if needed */
+	janus_mutex_lock(&session->mutex);
 	if(session->stack->s_nh_i != NULL && session->callee != NULL) {
+		g_free(session->callee);
+		session->callee = NULL;
+		janus_mutex_unlock(&session->mutex);
 		/* Send a BYE */
 		session->media.earlymedia = FALSE;
 		session->media.update = FALSE;
@@ -2476,8 +2480,6 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		session->media.on_hold = FALSE;
 		janus_sip_call_update_status(session, janus_sip_call_status_closing);
 		nua_bye(session->stack->s_nh_i, TAG_END());
-		g_free(session->callee);
-		session->callee = NULL;
 		/* Notify the operation */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
@@ -2488,6 +2490,8 @@ static void janus_sip_hangup_media_internal(janus_plugin_session *handle) {
 		int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(event);
+	} else {
+		janus_mutex_unlock(&session->mutex);
 	}
 	g_atomic_int_set(&session->establishing, 0);
 	g_atomic_int_set(&session->established, 0);
@@ -3395,8 +3399,10 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 			/* Send INVITE */
+			janus_mutex_lock(&session->mutex);
 			g_free(session->callee);
 			session->callee = g_strdup(uri_text);
+			janus_mutex_unlock(&session->mutex);
 			g_free(session->callid);
 			session->callid = callid;
 			janus_mutex_lock(&sessions_mutex);
@@ -3429,12 +3435,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_call_status_string(session->status));
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no caller?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no caller?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, accept_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
@@ -3608,12 +3617,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			if(session->sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (no local SDP?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
@@ -3801,12 +3813,15 @@ static void *janus_sip_handler(void *data) {
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				//~ goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			session->media.earlymedia = FALSE;
 			session->media.update = FALSE;
 			session->media.autoaccept_reinvites = TRUE;
@@ -3825,6 +3840,7 @@ static void *janus_sip_handler(void *data) {
 				response_code = 486;
 			}
 			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
+			janus_mutex_lock(&session->mutex);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -3837,6 +3853,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_free(session->callee);
 			session->callee = NULL;
+			janus_mutex_unlock(&session->mutex);
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("declining"));
@@ -3853,12 +3870,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			if(session->sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (no local SDP?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
@@ -3917,12 +3937,15 @@ static void *janus_sip_handler(void *data) {
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				//~ goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			if(session->sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Wrong state (no SDP?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
@@ -3991,12 +4014,15 @@ static void *janus_sip_handler(void *data) {
 				janus_sip_message_free(msg);
 				continue;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			session->media.earlymedia = FALSE;
 			session->media.update = FALSE;
 			session->media.autoaccept_reinvites = TRUE;
@@ -4008,8 +4034,10 @@ static void *janus_sip_handler(void *data) {
 			nua_bye(session->stack->s_nh_i,
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				TAG_END());
+			janus_mutex_lock(&session->mutex);
 			g_free(session->callee);
 			session->callee = NULL;
+			janus_mutex_unlock(&session->mutex);
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("hangingup"));
@@ -4021,12 +4049,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
@@ -4194,12 +4225,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, info_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
@@ -4222,20 +4256,24 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
+			if(error_code != 0) {
+				janus_mutex_unlock(&session->mutex);
 				goto error;
+			}
 			const char *msg_content = json_string_value(json_object_get(root, "content"));
 			nua_message(session->stack->s_nh_i,
-				NUTAG_URL(session->callee),
 				SIPTAG_CONTENT_TYPE_STR("text/plain"),
 				SIPTAG_PAYLOAD_STR(msg_content),
 				TAG_END());
@@ -4251,12 +4289,15 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				goto error;
 			}
+			janus_mutex_lock(&session->mutex);
 			if(session->callee == NULL) {
+				janus_mutex_unlock(&session->mutex);
 				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			janus_mutex_unlock(&session->mutex);
 			JANUS_VALIDATE_JSON_OBJECT(root, dtmf_info_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
@@ -4588,10 +4629,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 			}
 			if(!reinvite) {
+				janus_mutex_lock(&session->mutex);
 				/* New incoming call */
 				g_free(session->callee);
 				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 				session->callee = g_strdup(caller_text);
+				janus_mutex_unlock(&session->mutex);
 				su_free(session->stack->s_home, caller_text);
 				g_free(session->callid);
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
@@ -5122,8 +5165,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->media.on_hold = FALSE;
 				janus_sip_call_update_status(session, janus_sip_call_status_closing);
 				nua_bye(nh, TAG_END());
+				janus_mutex_lock(&session->mutex);
 				g_free(session->callee);
 				session->callee = NULL;
+				janus_mutex_unlock(&session->mutex);
 				break;
 			}
 			if(!session->media.remote_audio_ip && !session->media.remote_video_ip) {
@@ -5138,8 +5183,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->media.on_hold = FALSE;
 				janus_sip_call_update_status(session, janus_sip_call_status_closing);
 				nua_bye(nh, TAG_END());
+				janus_mutex_lock(&session->mutex);
 				g_free(session->callee);
 				session->callee = NULL;
+				janus_mutex_unlock(&session->mutex);
 				break;
 			}
 			if(session->media.audio_pt > -1) {
