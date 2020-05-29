@@ -1717,7 +1717,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		if(item && item->value)
 			keepalive_interval = atoi(item->value);
 		if(keepalive_interval < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid SIP keep-alive interval: %s (falling back to default)\n", item->value);
+			JANUS_LOG(LOG_ERR, "Invalid SIP keep-alive interval: %d (falling back to default)\n", keepalive_interval);
 			keepalive_interval = 120;
 		} else {
 			JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
