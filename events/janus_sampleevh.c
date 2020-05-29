@@ -374,7 +374,7 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		if(json_object_get(request, "compress"))
 			req_compress = json_is_true(json_object_get(request, "compress"));
 		if(json_object_get(request, "compression"))
-			req_compress = json_integer_value(json_object_get(request, "compression"));
+			req_compression = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));

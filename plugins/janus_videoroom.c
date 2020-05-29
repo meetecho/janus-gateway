@@ -1847,6 +1847,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
+			close(fd);
 			return 0;
 		}
 		struct sockaddr_in6 address = { 0 };

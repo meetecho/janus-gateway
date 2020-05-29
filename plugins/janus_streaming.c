@@ -6063,9 +6063,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
 	if(strstr(filename, ".opus")) {
 		file_source_source->opus = TRUE;
-		file_source->codecs.audio_pt = doaudio ? acodec : -1;
-		file_source->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
-		file_source->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
+		file_source->codecs.audio_pt = acodec;
+		file_source->codecs.audio_rtpmap = g_strdup(artpmap);
+		file_source->codecs.audio_fmtp = afmtp ? g_strdup(afmtp) : NULL;
 	} else {
 		file_source->codecs.audio_pt = strstr(filename, ".alaw") ? 8 : 0;
 		file_source->codecs.audio_rtpmap = g_strdup(strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");

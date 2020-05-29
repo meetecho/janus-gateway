@@ -192,6 +192,7 @@ static int janus_gelfevh_connect(void) {
 	return 0;
 }
 
+static char compressed_text[8192];
 static int janus_gelfevh_send(char *message) {
 	if(!message) {
 		JANUS_LOG(LOG_WARN, "Message is NULL, not sending to GELF!\n");
@@ -217,7 +218,6 @@ static int janus_gelfevh_send(char *message) {
 		int len = strlen(message);
 		char *buf = message;
 		if(compress) {
-			char compressed_text[8192];
 			size_t compressed_len = 0;
 			compressed_len = janus_gzip_compress(compression,
 				message, strlen(message),
@@ -495,7 +495,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 			goto plugin_response;
 		/* Parameters we can change */
 		const char *req_events = NULL, *req_backend = NULL, *req_port = NULL;
-		int req_compress = -1, req_compression = -1;
+		gboolean req_compress = -1, req_compression = -1;
 		/* Events */
 		if(json_object_get(request, "events"))
 			req_events = json_string_value(json_object_get(request, "events"));
@@ -503,7 +503,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if(json_object_get(request, "compress"))
 			req_compress = json_is_true(json_object_get(request, "compress"));
 		if(json_object_get(request, "compression"))
-			req_compress = json_integer_value(json_object_get(request, "compression"));
+			req_compression = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));
@@ -530,7 +530,7 @@ json_t *janus_gelfevh_handle_request(json_t *request) {
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_gelfevh.events_mask);
 		if(req_compress > -1) {
-			if(transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
+			if(req_compress && transport == JANUS_GELFEVH_SOCKET_TYPE_TCP) {
 				compress = FALSE;
 				JANUS_LOG(LOG_WARN, "Compression on TCP Gelf transport not allowed, disabling...\n");
 			} else {

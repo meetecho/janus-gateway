@@ -1935,14 +1935,14 @@ static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[
 		if(rtp_fd == -1) {
 			rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			/* Set the DSCP value if set in the config file */
-			if(!video && dscp_audio_rtp > 0) {
+			if(rtp_fd != -1 && !video && dscp_audio_rtp > 0) {
 				int optval = dscp_audio_rtp << 2;
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {
 					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
 						optval, strerror(errno));
 				}
-			} else if(video && dscp_video_rtp > 0) {
+			} else if(rtp_fd != -1 && video && dscp_video_rtp > 0) {
 				int optval = dscp_video_rtp << 2;
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {

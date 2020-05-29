@@ -1727,7 +1727,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		if(item && item->value)
 			register_ttl = atoi(item->value);
 		if(register_ttl < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid SIP registration TTL: %s (falling back to default)\n", item->value);
+			JANUS_LOG(LOG_ERR, "Invalid SIP registration TTL: %d (falling back to default)\n", register_ttl);
 			register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 		} else {
 			JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
@@ -5826,7 +5826,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			if(session->media.audio_rtp_fd == -1) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 				/* Set the DSCP value if set in the config file */
-				if(dscp_audio_rtp > 0) {
+				if(session->media.audio_rtp_fd != -1 && dscp_audio_rtp > 0) {
 					int optval = dscp_audio_rtp << 2;
 					int ret = setsockopt(session->media.audio_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 					if(ret < 0) {
@@ -5884,7 +5884,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session, gboolean u
 			if(session->media.video_rtp_fd == -1) {
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 				/* Set the DSCP value if set in the config file */
-				if(dscp_video_rtp > 0) {
+				if(session->media.video_rtp_fd != -1 && dscp_video_rtp > 0) {
 					int optval = dscp_video_rtp << 2;
 					int ret = setsockopt(session->media.video_rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 					if(ret < 0) {
