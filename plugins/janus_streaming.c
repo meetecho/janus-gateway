@@ -6313,16 +6313,12 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	if(vresult != -1) {
 		/* Identify video codec (useful for keyframe detection) */
 		mp->codecs.video_codec = JANUS_VIDEOCODEC_NONE;
-		if(vrtpmap) {
-			if(strstr(vrtpmap, "vp8") || strstr(vrtpmap, "VP8"))
-				mp->codecs.video_codec = JANUS_VIDEOCODEC_VP8;
-			else if(strstr(vrtpmap, "vp9") || strstr(vrtpmap, "VP9"))
-				mp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
-			else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
-				mp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
-
-			JANUS_LOG(LOG_VERB, "Found video codec: %s\n", janus_videocodec_name(mp->codecs.video_codec));
-		}
+		if(strstr(vrtpmap, "vp8") || strstr(vrtpmap, "VP8"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_VP8;
+		else if(strstr(vrtpmap, "vp9") || strstr(vrtpmap, "VP9"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
+		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
 
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
