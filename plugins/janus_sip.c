@@ -930,6 +930,7 @@ typedef struct janus_sip_media {
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
+	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
 	gboolean audio_send;
 	janus_sdp_mdirection pre_hold_audio_dir;
 	gboolean has_video;
@@ -942,6 +943,7 @@ typedef struct janus_sip_media {
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
+	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send;
 	janus_sdp_mdirection pre_hold_video_dir;
 	janus_rtp_switching_context context;
@@ -1319,6 +1321,14 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
+	if(session->media.audio_srtp_local_profile) {
+		g_free(session->media.audio_srtp_local_profile);
+		session->media.audio_srtp_local_profile = NULL;
+	}
+	if(session->media.audio_srtp_local_crypto) {
+		g_free(session->media.audio_srtp_local_crypto);
+		session->media.audio_srtp_local_crypto = NULL;
+	}
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
@@ -1330,6 +1340,14 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
+	if(session->media.video_srtp_local_profile) {
+		g_free(session->media.video_srtp_local_profile);
+		session->media.video_srtp_local_profile = NULL;
+	}
+	if(session->media.video_srtp_local_crypto) {
+		g_free(session->media.video_srtp_local_crypto);
+		session->media.video_srtp_local_crypto = NULL;
+	}
 }
 
 static void janus_sip_media_reset(janus_sip_session *session) {
@@ -1943,6 +1961,10 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.has_srtp_remote_audio = FALSE;
 	session->media.has_srtp_remote_video = FALSE;
 	session->media.srtp_profile = 0;
+	session->media.audio_srtp_local_profile = NULL;
+	session->media.audio_srtp_local_crypto = NULL;
+	session->media.video_srtp_local_profile = NULL;
+	session->media.video_srtp_local_crypto = NULL;
 	session->media.on_hold = FALSE;
 	session->media.has_audio = FALSE;
 	session->media.audio_rtp_fd = -1;
@@ -3649,6 +3671,28 @@ static void *janus_sip_handler(void *data) {
 				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			if(video_added)
 				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
+
+			if(offer) {
+				gboolean offer_srtp = session->media.require_srtp || session->media.has_srtp_local_audio || session->media.has_srtp_local_video;
+				session->media.has_srtp_local_audio = offer_srtp;
+				session->media.has_srtp_local_video = offer_srtp;
+			} else {
+				gboolean has_srtp = TRUE;
+				if (session->media.has_audio)
+					has_srtp = (has_srtp && session->media.has_srtp_remote_audio);
+				if (session->media.has_video)
+					has_srtp = (has_srtp && session->media.has_srtp_remote_video);
+				if (session->media.require_srtp && !has_srtp) {
+					JANUS_LOG(LOG_ERR,
+						  "Can't update the call: SDES-SRTP required, but caller didn't offer it\n");
+					error_code = JANUS_SIP_ERROR_TOO_STRICT;
+					g_snprintf(error_cause, 512,
+						   "Can't update the call: SDES-SRTP required, but caller didn't offer it");
+					goto error;
+				}
+				session->media.has_srtp_local_audio = session->media.has_srtp_remote_audio;
+				session->media.has_srtp_local_video = session->media.has_srtp_remote_video;
+			}
 			if(audio_added || video_added) {
 				if(janus_sip_allocate_local_ports(session, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -5537,6 +5581,11 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 			if(a->name) {
 				if(!strcasecmp(a->name, "crypto")) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
+						if((m->type == JANUS_SDP_AUDIO && session->media.audio_srtp_in != NULL) || (m->type == JANUS_SDP_VIDEO && session->media.video_srtp_in != NULL)) {
+							/* Remote SRTP is already set */
+							tempA = tempA->next;
+							continue;
+						}
 						gint32 tag = 0;
 						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
@@ -5606,23 +5655,19 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
 			if(session->media.has_srtp_local_audio) {
-				char *profile = NULL;
-				char *crypto = NULL;
-				janus_sip_srtp_set_local(session, FALSE, &profile, &crypto);
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
-				g_free(profile);
-				g_free(crypto);
+				if(!session->media.audio_srtp_local_profile || !session->media.audio_srtp_local_crypto) {
+					janus_sip_srtp_set_local(session, FALSE, &session->media.audio_srtp_local_profile, &session->media.audio_srtp_local_crypto);
+				}
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.audio_srtp_local_profile, session->media.audio_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
 			if(session->media.has_srtp_local_video) {
-				char *profile = NULL;
-				char *crypto = NULL;
-				janus_sip_srtp_set_local(session, TRUE, &profile, &crypto);
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
-				g_free(profile);
-				g_free(crypto);
+				if(!session->media.video_srtp_local_profile || !session->media.video_srtp_local_crypto) {
+					janus_sip_srtp_set_local(session, TRUE, &session->media.video_srtp_local_profile, &session->media.video_srtp_local_crypto);
+				}
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.video_srtp_local_profile, session->media.video_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}
