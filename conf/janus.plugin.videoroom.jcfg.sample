@@ -47,19 +47,21 @@ general: {
 
 	# By default, integers are used as a unique ID for both rooms and participants.
 	# In case you want to use strings instead (e.g., a UUID), set string_ids to true.
-	#string_ids = true
+        string_ids = true
+        plugin_auth_secret="SECRET_FOR_CREATE_JOIN_TOKEN" #Secret Key
+        token_ttl_ms=300000 #Autentication token time to live 
+        rtsp_url="rtsp://PUBLISHING_URL_INCLUDE_FILE_PREFIX"
 }
-
 room-1234: {
-	description = "Demo Room"
-	secret = "adminpwd"
-	publishers = 6
-	bitrate = 128000
-	fir_freq = 10
-	#audiocodec = "opus"
-	#videocodec = "vp8"
-	record = false
-	#rec_dir = "/path/to/recordings-folder"
+    description = "Demo Room"
+    secret = "adminpwd"
+    publishers = 6
+    bitrate = 128000
+    fir_freq = 10
+    #audiocodec = "opus"
+    #videocodec = "vp8"
+    record = false
+    #rec_dir = "/path/to/recordings-folder"
 }
 
 # This other demo room here is only there in case you want to play with
@@ -68,11 +70,11 @@ room-1234: {
 # plain VP9 (which is good if you want to test how this indeed affect
 # what receivers will get, whether they're encoding SVC or not).
 room-5678: {
-	description = "VP9-SVC Demo Room"
-	secret = "adminpwd"
-	publishers = 6
-	bitrate = 512000
-	fir_freq = 10
-	videocodec = "vp9"
-	video_svc = true
+    description = "VP9-SVC Demo Room"
+    secret = "adminpwd"
+    publishers = 6
+    bitrate = 512000
+    fir_freq = 10
+    videocodec = "vp9"
+    video_svc = true
 }
