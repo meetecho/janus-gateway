@@ -39,6 +39,16 @@ static gboolean auth_enabled = FALSE;
 static janus_mutex mutex;
 static char *auth_secret = NULL;
 
+
+/**********************************************************************************************
+ ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+ **********************************************************************************************/
+static char *carbyne_shc_auth_secret = NULL;
+/**********************************************************************************************
+************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+**********************************************************************************************/
+
+
 static void janus_auth_free_token(char *token) {
 	g_free(token);
 }
@@ -62,6 +72,27 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 	janus_mutex_init(&mutex);
 }
 
+
+
+/**********************************************************************************************
+ ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+ **********************************************************************************************/
+void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
+{
+    if(secret == NULL) {
+        JANUS_LOG(LOG_WARN, "SanityHealthChek -Token based authentication enabled use default secretjanus\n");
+        carbyne_shc_auth_secret =g_strdup("secretjanus"); 
+    } else {
+        JANUS_LOG(LOG_WARN, "Signed-Token based authentication enabled, use secret: %s\n", secret);
+        carbyne_shc_auth_secret = g_strdup(secret);
+    }
+}
+/**********************************************************************************************
+************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+**********************************************************************************************/
+
+
+
 gboolean janus_auth_is_enabled(void) {
 	return auth_enabled;
 }
@@ -82,6 +113,45 @@ void janus_auth_deinit(void) {
 	auth_secret = NULL;
 	janus_mutex_unlock(&mutex);
 }
+
+
+
+/**********************************************************************************************
+ ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+ **********************************************************************************************/
+gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char *token) {
+    if ( carbyne_shc_auth_secret == NULL)
+            return FALSE;
+    gsize out_len=0;
+    unsigned char padded[512];
+    g_snprintf(padded, sizeof(padded), "%s====",token);
+    gchar *cleartoken=(gchar *)g_base64_decode ((const gchar *)padded, &out_len);
+    gchar **parts = g_strsplit(cleartoken, ":", 3);
+    if(!parts[0] || !parts[1] || parts[2] )
+            goto fail;
+
+    /* Verify HMAC-SHA256 */
+    unsigned char signature[EVP_MAX_MD_SIZE];
+    unsigned int len=0;
+    HMAC(EVP_sha256(), carbyne_shc_auth_secret, strlen(carbyne_shc_auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
+    gchar *base64 = g_base64_encode(signature, len);
+    gboolean result = janus_strcmp_const_time(parts[1], base64);
+
+    g_free(cleartoken);
+    g_strfreev(parts);
+    g_free(base64);
+    return result;
+fail:
+    g_free(cleartoken);
+    g_strfreev(parts);
+    return FALSE;
+}
+/**********************************************************************************************
+************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+**********************************************************************************************/
+
+
+
 
 gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	if (!auth_enabled || auth_secret == NULL)

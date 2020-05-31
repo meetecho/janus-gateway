@@ -42,6 +42,18 @@
 #include "events.h"
 
 
+
+/**********************************************************************************************
+************************ Carbyne - START SECTION - SanityHealthCheck *************************
+**********************************************************************************************/
+#include <sys/statvfs.h>
+/**********************************************************************************************
+************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+**********************************************************************************************/
+
+
+
+
 #define JANUS_NAME				"Janus WebRTC Server"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SERVER_NAME		"MyJanusInstance"
@@ -499,6 +511,22 @@ gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+
+
+
+
+/**********************************************************************************************
+************************ Carbyne - START SECTION - SanityHealthCheck *************************
+**********************************************************************************************/
+gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token);
+gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_transport *plugin);
+/**********************************************************************************************
+************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+**********************************************************************************************/
+
+
+
+
 void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event);
 
 static janus_transport_callbacks janus_handler_transport =
@@ -509,6 +537,20 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
+
+
+
+                /**********************************************************************************************
+		 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+		 **********************************************************************************************/
+		.carbyne_is_sanityhealthcheck_token_valid = carbyne_janus_transport_is_sanityhealthcheck_token_valid,
+                .carbyne_is_sanityhealthcheck_resources_available = carbyne_janus_transport_is_sanityhealthcheck_resources_available,
+ 		/**********************************************************************************************
+		 ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+		 **********************************************************************************************/
+
+
+
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_transport_notify_event,
 	};
@@ -3108,6 +3150,43 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	return token && janus_auth_check_token(token);
 }
 
+
+
+
+/**********************************************************************************************
+ ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+ **********************************************************************************************/
+gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token) {
+    return token && carbyne_janus_auth_sanityhealthcheck_signature(token);
+}
+
+gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_transport *plugin) {
+	//PVL
+  	struct statvfs stat;
+  	const char* path="/";
+  	int diskSpaceThreshold=10;
+  	if (statvfs(path, &stat) < 0) {
+  	  	// error happens, just quits here
+  	  	JANUS_LOG(LOG_ERR, "Invalid request to statvfs\n");
+  	  	return FALSE;
+  	}
+  	long precent = stat.f_bavail * 100 / stat.f_blocks * stat.f_bsize / stat.f_frsize;
+  	// the available size is f_bsize * f_bavail
+  	if( precent < diskSpaceThreshold) {
+  	   	JANUS_LOG(LOG_ERR, "Available Disk for path:%s  precent %ld is less than threshold:%d \n",path,precent, diskSpaceThreshold);  
+  	   	return FALSE;
+  	}
+  	return TRUE;
+}
+/**********************************************************************************************
+ ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+ **********************************************************************************************/
+
+
+
+
+
+
 void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
 	if(!plugin || !event || !json_is_object(event))
@@ -4448,7 +4527,28 @@ gint main(int argc, char *argv[])
 	const char *auth_secret = NULL;
 	if (item && item->value)
 		auth_secret = item->value;
-	janus_auth_init(auth_enabled, auth_secret);
+
+
+
+        /**********************************************************************************************
+	 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
+	 **********************************************************************************************/
+	item = janus_config_get(config, config_general, janus_config_type_item, "sanity_hc_auth_secret");
+        const char *shc_auth_secret = NULL;
+        if (item && item->value)
+        {
+		shc_auth_secret = item->value;
+	}
+        carbyne_janus_sanityhealthcheck_auth_init(shc_auth_secret);
+	/**********************************************************************************************
+	 ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
+	 **********************************************************************************************/
+
+
+
+
+
+        janus_auth_init(auth_enabled, auth_secret);
 
 	/* Check if opaque IDs should be sent back in the Janus API too */
 	item = janus_config_get(config, config_general, janus_config_type_item, "opaqueid_in_api");
