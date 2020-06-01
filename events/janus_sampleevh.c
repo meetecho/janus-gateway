@@ -261,7 +261,9 @@ int janus_sampleevh_init(const char *config_path) {
 	handler_thread = g_thread_try_new("janus sampleevh handler", janus_sampleevh_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SAMPLEEVH_NAME);
@@ -372,7 +374,7 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		if(json_object_get(request, "compress"))
 			req_compress = json_is_true(json_object_get(request, "compress"));
 		if(json_object_get(request, "compression"))
-			req_compress = json_integer_value(json_object_get(request, "compression"));
+			req_compression = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));

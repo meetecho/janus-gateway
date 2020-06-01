@@ -589,6 +589,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start HTTP timer...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 

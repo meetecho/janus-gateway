@@ -119,14 +119,22 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+								},
 								onmessage: function(msg, jsep) {
-									Janus.debug(" ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug(" ::: Got a message :::", msg);
 									var event = msg["voicemail"];
 									Janus.debug("Event: " + event);
-									if(event != undefined && event != null) {
+									if(event) {
 										if(event === "event") {
-											if(msg["status"] !== undefined && msg["status"] !== null) {
+											if(msg["status"]) {
 												var status = msg["status"];
 												if(status === 'starting') {
 													$('#record')
@@ -158,17 +166,16 @@ $(document).ready(function() {
 													$('#done').removeClass('hide').show();
 													vmailtest.hangup();
 												}
-											} else if(msg["error"] !== undefined && msg["error"] !== null) {
+											} else if(msg["error"]) {
 												bootbox.alert(msg["error"], function() {
 													window.location.reload();
 												});
 											}
 										}
 									}
-									if(jsep !== undefined && jsep !== null) {
-										Janus.debug("Handling SDP as well...");
-										Janus.debug(jsep);
-										vmailtest.handleRemoteJsep({jsep: jsep});
+									if(jsep) {
+										Janus.debug("Handling SDP as well...", jsep);
+										vmailtest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
 								onlocalstream: function(stream) {
@@ -202,14 +209,13 @@ function startRecording() {
 		{
 			media: { audioRecv: false, video: false},	// We're going to only send, and not receive, audio
 			success: function(jsep) {
-				Janus.debug("Got SDP!");
-				Janus.debug(jsep);
-				var publish = { "request": "record" };
-				vmailtest.send({"message": publish, "jsep": jsep});
+				Janus.debug("Got SDP!", jsep);
+				var publish = { request: "record" };
+				vmailtest.send({ message: publish, jsep: jsep });
 			},
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
-				bootbox.alert("WebRTC error... " + JSON.stringify(error));
+				bootbox.alert("WebRTC error... " + error.message);
 			}
 		});
 }

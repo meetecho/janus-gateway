@@ -166,6 +166,7 @@ void janus_ice_set_static_event_loops(int loops) {
 			g_free(loop);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch a new event loop thread...\n",
 				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 		} else {
 			event_loops = g_slist_append(event_loops, loop);
 			static_event_loops++;
@@ -1269,6 +1270,7 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 			/* FIXME We should clear some resources... */
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the handle thread...\n",
 				handle->handle_id, terror->code, terror->message ? terror->message : "??");
+			g_error_free(terror);
 			janus_refcount_decrease(&handle->ref);	/* This is for the thread reference we just added */
 			janus_ice_handle_destroy(session, handle);
 			return -1;
@@ -1415,6 +1417,7 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE);
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
@@ -1457,6 +1460,7 @@ static void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) && handle->hangup_reason) {
 		janus_ice_notify_hangup(handle, handle->hangup_reason);
 	}
@@ -2537,6 +2541,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							stream->video_is_keyframe = &janus_vp9_is_keyframe;
 						else if(!strcasecmp(stream->video_codec, "h264"))
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "av1"))
+							stream->video_is_keyframe = &janus_av1_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "h265"))
+							stream->video_is_keyframe = &janus_h265_is_keyframe;
 					}
 				}
 				/* Prepare the data to pass to the responsible plugin */
@@ -3720,8 +3728,10 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
 				stream->video_ssrc, stream->video_ssrc_peer[0], feedback_packet_count, packets_to_process);
 			/* Enqueue it, we'll send it later */
-			janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = len };
-			janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
+			if(len > 0) {
+				janus_plugin_rtcp rtcp = { .video = TRUE, .buffer = rtcpbuf, .length = len };
+				janus_ice_relay_rtcp_internal(handle, &rtcp, FALSE);
+			}
 			if(packets_to_process != packets) {
 				g_queue_free(packets_to_process);
 			}
@@ -4313,6 +4323,10 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							stream->video_is_keyframe = &janus_vp9_is_keyframe;
 						else if(!strcasecmp(stream->video_codec, "h264"))
 							stream->video_is_keyframe = &janus_h264_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "av1"))
+							stream->video_is_keyframe = &janus_av1_is_keyframe;
+						else if(!strcasecmp(stream->video_codec, "h265"))
+							stream->video_is_keyframe = &janus_h265_is_keyframe;
 					}
 				}
 				/* Do we need to dump this packet for debugging? */

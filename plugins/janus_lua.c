@@ -500,11 +500,14 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		asev->transaction = transaction ? g_strdup(transaction) : NULL;
 		asev->event = event;
 		asev->jsep = jsep;
+		if(json_is_true(json_object_get(jsep, "e2ee")))
+			session->e2ee = TRUE;
 		GError *error = NULL;
 		g_thread_try_new("lua pushevent", janus_lua_async_event_helper, asev, &error);
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua pushevent thread...\n",
 				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			json_decref(event);
 			json_decref(jsep);
 			g_free(asev->transaction);
@@ -1071,18 +1074,27 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		}
 		if(!strcasecmp(type, "audio")) {
 			if(arc != NULL || session->arc != NULL) {
+				janus_recorder_destroy(rc);
 				JANUS_LOG(LOG_ERR, "Duplicate audio recording\n");
 				goto error;
 			}
+			/* If media is encrypted, mark it in the recording */
+			if(session->e2ee)
+				janus_recorder_encrypted(rc);
 			arc = rc;
 		} else if(!strcasecmp(type, "video")) {
 			if(vrc != NULL || session->vrc != NULL) {
+				janus_recorder_destroy(rc);
 				JANUS_LOG(LOG_ERR, "Duplicate video recording\n");
 				goto error;
 			}
+			/* If media is encrypted, mark it in the recording */
+			if(session->e2ee)
+				janus_recorder_encrypted(rc);
 			vrc = rc;
 		} else if(!strcasecmp(type, "data")) {
 			if(drc != NULL || session->drc != NULL) {
+				janus_recorder_destroy(rc);
 				JANUS_LOG(LOG_ERR, "Duplicate data recording\n");
 				goto error;
 			}
@@ -1352,6 +1364,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&lua_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua scheduler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		lua_close(lua_state);
 		g_free(lua_folder);
 		g_free(lua_file);
@@ -1366,6 +1379,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		g_atomic_int_set(&lua_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua timer loop thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		if(timer_loop != NULL)
 			g_main_loop_unref(timer_loop);
 		if(timer_context != NULL)
@@ -1744,7 +1758,11 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 	}
 	char *jsep_text = jsep ? json_dumps(jsep, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
-	json_decref(jsep);
+	if(jsep != NULL) {
+		if(json_is_true(json_object_get(jsep, "e2ee")))
+			session->e2ee = TRUE;
+		json_decref(jsep);
+	}
 	/* Invoke the script function */
 	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(lua_state);
@@ -2100,6 +2118,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	session->bitrate = 0;
 	session->pli_freq = 0;
 	session->pli_latest = 0;
+	session->e2ee = FALSE;
 	janus_rtp_switching_context_reset(&session->rtpctx);
 
 	/* Get rid of the recipients */

@@ -52,6 +52,8 @@ typedef struct janus_recorder {
 	gint64 created, started;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
+	/*! \brief Whether the recording contains end-to-end encrypted media or not */
+	gboolean encrypted;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */
@@ -88,6 +90,14 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
 janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename);
+/*! \brief Mark this recorder as end-to-end encrypted (e.g., via Insertable Streams)
+ * \note This will only be possible BEFORE the first frame is written, as it needs to
+ * be reflected in the .mjr header: doing this after that will return an error. Also
+ * notice that an encrypted recording will NOT be processable with \c janus-pp-rec
+ * out of the box, since the post-processor will not have access to unencrypted media
+ * @param[in] recorder The janus_recorder instance to mark as encrypted
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_encrypted(janus_recorder *recorder);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save

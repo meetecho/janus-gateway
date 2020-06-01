@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Multichannel Opus (surround)</title>
+<title>Janus WebRTC Server: End-to-end Encryption Test</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,12 +13,12 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="multiopus.js"></script>
+<script type="text/javascript" src="e2etest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='multiopus.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='e2etest.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Multichannel Opus (surround)
+				<h1>Plugin Demo: End-to-end Encryption
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -47,27 +47,24 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This is a variant of the Echo Test demo meant to showcase the support
-						for multichannel Opus, and so surround audio: everything is exactly
+						<p>This is a variant of the Echo Test demo: everything is exactly
 						the same in term of available controls, features, and the like, with
-						the substantial difference that the media being captured and sent does
-						not come from webcam and microphone, but from a pre-recorded surround
-						file instead. More precisely, we downloaded a surround demo video from
-						<a target="_blank" href="https://www2.iis.fraunhofer.de/AAC/multichannel.html">Fraunhofer's multichannel tests</a>
-						and, using <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/captureStream">captureStream</a>
-						on the video element, get access to the MediaStream to send via WebRTC.
-						As a result, a surround audio/video stream is sent to the EchoTest plugin
-						via WebRTC, which echoes it back, allowing you to demonstrate how the surround
-						properties are preserved through the PeerConnection journey via Janus.
-						The file will loop back to the beginning when it ends, since it's quite short.</p>
-						<p>Notice that you'll need a recent version of Chrome for this to work, since
-						it's only implemented there and not really available publicly. As a matter of
-						fact, Chrome will by default not offer multiopus support by default, and will
-						even reject it when offered: it's up to you to munge the SDP to force multiopus
-						support for a conversation. The <code>janus.js</code> library will <b>NOT</b>
-						do it for you: this demo uses the <code>customizeSdp</code> callback to mess
-						with the SDP in an ugly way. In other contexts (e.g., VideoRoom subscribers)
-						you'll need to do something similar when creating the answer instead.</p>
+						the substantial difference that it shows how you can configure an
+						end-to-end encryption context using the recently introduced
+						<a target="_blank" href="https://www.chromestatus.com/feature/6321945865879552">Insertable Streams</a>.</p>
+						<p>Specifically, this demo will prompt for a secret, and then use the same transform functions as
+						<a target="_blank" href="https://webrtc.github.io/samples/src/content/peerconnection/endtoend-encryption/">this official demo</a>
+						to encrypt the media: this means Janus will NOT have access to the media, but
+						will still be able to pass the packets to the EchoTest plugin and send them
+						back, thus ensuring an end-to-end encryption of the content. In this context,
+						the same page that encrypted the media will also decrypt it, which means
+						that if you see both local and remote video, then it's working as expected.
+						You'll probably want to then experiment with this feature by playing with
+						other plugins as well, e.g., the VideoRoom, for E2E-encrypted conferences.</p>
+						<p>Notice that at the time of writing, only video can be end-to-end encrypted,
+						and not audio. More importantly, at the moment this will only work if you're
+						using a recent of Chrome version that has been started either with the following flag:</p>
+						<p><div class="alert alert-info"><code>--enable-experimental-web-platform-features --force-fieldtrials=WebRTC-GenericDescriptorAdvertised/Enabled/</code></div></p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
