@@ -39,6 +39,8 @@
 #               new feeds (publishers), and enabling this may result extra notification
 #               traffic. This flag is particularly useful when enabled with require_pvtid
 #               for admin to manage listening only participants. default=false)
+# require_e2ee = true|false (whether all participants are required to publish and subscribe
+#             using end-to-end media encryption, e.g., via Insertable Streams; default=false)
 #}
 
 general: {
