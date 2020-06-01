@@ -1054,7 +1054,7 @@ export const initialiseJanusLibrary = () => Janus.init({dependencies: setupDeps(
 
 /*! \page rest RESTful, WebSockets, RabbitMQ, MQTT, Nanomsg and UnixSockets API
  *
- * Since version \c 0.0.6, there are three different ways to interact with a
+ * Since version \c 0.0.6, there are different ways to interact with a
  * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref apimqtt, \ref apinanomsg
  * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
@@ -1693,11 +1693,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * event, as Janus would never be receiving media, but only send it.
  *
  * \section WS WebSockets Interface
- * In recent version of Janus we added support for WebSockets to control
- * the server, along the already existing (and still the default) REST
- * API. In fact, while WebSockets still present some more issues in terms
- * of reachability when compared to plain HTTP, they definitely provide
- * a more efficient means for implementing a bidirectional communication.
+ * WebSockets provide a more efficient means for implementing a bidirectional communication.
  * This is especially useful if you're wrapping the Janus API on your
  * servers, as it allows you to avoid all the noise and overhead introduced
  * by several concurrent HTTP transactions and long polls by relying on
@@ -2084,6 +2080,11 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section signed HMAC-Signed token authentication
+ *
+ * <div class="well"><b>NOTE WELL:</b> At the time of writing, HMAC-Signed
+ * tokens are ONLY available for the VideoRoom plugin. If you need authentication
+ * for other plugins, you should use the \ref token instead.</div>
+ *
  * Simple token based authentication requires the application host to
  * continuously update the Janus instance on permission changes.
  * Since Janus stores the tokens in memory, it can be problematic to guarantee
@@ -3372,18 +3373,31 @@ ldd janus | grep asan
 /*! \page resources Resources
  * This page contains pointers to some third-party resources, in particular
  * distro repos for an easier installation of Janus, where available,
- * client stacks, libraries and bindings in other languages, that is
- * tools that you find helpful to interact with Janus outside of the
- * context of the \c janus.js JavaScript library we provide. It is not
- * a complete list, but just a summary of the material that has been
- * shared so far on the <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
+ * applications, mobile/docker/Pi stuff, orchestration tools, client stacks,
+ * libraries and bindings in other languages (that is tools that you find
+ * helpful to interact with Janus outside of the context of the \c janus.js
+ * JavaScript library we provide) and so on. It is not a complete list,
+ * but just a summary of the material that has been shared so far on the
+ * <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
  * Google group.
  *
- * If you've developed anything related to Janus (client stacks, plugins,
- * transports, etc.) and you're willing to share them with the community,
- * or you know any such effort that is not listed here, just let us know
- * and we'll add it on this page.
+ * If you've developed anything related to Janus and you're willing to share
+ * it with the community, or you know any such effort that is not listed
+ * here, just let us know and we'll add it on this page.
  * <br/><br/>
+ *
+ * - <a href="#repos">Distro repositories</a>\n
+ * - <a href="#stacks">Client-side stacks</a>\n
+ * - <a href="#mobile">Mobile resources</a>\n
+ * - <a href="#pi">Raspberry Pi resources</a>\n
+ * - <a href="#docker">Docker resources</a>\n
+ * - <a href="#thirdplugins">Third-party plugins</a>\n
+ * - <a href="#thirdtransports">Third-party transports</a>\n
+ * - <a href="#evhandlers">Event handlers (monitoring/troubleshooting)</a>\n
+ * - <a href="#orchestration">Orchestration</a>\n
+ * - <a href="#applications">Complete applications</a>\n
+ *
+ * <hr/>
  *
  * \section repos Distro repositories
  *
@@ -3576,24 +3590,10 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Janus WebRTC server Docker Image for Media Streaming Expert User</td>
  * </tr>
- * </table>
- * <br/>
- *
- * \section evhandlers Event Handlers (monitoring/troubleshooting)
- *
- * <table class="table table-striped">
- * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
- * 		<td>node-js</td>
- * 		<td><a href="https://github.com/thehunmonkgroup">Chad Phillips</a></td>
- * 		<td><a href="https://github.com/thehunmonkgroup/janus-event-server">janus-event-server</a></td>
- * 		<td>Simple plugin-based server to receive/process events from Janus</td>
- * </tr>
- * <tr>
- * 		<td>Rust</td>
- * 		<td><a href="https://github.com/mozilla">Mozilla</a></td>
- * 		<td><a href="https://github.com/mozilla/janus-eventhandler-sqlite">janus-eventhandler-sqlite</a></td>
- * 		<td>A Janus event handler plugin that writes events to a SQLite database</td>
+ * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
+ * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
+ *		<td>Docker image for the Janus WebRTC Server</td>
  * </tr>
  * </table>
  * <br/>
@@ -3615,7 +3615,7 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
- * \section thirdtrasports Third-party transports
+ * \section thirdtransports Third-party transports
  *
  * <table class="table table-striped">
  * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
@@ -3623,6 +3623,25 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
  * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-ud-transport</a></td>
  * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section evhandlers Event handlers (monitoring/troubleshooting)
+ *
+ * <table class="table table-striped">
+ * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/thehunmonkgroup">Chad Phillips</a></td>
+ * 		<td><a href="https://github.com/thehunmonkgroup/janus-event-server">janus-event-server</a></td>
+ * 		<td>Simple plugin-based server to receive/process events from Janus</td>
+ * </tr>
+ * <tr>
+ * 		<td>Rust</td>
+ * 		<td><a href="https://github.com/mozilla">Mozilla</a></td>
+ * 		<td><a href="https://github.com/mozilla/janus-eventhandler-sqlite">janus-eventhandler-sqlite</a></td>
+ * 		<td>A Janus event handler plugin that writes events to a SQLite database</td>
  * </tr>
  * </table>
  * <br/>
@@ -3635,6 +3654,23 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/OpenSight">OpenSight</a></td>
  * 		<td><a href="https://github.com/OpenSight/janus-cloud">janus-cloud</a></td>
  * 		<td>An API proxy for Janus WebRTC server cluster</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section applications Complete applications
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/jangouts">jangouts</a></td>
+ * 		<td><a href="https://github.com/jangouts/jangouts">jangouts</a></td>
+ * 		<td>Videoconferencing based on WebRTC and Janus Gateway with an UI inspired by Google Hangouts</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/gjovanov">Goran Jovanov</a></td>
+ * 		<td><a href="https://github.com/gjovanov/roomler">roomler</a></td>
+ * 		<td>Roomler - Video collaboration tool using WebRTC (Janus Gateway)</td>
  * </tr>
  * </table>
  * <br/>

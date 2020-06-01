@@ -40,18 +40,39 @@ JANUSSDP.render = function(sdp) {
 	return sdpString;
 }
 
-JANUSSDP.findPayloadType = function(sdp, codec) {
+JANUSSDP.findPayloadType = function(sdp, codec, profile) {
 	if(!sdp || !codec)
 		return -1
 	var pt = -1;
 	var codecUpper = codec.toUpperCase();
 	var codecLower = codec.toLowerCase();
+	var checkProfile = false;
 	for(var index in sdp) {
 		var a = sdp[index];
-		if(a.name === "rtpmap" && a.value) {
+		if(checkProfile && a.name === "fmtp" && a.value) {
+			checkProfile = false;
+			if(codec === "vp9") {
+				if(a.value.indexOf("profile-level="+profile) != -1) {
+					// Found
+					break;
+				}
+			} else if(codec === "h264") {
+				if(a.value.indexOf("profile-level-id="+profile.toLowerCase()) != -1 ||
+						a.value.indexOf("profile-level-id="+profile.toUpperCase()) != -1) {
+					// Found
+					break;
+				}
+			}
+		} else if(a.name === "rtpmap" && a.value) {
 			if(a.value.indexOf(codecLower) != -1 || a.value.indexOf(codecUpper) !== -1) {
 				pt = parseInt(a.value);
-				break;
+				if(!profile) {
+					// We're done
+					break;
+				} else {
+					// We need to make sure the profile matches
+					checkProfile = true;
+				}
 			}
 		}
 	}
@@ -82,6 +103,8 @@ JANUSSDP.findCodec = function(sdp, pt) {
 					codec = "h264";
 				} else if(a.value.indexOf("opus") !== -1 || a.value.indexOf("OPUS") !== -1) {
 					codec = "opus";
+				} else if(a.value.indexOf("multiopus") !== -1 || a.value.indexOf("MULTIOPUS") !== -1) {
+					codec = "multiopus";
 				} else if(a.value.indexOf("pcmu") !== -1 || a.value.indexOf("PCMU") !== -1) {
 					codec = "pcmu";
 				} else if(a.value.indexOf("pcma") !== -1 || a.value.indexOf("PCMA") !== -1) {
@@ -136,6 +159,8 @@ JANUSSDP.generateOffer = function(options) {
 			options.audioCodec = "opus";
 		if(options.audioCodec === "opus") {
 			options.audioRtpmap = "opus/48000/2";
+		} else if(options.audioCodec === "multiopus") {
+			options.audioRtpmap = "multiopus/48000/6";
 		} else if(options.audioCodec === "pcmu") {
 			options.audioRtpmap = "PCMU/8000";
 			options.audioPt = 0;
@@ -206,20 +231,29 @@ JANUSSDP.generateOffer = function(options) {
 		offer.push({ type: "c", name: "IN " + (options.ipv6 ? "IP6 " : "IP4 ") + options.address });
 		offer.push({ type: "a", name: options.audioDir });
 		offer.push({ type: "a", name: "rtpmap", value: options.audioPt + " " + options.audioRtpmap });
+		if(options.audioFmtp) {
+			offer.push({ type: "a", name: "fmtp", value: options.audioPt + " " + options.audioFmtp });
+		}
 	}
 	if(options.video) {
 		offer.push({ type: "m", name: "video 9 UDP/TLS/RTP/SAVPF " + options.videoPt });
 		offer.push({ type: "c", name: "IN " + (options.ipv6 ? "IP6 " : "IP4 ") + options.address });
 		offer.push({ type: "a", name: options.videoDir });
 		offer.push({ type: "a", name: "rtpmap", value: options.videoPt + " " + options.videoRtpmap });
-		if(options.videoCodec === "h264") {
-			offer.push({ type: "a", name: "fmtp", value: options.videoPt + " profile-level-id=42e01f;packetization-mode=1" });
-		}
 		if(options.videoRtcpfb) {
 			offer.push({ type: "a", name: "rtcp-fb", value: options.videoPt + " ccm fir" });
 			offer.push({ type: "a", name: "rtcp-fb", value: options.videoPt + " nack" });
 			offer.push({ type: "a", name: "rtcp-fb", value: options.videoPt + " nack pli" });
 			offer.push({ type: "a", name: "rtcp-fb", value: options.videoPt + " goog-remb" });
+		}
+		if(options.videoCodec === "vp9" && options.vp9Profile) {
+			offer.push({ type: "a", name: "fmtp", value: options.videoPt + " profile-id=" + options.vp9Profile });
+		} else if(options.videoCodec === "h264" && options.h264Profile) {
+			offer.push({ type: "a", name: "fmtp", value: options.videoPt + " profile-level-id=" + options.h264Profile + ";packetization-mode=1" });
+		} else if(options.videoFmtp) {
+			offer.push({ type: "a", name: "fmtp", value: options.videoPt + " " + options.videoFmtp });
+		} else if(options.videoCodec === "h264") {
+			offer.push({ type: "a", name: "fmtp", value: options.videoPt + " profile-level-id=42e01f;packetization-mode=1" });
 		}
 	}
 	if(options.data) {
@@ -242,6 +276,8 @@ JANUSSDP.generateAnswer = function(offer, options) {
 	if(options.audio && !options.audioCodec) {
 		if(JANUSSDP.findPayloadType(offer, "opus") !== -1) {
 			options.audioCodec = "opus";
+		} else if(JANUSSDP.findPayloadType(offer, "multiopus") !== -1) {
+			options.audioCodec = "multiopus";
 		} else if(JANUSSDP.findPayloadType(offer, "pcmu") !== -1) {
 			options.audioCodec = "pcmu";
 		} else if(JANUSSDP.findPayloadType(offer, "pcma") !== -1) {
@@ -259,9 +295,9 @@ JANUSSDP.generateAnswer = function(offer, options) {
 	if(options.video && !options.videoCodec) {
 		if(JANUSSDP.findPayloadType(offer, "vp8") !== -1) {
 			options.videoCodec = "vp8";
-		} else if(JANUSSDP.findPayloadType(offer, "vp9") !== -1) {
+		} else if(JANUSSDP.findPayloadType(offer, "vp9", options.vp9Profile) !== -1) {
 			options.videoCodec = "vp9";
-		} else if(JANUSSDP.findPayloadType(offer, "h264") !== -1) {
+		} else if(JANUSSDP.findPayloadType(offer, "h264", options.h264Profile) !== -1) {
 			options.videoCodec = "h264";
 		}
 	}
@@ -300,8 +336,16 @@ JANUSSDP.generateAnswer = function(offer, options) {
 			} else if(a.name.indexOf("video") !== -1) {
 				medium = "video";
 				video++;
-				if(videoPt < 0)
-					videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec);
+				if(videoPt < 0) {
+					if(options.videoCodec === "vp9") {
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec, options.vp9Profile);
+					} else if(options.videoCodec == "h264") {
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec, options.h264Profile);
+					} else {
+						videoPt = JANUSSDP.findPayloadType(offer, options.videoCodec);
+					}
+				}
+
 				if(videoPt < 0)
 					video++;
 				if(video > 1) {

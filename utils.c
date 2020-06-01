@@ -333,6 +333,14 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 1;
 		format = "h264/90000";
 		format2 = "H264/90000";
+	} else if(!strcasecmp(codec, "av1")) {
+		video = 1;
+		format = "av1x/90000";
+		format2 = "AV1X/90000";
+	} else if(!strcasecmp(codec, "h265")) {
+		video = 1;
+		format = "h265/90000";
+		format2 = "H265/90000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -406,6 +414,10 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "vp9";
 					if(strstr(name, "h264") || strstr(name, "H264"))
 						return "h264";
+					if(strstr(name, "av1") || strstr(name, "AV1"))
+						return "av1";
+					if(strstr(name, "h265") || strstr(name, "H265"))
+						return "h265";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
 					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
@@ -810,6 +822,32 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 		}
 	}
 	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+gboolean janus_av1_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 3)
+		return FALSE;
+	/* Read the aggregation header */
+	uint8_t aggrh = *buffer;
+	uint8_t zbit = (aggrh & 0x80) >> 7;
+	uint8_t nbit = (aggrh & 0x08) >> 3;
+	/* FIXME Ugly hack: we consider a packet with Z=0 and N=1 a keyframe */
+	return (!zbit && nbit);
+}
+
+gboolean janus_h265_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 2)
+		return FALSE;
+	/* Parse the NAL unit */
+	uint16_t unit = 0;
+	memcpy(&unit, buffer, sizeof(uint16_t));
+	unit = ntohs(unit);
+	uint8_t type = (unit & 0x7E00) >> 9;
+	if(type == 32 || type == 33) {
+		/* FIXME We return TRUE for VPS and SPS */
+		return TRUE;
+	}
 	return FALSE;
 }
 

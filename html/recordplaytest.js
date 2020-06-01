@@ -62,6 +62,9 @@ var recordingId = null;
 var selectedRecording = null;
 var selectedRecordingInfo = null;
 
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
 
@@ -123,16 +126,21 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videobox").parent().unblock();
 								},
 								onmessage: function(msg, jsep) {
-									Janus.debug(" ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug(" ::: Got a message :::", msg);
 									var result = msg["result"];
-									if(result !== null && result !== undefined) {
-										if(result["status"] !== undefined && result["status"] !== null) {
+									if(result) {
+										if(result["status"]) {
 											var event = result["status"];
 											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
@@ -141,24 +149,23 @@ $(document).ready(function() {
 														jsep: jsep,
 														media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 														success: function(jsep) {
-															Janus.debug("Got SDP!");
-															Janus.debug(jsep);
-															var body = { "request": "start" };
-															recordplay.send({"message": body, "jsep": jsep});
+															Janus.debug("Got SDP!", jsep);
+															var body = { request: "start" };
+															recordplay.send({ message: body, jsep: jsep });
 														},
 														error: function(error) {
 															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + JSON.stringify(error));
+															bootbox.alert("WebRTC error... " + error.message);
 														}
 													});
 												if(result["warning"])
 													bootbox.alert(result["warning"]);
 											} else if(event === 'recording') {
 												// Got an ANSWER to our recording OFFER
-												if(jsep !== null && jsep !== undefined)
-													recordplay.handleRemoteJsep({jsep: jsep});
+												if(jsep)
+													recordplay.handleRemoteJsep({ jsep: jsep });
 												var id = result["id"];
-												if(id !== null && id !== undefined) {
+												if(id) {
 													Janus.log("The ID of the current recording is " + id);
 													recordingId = id;
 												}
@@ -168,10 +175,10 @@ $(document).ready(function() {
 													// Janus detected issues when receiving our media, let's slow down
 													bandwidth = parseInt(bandwidth / 1.5);
 													recordplay.send({
-														'message': {
-															'request': 'configure',
-															'video-bitrate-max': bandwidth, // Reduce the bitrate
-															'video-keyframe-interval': 15000 // Keep the 15 seconds key frame interval
+														message: {
+															request: 'configure',
+															'video-bitrate-max': bandwidth,		// Reduce the bitrate
+															'video-keyframe-interval': 15000	// Keep the 15 seconds key frame interval
 														}
 													});
 												}
@@ -180,14 +187,14 @@ $(document).ready(function() {
 											} else if(event === 'stopped') {
 												Janus.log("Session has stopped!");
 												var id = result["id"];
-												if(recordingId !== null && recordingId !== undefined) {
+												if(recordingId) {
 													if(recordingId !== id) {
 														Janus.warn("Not a stop to our recording?");
 														return;
 													}
 													bootbox.alert("Recording completed! Check the list of recordings to replay it.");
 												}
-												if(selectedRecording !== null && selectedRecording !== undefined) {
+												if(selectedRecording) {
 													if(selectedRecording !== id) {
 														Janus.warn("Not a stop to our playout?");
 														return;
@@ -229,8 +236,7 @@ $(document).ready(function() {
 								onlocalstream: function(stream) {
 									if(playing === true)
 										return;
-									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(stream);
+									Janus.debug(" ::: Got a local stream :::", stream);
 									$('#videotitle').html("Recording...");
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
@@ -250,7 +256,7 @@ $(document).ready(function() {
 										});
 									}
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+									if(!videoTracks || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
@@ -268,8 +274,7 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									if(playing === false)
 										return;
-									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(stream);
+									Janus.debug(" ::: Got a remote stream :::", stream);
 									if($('#thevideo').length === 0) {
 										$('#videotitle').html(selectedRecordingInfo);
 										$('#stop').unbind('click').click(stop);
@@ -287,14 +292,14 @@ $(document).ready(function() {
 										$("#thevideo").bind("playing", function () {
 											$('#waitingvideo').remove();
 											$('#thevideo').removeClass('hide');
-											if(spinner !== null && spinner !== undefined)
+											if(spinner)
 												spinner.stop();
 											spinner = null;
 										});
 									}
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+									if(!videoTracks || videoTracks.length === 0) {
 										// No remote video
 										$('#thevideo').hide();
 										if($('#videobox .no-video-container').length === 0) {
@@ -313,7 +318,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									// FIXME Reset status
 									$('#waitingvideo').remove();
-									if(spinner !== null && spinner !== undefined)
+									if(spinner)
 										spinner.stop();
 									spinner = null;
 									$('#videobox').empty();
@@ -358,25 +363,24 @@ function checkEnter(field, event) {
 function updateRecsList() {
 	$('#list').unbind('click');
 	$('#update-list').addClass('fa-spin');
-	var body = { "request": "list" };
-	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
-	recordplay.send({"message": body, success: function(result) {
+	var body = { request: "list" };
+	Janus.debug("Sending message:", body);
+	recordplay.send({ message: body, success: function(result) {
 		setTimeout(function() {
 			$('#list').click(updateRecsList);
 			$('#update-list').removeClass('fa-spin');
 		}, 500);
-		if(result === null || result === undefined) {
+		if(!result) {
 			bootbox.alert("Got no response to our query for available recordings");
 			return;
 		}
-		if(result["list"] !== undefined && result["list"] !== null) {
+		if(result["list"]) {
 			$('#recslist').empty();
 			$('#record').removeAttr('disabled').click(startRecording);
 			$('#list').removeAttr('disabled').click(updateRecsList);
 			var list = result["list"];
 			list.sort(function(a, b) {return (a["date"] < b["date"]) ? 1 : ((b["date"] < a["date"]) ? -1 : 0);} );
-			Janus.debug("Got a list of available recordings:");
-			Janus.debug(list);
+			Janus.debug("Got a list of available recordings:", list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["name"] + " (" + list[mp]["date"] + ")");
 				$('#recslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["name"] + " [" + list[mp]["date"] + "]" + "</a></li>");
@@ -399,7 +403,7 @@ function startRecording() {
 	recording = true;
 	playing = false;
 	bootbox.prompt("Insert a name for the recording (e.g., John Smith says hello)", function(result) {
-		if(result === null || result === undefined) {
+		if(!result) {
 			recording = false;
 			return;
 		}
@@ -413,10 +417,10 @@ function startRecording() {
 		// bitrate and keyframe interval can be set at any time:
 		// before, after, during recording
 		recordplay.send({
-			'message': {
-				'request': 'configure',
-				'video-bitrate-max': bandwidth, // a quarter megabit
-				'video-keyframe-interval': 15000 // 15 seconds
+			message: {
+				request: 'configure',
+				'video-bitrate-max': bandwidth,		// a quarter megabit
+				'video-keyframe-interval': 15000	// 15 seconds
 			}
 		});
 
@@ -428,14 +432,23 @@ function startRecording() {
 				// the following 'simulcast' property to pass to janus.js to true
 				simulcast: doSimulcast,
 				success: function(jsep) {
-					Janus.debug("Got SDP!");
-					Janus.debug(jsep);
-					var body = { "request": "record", "name": myname };
-					recordplay.send({"message": body, "jsep": jsep});
+					Janus.debug("Got SDP!", jsep);
+					var body = { request: "record", name: myname };
+					// We can try and force a specific codec, by telling the plugin what we'd prefer
+					// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
+					if(acodec)
+						body["audiocodec"] = acodec;
+					if(vcodec)
+						body["videocodec"] = vcodec;
+					// For the codecs that support them (VP9 and H.264) you can specify a codec
+					// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
+					if(vprofile)
+						body["videoprofile"] = vprofile;
+					recordplay.send({ message: body, jsep: jsep });
 				},
 				error: function(error) {
 					Janus.error("WebRTC error...", error);
-					bootbox.alert("WebRTC error... " + error);
+					bootbox.alert("WebRTC error... " + error.message);
 					recordplay.hangup();
 				}
 			});
@@ -448,7 +461,7 @@ function startPlayout() {
 	// Start a playout
 	recording = false;
 	playing = true;
-	if(selectedRecording === undefined || selectedRecording === null) {
+	if(!selectedRecording) {
 		playing = false;
 		return;
 	}
@@ -457,15 +470,15 @@ function startPlayout() {
 	$('#list').unbind('click').attr('disabled', true);
 	$('#recset').attr('disabled', true);
 	$('#recslist').attr('disabled', true);
-	var play = { "request": "play", "id": parseInt(selectedRecording) };
-	recordplay.send({"message": play});
+	var play = { request: "play", id: parseInt(selectedRecording) };
+	recordplay.send({ message: play });
 }
 
 function stop() {
 	// Stop a recording/playout
 	$('#stop').unbind('click');
-	var stop = { "request": "stop" };
-	recordplay.send({"message": stop});
+	var stop = { request: "stop" };
+	recordplay.send({ message: stop });
 	recordplay.hangup();
 }
 

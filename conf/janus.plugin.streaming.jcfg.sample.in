@@ -65,6 +65,15 @@
 # srtpsuite = 32
 # srtpcrypto = WbTBosdVUZqEb6Htqhn+m3z7wUh4RJVR8nE15GbN
 #
+# The Streaming plugin can also be used to (re)stream media that has been
+# encrypted using something that can be consumed via Insertable Streams.
+# In that case, we only need to be aware of it, so that we can send the
+# info along with the SDP. How to decrypt the media is out of scope, and
+# up to the application since, again, this is end-to-end encryption and
+# so neither Janus nor the Streaming plugin have access to anything.
+# DO NOT SET THIS PROPERTY IF YOU DON'T KNOW WHAT YOU'RE DOING!
+# e2ee = true
+#
 # The following options are only valid for the 'rstp' type:
 # url = RTSP stream URL (only for restreaming RTSP)
 # rtsp_user = RTSP authorization username (only if type=rtsp)
@@ -175,6 +184,7 @@ file-ondemand-sample: {
 	#videopt = 126
 	#videortpmap = "H264/90000"
 	#videofmtp = "profile-level-id=42e01f;packetization-mode=1"
+	#secret = "adminpwd"
 #}
 
 #
@@ -195,6 +205,7 @@ file-ondemand-sample: {
 	#data = true
 	#dataport = 5008
 	#datatype = "text"
+	#secret = "adminpwd"
 #}
 
 #
@@ -216,6 +227,7 @@ file-ondemand-sample: {
 	#videomcast = "232.3.4.5"
 	#videopt = 100
 	#videortpmap = "VP8/90000"
+	#secret = "adminpwd"
 #}
 
 #
@@ -236,4 +248,5 @@ file-ondemand-sample: {
 	#url = "rtsp://127.0.0.1:8554/unicast"
 	#rtsp_user = "username"
 	#rtsp_pwd = "password"
+	#secret = "adminpwd"
 #}

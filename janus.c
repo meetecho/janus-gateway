@@ -102,8 +102,9 @@ static struct janus_json_parameter body_parameters[] = {
 };
 static struct janus_json_parameter jsep_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
-	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter add_token_parameters[] = {
 	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -300,8 +301,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
-	if(janus_get_dscp_tos() > 0)
-		json_object_set_new(info, "dscp-tos", json_integer(janus_get_dscp_tos()));
+	if(janus_get_dscp() > 0)
+		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -599,7 +600,7 @@ static void janus_request_unref(janus_request *request) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
-	if(session_timeout < 1)		/* Session timeouts are disabled */
+	if(session_timeout < 1 && reclaim_session_timeout < 1)		/* Session timeouts are disabled */
 		return G_SOURCE_CONTINUE;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -612,7 +613,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if ((now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+			if ((session_timeout > 0 && (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC) &&
 					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) ||
 					((g_atomic_int_get(&session->transport_gone) && now - session->last_activity >= (gint64)reclaim_session_timeout * G_USEC_PER_SEC) &&
 							!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1))) {
@@ -1102,10 +1103,11 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* If the auth token mechanism is enabled, we should check if this token can access this plugin */
+		const char *token_value = NULL;
 		if(janus_auth_is_enabled()) {
 			json_t *token = json_object_get(root, "token");
 			if(token != NULL) {
-				const char *token_value = json_string_value(token);
+				token_value = json_string_value(token);
 				if(token_value && !janus_auth_check_plugin(token_value, plugin_t)) {
 					JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token_value, plugin_text);
 					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
@@ -1116,7 +1118,7 @@ int janus_process_incoming_request(janus_request *request) {
 		json_t *opaque = json_object_get(root, "opaque_id");
 		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session, opaque_id);
+		handle = janus_ice_handle_create(session, opaque_id, token_value);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -1276,9 +1278,10 @@ int janus_process_incoming_request(janus_request *request) {
 			json_t *type = json_object_get(jsep, "type");
 			jsep_type = g_strdup(json_string_value(type));
 			type = NULL;
-			gboolean do_trickle = TRUE;
 			json_t *jsep_trickle = json_object_get(jsep, "trickle");
-			do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
+			gboolean do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
+			json_t *jsep_e2ee = json_object_get(jsep, "e2ee");
+			gboolean e2ee = jsep_e2ee ? json_is_true(jsep_e2ee) : FALSE;
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
@@ -1478,6 +1481,8 @@ int janus_process_incoming_request(janus_request *request) {
 			jsep_sdp_stripped = janus_sdp_write(parsed_sdp);
 			janus_sdp_destroy(parsed_sdp);
 			sdp = NULL;
+			if(e2ee)
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE);
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
 
@@ -1526,6 +1531,9 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Check if this is a renegotiation or update */
 			if(renegotiation)
 				json_object_set_new(body_jsep, "update", json_true());
+			/* If media is encrypted end-to-end, the plugin may need to know */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE))
+				json_object_set_new(body_jsep, "e2ee", json_true());
 		}
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body, body_jsep);
@@ -2633,6 +2641,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
+		if(handle->token)
+			json_object_set_new(info, "token", json_string(handle->token));
 		json_object_set_new(info, "loop-running", (handle->mainloop != NULL &&
 			g_main_loop_is_running(handle->mainloop)) ? json_true() : json_false());
 		json_object_set_new(info, "created", json_integer(handle->created));
@@ -2677,6 +2687,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "new-datachan-sdp", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP) ? json_true() : json_false());
 		json_object_set_new(flags, "rfc4588-rtx", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
+		json_object_set_new(flags, "e2ee", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
@@ -3157,7 +3168,9 @@ static void *janus_transport_requests(void *data) {
 			g_thread_pool_push(tasks, request, &tperror);
 			if(tperror != NULL) {
 				/* Something went wrong... */
-				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n",
+					tperror->code, tperror->message ? tperror->message : "??");
+				g_error_free(tperror);
 				json_t *transaction = json_object_get(message, "transaction");
 				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
 				janus_process_error(request, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
@@ -3265,6 +3278,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
 	const char *sdp = json_string_value(json_object_get(jsep, "sdp"));
 	gboolean restart = json_object_get(jsep, "sdp") ? json_is_true(json_object_get(jsep, "restart")) : FALSE;
+	gboolean e2ee = json_object_get(jsep, "sdp") ? json_is_true(json_object_get(jsep, "e2ee")) : FALSE;
 	json_t *merged_jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
 		merged_jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp, restart);
@@ -3295,6 +3309,10 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	json_object_set_new(plugin_data, "data", message);
 	json_object_set_new(event, "plugindata", plugin_data);
 	if(merged_jsep != NULL) {
+		if(e2ee)
+			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE);
+		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_E2EE))
+			json_object_set_new(merged_jsep, "e2ee", json_true());
 		json_object_set_new(event, "jsep", merged_jsep);
 		/* In case event handlers are enabled, push the local SDP to all handlers */
 		if(janus_events_is_enabled()) {
@@ -3534,8 +3552,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
-			if((waiting % 500) == 0) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+			if(waiting && (waiting % 5000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Waited 5s for candidates, that's way too much... going on with what we have (WebRTC setup might fail)\n", ice_handle->handle_id);
+				break;
+			}
+			if(waiting && (waiting % 1000) == 0) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s for candidates-done callback... (slow gathering, are you using STUN or TURN for Janus too, instead of just for users? Consider enabling full-trickle instead)\n",
+					ice_handle->handle_id, (waiting == 1000 ? "Waiting" : "Still waiting"));
 			}
 			waiting++;
 			g_usleep(1000);
@@ -4249,6 +4272,9 @@ gint main(int argc, char *argv[])
 	if(args_info.nat_1_1_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("nat_1_1_mapping", args_info.nat_1_1_arg));
 	}
+	if(args_info.keep_private_host_given) {
+		janus_config_add(config, config_nat, janus_config_item_create("keep_private_host", "true"));
+	}
 	if(args_info.ice_enforce_list_given) {
 		janus_config_add(config, config_nat, janus_config_item_create("ice_enforce_list", args_info.ice_enforce_list_arg));
 	}
@@ -4367,7 +4393,8 @@ gint main(int argc, char *argv[])
 		janus_network_address iface;
 		janus_network_address_string_buffer ibuf;
 		if(getifaddrs(&ifas) == -1) {
-			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
+			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
+				errno, strerror(errno));
 		} else {
 			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -4532,13 +4559,20 @@ gint main(int argc, char *argv[])
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
-		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public IP - %s\n", item->value);
+		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
 		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
 			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
 		} else {
 			nat_1_1_mapping = item->value;
-			janus_set_public_ip(item->value);
-			janus_ice_enable_nat_1_1();
+			janus_set_public_ip(nat_1_1_mapping);
+			/* Check if we should replace the private host, or advertise both candidates */
+			gboolean keep_private_host = FALSE;
+			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
+			if(item && item->value && janus_is_true(item->value)) {
+				JANUS_LOG(LOG_INFO, "  -- Going to keep the private host too (separate candidates)\n");
+				keep_private_host = TRUE;
+			}
+			janus_ice_enable_nat_1_1(keep_private_host);
 		}
 	}
 	/* Any TURN server to use in Janus? */
@@ -4640,13 +4674,15 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Is there any DSCP TOS to apply? */
-	item = janus_config_get(config, config_media, janus_config_type_item, "dscp_tos");
+	item = janus_config_get(config, config_media, janus_config_type_item, "dscp");
+	if(!item || !item->value)	/* Just for backwards compatibility */
+		item = janus_config_get(config, config_media, janus_config_type_item, "dscp_tos");
 	if(item && item->value) {
-		int tos = atoi(item->value);
-		if(tos < 0) {
-			JANUS_LOG(LOG_WARN, "Ignoring dscp_tos value as it's not a positive integer\n");
+		int dscp = atoi(item->value);
+		if(dscp < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring dscp value as it's not a positive integer\n");
 		} else {
-			janus_set_dscp_tos(tos);
+			janus_set_dscp(dscp);
 		}
 	}
 
@@ -4763,14 +4799,18 @@ gint main(int argc, char *argv[])
 	GError *error = NULL;
 	GThread *watchdog = g_thread_try_new("timeout watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions timeout watchdog...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Start the thread that will dispatch incoming requests */
 	requests = g_async_queue_new_full((GDestroyNotify)janus_request_destroy);
 	GThread *requests_thread = g_thread_try_new("sessions requests", &janus_transport_requests, NULL, &error);
 	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start requests thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Create a thread pool to handle asynchronous requests, no matter what the transport */
@@ -4778,7 +4818,9 @@ gint main(int argc, char *argv[])
 	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		exit(1);
 	}
 	/* Wait 120 seconds before stopping idle threads to avoid the creation of too many threads for AddressSanitizer. */

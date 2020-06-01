@@ -207,14 +207,14 @@ media: {
 	#dtls_timeout = 500
 
 	# If you need DSCP packet marking and prioritization, you can configure
-	# the 'dscp_tos' property to a specific values, and Janus will try to
+	# the 'dscp' property to a specific values, and Janus will try to
 	# set it on all outgoing packets using libnice. Normally, the specs
 	# suggest to use different values depending on whether audio, video
 	# or data are used, but since all PeerConnections in Janus are bundled,
 	# we can only use one. You can refer to this document for more info:
 	# https://tools.ietf.org/html/draft-ietf-tsvwg-rtcweb-qos-18#page-6
 	# That said, DON'T TOUCH THIS IF YOU DON'T KNOW WHAT IT MEANS!
-	#dscp_tos = 46
+	#dscp = 46
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -258,7 +258,11 @@ nat: {
 	# such, use the option with caution and only if you know what you're doing.
 	# Make sure you keep ICE Lite disabled, though, as it's not strictly
 	# speaking a publicly reachable server, and a NAT is still involved.
+	# If you'd rather keep the private IP address in place, rather than
+	# replacing it (and so have both of them as advertised candidates),
+	# then set the 'keep_private_host' property to true.
 	#nat_1_1_mapping = "1.2.3.4"
+	#keep_private_host = true
 
 	# You can configure a TURN server in two different ways: specifying a
 	# statically configured TURN server, and thus provide the address of the

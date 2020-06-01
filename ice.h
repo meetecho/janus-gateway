@@ -87,8 +87,9 @@ uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
 char *janus_ice_get_turn_rest_api(void);
-/*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
-void janus_ice_enable_nat_1_1(void);
+/*! \brief Helper method to force Janus to overwrite all host candidates with the public IP
+ * @param[in] keep_private_host Whether we should keep the original private host as a separate candidate, or replace it */
+void janus_ice_enable_nat_1_1(gboolean keep_private_host);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
  * \note This method is especially useful to speed up the ICE gathering process on the server: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
@@ -146,17 +147,17 @@ void janus_set_slowlink_threshold(uint packets);
  * @returns The current slowlink-threshold value */
 uint janus_get_slowlink_threshold(void);
 /*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
- * @param[in] timer The new period value, in milliseconds */
+ * @param[in] period The new period value, in milliseconds */
 void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
-/*! \brief Method to modify the DSCP Type of Service (TOS), which is disabled by default
- * @param[in] tos The new TOS value (0 to disable) */
-void janus_set_dscp_tos(int period);
-/*! \brief Method to get the current DSCP Type of Service (see above)
- * @returns The current TOS value (0 if disabled) */
-int janus_get_dscp_tos(void);
+/*! \brief Method to modify the DSCP value to set, which is disabled by default
+ * @param[in] dscp The new DSCP value (0 to disable) */
+void janus_set_dscp(int dscp);
+/*! \brief Method to get the current DSCP value (see above)
+ * @returns The current DSCP value (0 if disabled) */
+int janus_get_dscp(void);
 /*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
  * @param[in] period The new period value, in seconds */
 void janus_ice_set_event_stats_period(int period);
@@ -212,6 +213,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES		(1 << 18)
 #define JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX			(1 << 19)
 #define JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP	(1 << 20)
+#define JANUS_ICE_HANDLE_WEBRTC_E2EE				(1 << 21)
 
 
 /*! \brief Janus media statistics
@@ -283,6 +285,8 @@ struct janus_ice_handle {
 	guint64 handle_id;
 	/*! \brief Opaque identifier, e.g., to provide inter-handle relationships to external tools */
 	char *opaque_id;
+	/*! \brief Token that was used to attach the handle, if required */
+	char *token;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
@@ -576,8 +580,9 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] core_session The core/peer session this ICE handle will belong to
  * @param[in] opaque_id The opaque identifier provided by the creator, if any (optional)
+ * @param[in] token The auth token provided by the creator, if any (optional)
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id);
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id, const char *token);
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
  * @param[in] core_session The core/peer session this ICE handle belongs to
@@ -628,15 +633,19 @@ void janus_ice_send_remb(janus_ice_handle *handle, uint32_t bitrate);
 /*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] label The label of the data channel the message is from
+ * @param[in] protocol The protocol of the data channel to use
  * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buffer The message data (buffer)
- * @param[in] length The buffer lenght */
-void janus_ice_incoming_data(janus_ice_handle *handle, char *label, gboolean textdata, char *buffer, int length);
+ * @param[in] length The buffer length */
+void janus_ice_incoming_data(janus_ice_handle *handle, char *label, char *protocol, gboolean textdata, char *buffer, int length);
 /*! \brief Core SCTP/DataChannel callback, called by the SCTP stack when when there's data to send.
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)
- * @param[in] length The buffer lenght */
+ * @param[in] length The buffer length */
 void janus_ice_relay_sctp(janus_ice_handle *handle, char *buffer, int length);
+/*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when data can be written
+ * @param[in] handle The Janus ICE handle associated with the peer */
+void janus_ice_notify_data_ready(janus_ice_handle *handle);
 ///@}
 
 

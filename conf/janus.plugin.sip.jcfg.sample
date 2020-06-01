@@ -32,4 +32,12 @@ general: {
 
 	# Whether events should be sent to event handlers (default=true)
 	#events = false
+
+	# If you need DSCP packet marking and prioritization, you can configure
+	# the 'dscp_audio_rtp' and/or 'dscp_video_rtp' property to specific values,
+	# and the plugin will set it on all outgoing audio/video RTP packets.
+	# No packet marking is done if this parameter is undefined or equal to 0
+	#dscp_audio_rtp = 46
+	#dscp_video_rtp = 26
+
 }

@@ -268,6 +268,8 @@ static char *local_ip = NULL, *sdp_ip = NULL;
 static uint16_t rtp_range_min = DEFAULT_RTP_RANGE_MIN;
 static uint16_t rtp_range_max = DEFAULT_RTP_RANGE_MAX;
 static uint16_t rtp_range_slider = DEFAULT_RTP_RANGE_MIN;
+static int dscp_audio_rtp = 0;
+static int dscp_video_rtp = 0;
 
 static GThread *handler_thread;
 static void *janus_nosip_handler(void *data);
@@ -313,6 +315,8 @@ typedef struct janus_nosip_media {
 	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
+	int video_orientation_extension_id;
+	int audio_level_extension_id;
 } janus_nosip_media;
 
 typedef struct janus_nosip_session {
@@ -602,6 +606,8 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;	/* Immutable string, no need to free*/
 	session->media.video_send = TRUE;
+	session->media.video_orientation_extension_id = -1;
+	session->media.audio_level_extension_id = -1;
 	janus_rtp_switching_context_reset(&session->media.context);
 }
 
@@ -663,7 +669,8 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			janus_network_address iface;
 			janus_network_address_string_buffer ibuf;
 			if(getifaddrs(&ifas) == -1) {
-				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
+				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected... %d (%s)\n",
+					errno, strerror(errno));
 			} else {
 				if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
 					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
@@ -724,6 +731,26 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_NOSIP_NAME);
 		}
 
+		/* Is there any DSCP TOS to apply? */
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_audio_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_audio_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_audio_rtp = val;
+			}
+		}
+		item = janus_config_get(config, config_general, janus_config_type_item, "dscp_video_rtp");
+		if(item && item->value) {
+			int val = atoi(item->value);
+			if(val < 0) {
+				JANUS_LOG(LOG_WARN, "Ignoring dscp_video_rtp value as it's not a positive integer\n");
+			} else {
+				dscp_video_rtp = val;
+			}
+		}
+
 		janus_config_destroy(config);
 	}
 	config = NULL;
@@ -754,7 +781,9 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("nosip handler", janus_nosip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the NoSIP handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_NOSIP_NAME);
@@ -864,6 +893,8 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_send = TRUE;
+	session->media.video_orientation_extension_id = -1;
+	session->media.audio_level_extension_id = -1;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.context);
 	session->media.pipefd[0] = -1;
@@ -1289,6 +1320,13 @@ static void *janus_nosip_handler(void *data) {
 				g_snprintf(error_cause, 512, "The NoSIP plugin does not support DataChannels");
 				goto error;
 			}
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but legacy endpoints will need unencrypted media frames */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
 			/* Check if the user provided an info string to provide context */
 			const char *info = json_string_value(json_object_get(root, "info"));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
@@ -1357,6 +1395,10 @@ static void *janus_nosip_handler(void *data) {
 					}
 				}
 			}
+			/* Get video-orientation extension id from SDP we got */
+			session->media.video_orientation_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+			/* Get audio-level extension id from SDP we got */
+			session->media.audio_level_extension_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
 			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
@@ -1480,7 +1522,9 @@ static void *janus_nosip_handler(void *data) {
 					session->relayer_thread = NULL;
 					session->media.ready = 0;
 					janus_refcount_decrease(&session->ref);
-					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n",
+						error->code, error->message ? error->message : "??");
+					g_error_free(error);
 				}
 			}
 		} else if(!strcasecmp(request_text, "hangup")) {
@@ -1883,7 +1927,7 @@ static int janus_nosip_bind_socket(int fd, int port) {
 }
 
 /* Bind RTP/RTCP port pair */
-static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
+static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[2]) {
 	uint16_t rtp_port_next = rtp_range_slider; 					/* Read global slider */
 	uint16_t rtp_port_start = rtp_port_next;
 	gboolean rtp_port_wrap = FALSE;
@@ -1891,18 +1935,34 @@ static int janus_nosip_allocate_port_pair(int fds[2], int ports[2]) {
 	int rtp_fd = -1, rtcp_fd = -1;
 	while(1) {
 		if(rtp_port_wrap && rtp_port_next >= rtp_port_start) {	/* Full range scanned */
-			JANUS_LOG(LOG_ERR, "No ports available for audio/video channel in range: %u -- %u\n",
-				  rtp_range_min, rtp_range_max);
+			JANUS_LOG(LOG_ERR, "No ports available for %s channel in range: %u -- %u\n",
+				  video ? "video" : "audio", rtp_range_min, rtp_range_max);
 			break;
 		}
 		if(rtp_fd == -1) {
 			rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+			/* Set the DSCP value if set in the config file */
+			if(rtp_fd != -1 && !video && dscp_audio_rtp > 0) {
+				int optval = dscp_audio_rtp << 2;
+				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+				if(ret < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
+						optval, strerror(errno));
+				}
+			} else if(rtp_fd != -1 && video && dscp_video_rtp > 0) {
+				int optval = dscp_video_rtp << 2;
+				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
+				if(ret < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on video RTP socket (error=%s)\n",
+						optval, strerror(errno));
+				}
+			}
 		}
 		if(rtcp_fd == -1) {
 			rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		}
 		if(rtp_fd == -1 || rtcp_fd == -1) {
-			JANUS_LOG(LOG_ERR, "Error creating audio/video sockets...\n");
+			JANUS_LOG(LOG_ERR, "Error creating %s sockets...\n", video ? "video" : "audio");
 			break;
 		}
 	 	int rtp_port = rtp_port_next;
@@ -1991,7 +2051,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 		JANUS_LOG(LOG_VERB, "Allocating audio ports:\n");
 		int fds[2], ports[2];
-		if(janus_nosip_allocate_port_pair(fds, ports)) {
+		if(janus_nosip_allocate_port_pair(FALSE, fds, ports)) {
 			return -1;
 		}
 		JANUS_LOG(LOG_VERB, "Audio RTP listener bound to port %d\n", ports[0]);
@@ -2015,7 +2075,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session, gboole
 		}
 		JANUS_LOG(LOG_VERB, "Allocating video ports:\n");
 		int fds[2], ports[2];
-		if(janus_nosip_allocate_port_pair(fds, ports)) {
+		if(janus_nosip_allocate_port_pair(TRUE, fds, ports)) {
 			return -1;
 		}
 		JANUS_LOG(LOG_VERB, "Video RTP listener bound to port %d\n", ports[0]);
@@ -2372,7 +2432,31 @@ static void *janus_nosip_relay_thread(void *data) {
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
 					janus_plugin_rtp rtp = { .video = video, .buffer = buffer, .length = bytes };
+					/* Add audio-level extension, if present */
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
+					if(!video && session->media.audio_level_extension_id != -1) {
+						gboolean vad = FALSE;
+						int level = -1;
+						if(janus_rtp_header_extension_parse_audio_level(buffer, bytes,
+								session->media.audio_level_extension_id, &vad, &level) == 0) {
+							rtp.extensions.audio_level = level;
+							rtp.extensions.audio_level_vad = vad;
+						}
+					} else if(video && session->media.video_orientation_extension_id > 0) {
+						gboolean c = FALSE, f = FALSE, r1 = FALSE, r0 = FALSE;
+						if(janus_rtp_header_extension_parse_video_orientation(buffer, bytes,
+								session->media.video_orientation_extension_id, &c, &f, &r1, &r0) == 0) {
+							rtp.extensions.video_rotation = 0;
+							if(r1 && r0)
+								rtp.extensions.video_rotation = 270;
+							else if(r1)
+								rtp.extensions.video_rotation = 180;
+							else if(r0)
+								rtp.extensions.video_rotation = 90;
+							rtp.extensions.video_back_camera = c;
+							rtp.extensions.video_flipped = f;
+						}
+					}
 					gateway->relay_rtp(session->handle, &rtp);
 					continue;
 				} else {

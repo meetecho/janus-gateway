@@ -5,11 +5,11 @@ Janus WebRTC Server
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13265/badge.svg)](https://scan.coverity.com/projects/meetecho-janus-gateway)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/janus-gateway.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:janus-gateway)
 
-Janus is an open source, general purpose, WebRTC server designed and developed by [Meetecho](http://www.meetecho.com). This version of the server is tailored for Linux systems, although it can be compiled for, and installed on, MacOS machines as well. Windows is not supported, but if that's a requirement, Janus is known to work in the "Windows Subsystem for Linux" on Windows 10.
+Janus is an open source, general purpose, WebRTC server designed and developed by [Meetecho](http://www.meetecho.com). This version of the server is tailored for Linux systems, although it can be compiled for, and installed on, MacOS machines as well. Windows is not supported, but if that's a requirement, Janus is known to work in the "Windows Subsystem for Linux" on Windows 10: do **NOT** trust repos that provide .exe builds of Janus, they are not official and will not be supported.
 
 For some online demos and documentations, make sure you pay the [project website](https://janus.conf.meetecho.com/) a visit!
 
-To discuss Janus with us and other users, there's a Google Group called [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) that you can use. If you encounter bugs, though, please submit an issue on [github](https://github.com/meetecho/janus-gateway/issues) instead.
+If you have questions on Janus, or wish to discuss Janus with us and other users, please join our [meetecho-janus](https://groups.google.com/forum/#!forum/meetecho-janus) Google Group. If you encounter bugs, please submit an issue on [GitHub](https://github.com/meetecho/janus-gateway/issues): make sure you read the [guidelines](.github/ISSUE_TEMPLATE.md) before opening an issue, though.
 
 
 ## Dependencies
@@ -32,8 +32,8 @@ To install it, you'll need to satisfy the following dependencies:
 A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
-* [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
-* [libogg](http://xiph.org/ogg/) (needed for the voicemail plugin and/or post-processor)
+* [libopus](http://opus-codec.org/) (only needed for the AudioBridge plugin)
+* [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
 
@@ -60,15 +60,14 @@ On Ubuntu or Debian, it would require something like this:
 		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
 		libconfig-dev pkg-config gengetopt libtool automake
 
-* *Note:* please notice that libopus may not be available out of the box on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
+* *Note:* please notice that libopus may not be available out of the box on your distro. In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
-While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice. Installation of libnice master is quite straightforward:
+While `libnice` is typically available in most distros as a package, the version available out of the box in Ubuntu is known to cause problems. As such, we always recommend manually compiling and installing the master version of libnice.
+To build libnice, you need Python 3, Meson and Ninja:
 
 	git clone https://gitlab.freedesktop.org/libnice/libnice
 	cd libnice
-	./autogen.sh
-	./configure --prefix=/usr
-	make && sudo make install
+	meson --prefix=/usr build && ninja -C build && sudo ninja -C build install
 
 * *Note:* Make sure you remove the distro version first, or you'll cause conflicts between the installations. In case you want to keep both for some reason, for custom installations of libnice you can also run `pkg-config --cflags --libs nice` to make sure Janus can find the right installation. If that fails, you may need to set the `PKG_CONFIG_PATH` environment variable prior to compiling Janus, e.g., `export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig`
 
@@ -131,7 +130,7 @@ The same applies for libwebsockets, which is needed for the optional WebSockets 
 	git clone https://libwebsockets.org/repo/libwebsockets
 	cd libwebsockets
 	# If you want the stable version of libwebsockets, uncomment the next line
-	# git checkout v2.4-stable
+	# git checkout v3.2-stable
 	mkdir build
 	cd build
 	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
@@ -265,6 +264,9 @@ or on the command line:
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
                                   assuming a 1:1 NAT is in place (e.g., Amazon
                                   EC2 instances, default=none)
+	-2, --keep-private-host       When nat-1-1 is used (e.g., Amazon EC2
+                                  instances), don't remove the private host,
+                                  but keep both to simulate STUN  (default=off)
 	-E, --ice-enforce-list=list   Comma-separated list of the only interfaces to
                                   use for ICE gathering; partial strings are
                                   supported (e.g., eth0 or eno1,wlan0,
@@ -316,6 +318,9 @@ or on the command line:
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
 	-e, --event-handlers          Enable event handlers  (default=off)
+	-w, --no-webrtc-encryption    Disable WebRTC encryption, so no DTLS or SRTP
+                                  (only for debugging!)  (default=off)
+
 
 Options passed through the command line have the precedence on those specified in the configuration file. To start the server, simply run:
 
