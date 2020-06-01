@@ -6191,7 +6191,10 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	sscanf(s, "a=control:%2047s", control);
 	char *r = strstr(m, "a=rtpmap:");
 	if(r != NULL) {
-		sscanf(r, "a=rtpmap:%*d %2047s", rtpmap);
+		if (sscanf(r, "a=rtpmap:%*d%*[ ]%2047[^\r\n]s", rtpmap) != 1) {
+			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s rtpmap...\n", name, media);
+			return -1;
+		}
 	}
 	char *f = strstr(m, "a=fmtp:");
 	if(f != NULL) {
