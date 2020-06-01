@@ -278,15 +278,10 @@ struct janus_transport_callbacks {
 
 
 
-	/**********************************************************************************************
-	 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
-	**********************************************************************************************/
+	/* CARBYNE-SHC start */
 	gboolean (* const carbyne_is_sanityhealthcheck_token_valid)(janus_transport *plugin, const char *token);
 	gboolean (* const carbyne_is_sanityhealthcheck_resources_available)(janus_transport *plugin);
-	/**********************************************************************************************
-	************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-	**********************************************************************************************/
-
+	/* CARBYNE-SHC end */
 
 
 

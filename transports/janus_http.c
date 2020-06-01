@@ -1299,9 +1299,7 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 
 
 
-        /********************************************************************************************** 
-	 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
-	 **********************************************************************************************/
+        /* CARBYNE-SHC start */
 	if(session_path != NULL && !strcasecmp(session_path, "sanityhealthcheck"))
         {
                /* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
@@ -1342,9 +1340,7 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
                 MHD_destroy_response(response);
                 goto done;
         }
-        /**********************************************************************************************
-         ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-         **********************************************************************************************/
+        /* CARBYNE-SHC end */
 
 
 

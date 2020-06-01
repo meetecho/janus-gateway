@@ -43,13 +43,9 @@
 
 
 
-/**********************************************************************************************
-************************ Carbyne - START SECTION - SanityHealthCheck *************************
-**********************************************************************************************/
+/* CARBYNE-SHC start */
 #include <sys/statvfs.h>
-/**********************************************************************************************
-************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-**********************************************************************************************/
+/* CARBYNE-SHC end */
 
 
 
@@ -515,14 +511,10 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 
 
 
-/**********************************************************************************************
-************************ Carbyne - START SECTION - SanityHealthCheck *************************
-**********************************************************************************************/
+/* CARBYNE-SHC start */
 gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token);
 gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_transport *plugin);
-/**********************************************************************************************
-************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-**********************************************************************************************/
+/* CARBYNE-SHC end */
 
 
 
@@ -540,14 +532,10 @@ static janus_transport_callbacks janus_handler_transport =
 
 
 
-                /**********************************************************************************************
-		 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
-		 **********************************************************************************************/
+                /* CARBYNE-SHC start */
 		.carbyne_is_sanityhealthcheck_token_valid = carbyne_janus_transport_is_sanityhealthcheck_token_valid,
                 .carbyne_is_sanityhealthcheck_resources_available = carbyne_janus_transport_is_sanityhealthcheck_resources_available,
- 		/**********************************************************************************************
-		 ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-		 **********************************************************************************************/
+ 		/* CARBYNE-SHC end */
 
 
 
@@ -3153,9 +3141,7 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 
 
 
-/**********************************************************************************************
- ************************ Carbyne - START SECTION - SanityHealthCheck *************************
- **********************************************************************************************/
+/* CARBYNE-SHC start */
 gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token) {
     return token && carbyne_janus_auth_sanityhealthcheck_signature(token);
 }
@@ -3178,9 +3164,7 @@ gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_
   	}
   	return TRUE;
 }
-/**********************************************************************************************
- ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
- **********************************************************************************************/
+/* CARBYNE-SHC end */
 
 
 
@@ -4530,9 +4514,7 @@ gint main(int argc, char *argv[])
 
 
 
-        /**********************************************************************************************
-	 ************************ Carbyne - START SECTION - SanityHealthCheck *************************
-	 **********************************************************************************************/
+        /* CARBYNE-SHC start */
 	item = janus_config_get(config, config_general, janus_config_type_item, "sanity_hc_auth_secret");
         const char *shc_auth_secret = NULL;
         if (item && item->value)
@@ -4540,9 +4522,7 @@ gint main(int argc, char *argv[])
 		shc_auth_secret = item->value;
 	}
         carbyne_janus_sanityhealthcheck_auth_init(shc_auth_secret);
-	/**********************************************************************************************
-	 ************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-	 **********************************************************************************************/
+        /* CARBYNE-SHC end */
 
 
 

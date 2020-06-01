@@ -40,13 +40,7 @@ static janus_mutex mutex;
 static char *auth_secret = NULL;
 
 
-/**********************************************************************************************
- ************************ Carbyne - START SECTION - SanityHealthCheck *************************
- **********************************************************************************************/
-static char *carbyne_shc_auth_secret = NULL;
-/**********************************************************************************************
-************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-**********************************************************************************************/
+static char *carbyne_shc_auth_secret = NULL; /* CARBYNE-SHC */
 
 
 static void janus_auth_free_token(char *token) {
@@ -74,9 +68,7 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 
 
 
-/**********************************************************************************************
- ************************ Carbyne - START SECTION - SanityHealthCheck *************************
- **********************************************************************************************/
+/* CARBYNE-SHC start */
 void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
 {
     if(secret == NULL) {
@@ -87,9 +79,7 @@ void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
         carbyne_shc_auth_secret = g_strdup(secret);
     }
 }
-/**********************************************************************************************
-************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-**********************************************************************************************/
+/* CARBYNE-SHC end */
 
 
 
@@ -116,9 +106,7 @@ void janus_auth_deinit(void) {
 
 
 
-/**********************************************************************************************
- ************************ Carbyne - START SECTION - SanityHealthCheck *************************
- **********************************************************************************************/
+/* CARBYNE-SHC start */
 gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char *token) {
     if ( carbyne_shc_auth_secret == NULL)
             return FALSE;
@@ -146,11 +134,7 @@ fail:
     g_strfreev(parts);
     return FALSE;
 }
-/**********************************************************************************************
-************************ Carbyne - END SECTION - SanityHealthCheck ***************************
-**********************************************************************************************/
-
-
+/* CARBYNE-SHC end */
 
 
 gboolean janus_auth_check_signature(const char *token, const char *realm) {
