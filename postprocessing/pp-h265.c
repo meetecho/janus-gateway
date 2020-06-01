@@ -1,9 +1,9 @@
-/*! \file    pp-h264.c
+/*! \file    pp-h265.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Post-processing to generate .mp4 files out of H.264 frames
+ * \brief    Post-processing to generate .mp4 files out of H.265 frames
  * \details  Implementation of the post-processing code (based on FFmpeg)
- * needed to generate .mp4 files out of H.264 RTP frames.
+ * needed to generate .mp4 files out of H.265 RTP frames.
  *
  * \ingroup postprocessing
  * \ref postprocessing
@@ -22,7 +22,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
-#include "pp-h264.h"
+#include "pp-h265.h"
 #include "../debug.h"
 
 
@@ -58,7 +58,7 @@ static AVCodecContext *vEncoder;
 static int max_width = 0, max_height = 0, fps = 0;
 
 
-int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) {
+int janus_pp_h265_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
@@ -89,7 +89,7 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
-	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H265);
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
@@ -123,9 +123,9 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
 #endif
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
-	vStream->codec->codec_id = AV_CODEC_ID_H264;
+	vStream->codec->codec_id = AV_CODEC_ID_H265;
 #else
-	vStream->codec->codec_id = CODEC_ID_H264;
+	vStream->codec->codec_id = CODEC_ID_H265;
 #endif
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
 	vStream->codec->time_base = (AVRational){1, fps};
@@ -153,102 +153,103 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 }
 
 /* Helpers to decode Exp-Golomb */
-static uint32_t janus_pp_h264_eg_getbit(uint8_t *base, uint32_t offset) {
+static uint32_t janus_pp_h265_eg_getbit(uint8_t *base, uint32_t offset) {
 	return ((*(base + (offset >> 0x3))) >> (0x7 - (offset & 0x7))) & 0x1;
 }
 
-static uint32_t janus_pp_h264_eg_decode(uint8_t *base, uint32_t *offset) {
+static uint32_t janus_pp_h265_eg_getbits(uint8_t *base, uint8_t num, uint32_t *offset) {
+	uint32_t res = 0;
+	int32_t i = 0;
+	for(i=num-1; i>=0; i--) {
+		res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
+	}
+	return res;
+}
+
+static uint32_t janus_pp_h265_eg_decode(uint8_t *base, uint32_t *offset) {
 	uint32_t zeros = 0;
-	while(janus_pp_h264_eg_getbit(base, (*offset)++) == 0)
+	while(janus_pp_h265_eg_getbit(base, (*offset)++) == 0)
 		zeros++;
 	uint32_t res = 1 << zeros;
 	int32_t i = 0;
 	for(i=zeros-1; i>=0; i--) {
-		res |= janus_pp_h264_eg_getbit(base, (*offset)++) << i;
+		res |= janus_pp_h265_eg_getbit(base, (*offset)++) << i;
 	}
 	return res-1;
 }
 
 /* Helper to parse a SPS (only to get the video resolution) */
-static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
-	/* Let's check if it's the right profile, first */
-	int index = 1;
-	int profile_idc = *(buffer+index);
-	if(profile_idc != 66) {
-		JANUS_LOG(LOG_WARN, "Profile is not baseline (%d != 66)\n", profile_idc);
-	}
-	/* Then let's skip 2 bytes and evaluate/skip the rest */
-	index += 3;
+static void janus_pp_h265_parse_sps(char *buffer, int *width, int *height) {
+	/* Get the layer ID first */
+	uint16_t unit = 0;
+	memcpy(&unit, buffer, sizeof(uint16_t));
+	unit = ntohs(unit);
+	uint8_t lid = (unit & 0x01F8) >> 3;
+	gboolean multilayer = (lid > 0);
+	uint8_t sps_maxorext_m1 = 0;
+	/* Evaluate/skip everything until we get to the resolution */
 	uint32_t offset = 0;
-	uint8_t *base = (uint8_t *)(buffer+index);
-	/* Skip seq_parameter_set_id */
-	janus_pp_h264_eg_decode(base, &offset);
-	if(profile_idc >= 100) {
-		/* Skip chroma_format_idc */
-		janus_pp_h264_eg_decode(base, &offset);
-		/* Skip bit_depth_luma_minus8 */
-		janus_pp_h264_eg_decode(base, &offset);
-		/* Skip bit_depth_chroma_minus8 */
-		janus_pp_h264_eg_decode(base, &offset);
-		/* Skip qpprime_y_zero_transform_bypass_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
-		/* Skip seq_scaling_matrix_present_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
+	uint8_t *base = (uint8_t *)(buffer+2);
+	int i = 0;
+	/* Skip sps_video_parameter_set_id (4 bits) */
+	janus_pp_h265_eg_getbits(base, 4, &offset);
+	if(lid == 0) {
+		/* Skip sps_max_sub_layers_minus1 (3 bits) */
+		sps_maxorext_m1 = janus_pp_h265_eg_getbits(base, 3, &offset);
+	} else {
+		/* Skip sps_ext_or_max_sub_layers_minus1 (3 bits) */
+		sps_maxorext_m1 = janus_pp_h265_eg_getbits(base, 3, &offset);
+		if(sps_maxorext_m1 == 7)
+			multilayer = TRUE;
 	}
-	/* Skip log2_max_frame_num_minus4 */
-	janus_pp_h264_eg_decode(base, &offset);
-	/* Evaluate pic_order_cnt_type */
-	int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
-	if(pic_order_cnt_type == 0) {
-		/* Skip log2_max_pic_order_cnt_lsb_minus4 */
-		janus_pp_h264_eg_decode(base, &offset);
-	} else if(pic_order_cnt_type == 1) {
-		/* Skip delta_pic_order_always_zero_flag, offset_for_non_ref_pic,
-		 * offset_for_top_to_bottom_field and num_ref_frames_in_pic_order_cnt_cycle */
-		janus_pp_h264_eg_getbit(base, offset++);
-		janus_pp_h264_eg_decode(base, &offset);
-		janus_pp_h264_eg_decode(base, &offset);
-		int num_ref_frames_in_pic_order_cnt_cycle = janus_pp_h264_eg_decode(base, &offset);
-		int i = 0;
-		for(i=0; i<num_ref_frames_in_pic_order_cnt_cycle; i++) {
-			janus_pp_h264_eg_decode(base, &offset);
+	if(!multilayer) {
+		/* Skip sps_temporal_id_nesting_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* profile_tier_level is variable, start skipping general_profile_space (2 bits) */
+		janus_pp_h265_eg_getbits(base, 2, &offset);
+		/* Skip general_tier_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_profile_idc (5 bits) */
+		janus_pp_h265_eg_getbits(base, 5, &offset);
+		/* Skip general_profile_compatibility_flag (32 bits) */
+		janus_pp_h265_eg_getbits(base, 32, &offset);
+		/* Skip general_progressive_source_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_interlaced_source_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_non_packed_constraint_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_frame_only_constraint_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_reserved_zero_43bits (43 bits) */
+		janus_pp_h265_eg_getbits(base, 43, &offset);
+		/* Skip general_reserved_zero_bit (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
+		/* Skip general_level_idc (8 bits) */
+		janus_pp_h265_eg_getbits(base, 8, &offset);
+		/* Skip sub layer bits (2 per layer-1) */
+		if(sps_maxorext_m1) {
+			for(i=0; i<8; i++) {
+				janus_pp_h265_eg_getbit(base, offset++);
+				janus_pp_h265_eg_getbit(base, offset++);
+			}
 		}
+		/* FIXME There are other things to skip for multiple layers... */
 	}
-	/* Skip max_num_ref_frames and gaps_in_frame_num_value_allowed_flag */
-	janus_pp_h264_eg_decode(base, &offset);
-	janus_pp_h264_eg_getbit(base, offset++);
-	/* We need the following three values */
-	int pic_width_in_mbs_minus1 = janus_pp_h264_eg_decode(base, &offset);
-	int pic_height_in_map_units_minus1 = janus_pp_h264_eg_decode(base, &offset);
-	int frame_mbs_only_flag = janus_pp_h264_eg_getbit(base, offset++);
-	if(!frame_mbs_only_flag) {
-		/* Skip mb_adaptive_frame_field_flag */
-		janus_pp_h264_eg_getbit(base, offset++);
+	/* Skip sps_seq_parameter_set_id */
+	janus_pp_h265_eg_decode(base, &offset);
+	/* Skip chroma_format_idc */
+	uint32_t cfidc = janus_pp_h265_eg_decode(base, &offset);
+	if(cfidc == 3) {
+		/* Skip separate_colour_plane_flag (1 bit) */
+		janus_pp_h265_eg_getbit(base, offset++);
 	}
-	/* Skip direct_8x8_inference_flag */
-	janus_pp_h264_eg_getbit(base, offset++);
-	/* We need the following value to evaluate offsets, if any */
-	int frame_cropping_flag = janus_pp_h264_eg_getbit(base, offset++);
-	int frame_crop_left_offset = 0, frame_crop_right_offset = 0,
-		frame_crop_top_offset = 0, frame_crop_bottom_offset = 0;
-	if(frame_cropping_flag) {
-		frame_crop_left_offset = janus_pp_h264_eg_decode(base, &offset);
-		frame_crop_right_offset = janus_pp_h264_eg_decode(base, &offset);
-		frame_crop_top_offset = janus_pp_h264_eg_decode(base, &offset);
-		frame_crop_bottom_offset = janus_pp_h264_eg_decode(base, &offset);
-	}
-	/* Skip vui_parameters_present_flag */
-	janus_pp_h264_eg_getbit(base, offset++);
-
-	/* We skipped what we didn't care about and got what we wanted, compute width/height */
-	if(width)
-		*width = ((pic_width_in_mbs_minus1 +1)*16) - frame_crop_left_offset*2 - frame_crop_right_offset*2;
-	if(height)
-		*height = ((2 - frame_mbs_only_flag)* (pic_height_in_map_units_minus1 +1) * 16) - (frame_crop_top_offset * 2) - (frame_crop_bottom_offset * 2);
+	/* We need pic_width_in_luma_samples and pic_heigth_in_luma_samples */
+	*width = janus_pp_h265_eg_decode(base, &offset);
+	*height = janus_pp_h265_eg_decode(base, &offset);
 }
 
-
-int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
+int janus_pp_h265_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -270,7 +271,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
-		/* Parse H264 header now */
+		/* Read the packet */
 		fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 		int len = tmp->len-12-tmp->skip;
 		if(len < 1) {
@@ -280,44 +281,70 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		bytes = fread(prebuffer, sizeof(char), len, file);
 		if(bytes != len) {
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+			tmp->drop = TRUE;
 			tmp = tmp->next;
 			continue;
 		}
-		if((prebuffer[0] & 0x1F) == 7) {
-			/* SPS, see if we can extract the width/height as well */
-			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
+		/* Parse H.265 header now */
+		if(len < 2) {
+			JANUS_LOG(LOG_WARN, "Packet too small...\n");
+			tmp->drop = TRUE;
+			if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+				break;
+			tmp = tmp->next;
+			continue;
+		}
+		uint16_t unit = 0;
+		memcpy(&unit, prebuffer, sizeof(uint16_t));
+		unit = ntohs(unit);
+		uint8_t fbit = (unit & 0x8000) >> 15;
+		uint8_t type = (unit & 0x7E00) >> 9;
+		uint8_t lid = (unit & 0x01F8) >> 3;
+		uint8_t tid = (unit & 0x0007);
+		if(type == 32) {
+			/* VPS */
+			JANUS_LOG(LOG_HUGE, "[VPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+		} else if(type == 33) {
+			/* SPS */
+			JANUS_LOG(LOG_HUGE, "[SPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+			/* Get rid of the Emulation Prevention code, if present */
+			int i = 0, j = 0, zeros = 0;
+			for(i=0; i<len; i++) {
+				if(zeros == 2 && prebuffer[i] == 0x03) {
+					/* Found, get rid of it */
+					i++;
+					zeros = 0;
+				}
+				/* Update the content of the buffer as we go along */
+				prebuffer[j] = prebuffer[i];
+				if(prebuffer[i] == 0x00) {
+					/* Found a zero, may be part of a start code */
+					zeros++;
+				} else {
+					/* Not a zero, so not the beginning of a start code */
+					zeros = 0;
+				}
+				j++;
+			}
+			/* Update the length of the buffer */
+			len = j;
+			/* Parse to get width/height */
 			int width = 0, height = 0;
-			janus_pp_h264_parse_sps(prebuffer, &width, &height);
+			janus_pp_h265_parse_sps(prebuffer, &width, &height);
 			if(width > max_width)
 				max_width = width;
 			if(height > max_height)
 				max_height = height;
-		} else if((prebuffer[0] & 0x1F) == 24) {
-			/* May we find an SPS in this STAP-A? */
-			JANUS_LOG(LOG_HUGE, "Parsing STAP-A...\n");
-			char *buffer = prebuffer;
-			buffer++;
-			int tot = len-1;
-			uint16_t psize = 0;
-			while(tot > 0) {
-				memcpy(&psize, buffer, 2);
-				psize = ntohs(psize);
-				buffer += 2;
-				tot -= 2;
-				int nal = *buffer & 0x1F;
-				JANUS_LOG(LOG_HUGE, "  -- NALU of size %u: %d\n", psize, nal);
-				if(nal == 7) {
-					JANUS_LOG(LOG_VERB, "Parsing width/height\n");
-					int width = 0, height = 0;
-					janus_pp_h264_parse_sps(buffer, &width, &height);
-					if(width > max_width)
-						max_width = width;
-					if(height > max_height)
-						max_height = height;
-				}
-				buffer += psize;
-				tot -= psize;
-			}
+		} else if(type == 34) {
+			/* PPS */
+			JANUS_LOG(LOG_HUGE, "[PPS] %u/%u/%u/%u\n", fbit, type, lid, tid);
+		} else if(type == 49) {
+			/* FU */
+			uint8_t fuh = prebuffer[2];
+			uint8_t startbit = (fuh & 0x80) >> 7;
+			uint8_t endbit = (fuh & 0x40) >> 6;
+			uint16_t nut = (fuh & 0x1F);
+			JANUS_LOG(LOG_HUGE, "[FU] %u/%u/%u/%u, %u/%u/%u\n", fbit, type, lid, tid, startbit, endbit, nut);
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
@@ -354,7 +381,7 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	return 0;
 }
 
-int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working) {
+int janus_pp_h265_process(FILE *file, janus_pp_frame_packet *list, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -396,85 +423,61 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				tmp = tmp->next;
 				continue;
 			}
-			/* H.264 depay */
-			int jump = 0;
-			uint8_t fragment = *buffer & 0x1F;
-			uint8_t nal = *(buffer+1) & 0x1F;
-			uint8_t start_bit = *(buffer+1) & 0x80;
-			if(fragment == 28 || fragment == 29)
-				JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d (len=%d, frameLen=%d)\n", fragment, nal, start_bit, len, frameLen);
-			else
-				JANUS_LOG(LOG_HUGE, "Fragment=%d (len=%d, frameLen=%d)\n", fragment, len, frameLen);
-			if(fragment == 5 ||
-					((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
-				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
-				keyFrame = 1;
-				/* Is this the first keyframe we find? */
-				if(!keyframe_found) {
-					keyframe_found = TRUE;
-					JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
-				}
+			/* H.265 depay */
+			if(len < 2) {
+				JANUS_LOG(LOG_WARN, "Packet too small...\n");
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
+				tmp = tmp->next;
+				continue;
 			}
-			/* Frame manipulation */
-			if((fragment > 0) && (fragment < 24)) {	/* Add a start code */
+			/* Read the header and skip it */
+			uint16_t unit = 0;
+			memcpy(&unit, buffer, sizeof(uint16_t));
+			unit = ntohs(unit);
+			uint8_t type = (unit & 0x7E00) >> 9;
+			if(type == 32 || type == 33 || type == 34) {
+				if(type == 32 || type == 33) {
+					keyFrame = 1;
+					if(!keyframe_found) {
+						keyframe_found = TRUE;
+						JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+					}
+				}
+				/* Add the NAL delimiter */
 				uint8_t *temp = received_frame + frameLen;
 				memset(temp, 0x00, 1);
 				memset(temp + 1, 0x00, 1);
 				memset(temp + 2, 0x01, 1);
 				frameLen += 3;
-			} else if(fragment == 24) {	/* STAP-A */
-				/* De-aggregate the NALs and write each of them separately */
-				buffer++;
-				int tot = len-1;
-				uint16_t psize = 0;
-				while(tot > 0) {
-					memcpy(&psize, buffer, 2);
-					psize = ntohs(psize);
-					if((frameLen + psize) >= numBytes) {
-						JANUS_LOG(LOG_ERR, "Invalid size %u + %"SCNu16" (exceeds buffer size)\n", frameLen, psize);
-						/* Done, we'll wait for the next video data to write the frame */
-						if(tmp->next == NULL || tmp->next->ts > tmp->ts)
-							break;
-						tmp = tmp->next;
-						continue;
-					}
-					buffer += 2;
-					tot -= 2;
-					/* Now we have a single NAL */
+			}
+			if(type == 49) {
+				/* Check if this is the beginning of the FU */
+				uint8_t fuh = *(buffer+2);
+				uint8_t startbit = (fuh & 0x80) >> 7;
+				if(startbit) {
+					/* Add the NAL delimiter */
 					uint8_t *temp = received_frame + frameLen;
 					memset(temp, 0x00, 1);
 					memset(temp + 1, 0x00, 1);
 					memset(temp + 2, 0x01, 1);
 					frameLen += 3;
-					memcpy(received_frame + frameLen, buffer, psize);
-					frameLen += psize;
-					/* Go on */
-					buffer += psize;
-					tot -= psize;
+					/* Update the NAL unit */
+					uint16_t fbit = (unit & 0x8000);
+					uint16_t nut = (fuh & 0x1F);
+					uint16_t lid = (unit & 0x01F8);
+					uint16_t tid = (unit & 0x0007);
+					unit = fbit + (nut << 9) + lid + tid;
+					unit = htons(unit);
+					memcpy(received_frame + frameLen, &unit, sizeof(uint16_t));
+					frameLen += 2;
 				}
-				/* Done, we'll wait for the next video data to write the frame */
-				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
-					break;
-				tmp = tmp->next;
-				continue;
-			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
-				uint8_t indicator = *buffer;
-				uint8_t header = *(buffer+1);
-				jump = 2;
-				len -= 2;
-				if(header & 0x80) {
-					/* First part of fragmented packet (S bit set) */
-					uint8_t *temp = received_frame + frameLen;
-					memset(temp, 0x00, 1);
-					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x01, 1);
-					memset(temp + 3, (indicator & 0xE0) | (header & 0x1F), 1);
-					frameLen += 4;
-				} else if (header & 0x40) {
-					/* Last part of fragmented packet (E bit set) */
-				}
+				/* Skip the FU header */
+				buffer += 3;
+				len -= 3;
 			}
-			memcpy(received_frame + frameLen, buffer+jump, len);
+			/* Frame manipulation */
+			memcpy(received_frame + frameLen, buffer, len);
 			frameLen += len;
 			if(len == 0)
 				break;
@@ -515,7 +518,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 }
 
 /* Close MP4 file */
-void janus_pp_h264_close(void) {
+void janus_pp_h265_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
 #ifdef USE_CODECPAR

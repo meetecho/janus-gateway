@@ -97,7 +97,8 @@ int main(int argc, char *argv[])
 	const char *codec = args_info.codec_arg;
 	gboolean show_warnings = args_info.warnings_given;
 	gboolean video = FALSE;
-	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
+	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")
+			|| !strcasecmp(codec, "av1") || !strcasecmp(codec, "h265")) {
 		video = TRUE;
 	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "multiopus")
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
