@@ -225,6 +225,7 @@ typedef struct janus_echotest_session {
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
+	gboolean e2ee;			/* Whether media is encrypted, e.g., using Insertable Streams */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
 	volatile gint hangingup;
@@ -485,6 +486,8 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "data", json_string(session->drc->filename));
 		json_object_set_new(info, "recording", recording);
 	}
+	if(session->e2ee)
+		json_object_set_new(info, "e2ee", json_true());
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
@@ -808,6 +811,7 @@ static void janus_echotest_hangup_media_internal(janus_plugin_session *handle) {
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	g_free(session->vfmtp);
 	session->vfmtp = NULL;
+	session->e2ee = FALSE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
 	int i=0;
@@ -879,6 +883,9 @@ static void *janus_echotest_handler(void *data) {
 			session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
 			session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
 		}
+		json_t *msg_e2ee = json_object_get(msg->jsep, "e2ee");
+		if(json_is_true(msg_e2ee))
+			session->e2ee = TRUE;
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
@@ -1126,6 +1133,8 @@ static void *janus_echotest_handler(void *data) {
 			janus_sdp_destroy(offer);
 			janus_sdp_destroy(answer);
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
+			if(session->e2ee)
+				json_object_set_new(jsep, "e2ee", json_true());
 			/* How long will the core take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
@@ -1149,44 +1158,50 @@ static void *janus_echotest_handler(void *data) {
 				char filename[255];
 				gint64 now = janus_get_real_time();
 				if(session->has_audio) {
-					/* FIXME We assume we're recording Opus, here */
+					/* Prepare an audio recording */
+					janus_recorder *rc = NULL;
 					memset(filename, 0, 255);
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-audio", recording_base);
-						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
-						if(session->arc == NULL) {
+						rc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
 						}
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
-						session->arc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
-						if(session->arc == NULL) {
+						rc = janus_recorder_create(NULL, janus_audiocodec_name(session->acodec), filename);
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
 						}
 					}
+					/* If media is encrypted, mark it in the recording */
+					if(session->e2ee)
+						janus_recorder_encrypted(rc);
+					session->arc = rc;
 				}
 				if(session->has_video) {
-					/* FIXME We assume we're recording VP8, here */
+					/* Prepare a video recording */
+					janus_recorder *rc = NULL;
 					memset(filename, 0, 255);
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create_full(NULL,
+						rc = janus_recorder_create_full(NULL,
 							janus_videocodec_name(session->vcodec), session->vfmtp, filename);
-						if(session->vrc == NULL) {
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
 						}
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create_full(NULL,
+						rc = janus_recorder_create_full(NULL,
 							janus_videocodec_name(session->vcodec), session->vfmtp, filename);
-						if(session->vrc == NULL) {
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
 						}
@@ -1194,26 +1209,34 @@ static void *janus_echotest_handler(void *data) {
 					/* Send a PLI */
 					JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 					gateway->send_pli(session->handle);
+					/* If media is encrypted, mark it in the recording */
+					if(session->e2ee)
+						janus_recorder_encrypted(rc);
+					session->vrc = rc;
 				}
 				if(session->has_data) {
+					/* Prepare a data recording */
+					janus_recorder *rc = NULL;
 					memset(filename, 0, 255);
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-data", recording_base);
-						session->drc = janus_recorder_create(NULL, "text", filename);
-						if(session->drc == NULL) {
+						rc = janus_recorder_create(NULL, "text", filename);
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
 						}
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-data", session, now);
-						session->drc = janus_recorder_create(NULL, "text", filename);
-						if(session->drc == NULL) {
+						rc = janus_recorder_create(NULL, "text", filename);
+						if(rc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
 						}
 					}
+					/* Media encryption doesn't apply to data channels */
+					session->drc = rc;
 				}
 			}
 			janus_mutex_unlock(&session->rec_mutex);

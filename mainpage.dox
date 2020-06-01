@@ -3373,18 +3373,31 @@ ldd janus | grep asan
 /*! \page resources Resources
  * This page contains pointers to some third-party resources, in particular
  * distro repos for an easier installation of Janus, where available,
- * client stacks, libraries and bindings in other languages, that is
- * tools that you find helpful to interact with Janus outside of the
- * context of the \c janus.js JavaScript library we provide. It is not
- * a complete list, but just a summary of the material that has been
- * shared so far on the <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
+ * applications, mobile/docker/Pi stuff, orchestration tools, client stacks,
+ * libraries and bindings in other languages (that is tools that you find
+ * helpful to interact with Janus outside of the context of the \c janus.js
+ * JavaScript library we provide) and so on. It is not a complete list,
+ * but just a summary of the material that has been shared so far on the
+ * <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
  * Google group.
  *
- * If you've developed anything related to Janus (client stacks, plugins,
- * transports, etc.) and you're willing to share them with the community,
- * or you know any such effort that is not listed here, just let us know
- * and we'll add it on this page.
+ * If you've developed anything related to Janus and you're willing to share
+ * it with the community, or you know any such effort that is not listed
+ * here, just let us know and we'll add it on this page.
  * <br/><br/>
+ *
+ * - <a href="#repos">Distro repositories</a>\n
+ * - <a href="#stacks">Client-side stacks</a>\n
+ * - <a href="#mobile">Mobile resources</a>\n
+ * - <a href="#pi">Raspberry Pi resources</a>\n
+ * - <a href="#docker">Docker resources</a>\n
+ * - <a href="#thirdplugins">Third-party plugins</a>\n
+ * - <a href="#thirdtransports">Third-party transports</a>\n
+ * - <a href="#evhandlers">Event handlers (monitoring/troubleshooting)</a>\n
+ * - <a href="#orchestration">Orchestration</a>\n
+ * - <a href="#applications">Complete applications</a>\n
+ *
+ * <hr/>
  *
  * \section repos Distro repositories
  *
@@ -3585,7 +3598,36 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
- * \section evhandlers Event Handlers (monitoring/troubleshooting)
+ * \section thirdplugins Third-party plugins
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
+ * 		<td><a href="https://github.com/cargomedia/janus-gateway-rtpbroadcast">janus-gateway-rtpbroadcast</a></td>
+ * 		<td>Janus-gateway plugin to broadcast RTP video</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
+ * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
+ * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section thirdtransports Third-party transports
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
+ * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-ud-transport</a></td>
+ * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section evhandlers Event handlers (monitoring/troubleshooting)
  *
  * <table class="table table-striped">
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
@@ -3604,35 +3646,6 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
- * \section thirdplugins Third-party plugins
- *
- * <table class="table table-striped">
- * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
- * <tr>
- * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
- * 		<td><a href="https://github.com/cargomedia/janus-gateway-rtpbroadcast">janus-gateway-rtpbroadcast</a></td>
- * 		<td>Janus-gateway plugin to broadcast RTP video</td>
- * </tr>
- * <tr>
- * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
- * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
- * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
- * </tr>
- * </table>
- * <br/>
- *
- * \section thirdtrasports Third-party transports
- *
- * <table class="table table-striped">
- * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
- * <tr>
- * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
- * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-ud-transport</a></td>
- * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
- * </tr>
- * </table>
- * <br/>
- *
  * \section orchestration Orchestration
  *
  * <table class="table table-striped">
@@ -3641,6 +3654,23 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/OpenSight">OpenSight</a></td>
  * 		<td><a href="https://github.com/OpenSight/janus-cloud">janus-cloud</a></td>
  * 		<td>An API proxy for Janus WebRTC server cluster</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section applications Complete applications
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/jangouts">jangouts</a></td>
+ * 		<td><a href="https://github.com/jangouts/jangouts">jangouts</a></td>
+ * 		<td>Videoconferencing based on WebRTC and Janus Gateway with an UI inspired by Google Hangouts</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/gjovanov">Goran Jovanov</a></td>
+ * 		<td><a href="https://github.com/gjovanov/roomler">roomler</a></td>
+ * 		<td>Roomler - Video collaboration tool using WebRTC (Janus Gateway)</td>
  * </tr>
  * </table>
  * <br/>

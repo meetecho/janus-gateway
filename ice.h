@@ -147,7 +147,7 @@ void janus_set_slowlink_threshold(uint packets);
  * @returns The current slowlink-threshold value */
 uint janus_get_slowlink_threshold(void);
 /*! \brief Method to modify the TWCC feedback period (i.e., how often TWCC feedback is sent back to media senders)
- * @param[in] timer The new period value, in milliseconds */
+ * @param[in] period The new period value, in milliseconds */
 void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
@@ -213,6 +213,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_RESEND_TRICKLES		(1 << 18)
 #define JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX			(1 << 19)
 #define JANUS_ICE_HANDLE_WEBRTC_NEW_DATACHAN_SDP	(1 << 20)
+#define JANUS_ICE_HANDLE_WEBRTC_E2EE				(1 << 21)
 
 
 /*! \brief Janus media statistics

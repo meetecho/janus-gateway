@@ -90,7 +90,8 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
 		return NULL;
 	}
-	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
+	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")
+			 || !strcasecmp(codec, "av1") || !strcasecmp(codec, "h265")) {
 		type = JANUS_RECORDER_VIDEO;
 	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "multiopus")
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
@@ -252,6 +253,16 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	return rc;
 }
 
+int janus_recorder_encrypted(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	if(!recorder->header) {
+		recorder->encrypted = TRUE;
+		return 0;
+	}
+	return -1;
+}
+
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length) {
 	if(!recorder)
 		return -1;
@@ -286,6 +297,9 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
+		/* If media will be end-to-end encrypted, mark it in the recording header */
+		if(recorder->encrypted)
+			json_object_set_new(info, "e", json_true());
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));

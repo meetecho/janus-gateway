@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Device Selection Test</title>
+<title>Janus WebRTC Server: End-to-end Encryption Test</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,12 +13,12 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="devicetest.js"></script>
+<script type="text/javascript" src="e2etest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='devicetest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='e2etest.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Device Selection
+				<h1>Plugin Demo: End-to-end Encryption
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -49,42 +49,28 @@
 						<h3>Demo details</h3>
 						<p>This is a variant of the Echo Test demo: everything is exactly
 						the same in term of available controls, features, and the like, with
-						the substantial difference that you can select which of the available
-						devices (microphones, webcams) you want to use for the media setup.</p>
-						<p>The demo will start by automatically selecting some default devices,
-						pretty much as the regular Echo Test demo already does. Once done,
-						you'll be able to individually change the capture audio and/or video
-						device: this will result in the Echo Test channel being reset and
-						recreated, in order to use the device(s) you selected instead. Just
-						as with the regular Echo Test demo, the <code>?simulcast=true</code>
-						query string will allow you to test simulcasting as well.</p>
-						<p>The demo exploits a functionality made available in the
-						<code>janus.js</code> library, meaning you should be able to
-						easily adapt all the other demos to follow the same approach as
-						well, and that you'll be able to do the same in your Janus-based
-						web application too.</p>
+						the substantial difference that it shows how you can configure an
+						end-to-end encryption context using the recently introduced
+						<a target="_blank" href="https://www.chromestatus.com/feature/6321945865879552">Insertable Streams</a>.</p>
+						<p>Specifically, this demo will prompt for a secret, and then use the same transform functions as
+						<a target="_blank" href="https://webrtc.github.io/samples/src/content/peerconnection/endtoend-encryption/">this official demo</a>
+						to encrypt the media: this means Janus will NOT have access to the media, but
+						will still be able to pass the packets to the EchoTest plugin and send them
+						back, thus ensuring an end-to-end encryption of the content. In this context,
+						the same page that encrypted the media will also decrypt it, which means
+						that if you see both local and remote video, then it's working as expected.
+						You'll probably want to then experiment with this feature by playing with
+						other plugins as well, e.g., the VideoRoom, for E2E-encrypted conferences.</p>
+						<p>Notice that at the time of writing, only video can be end-to-end encrypted,
+						and not audio. More importantly, at the moment this will only work if you're
+						using a recent of Chrome version that has been started either with the following flag:</p>
+						<p><div class="alert alert-info"><code>--enable-experimental-web-platform-features --force-fieldtrials=WebRTC-GenericDescriptorAdvertised/Enabled/</code></div></p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container">
-				<div class="row hide" id="devices">
-					<form class="form-inline">
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="audio-device">Audio device (input):</label>
-							<select id="audio-device" class="form-control"></select>
-						</div>
-						<div class="form-group" style="margin-right: 20px;">
-							<label for="video-device">Video device (input):</label>
-							<select id="video-device" class="form-control"></select>
-						</div>
-						<div class="form-group">
-							<div id="change-devices" class="form-control btn btn-primary">Change devices</div>
-						</div>
-					</form>
-					<hr>
-				</div>
- 				<div class="row hide" id="videos">
+			<div class="container hide" id="videos">
+				<div class="row">
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
@@ -113,31 +99,19 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled />
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream
-									<span class="label label-primary hide" id="curres"></span>
-									<span class="label label-info hide" id="curbitrate"></span>
-									<div class="btn-group btn-group-xs pull-right hide" id="output-devices">
-										<div class="btn-group btn-group-xs">
-											<button id="outputdeviceset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
-												Output device<span class="caret"></span>
-											</button>
-											<ul id="audiooutput" class="dropdown-menu" role="menu">
-											</ul>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
-							<input class="form-control" type="text" id="datarecv" disabled />
+							<input class="form-control" type="text" id="datarecv" disabled></input>
 						</div>
 					</div>
 				</div>

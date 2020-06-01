@@ -1320,6 +1320,13 @@ static void *janus_nosip_handler(void *data) {
 				g_snprintf(error_cause, 512, "The NoSIP plugin does not support DataChannels");
 				goto error;
 			}
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but legacy endpoints will need unencrypted media frames */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
 			/* Check if the user provided an info string to provide context */
 			const char *info = json_string_value(json_object_get(root, "info"));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
@@ -1935,14 +1942,14 @@ static int janus_nosip_allocate_port_pair(gboolean video, int fds[2], int ports[
 		if(rtp_fd == -1) {
 			rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			/* Set the DSCP value if set in the config file */
-			if(!video && dscp_audio_rtp > 0) {
+			if(rtp_fd != -1 && !video && dscp_audio_rtp > 0) {
 				int optval = dscp_audio_rtp << 2;
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {
 					JANUS_LOG(LOG_WARN, "Error setting IP_TOS %d on audio RTP socket (error=%s)\n",
 						optval, strerror(errno));
 				}
-			} else if(video && dscp_video_rtp > 0) {
+			} else if(rtp_fd != -1 && video && dscp_video_rtp > 0) {
 				int optval = dscp_video_rtp << 2;
 				int ret = setsockopt(rtp_fd, IPPROTO_IP, IP_TOS, &optval, sizeof(optval));
 				if(ret < 0) {

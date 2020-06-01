@@ -796,6 +796,13 @@ static void *janus_voicemail_handler(void *data) {
 			json_decref(event);
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but we need to save the unencrypted media frames to an .opus file */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
 			const char *type = NULL;
 			if(!strcasecmp(msg_sdp_type, "offer"))
 				type = "answer";

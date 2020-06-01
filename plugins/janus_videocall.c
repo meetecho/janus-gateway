@@ -385,6 +385,7 @@ typedef struct janus_videocall_session {
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
+	gboolean e2ee;			/* Whether media is encrypted, e.g., using Insertable Streams */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	volatile gint incall;
 	volatile gint dataready;
@@ -684,6 +685,8 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "incall", json_integer(g_atomic_int_get(&session->incall)));
+	if(session->e2ee)
+		json_object_set_new(info, "e2ee", json_true());
 	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	janus_refcount_decrease(&session->ref);
@@ -1024,6 +1027,7 @@ static void janus_videocall_hangup_media_internal(janus_plugin_session *handle) 
 	session->vcodec = JANUS_VIDEOCODEC_NONE;
 	session->bitrate = 0;
 	session->peer_bitrate = 0;
+	session->e2ee = FALSE;
 	int i=0;
 	for(i=0; i<3; i++) {
 		session->ssrc[i] = 0;
@@ -1091,6 +1095,9 @@ static void *janus_videocall_handler(void *data) {
 			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		json_t *msg_e2ee = json_object_get(msg->jsep, "e2ee");
+		if(json_is_true(msg_e2ee))
+			session->e2ee = TRUE;
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
@@ -1288,6 +1295,8 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(calling, "username", json_string(session->username));
 				json_object_set_new(call, "result", calling);
 				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
+				if(session->e2ee)
+					json_object_set_new(jsep, "e2ee", json_true());
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -1377,6 +1386,8 @@ static void *janus_videocall_handler(void *data) {
 			janus_sdp_destroy(answer);
 			/* Send SDP to our peer */
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
+			if(session->e2ee)
+				json_object_set_new(jsep, "e2ee", json_true());
 			json_t *call = json_object();
 			json_object_set_new(call, "videocall", json_string("event"));
 			json_t *calling = json_object();
@@ -1529,7 +1540,8 @@ static void *janus_videocall_handler(void *data) {
 					char filename[255];
 					gint64 now = janus_get_real_time();
 					if(session->has_audio) {
-						/* FIXME We assume we're recording Opus, here */
+						/* Prepare an audio recording */
+						janus_recorder *rc = NULL;
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
@@ -1551,9 +1563,14 @@ static void *janus_videocall_handler(void *data) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
 							}
 						}
+						/* If media is encrypted, mark it in the recording */
+						if(session->e2ee)
+							janus_recorder_encrypted(rc);
+						session->arc = rc;
 					}
 					if(session->has_video) {
-						/* FIXME We assume we're recording VP8, here */
+						/* Prepare a video recording */
+						janus_recorder *rc = NULL;
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
@@ -1578,14 +1595,20 @@ static void *janus_videocall_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						gateway->send_pli(session->handle);
+						/* If media is encrypted, mark it in the recording */
+						if(session->e2ee)
+							janus_recorder_encrypted(rc);
+						session->vrc = rc;
 					}
 					if(session->has_data) {
+						/* Prepare a data recording */
+						janus_recorder *rc = NULL;
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-data", recording_base);
-							session->drc = janus_recorder_create(NULL, "text", filename);
-							if(session->drc == NULL) {
+							rc = janus_recorder_create(NULL, "text", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open a data recording file for this VideoCall user!\n");
 							}
@@ -1595,12 +1618,14 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(peer && peer->username) ? peer->username : "unknown",
 								now);
-							session->drc = janus_recorder_create(NULL, "text", filename);
-							if(session->drc == NULL) {
+							rc = janus_recorder_create(NULL, "text", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open a data recording file for this VideoCall user!\n");
 							}
 						}
+						/* Media encryption doesn't apply to data channels */
+						session->drc = rc;
 					}
 				}
 				janus_mutex_unlock(&session->rec_mutex);
