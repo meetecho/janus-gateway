@@ -4690,7 +4690,7 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already watching a stream");
 				goto error;
 			}
-			g_atomic_int_set(&session->stopping, 1);
+			g_atomic_int_set(&session->stopping, 0);
 			session->mountpoint = mp;
 			session->sdp_version = 1;	/* This needs to be increased when it changes */
 			session->sdp_sessid = janus_get_real_time();
