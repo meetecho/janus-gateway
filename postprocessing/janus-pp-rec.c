@@ -102,6 +102,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
 #include "pp-rtp.h"
 #include "pp-webm.h"
 #include "pp-h264.h"
+#include "pp-av1.h"
+#include "pp-h265.h"
 #include "pp-opus.h"
 #include "pp-g711.h"
 #include "pp-g722.h"
@@ -333,7 +335,7 @@ int main(int argc, char *argv[])
 	gboolean parsed_header = FALSE;
 	gboolean video = FALSE, data = FALSE;
 	gboolean opus = FALSE, g711 = FALSE, g722 = FALSE,
-		vp8 = FALSE, vp9 = FALSE, h264 = FALSE;
+		vp8 = FALSE, vp9 = FALSE, h264 = FALSE, av1 = FALSE, h265 = FALSE;
 	gboolean e2ee = FALSE;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
@@ -503,6 +505,20 @@ int main(int argc, char *argv[])
 						h264 = TRUE;
 						if(extension && strcasecmp(extension, "mp4")) {
 							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
+							cmdline_parser_free(&args_info);
+							exit(1);
+						}
+					} else if(!strcasecmp(c, "av1")) {
+						av1 = TRUE;
+						if(extension && strcasecmp(extension, "mp4")) {
+							JANUS_LOG(LOG_ERR, "AV1 RTP packets can only be converted to a .mp4 file\n");
+							cmdline_parser_free(&args_info);
+							exit(1);
+						}
+					} else if(!strcasecmp(c, "h265")) {
+						h265 = TRUE;
+						if(extension && strcasecmp(extension, "mp4")) {
+							JANUS_LOG(LOG_ERR, "H.265 RTP packets can only be converted to a .mp4 file\n");
 							cmdline_parser_free(&args_info);
 							exit(1);
 						}
@@ -919,6 +935,18 @@ int main(int argc, char *argv[])
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
+		} else if(av1) {
+			if(janus_pp_av1_preprocess(file, list) < 0) {
+				JANUS_LOG(LOG_ERR, "Error pre-processing AV1 RTP frames...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
+		} else if(h265) {
+			if(janus_pp_h265_preprocess(file, list) < 0) {
+				JANUS_LOG(LOG_ERR, "Error pre-processing H.265 RTP frames...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
 		}
 	}
 
@@ -1006,6 +1034,18 @@ int main(int argc, char *argv[])
 				cmdline_parser_free(&args_info);
 				exit(1);
 			}
+		} else if(av1) {
+			if(janus_pp_av1_create(destination, metadata, janus_faststart) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
+		} else if(h265) {
+			if(janus_pp_h265_create(destination, metadata, janus_faststart) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
+				cmdline_parser_free(&args_info);
+				exit(1);
+			}
 		}
 	}
 
@@ -1033,9 +1073,17 @@ int main(int argc, char *argv[])
 			if(janus_pp_webm_process(file, list, vp8, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
 			}
-		} else {
+		} else if(h264) {
 			if(janus_pp_h264_process(file, list, &working) < 0) {
 				JANUS_LOG(LOG_ERR, "Error processing H.264 RTP frames...\n");
+			}
+		} else if(av1) {
+			if(janus_pp_av1_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing AV1 RTP frames...\n");
+			}
+		} else if(h265) {
+			if(janus_pp_h265_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing H.265 RTP frames...\n");
 			}
 		}
 	}
@@ -1044,8 +1092,12 @@ int main(int argc, char *argv[])
 	if(video) {
 		if(vp8 || vp9) {
 			janus_pp_webm_close();
-		} else {
+		} else if(h264) {
 			janus_pp_h264_close();
+		} else if(av1) {
+			janus_pp_av1_close();
+		} else if(h265) {
+			janus_pp_h265_close();
 		}
 	} else if(data) {
 		janus_pp_srt_close();

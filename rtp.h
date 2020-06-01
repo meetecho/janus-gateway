@@ -110,7 +110,9 @@ typedef enum janus_videocodec {
 	JANUS_VIDEOCODEC_NONE,
 	JANUS_VIDEOCODEC_VP8,
 	JANUS_VIDEOCODEC_VP9,
-	JANUS_VIDEOCODEC_H264
+	JANUS_VIDEOCODEC_H264,
+	JANUS_VIDEOCODEC_AV1,
+	JANUS_VIDEOCODEC_H265
 } janus_videocodec;
 const char *janus_videocodec_name(janus_videocodec vcodec);
 janus_videocodec janus_videocodec_from_name(const char *name);

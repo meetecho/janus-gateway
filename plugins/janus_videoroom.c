@@ -62,7 +62,7 @@ room-<unique room ID>: {
 	fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 	audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec to force on publishers, default=opus
 				can be a comma separated list in order of preference, e.g., opus,pcmu)
-	videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8
+	videocodec = vp8|vp9|h264|av1|h265 (video codec to force on publishers, default=vp8
 				can be a comma separated list in order of preference, e.g., vp9,vp8,h264)
 	vp9_profile = VP9-specific profile to prefer (e.g., "2" for "profile-id=2")
 	h264_profile = H.264-specific profile to prefer (e.g., "42e01f" for "profile-level-id=42e01f")
@@ -844,17 +844,21 @@ room-<unique room ID>: {
 }
 \endverbatim
  *
- * Other participants will receive a different event depending on whether
- * you were currently an active publisher ("unpublished") or simply
- * lurking ("leaving"):
+ * Other participants will receive a "leaving" event to notify them the
+ * circumstance:
  *
 \verbatim
 {
 	"videoroom" : "event",
 	"room" : <room ID>,
-	"leaving|unpublished" : <unique ID of the publisher who left>
+	"leaving : <unique ID of the participant who left>
 }
 \endverbatim
+ *
+ * If you were an active publisher, other users will also receive the
+ * corresponding "unpublished" event to notify them the stream is not longer
+ * available, as explained above. If you were simply lurking and not
+ * publishing, the other participants will only receive the "leaving" event.
  *
  * \subsection vroomsub VideoRoom Subscribers
  *
@@ -869,7 +873,8 @@ room-<unique room ID>: {
  * publisher goes away, the subscriber handle is removed as well. As such,
  * these subscriber sessions are dependent on feedback obtained by
  * publishers, and can't exist on their own, unless you feed them the
- * right info out of band.
+ * right info out of band (which is impossible in rooms configured with
+ * \c require_pvtid).
  *
  * To specify a handle will be associated with a subscriber, you must use
  * the \c join request with \c ptype set to \c subscriber and specify which
@@ -1848,6 +1853,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publishe
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			JANUS_LOG(LOG_ERR, "Error creating RTCP socket for new RTP forwarder... %d (%s)\n",
 				errno, strerror(errno));
+			close(fd);
 			return 0;
 		}
 		struct sockaddr_in6 address = { 0 };
@@ -2915,9 +2921,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 						break;
 					}
 					if(strlen(codec) == 0 || JANUS_VIDEOCODEC_NONE == janus_videocodec_from_name(codec)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be or contain vp8, vp9 or h264)\n");
+						JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be or contain vp8, vp9, h264, av1 or h265)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (videocodec can only be or contain vp8, vp9 or h264)");
+						g_snprintf(error_cause, 512, "Invalid element (videocodec can only be or contain vp8, vp9, av1, h264 or h265)");
 						goto prepare_response;
 					}
 					i++;
@@ -5122,6 +5128,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 				} else if(participant->vcodec == JANUS_VIDEOCODEC_H264) {
 					if(janus_h264_is_keyframe(payload, plen))
 						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOCODEC_AV1) {
+					if(janus_av1_is_keyframe(payload, plen))
+						participant->fir_latest = now;
+				} else if(participant->vcodec == JANUS_VIDEOCODEC_H265) {
+					if(janus_h265_is_keyframe(payload, plen))
+						participant->fir_latest = now;
 				}
 				if((now-participant->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
 					/* FIXME We send a FIR every tot seconds */
@@ -5922,6 +5934,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 				if(!string_ids) {
@@ -5935,6 +5948,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(error_code != 0) {
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 				janus_mutex_lock(&sessions_mutex);
@@ -5942,6 +5956,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(!session) {
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 					janus_videoroom_message_free(msg);
 					continue;
@@ -5949,6 +5964,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(g_atomic_int_get(&session->destroyed)) {
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					janus_videoroom_message_free(msg);
 					continue;
 				}
@@ -5981,6 +5997,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 				json_t *temporal = json_object_get(root, "temporal_layer");
@@ -5992,6 +6009,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				}
 				json_t *sc_fallback = json_object_get(root, "fallback");
@@ -6004,6 +6022,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "No such feed (%s)", feed_id_str);
 					janus_mutex_unlock(&sessions_mutex);
 					janus_mutex_unlock(&videoroom->mutex);
+					janus_refcount_decrease(&videoroom->ref);
 					goto error;
 				} else {
 					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
@@ -6021,6 +6040,7 @@ static void *janus_videoroom_handler(void *data) {
 							janus_refcount_decrease(&publisher->ref);
 							janus_mutex_unlock(&sessions_mutex);
 							janus_mutex_unlock(&videoroom->mutex);
+							janus_refcount_decrease(&videoroom->ref);
 							goto error;
 						}
 						janus_refcount_increase(&owner->ref);
@@ -6056,6 +6076,7 @@ static void *janus_videoroom_handler(void *data) {
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
 						g_snprintf(error_cause, 512, "Can't offer an SDP with no audio, video or data");
 						janus_mutex_unlock(&sessions_mutex);
+						janus_refcount_decrease(&subscriber->room->ref);
 						goto error;
 					}
 					subscriber->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
@@ -6160,6 +6181,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 			} else {
 				janus_mutex_unlock(&videoroom->mutex);
+				janus_refcount_decrease(&videoroom->ref);
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (ptype)");
@@ -6596,7 +6618,7 @@ static void *janus_videoroom_handler(void *data) {
 						subscriber->sim_context.drop_trigger = json_integer_value(sc_fallback);
 					}
 				}
-				if(subscriber->room->do_svc) {
+				if(subscriber->room && subscriber->room->do_svc) {
 					/* Also check if the viewer is trying to configure a layer change */
 					if(spatial) {
 						int spatial_layer = json_integer_value(spatial);
@@ -7085,7 +7107,7 @@ static void *janus_videoroom_handler(void *data) {
 							/* It isn't, fallback to checking whether VP9 is available without the profile */
 							vp9_profile = NULL;
 						} else if(videoroom->vcodec[i] == JANUS_VIDEOCODEC_H264 && h264_profile) {
-							/* Check if this VP9 profile is available */
+							/* Check if this H.264 profile is available */
 							if(janus_sdp_get_codec_pt_full(offer, janus_videocodec_name(videoroom->vcodec[i]), h264_profile) != -1) {
 								/* It is */
 								vp9_profile = NULL;

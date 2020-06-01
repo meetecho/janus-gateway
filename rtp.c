@@ -790,6 +790,8 @@ const char *janus_srtp_error_str(int error) {
 #define VP8_PT		96
 #define VP9_PT		101
 #define H264_PT		107
+#define AV1_PT		98
+#define H265_PT		100
 const char *janus_audiocodec_name(janus_audiocodec acodec) {
 	switch(acodec) {
 		case JANUS_AUDIOCODEC_NONE:
@@ -867,6 +869,10 @@ const char *janus_videocodec_name(janus_videocodec vcodec) {
 			return "vp9";
 		case JANUS_VIDEOCODEC_H264:
 			return "h264";
+		case JANUS_VIDEOCODEC_AV1:
+			return "av1";
+		case JANUS_VIDEOCODEC_H265:
+			return "h265";
 		default:
 			/* Shouldn't happen */
 			return "vp8";
@@ -881,6 +887,10 @@ janus_videocodec janus_videocodec_from_name(const char *name) {
 		return JANUS_VIDEOCODEC_VP9;
 	else if(!strcasecmp(name, "h264"))
 		return JANUS_VIDEOCODEC_H264;
+	else if(!strcasecmp(name, "av1"))
+		return JANUS_VIDEOCODEC_AV1;
+	else if(!strcasecmp(name, "h265"))
+		return JANUS_VIDEOCODEC_H265;
 	JANUS_LOG(LOG_WARN, "Unsupported video codec '%s'\n", name);
 	return JANUS_VIDEOCODEC_NONE;
 }
@@ -894,6 +904,10 @@ int janus_videocodec_pt(janus_videocodec vcodec) {
 			return VP9_PT;
 		case JANUS_VIDEOCODEC_H264:
 			return H264_PT;
+		case JANUS_VIDEOCODEC_AV1:
+			return AV1_PT;
+		case JANUS_VIDEOCODEC_H265:
+			return H265_PT;
 		default:
 			/* Shouldn't happen */
 			return VP8_PT;

@@ -860,6 +860,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"videortpmap", JSON_STRING, 0},
 	{"videofmtp", JSON_STRING, 0},
 	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"videobufferkf", JANUS_JSON_BOOL, 0},
 	{"rtspiface", JSON_STRING, 0},
 	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
@@ -1182,7 +1183,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
-		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp,
+		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface,
 		gboolean error_on_failure);
 
@@ -2093,6 +2094,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vcodec = janus_config_get(config, cat, janus_config_type_item, "videopt");
 				janus_config_item *vrtpmap = janus_config_get(config, cat, janus_config_type_item, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get(config, cat, janus_config_type_item, "videofmtp");
+				janus_config_item *vkf = janus_config_get(config, cat, janus_config_type_item, "videobufferkf");
 				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
 				janus_config_item *failerr = janus_config_get(config, cat, janus_config_type_item, "rtsp_failcheck");
 				janus_network_address iface_value;
@@ -2104,6 +2106,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
+				gboolean bufferkf = video && vkf && vkf->value && janus_is_true(vkf->value);
 				gboolean error_on_failure = TRUE;
 				if(failerr && failerr->value)
 					error_on_failure = janus_is_true(failerr->value);
@@ -2138,6 +2141,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(vcodec && vcodec->value) ? atoi(vcodec->value) : -1,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL,
+						bufferkf,
 						iface && iface->value ? &iface_value : NULL,
 						error_on_failure)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' mountpoint '%s'...\n", cat->name);
@@ -3137,6 +3141,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *videopt = json_object_get(root, "videopt");
 			json_t *videortpmap = json_object_get(root, "videortpmap");
 			json_t *videofmtp = json_object_get(root, "videofmtp");
+			json_t *videobufferkf = json_object_get(root, "videobufferkf");
 			json_t *url = json_object_get(root, "url");
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
@@ -3183,6 +3188,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						(char *)json_string_value(audiortpmap), (char *)json_string_value(audiofmtp),
 					dovideo, (videopt ? json_integer_value(videopt) : -1),
 						(char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
+						videobufferkf ? json_is_true(videobufferkf) : FALSE,
 					&multicast_iface,
 					error_on_failure);
 			janus_mutex_lock(&mountpoints_mutex);
@@ -3945,6 +3951,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					codec = "vp9";
 				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
 					codec = "h264";
+				else if(strstr(mp->codecs.video_rtpmap, "av1") || strstr(mp->codecs.video_rtpmap, "AV1"))
+					codec = "av1";
+				else if(strstr(mp->codecs.video_rtpmap, "h265") || strstr(mp->codecs.video_rtpmap, "H265"))
+					codec = "h265";
 				const char *videofile = json_string_value(video);
 				vrc = janus_recorder_create(NULL, codec, (char *)videofile);
 				if(vrc == NULL) {
@@ -5934,6 +5944,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
 		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
 			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
+		else if(strstr(vrtpmap, "av1") || strstr(vrtpmap, "AV1"))
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_AV1;
+		else if(strstr(vrtpmap, "h265") || strstr(vrtpmap, "H265"))
+			live_rtp->codecs.video_codec = JANUS_VIDEOCODEC_H265;
 	}
 	if(svc) {
 		if(live_rtp->codecs.video_codec == JANUS_VIDEOCODEC_VP9) {
@@ -6091,9 +6105,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
 	if(strstr(filename, ".opus")) {
 		file_source_source->opus = TRUE;
-		file_source->codecs.audio_pt = doaudio ? acodec : -1;
-		file_source->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
-		file_source->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
+		file_source->codecs.audio_pt = acodec;
+		file_source->codecs.audio_rtpmap = g_strdup(artpmap);
+		file_source->codecs.audio_fmtp = afmtp ? g_strdup(afmtp) : NULL;
 	} else {
 		file_source->codecs.audio_pt = strstr(filename, ".alaw") ? 8 : 0;
 		file_source->codecs.audio_rtpmap = g_strdup(strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");
@@ -6339,6 +6353,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	}
 
 	if(vresult != -1) {
+		/* Identify video codec (useful for keyframe detection) */
+		mp->codecs.video_codec = JANUS_VIDEOCODEC_NONE;
+		if(strstr(vrtpmap, "vp8") || strstr(vrtpmap, "VP8"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_VP8;
+		else if(strstr(vrtpmap, "vp9") || strstr(vrtpmap, "VP9"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_VP9;
+		else if(strstr(vrtpmap, "h264") || strstr(vrtpmap, "H264"))
+			mp->codecs.video_codec = JANUS_VIDEOCODEC_H264;
+
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -6818,7 +6841,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
-		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp,
+		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
 		const janus_network_address *iface,
 		gboolean error_on_failure) {
 	char id_num[30];
@@ -6890,6 +6913,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->pipefd[1] = -1;
 	pipe(live_rtsp_source->pipefd);
 	live_rtsp_source->data_iface = nil;
+	live_rtsp_source->keyframe.enabled = bufferkf;
+	live_rtsp_source->keyframe.latest_keyframe = NULL;
+	live_rtsp_source->keyframe.temp_keyframe = NULL;
+	live_rtsp_source->keyframe.temp_ts = 0;
+	janus_mutex_init(&live_rtsp_source->keyframe.mutex);
 	live_rtsp_source->reconnect_timer = 0;
 	janus_mutex_init(&live_rtsp_source->rtsp_mutex);
 	live_rtsp->source = live_rtsp_source;
@@ -6957,7 +6985,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
-		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp,
+		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp, gboolean bufferkf,
 		const janus_network_address *iface,
 		gboolean error_on_failure) {
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
@@ -7766,6 +7794,12 @@ static void *janus_streaming_relay_thread(void *data) {
 										break;
 									case JANUS_VIDEOCODEC_H264:
 										kf = janus_h264_is_keyframe(payload, plen);
+										break;
+									case JANUS_VIDEOCODEC_AV1:
+										kf = janus_av1_is_keyframe(payload, plen);
+										break;
+									case JANUS_VIDEOCODEC_H265:
+										kf = janus_h265_is_keyframe(payload, plen);
 										break;
 									default:
 										break;

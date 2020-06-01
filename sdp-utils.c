@@ -27,7 +27,7 @@ const char *janus_preferred_audio_codecs[] = {
 };
 uint janus_audio_codecs = sizeof(janus_preferred_audio_codecs)/sizeof(*janus_preferred_audio_codecs);
 const char *janus_preferred_video_codecs[] = {
-	"vp8", "vp9", "h264"
+	"vp8", "vp9", "h264", "av1", "h265"
 };
 uint janus_video_codecs = sizeof(janus_preferred_video_codecs)/sizeof(*janus_preferred_video_codecs);
 
@@ -681,6 +681,14 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 		h264 = TRUE;	/* We may need to filter on profiles */
 		format = "h264/90000";
 		format2 = "H264/90000";
+	} else if(!strcasecmp(codec, "av1")) {
+		video = TRUE;
+		format = "av1x/90000";
+		format2 = "AV1X/90000";
+	} else if(!strcasecmp(codec, "h265")) {
+		video = TRUE;
+		format = "h265/90000";
+		format2 = "H265/90000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -777,6 +785,10 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt) {
 						return "vp9";
 					if(strstr(a->value, "h264") || strstr(a->value, "H264"))
 						return "h264";
+					if(strstr(a->value, "av1") || strstr(a->value, "AV1"))
+						return "av1";
+					if(strstr(a->value, "h265") || strstr(a->value, "H265"))
+						return "h265";
 					if(strstr(a->value, "multiopus") || strstr(a->value, "MULTIOPUS"))
 						return "multiopus";
 					if(strstr(a->value, "opus") || strstr(a->value, "OPUS"))
@@ -830,6 +842,10 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 		return "VP9/90000";
 	if(!strcasecmp(codec, "h264"))
 		return "H264/90000";
+	if(!strcasecmp(codec, "av1"))
+		return "AV1X/90000";
+	if(!strcasecmp(codec, "h265"))
+		return "H265/90000";
 	JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 	return NULL;
 }
@@ -1553,6 +1569,14 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 						if(janus_sdp_get_codec_pt_full(offer, codec, vp9_profile) < 0) {
 							/* VP9 not found either, maybe H.264? */
 							codec = "h264";
+							if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+								/* H.264 not found either, maybe AV1? */
+								codec = "av1";
+								if(janus_sdp_get_codec_pt(offer, codec) < 0) {
+									/* AV1 not found either, maybe H.265? */
+									codec = "h265";
+								}
+							}
 						}
 					}
 				}
