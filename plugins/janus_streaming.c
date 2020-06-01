@@ -6308,7 +6308,9 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	int ka_timeout = 0;
 	int vpt = -1;
 	char vrtpmap[2048];
+	vrtpmap[0] = '\0';
 	char vfmtp[2048];
+	vfmtp[0] = '\0';
 	char vcontrol[2048];
 	char uri[1024];
 	char vtransport[1024];
@@ -6321,7 +6323,9 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 
 	int apt = -1;
 	char artpmap[2048];
+	artpmap[0] = '\0';
 	char afmtp[2048];
+	afmtp[0] = '\0';
 	char acontrol[2048];
 	char atransport[1024];
 	char ahost[256];
@@ -6723,15 +6727,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	if(mp->codecs.audio_pt == -1)
 		mp->codecs.audio_pt = doaudio ? apt : -1;
 	if(mp->codecs.audio_rtpmap == NULL)
-		mp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
+		mp->codecs.audio_rtpmap = (doaudio && strlen(artpmap)) ? g_strdup(artpmap) : NULL;
 	if(mp->codecs.audio_fmtp == NULL)
-		mp->codecs.audio_fmtp = doaudio ? g_strdup(afmtp) : NULL;
+		mp->codecs.audio_fmtp = (doaudio && strlen(afmtp)) ? g_strdup(afmtp) : NULL;
 	if(mp->codecs.video_pt == -1)
 		mp->codecs.video_pt = dovideo ? vpt : -1;
 	if(mp->codecs.video_rtpmap == NULL)
-		mp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
+		mp->codecs.video_rtpmap = (dovideo && strlen(vrtpmap)) ? g_strdup(vrtpmap) : NULL;
 	if(mp->codecs.video_fmtp == NULL)
-		mp->codecs.video_fmtp = dovideo ? g_strdup(vfmtp) : NULL;
+		mp->codecs.video_fmtp = (dovideo && strlen(vfmtp)) ? g_strdup(vfmtp) : NULL;
 	source->audio_fd = audio_fds.fd;
 	source->audio_rtcp_fd = audio_fds.rtcp_fd;
 	source->remote_audio_port = asport;
