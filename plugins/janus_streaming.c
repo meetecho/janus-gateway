@@ -6195,7 +6195,10 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	}
 	char *f = strstr(m, "a=fmtp:");
 	if(f != NULL) {
-		sscanf(f, "a=fmtp:%*d %2047[^\r\n]s", fmtp);
+		if (sscanf(f, "a=fmtp:%*d%*[ ]%2047[^\r\n]s", fmtp) != 1) {
+			JANUS_LOG(LOG_ERR, "[%s] cannot parse %s fmtp...\n", name, media);
+			return -1;
+		}
 	}
 	char *c = strstr(m, "c=IN IP4");
 	if(c == NULL) {
