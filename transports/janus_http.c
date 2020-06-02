@@ -1298,7 +1298,7 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 	}
 
         /* CARBYNE-SHC start */
-	if(session_path != NULL && !strcasecmp(session_path, "sanityhealthcheck"))
+	if(session_path != NULL && !strcasecmp(session_path, "SanityHealthCheck"))
         {
                /* The info REST endpoint, if contacted through a GET, provides information on the Janus core */
                gboolean token_not_valid = TRUE;
