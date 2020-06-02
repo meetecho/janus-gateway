@@ -105,7 +105,7 @@ gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char *token) {
     if ( carbyne_shc_auth_secret == NULL)
             return FALSE;
     gsize out_len=0;
-    unsigned char padded[512];
+    unsigned char padded[512] = {0};
     g_snprintf(padded, sizeof(padded), "%s====",token);
     gchar *cleartoken=(gchar *)g_base64_decode ((const gchar *)padded, &out_len);
     gchar **parts = g_strsplit(cleartoken, ":", 3);
