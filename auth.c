@@ -113,7 +113,7 @@ gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char *token) {
             goto fail;
 
     /* Verify HMAC-SHA256 */
-    unsigned char signature[EVP_MAX_MD_SIZE];
+    unsigned char signature[EVP_MAX_MD_SIZE] = {0};
     unsigned int len=0;
     HMAC(EVP_sha256(), carbyne_shc_auth_secret, strlen(carbyne_shc_auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
     gchar *base64 = g_base64_encode(signature, len);
