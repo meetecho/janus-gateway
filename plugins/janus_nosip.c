@@ -300,6 +300,7 @@ typedef struct janus_nosip_media {
 	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
+	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
 	gboolean audio_send;
 	int has_video:1;
 	int video_rtp_fd, video_rtcp_fd;
@@ -311,6 +312,7 @@ typedef struct janus_nosip_media {
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
+	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send;
 	janus_rtp_switching_context context;
 	int pipefd[2];
@@ -575,6 +577,14 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
+	if(session->media.audio_srtp_local_profile) {
+		g_free(session->media.audio_srtp_local_profile);
+		session->media.audio_srtp_local_profile = NULL;
+	}
+	if(session->media.audio_srtp_local_crypto) {
+		g_free(session->media.audio_srtp_local_crypto);
+		session->media.audio_srtp_local_crypto = NULL;
+	}
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
@@ -586,6 +596,14 @@ static void janus_nosip_srtp_cleanup(janus_nosip_session *session) {
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
+	if(session->media.video_srtp_local_profile) {
+		g_free(session->media.video_srtp_local_profile);
+		session->media.video_srtp_local_profile = NULL;
+	}
+	if(session->media.video_srtp_local_crypto) {
+		g_free(session->media.video_srtp_local_crypto);
+		session->media.video_srtp_local_crypto = NULL;
+	}
 }
 
 void janus_nosip_media_reset(janus_nosip_session *session) {
@@ -868,6 +886,10 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
 	session->media.srtp_profile = 0;
+	session->media.audio_srtp_local_profile = NULL;
+	session->media.audio_srtp_local_crypto = NULL;
+	session->media.video_srtp_local_profile = NULL;
+	session->media.video_srtp_local_crypto = NULL;
 	session->media.has_audio = 0;
 	session->media.audio_rtp_fd = -1;
 	session->media.audio_rtcp_fd = -1;
@@ -1331,68 +1353,66 @@ static void *janus_nosip_handler(void *data) {
 			const char *info = json_string_value(json_object_get(root, "info"));
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean do_srtp = FALSE, require_srtp = FALSE;
-			janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+			json_t *srtp = json_object_get(root, "srtp");
+			if(srtp) {
+				const char *srtp_text = json_string_value(srtp);
+				if(!strcasecmp(srtp_text, "sdes_optional")) {
+					/* Negotiate SDES, but make it optional */
+					do_srtp = TRUE;
+				} else if(!strcasecmp(srtp_text, "sdes_mandatory")) {
+					/* Negotiate SDES, and require it */
+					do_srtp = TRUE;
+					require_srtp = TRUE;
+				} else {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)\n");
+					error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
+					goto error;
+				}
+			}
+			if(offer && !sdp_update) {
+				/* Clean up SRTP stuff from before first, in case it's still needed */
+				janus_nosip_srtp_cleanup(session);
+				if(do_srtp) {
+					JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
+				}
+			}
+			session->media.require_srtp = require_srtp;
 			if(generate) {
-				json_t *srtp = json_object_get(root, "srtp");
-				if(srtp) {
-					const char *srtp_text = json_string_value(srtp);
-					if(!strcasecmp(srtp_text, "sdes_optional")) {
-						/* Negotiate SDES, but make it optional */
-						do_srtp = TRUE;
-					} else if(!strcasecmp(srtp_text, "sdes_mandatory")) {
-						/* Negotiate SDES, and require it */
-						do_srtp = TRUE;
-						require_srtp = TRUE;
-					} else {
-						JANUS_LOG(LOG_ERR, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)\n");
-						error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
+				if(!offer) {
+					do_srtp = do_srtp || session->media.has_srtp_remote;
+					/* Make sure the request is consistent with the state (original offer) */
+					if(session->media.require_srtp && !session->media.has_srtp_remote) {
+						JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
+						error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
+						g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
 						goto error;
 					}
-					if(do_srtp) {
-						/* Any SRTP profile different from the default? */
-						srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
-						const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
-						if(profile) {
-							if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
-								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
-							} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
-								srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+				}
+				session->media.has_srtp_local = do_srtp;
+				if(do_srtp) {
+					/* Any SRTP profile different from the default? */
+					janus_srtp_profile srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
+					const char *profile = json_string_value(json_object_get(root, "srtp_profile"));
+					if(profile) {
+						if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_32")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_32;
+						} else if(!strcmp(profile, "AES_CM_128_HMAC_SHA1_80")) {
+							srtp_profile = JANUS_SRTP_AES128_CM_SHA1_80;
 #ifdef HAVE_SRTP_AESGCM
 							} else if(!strcmp(profile, "AEAD_AES_128_GCM")) {
 								srtp_profile = JANUS_SRTP_AEAD_AES_128_GCM;
 							} else if(!strcmp(profile, "AEAD_AES_256_GCM")) {
 								srtp_profile = JANUS_SRTP_AEAD_AES_256_GCM;
 #endif
-							} else {
-								JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
-								error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
-								g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
-								goto error;
-							}
-						}
-					}
-				}
-				if(!sdp_update) {
-					if(offer) {
-						/* Clean up SRTP stuff from before first, in case it's still needed */
-						janus_nosip_srtp_cleanup(session);
-						session->media.require_srtp = require_srtp;
-						session->media.has_srtp_local = do_srtp;
-						session->media.srtp_profile = srtp_profile;
-						if(do_srtp) {
-							JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
-						}
-					} else {
-						/* Make sure the request is consistent with the state (original offer) */
-						if(session->media.require_srtp && !session->media.has_srtp_remote) {
-							JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
-							error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
-							g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
+						} else {
+							JANUS_LOG(LOG_ERR, "Invalid element (unsupported SRTP profile)\n");
+							error_code = JANUS_NOSIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid element (unsupported SRTP profile)");
 							goto error;
 						}
-						do_srtp = do_srtp || session->media.has_srtp_remote;
 					}
+					session->media.srtp_profile = srtp_profile;
 				}
 			}
 			/* Get video-orientation extension id from SDP we got */
@@ -1466,10 +1486,6 @@ static void *janus_nosip_handler(void *data) {
 			} else {
 				/* We got a barebone offer or answer from our peer: process it accordingly */
 				gboolean changed = FALSE;
-				if(!sdp_update && offer) {
-					/* Clean up SRTP stuff from before first, in case it's still needed */
-					janus_nosip_srtp_cleanup(session);
-				}
 				janus_nosip_sdp_process(session, parsed_sdp, !offer, sdp_update, &changed);
 				/* Check if offer has neither audio nor video, fail */
 				if(!session->media.has_audio && !session->media.has_video) {
@@ -1485,6 +1501,12 @@ static void *janus_nosip_handler(void *data) {
 					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "No remote IP addresses");
+					goto error;
+				}
+				if(session->media.require_srtp && !session->media.has_srtp_remote) {
+					JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
+					error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
+					g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
@@ -1800,17 +1822,17 @@ void janus_nosip_sdp_process(janus_nosip_session *session, janus_sdp *sdp, gbool
 			g_free(session->media.remote_video_ip);
 			session->media.remote_video_ip = g_strdup(m->c_addr);
 		}
-		if(update) {
-			/* FIXME This is a session update, we only accept changes in IP/ports */
-			temp = temp->next;
-			continue;
-		}
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name) {
 				if(!strcasecmp(a->name, "crypto")) {
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
+						if((m->type == JANUS_SDP_AUDIO && session->media.audio_srtp_in != NULL) || (m->type == JANUS_SDP_VIDEO && session->media.video_srtp_in != NULL)) {
+							/* Remote SRTP is already set */
+							tempA = tempA->next;
+							continue;
+						}
 						gint32 tag = 0;
 						char profile[101], crypto[101];
 						/* FIXME inline can be more complex than that, and we're currently only offering SHA1_80 */
@@ -1873,23 +1895,19 @@ char *janus_nosip_sdp_manipulate(janus_nosip_session *session, janus_sdp *sdp, g
 		if(m->type == JANUS_SDP_AUDIO) {
 			m->port = session->media.local_audio_rtp_port;
 			if(session->media.has_srtp_local) {
-				char *profile = NULL;
-				char *crypto = NULL;
-				janus_nosip_srtp_set_local(session, FALSE, &profile, &crypto);
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
-				g_free(profile);
-				g_free(crypto);
+				if(!session->media.audio_srtp_local_profile || !session->media.audio_srtp_local_crypto) {
+					janus_nosip_srtp_set_local(session, FALSE, &session->media.audio_srtp_local_profile, &session->media.audio_srtp_local_crypto);
+				}
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.audio_srtp_local_profile, session->media.audio_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			m->port = session->media.local_video_rtp_port;
 			if(session->media.has_srtp_local) {
-				char *profile = NULL;
-				char *crypto = NULL;
-				janus_nosip_srtp_set_local(session, TRUE, &profile, &crypto);
-				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", profile, crypto);
-				g_free(profile);
-				g_free(crypto);
+				if(!session->media.video_srtp_local_profile || !session->media.video_srtp_local_crypto) {
+					janus_nosip_srtp_set_local(session, TRUE, &session->media.video_srtp_local_profile, &session->media.video_srtp_local_crypto);
+				}
+				janus_sdp_attribute *a = janus_sdp_attribute_create("crypto", "1 %s inline:%s", session->media.video_srtp_local_profile, session->media.video_srtp_local_crypto);
 				m->attributes = g_list_append(m->attributes, a);
 			}
 		}
