@@ -66,8 +66,6 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 	janus_mutex_init(&mutex);
 }
 
-
-
 /* CARBYNE-SHC start */
 void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
 {
@@ -80,8 +78,6 @@ void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
     }
 }
 /* CARBYNE-SHC end */
-
-
 
 gboolean janus_auth_is_enabled(void) {
 	return auth_enabled;
@@ -103,8 +99,6 @@ void janus_auth_deinit(void) {
 	auth_secret = NULL;
 	janus_mutex_unlock(&mutex);
 }
-
-
 
 /* CARBYNE-SHC start */
 gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char *token) {
@@ -135,7 +129,6 @@ fail:
     return FALSE;
 }
 /* CARBYNE-SHC end */
-
 
 gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	if (!auth_enabled || auth_secret == NULL)

@@ -1297,8 +1297,6 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 		goto parsingdone;
 	}
 
-
-
         /* CARBYNE-SHC start */
 	if(session_path != NULL && !strcasecmp(session_path, "sanityhealthcheck"))
         {
@@ -1341,8 +1339,6 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
                 goto done;
         }
         /* CARBYNE-SHC end */
-
-
 
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {

@@ -40,14 +40,9 @@
 #include "auth.h"
 #include "record.h"
 #include "events.h"
-
-
-
 /* CARBYNE-SHC start */
 #include <sys/statvfs.h>
 /* CARBYNE-SHC end */
-
-
 
 
 #define JANUS_NAME				"Janus WebRTC Server"
@@ -508,16 +503,10 @@ gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
 
-
-
-
 /* CARBYNE-SHC start */
 gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token);
 gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_transport *plugin);
 /* CARBYNE-SHC end */
-
-
-
 
 void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event);
 
@@ -529,16 +518,10 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
-
-
-
                 /* CARBYNE-SHC start */
 		.carbyne_is_sanityhealthcheck_token_valid = carbyne_janus_transport_is_sanityhealthcheck_token_valid,
                 .carbyne_is_sanityhealthcheck_resources_available = carbyne_janus_transport_is_sanityhealthcheck_resources_available,
  		/* CARBYNE-SHC end */
-
-
-
 		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_transport_notify_event,
 	};
@@ -3138,9 +3121,6 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	return token && janus_auth_check_token(token);
 }
 
-
-
-
 /* CARBYNE-SHC start */
 gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transport *plugin, const char *token) {
     return token && carbyne_janus_auth_sanityhealthcheck_signature(token);
@@ -3165,11 +3145,6 @@ gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_
   	return TRUE;
 }
 /* CARBYNE-SHC end */
-
-
-
-
-
 
 void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
@@ -4512,8 +4487,6 @@ gint main(int argc, char *argv[])
 	if (item && item->value)
 		auth_secret = item->value;
 
-
-
         /* CARBYNE-SHC start */
 	item = janus_config_get(config, config_general, janus_config_type_item, "sanity_hc_auth_secret");
         const char *shc_auth_secret = NULL;
@@ -4523,11 +4496,6 @@ gint main(int argc, char *argv[])
 	}
         carbyne_janus_sanityhealthcheck_auth_init(shc_auth_secret);
         /* CARBYNE-SHC end */
-
-
-
-
-
         janus_auth_init(auth_enabled, auth_secret);
 
 	/* Check if opaque IDs should be sent back in the Janus API too */
