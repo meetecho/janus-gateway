@@ -49,6 +49,8 @@
 #define JANUS_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
+#define DISK_SPACE_AVALIABLE_PERCENTAGE_THRESHOLD 10 /* CARBYNE-SHC */
+
 #ifdef __MACH__
 #define SHLIB_EXT "0.dylib"
 #else
@@ -3127,10 +3129,9 @@ gboolean carbyne_janus_transport_is_sanityhealthcheck_token_valid(janus_transpor
 }
 
 gboolean carbyne_janus_transport_is_sanityhealthcheck_resources_available(janus_transport *plugin) {
-	//PVL
   	struct statvfs stat;
   	const char* path="/";
-  	int diskSpaceThreshold=10;
+  	int diskSpaceThreshold=DISK_SPACE_AVALIABLE_PERCENTAGE_THRESHOLD;
   	if (statvfs(path, &stat) < 0) {
   	  	// error happens, just quits here
   	  	JANUS_LOG(LOG_ERR, "Invalid request to statvfs\n");

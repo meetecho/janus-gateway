@@ -70,10 +70,10 @@ void janus_auth_init(gboolean enabled, const char *secret) {
 void carbyne_janus_sanityhealthcheck_auth_init(const char *secret)
 {
     if(secret == NULL) {
-        JANUS_LOG(LOG_WARN, "SanityHealthChek -Token based authentication enabled use default secretjanus\n");
+        JANUS_LOG(LOG_WARN, "SanityHealthChek -Token based authentication enabled use default value\n");
         carbyne_shc_auth_secret =g_strdup("secretjanus"); 
     } else {
-        JANUS_LOG(LOG_WARN, "Signed-Token based authentication enabled, use secret: %s\n", secret);
+        JANUS_LOG(LOG_WARN, "Signed-Token based authentication enabled\n");
         carbyne_shc_auth_secret = g_strdup(secret);
     }
 }

@@ -30,7 +30,7 @@ void janus_auth_init(gboolean enabled, const char *secret);
 gboolean janus_auth_is_enabled(void);
 
 /* CARBYNE-SHC start */
-/*! \brief Method to initializing the token based authentication for AWS Sanity Health Check (via Rout53)
+/*! \brief Method to initializing the token based authentication for AWS Sanity Health Check (via Route53)
  * @param[in] secret the secret to validate signed tokens against, or NULL to use stored secret */
 void carbyne_janus_sanityhealthcheck_auth_init(const char *shc_auth_secret);
 /* CARBYNE-SHC end */
