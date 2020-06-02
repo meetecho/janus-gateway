@@ -48,7 +48,7 @@ general: {
 									# be enabled, as tokens are added and removed
 									# through messages sent there.
 
-        sanity_hc_auth_secret						
+        #sanity_hc_auth_secret = "janus"						
 									# Carbyne Sanity Health Check secret key.
 									# This variable will be replaced 
 									# during setup with the same name
