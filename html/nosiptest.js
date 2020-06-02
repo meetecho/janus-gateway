@@ -57,7 +57,7 @@ var opaqueId = Janus.randomString(12);
 var spinner = null;
 
 var videoenabled = true;
-var srtp = undefined ; // use "sdes_mandatory" to test SRTP_SDES
+var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)

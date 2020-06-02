@@ -1504,9 +1504,9 @@ static void *janus_nosip_handler(void *data) {
 					goto error;
 				}
 				if(session->media.require_srtp && !session->media.has_srtp_remote) {
-					JANUS_LOG(LOG_ERR, "Can't generate answer: SDES-SRTP required, but caller didn't offer it\n");
+					JANUS_LOG(LOG_ERR, "Can't process request: SDES-SRTP required, but caller didn't offer it\n");
 					error_code = JANUS_NOSIP_ERROR_TOO_STRICT;
-					g_snprintf(error_cause, 512, "Can't generate answer: SDES-SRTP required, but caller didn't offer it");
+					g_snprintf(error_cause, 512, "Can't process request: SDES-SRTP required, but caller didn't offer it");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
