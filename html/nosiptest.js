@@ -56,6 +56,9 @@ var opaqueId = Janus.randomString(12);
 
 var spinner = null;
 
+var videoenabled = true;
+var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
+
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -91,7 +94,7 @@ $(document).ready(function() {
 										Janus.debug("[caller] Trying a createOffer too (audio/video sendrecv)");
 										caller.createOffer(
 											{
-												// No media provided: by default, it's sendrecv for audio and video
+												media: {audio: true, video: videoenabled},
 												success: function(jsep) {
 													Janus.debug("[caller] Got SDP!", jsep);
 													// We now have a WebRTC SDP: to get a barebone SDP legacy
@@ -101,7 +104,8 @@ $(document).ready(function() {
 													// the SIP plugin uses (mandatory vs. optional). We'll
 													// get the result in an event called "generated" here.
 													var body = {
-														request: "generate"
+														request: "generate",
+														srtp: srtp
 													};
 													caller.send({ message: body, jsep: jsep });
 												},
@@ -172,7 +176,8 @@ $(document).ready(function() {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
-												update: result["update"]
+												update: result["update"],
+												srtp: srtp
 											}
 											callee.send({ message: processOffer });
 										} else if(event === "processed") {
@@ -273,6 +278,43 @@ $(document).ready(function() {
 										$('#videoright .no-video-container').remove();
 										$('#peervideo').removeClass('hide').show();
 									}
+
+									if(videoenabled) {
+										$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
+									} else {
+										$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
+									}
+
+									$('#togglevideo').unbind('click').removeAttr('disabled').click(
+										function() {
+											videoenabled = !videoenabled;
+											var media;
+											if(videoenabled) {
+												$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
+												media = {addVideo: true};
+											} else {
+												$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
+												media = {removeVideo: true};
+											}
+											caller.createOffer(
+												{
+													media: media,
+													success: function(jsep) {
+														Janus.debug("[caller] Got UPDATE SDP!");
+														Janus.debug(jsep);
+														var body = {
+															request: "generate",
+															update: true,
+															srtp: srtp
+														};
+														caller.send({message: body, jsep: jsep});
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
+										});
 								},
 								oncleanup: function() {
 									Janus.log("[caller]  ::: Got a cleanup notification :::");
@@ -363,7 +405,8 @@ $(document).ready(function() {
 														// We'll get the result in an event called "generated" here.
 														var body = {
 															request: "generate",
-															update: update
+															update: update,
+															srtp: srtp
 														};
 														callee.send({ message: body, jsep: jsep });
 													},
@@ -385,7 +428,8 @@ $(document).ready(function() {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
-												update: result["update"]
+												update: result["update"],
+												srtp: srtp
 											}
 											caller.send({ message: processAnswer });
 										}
