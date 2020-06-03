@@ -81,6 +81,11 @@ function init(config) {
 	// notice how the first argument is 0, meaning this event is not tied to any session
 	var event = { event: "loaded", script: name };
 	notifyEvent(0, JSON.stringify(event));
+	
+ 	console.log('making get ...');
+	console.log('get response ==>', get('http://httpbin.org/get?roomID=1234'));
+	console.log('making http_post');
+	console.log('post response ==>', post('https://reqres.in/api/register', {email:'eve.holt@reqres.in',password:'pistol'}));
 }
 
 function destroy() {
@@ -164,8 +169,10 @@ function handleMessage(id, tr, msg, jsep) {
 				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
 				room.publishers.forEach(function (publisher) {
 						var publishersArray = [session];
-						event = { videoroom:"event", event: "newPublisher", publishers:publishersArray, newPublisher:id };
-						console.log("sending",publisher,event);
+					event = { videoroom:"event", event: "newPublisher", publishers:publishersArray, newPublisher:id };
+					//event = { videoroom:"attached", event: "newPublisher", publishers:publishersArray, id:id };
+
+					console.log("sending",publisher,event);
 						//pushEvent(publisher, null, JSON.stringify(event));
 						tasks.push({ id: publisher, tr: null , msg: event, jsep: null });
 				});
@@ -216,6 +223,8 @@ function handleMessage(id, tr, msg, jsep) {
 			pokeScheduler();
 			return 1;
 		}
+
+
 		return JSON.stringify(response);
 	}
 	else{
@@ -227,10 +236,17 @@ function handleMessage(id, tr, msg, jsep) {
 			console.log("Replay to start no sdp !!!",responseStart);
 			return JSON.stringify(responseStart);
 		}
-		//else if(msgT.request==="configure"){
-		//	msg  = processRequest(id, msgT);
+		else if(msgT.request==="configure"){
+			var session = getSession(id)
+			var publishersArray = getRoomPublishersArray(session.room,id);
+			var publishersArrayFull =getRoomPublishersArray(session.room);
+			var event = { event: "configureMedia", publishersList:publishersArrayFull, newPublisher:id };
+			publishersArray.forEach(function (publisher) {
+				tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
+			})
+			pokeScheduler();
 
-		//}
+		}
 		// Decode the JSEP JSON string too
 		var jsepT = JSON.parse(jsep);
 		// We'll need a coroutine here: the scheduler will resume it later
@@ -256,11 +272,16 @@ function setupMedia(id) {
 	//addRecipient(id, id);
 	//console.log("sessions",sessions);
 	var session = getSession(id);
-	var publishersArray = getRoomPublishers(session.room);
-	var event = { event: "media", publishers:publishersArray, newPublisher:id };
+	var publishersArray = getRoomPublishersArray(session.room,id);
+/*	var event = { event: "media", publishers:publishersArray, newPublisher:id };
+	publishersArray.forEach(function (publisher) {
+		tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
+	})
+	pokeScheduler();*/
 	session.isConnected=true;
 	setSession(session);
 	notifyEvent(id, JSON.stringify(event));
+
 }
 
 function hangupMedia(id) {
@@ -426,16 +447,29 @@ function processAsync(task) {
 		pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
-
+/*
+function getObjectValues(obj){
+	arr=[];
+	Object.keys(obj).forEach(function (key) {
+		arr.push(obj[key]);
+	});
+	return arr;
+}*/
 // Done
 console.log("Script loaded");
 function getRndInteger(min, max) {
 	return Math.floor(Math.random() * (max - min + 1) ) + min;
 }
+/*
+function getOtherPublishers(id) {
+	var publishersData = [];
+	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id});
+	publishersRealevent.forEach(function (pubId) {
+		publishersData.push(sessions[pubId])
+	});
+	return publishersData;
+}*/
 
-/**************************************************
- sessions , publisher and room state manegment ...
-**************************************************/
 function getRoomPublishers(roomId,filterPublisher) {
 	var roomObj ={};
 	var room = getRoom(roomId);
@@ -447,18 +481,28 @@ function getRoomPublishers(roomId,filterPublisher) {
 function getRoomPublishersArray(roomId,filterPublisher) {
 	var pulisherArray =[];
 	var room = getRoom(roomId);
-	room.publishers.forEach(function (publisher) {
-		if(publisher!==filterPublisher)pulisherArray.push(sessions[publisher]);
-	})
+	if(room.publishers){
+		room.publishers.forEach(function (publisher) {
+			if(publisher!==filterPublisher)pulisherArray.push(sessions[publisher]);
+		})
+	}
 	return pulisherArray
 }
+
 function getRoom(roomId) {
 	var room =  null ;
 	if(rooms[roomId]){
 		room=rooms[roomId];
 	}else {
 		// new room template
-		var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] }
+		var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] };
+
+		//var httpResponse = testExtraFunction('http://httpbin.org/get?roomID='+roomId);
+		//console.log("httpResponse",httpResponse);
+	//	var roomConfig=JSON.parse(httpResponse)
+		//console.log("httpResponse",httpResponse);
+		//if(roomConfig)newRoomTemplate.roomConfig=roomConfig;
+
 		room =  newRoomTemplate ;
 		room.roomId=roomId
 		rooms[roomId] = room;
@@ -486,4 +530,27 @@ function setSession(session) {
 }
 function setRoom(room) {
 	rooms[room.roomId]=room;
+}
+
+function serialize(obj, prefix) {
+  var str = [],
+    p;
+  for (p in obj) {
+    if (obj.hasOwnProperty(p)) {
+      var k = prefix ? prefix + "[" + p + "]" : p,
+        v = obj[p];
+      str.push((v !== null && typeof v === "object") ?
+        serialize(v, k) :
+        encodeURIComponent(k) + "=" + encodeURIComponent(v));
+    }
+  }
+  return str.join("&");
+}
+
+function get(url) {
+	return http_get(url);
+}
+
+function post(url, body) {
+	return http_post(url, serialize(body));
 }

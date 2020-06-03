@@ -3,6 +3,8 @@ cmdline.h
 version.c
 docs/html/
 
+core
+
 /janus
 /janus-cfgconv
 /janus-pp-rec
