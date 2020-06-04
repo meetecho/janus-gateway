@@ -293,7 +293,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_videocall_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_videocall_data_ready(janus_plugin_session *handle);
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_videocall_query_session(janus_plugin_session *handle);
@@ -907,7 +907,7 @@ void janus_videocall_data_ready(janus_plugin_session *handle) {
 	}
 }
 
-void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_videocall_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -1366,8 +1366,9 @@ static void *janus_videocall_handler(void *data) {
 			}
 			/* Check which codecs we ended up using */
 			const char *acodec = NULL, *vcodec = NULL;
-			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_AUDIO, -1, &acodec);
 			session->acodec = janus_audiocodec_from_name(acodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->acodec == JANUS_AUDIOCODEC_NONE) {
 				session->has_audio = FALSE;
