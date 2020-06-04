@@ -6132,7 +6132,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			/* What is the Opus payload type? */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
-			participant->opus_pt = janus_sdp_get_codec_pt(offer, "opus");
+			participant->opus_pt = janus_sdp_get_codec_pt(offer, -1, "opus");
 			if(participant->opus_pt < 0) {
 				/* TODO Handle this case */
 				JANUS_LOG(LOG_ERR, "Offer doesn't contain Opus..?\n");
@@ -6164,14 +6164,23 @@ static void *janus_audiobridge_handler(void *data) {
 				}
 				temp = temp->next;
 			}
-			janus_sdp *answer = janus_sdp_generate_answer(offer,
-				/* Reject video and data channels, if offered */
-				JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->codec),
-				JANUS_SDP_OA_VIDEO, FALSE,
-				JANUS_SDP_OA_DATA, FALSE,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
-				JANUS_SDP_OA_DONE);
+			janus_sdp *answer = janus_sdp_generate_answer(offer);
+			/* Only accept the first audio line, and reject everything else if offered */
+			temp = offer->m_lines;
+			gboolean accepted = FALSE;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				if(m->type == JANUS_SDP_AUDIO && !accepted) {
+					accepted = TRUE;
+					janus_sdp_generate_answer_mline(offer, answer, m,
+						JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->codec),
+						JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+						JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+						JANUS_SDP_OA_DONE);
+				}
+				temp = temp->next;
+			}
 			/* Replace the session name */
 			g_free(answer->s_name);
 			char s_name[100];
@@ -6847,7 +6856,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Fix sequence number and timestamp (room switching may be involved) */
 	janus_rtp_header_update(packet->data, &participant->context, FALSE, 0);
 	if(gateway != NULL) {
-		janus_plugin_rtp rtp = { .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_rtp rtp = { .mindex = -1, .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
 		janus_plugin_rtp_extensions_reset(&rtp.extensions);
 		/* FIXME Should we add our own audio level extension? */
 		gateway->relay_rtp(session->handle, &rtp);
