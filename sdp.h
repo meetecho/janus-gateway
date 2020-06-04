@@ -45,41 +45,45 @@
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
 janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data);
 
-/*! \brief Method to process a parsed session description
+/*! \brief Method to process a remote parsed session description
  * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly
- * \note While this method can handle SDP updates, renegotiations are currently
- * limited to updates to the media direction of existing media streams
- * (e.g., sendrecv to recvonly) and ICE restarts. Adding/removing streams
- * and supporting multiple streams in the same PeerConnection are still WIP.
  * @param[in] handle Opaque pointer to the ICE handle this session description will modify
  * @param[in] sdp The Janus SDP object to process
  * @param[in] update Whether this SDP is an update to an existing session or not
  * @returns 0 in case of success, -1 in case of an error */
-int janus_sdp_process(void *handle, janus_sdp *sdp, gboolean update);
+int janus_sdp_process_remote(void *handle, janus_sdp *sdp, gboolean update);
+
+/*! \brief Method to process a local parsed session description
+ * \details This method will process a session description coming from a plugin, and set up the ICE candidates accordingly
+ * @param[in] handle Opaque pointer to the ICE handle this session description will modify
+ * @param[in] sdp The Janus SDP object to process
+ * @param[in] update Whether this SDP is an update to an existing session or not
+ * @returns 0 in case of success, -1 in case of an error */
+int janus_sdp_process_local(void *handle, janus_sdp *sdp, gboolean update);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] pc Opaque pointer to the WebRTC PeerConnection this candidate refers to
  * @param[in] candidate The remote candidate to process
  * @param[in] trickle Whether this is a trickle candidate, or coming from the SDP
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_candidate(void *stream, const char *candidate, int trickle);
+int janus_sdp_parse_candidate(void *pc, const char *candidate, int trickle);
 
 /*! \brief Method to parse a SSRC group attribute
  * \details This method will parse a SSRC group attribute, and set the parsed values for the peer
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] medium Opaque pointer to the medium this candidate refers to
  * @param[in] group_attr The SSRC group attribute value to parse
  * @param[in] video Whether this is video-related or not
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_ssrc_group(void *stream, const char *group_attr, int video);
+int janus_sdp_parse_ssrc_group(void *medium, const char *group_attr, int video);
 
 /*! \brief Method to parse a SSRC attribute
  * \details This method will parse a SSRC attribute, and set it for the peer
- * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] medium Opaque pointer to the medium this candidate refers to
  * @param[in] ssrc_attr The SSRC attribute value to parse
  * @param[in] video Whether this is a video SSRC or not
  * @returns 0 in case of success, a non-zero integer in case of an error */
-int janus_sdp_parse_ssrc(void *stream, const char *ssrc_attr, int video);
+int janus_sdp_parse_ssrc(void *medium, const char *ssrc_attr, int video);
 
 /*! \brief Method to strip/anonymize a session description
  * @param[in,out] sdp The Janus SDP description object to strip/anonymize

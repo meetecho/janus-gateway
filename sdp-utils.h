@@ -99,24 +99,26 @@ janus_sdp_mdirection janus_sdp_parse_mdirection(const char *direction);
  * @returns The direction as a string, if valid, or NULL otherwise */
 const char *janus_sdp_mdirection_str(janus_sdp_mdirection direction);
 
-/*! \brief Helper method to return the preferred audio and video codecs in an SDP offer or answer,
+/*! \brief Helper method to return the preferred audio or video codec in an SDP offer or answer,
  * (where by preferred we mean the codecs we prefer ourselves, and not the m-line SDP order)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
- * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
- * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * \note The codec argument is input/output, and it will be set to a static value
+ * in janus_preferred_audio_codecs or janus_preferred_video_codecs, so don't free it.
  * @param[in] sdp The Janus SDP object to parse
- * @param[out] acodec The audio codec that was found
- * @param[out] vcodec The video codec that was found */
-void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
-/*! \brief Helper method to return the first audio and video codecs in an SDP offer or answer,
+ * @param[in] type Whether we're looking at an audio or video codec
+ * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
+ * @param[out] codec The audio or video codec that was found */
+void janus_sdp_find_preferred_codec(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec);
+/*! \brief Helper method to return the first audio or video codec in an SDP offer or answer,
  * (no matter whether we personally prefer them ourselves or not)
  * as long as the m-line direction is not disabled (port=0 or direction=inactive) in the SDP
- * \note The acodec and vcodec arguments are input/output, and they'll be set to a static value
- * in janus_preferred_audio_codecs and janus_preferred_video_codecs, so don't free them.
+ * \note The codec argument is input/output, and it will be set to a static value
+ * in janus_preferred_audio_codecs or janus_preferred_video_codecs, so don't free it.
  * @param[in] sdp The Janus SDP object to parse
- * @param[out] acodec The audio codec that was found
- * @param[out] vcodec The video codec that was found */
-void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec);
+ * @param[in] type Whether we're looking at an audio or video codec
+ * @param[in] index The m-line to refer to (use -1 for the first m-line that matches)
+ * @param[out] codec The audio or video codec that was found */
+void janus_sdp_find_first_codec(janus_sdp *sdp, janus_sdp_mtype type, int index, const char **codec);
 /*! \brief Helper method to match a codec to one of the preferred codecs
  * \note Don't free the returned value, as it's a constant value
  * @param[in] type The type of media to match
@@ -126,6 +128,8 @@ const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec);
 
 /*! \brief SDP m-line representation */
 typedef struct janus_sdp_mline {
+	/*! \brief Media index in the SDP */
+	int index;
 	/*! \brief Media type as a janus_sdp_mtype enumerator */
 	janus_sdp_mtype type;
 	/*! \brief Media type (string) */
@@ -170,17 +174,20 @@ janus_sdp_mline *janus_sdp_mline_create(janus_sdp_mtype type, guint16 port, cons
  * @param[in] mline The janus_sdp_mline instance to free */
 void janus_sdp_mline_destroy(janus_sdp_mline *mline);
 /*! \brief Helper method to get the janus_sdp_mline associated to a media type
- * @note This currently returns the first m-line of the specified type it finds: in
- * general, it shouldn't be an issue as we currently only support a single stream
- * of the same type per session anyway... this will need to be fixed in the future.
+ * @note This currently returns the first m-line of the specified type it finds: as
+ * such, it's mostly here for making things easier for plugins not doing multistream.
  * @param[in] sdp The Janus SDP object to search
  * @param[in] type The type of media to search
  * @returns The janus_sdp_mline instance, if found, or NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type);
+/*! \brief Helper method to get the janus_sdp_mline by its index
+ * @param[in] sdp The Janus SDP object to search
+ * @param[in] index The index of the m-line in the SDP
+ * @returns The janus_sdp_mline instance, if found, or NULL otherwise */
+janus_sdp_mline *janus_sdp_mline_find_by_index(janus_sdp *sdp, int index);
 /*! \brief Helper method to remove the janus_sdp_mline associated to a media type from the SDP
- * @note This currently removes the first m-line of the specified type it finds: in
- * general, it shouldn't be an issue as we currently only support a single stream
- * of the same type per session anyway... this will need to be fixed in the future.
+ * @note This currently removes the first m-line of the specified type it finds: as
+ * such, it's mostly here for making things easier for plugins not doing multistream.
  * @param[in] sdp The Janus SDP object to modify
  * @param[in] type The type of media to remove
  * @returns 0 if successful, a negative integer otherwise */
@@ -224,9 +231,10 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen);
 
 /*! \brief Helper method to quickly remove all traces (m-line, rtpmap, fmtp, etc.) of a payload type
  * @param[in] sdp The janus_sdp object to remove the payload type from
+ * @param[in] index The m-line to remove the payload type from (use -1 for the first m-line that matches)
  * @param[in] pt The payload type to remove
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt);
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int index, int pt);
 
 /*! \brief Method to serialize a janus_sdp object to an SDP string
  * @param[in] sdp The janus_sdp object to serialize
@@ -246,82 +254,95 @@ janus_sdp *janus_sdp_new(const char *name, const char *address);
 void janus_sdp_destroy(janus_sdp *sdp);
 
 typedef enum janus_sdp_oa_type {
-/*! \brief When generating an offer or answer automatically, accept/reject audio if offered (depends on value that follows) */
-JANUS_SDP_OA_AUDIO = 1,
-/*! \brief When generating an offer or answer automatically, accept/reject video if offered (depends on value that follows) */
-JANUS_SDP_OA_VIDEO,
-/*! \brief When generating an offer or answer automatically, accept/reject datachannels if offered (depends on value that follows) */
-JANUS_SDP_OA_DATA,
-/*! \brief When generating an offer or answer automatically, use this direction for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_DIRECTION,
-/*! \brief When generating an offer or answer automatically, use this direction for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_DIRECTION,
-/*! \brief When generating an offer or answer automatically, use this codec for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_CODEC,
-/*! \brief When generating an offer or answer automatically, use this codec for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_CODEC,
+/*! \brief Add a new m-line of the specific kind (used as a separator for audio, video and data details passed to janus_sdp_generate_offer) */
+JANUS_SDP_OA_MLINE = 1,
+/*! \brief Whether we should enable a specific m-line when offering/answering (depends on what follows, true by default) */
+JANUS_SDP_OA_ENABLED,
+/*! \brief When generating an offer or answer automatically, use this direction for media (depends on value that follows, sendrecv by default) */
+JANUS_SDP_OA_DIRECTION,
+/*! \brief When generating an offer automatically, use this mid media (depends on value that follows, needs to be a string) */
+JANUS_SDP_OA_MID,
+/*! \brief When generating an offer or answer automatically, use this codec (depends on value that follows, opus/vp8 by default) */
+JANUS_SDP_OA_CODEC,
+/*! \brief When generating an offer (this is ignored for answers), negotiate this extension: needs two arguments, extmap value and extension ID (can be used multiple times) */
+JANUS_SDP_OA_EXTENSION,
+/*! \brief When generating an offer (this is ignored for answers), negotiate these extensions: needs a hashtable with the mappings to a specific extmap
+ * @note This is only used internally, and will be ignored if provided; in plugins, you should stick to JANUS_SDP_OA_EXTENSION */
+JANUS_SDP_OA_EXTENSIONS,
+/*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
+JANUS_SDP_OA_ACCEPT_EXTMAP,
+/*! \brief When generating an offer (this is ignored for answers), use this payload type (depends on value that follows) */
+JANUS_SDP_OA_PT,
+/*! \brief When generating an offer or answer automatically, add this custom fmtp string
+ * @note When dealing with video, this property is ignored if JANUS_SDP_OA_VP9_PROFILE or JANUS_SDP_OA_H264_PROFILE is used on a compliant codec. */
+JANUS_SDP_OA_FMTP,
+/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only, true by default) */
+JANUS_SDP_OA_AUDIO_DTMF,
 /*! \brief When generating an offer or answer automatically, use this profile for VP9 (depends on value that follows) */
 JANUS_SDP_OA_VP9_PROFILE,
 /*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
 JANUS_SDP_OA_H264_PROFILE,
-/*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
-JANUS_SDP_OA_AUDIO_PT,
-/*! \brief When generating an offer (this is ignored for answers), use this payload type for video (depends on value that follows) */
-JANUS_SDP_OA_VIDEO_PT,
-/*! \brief When generating an offer or answer automatically, do or do not negotiate telephone events (FIXME telephone-event/8000 only) */
-JANUS_SDP_OA_AUDIO_DTMF,
-/*! \brief When generating an offer or answer automatically, add this custom fmtp string for audio */
-JANUS_SDP_OA_AUDIO_FMTP,
-/*! \brief When generating an offer or answer automatically, add this custom fmtp string for video
- * @note This property is ignored if JANUS_SDP_OA_VP9_PROFILE or JANUS_SDP_OA_H264_PROFILE is used on a compliant codec. */
-JANUS_SDP_OA_VIDEO_FMTP,
-/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
+/*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb; true by defaukt) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
-/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
+/*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (depends on what follows, false by default) */
 JANUS_SDP_OA_DATA_LEGACY,
-/*! \brief When generating an offer (this is ignored for answers), negotiate this audio extension: needs two arguments, extmap value and extension ID; can be used multiple times) */
-JANUS_SDP_OA_AUDIO_EXTENSION,
-/*! \brief When generating an offer (this is ignored for answers), negotiate this video extension: needs two arguments, extmap value and extension ID; can be used multiple times) */
-JANUS_SDP_OA_VIDEO_EXTENSION,
-/*! \brief When generating an answer (this is ignored for offers), accept this extension (by default, we reject them all; can be used multiple times) */
-JANUS_SDP_OA_ACCEPT_EXTMAP,
-/*! \brief MUST be used as the last argument in janus_sdp_generate_offer and janus_sdp_generate_answer */
+/*! \brief MUST be used as the last argument in janus_sdp_generate_offer, janus_sdp_generate_offer_mline and janus_sdp_generate_answer */
 JANUS_SDP_OA_DONE = 0
 } janus_sdp_oa_type;
+const char *janus_sdp_oa_type_str(janus_sdp_oa_type type);
 
 /*! \brief Method to generate a janus_sdp offer, using variable arguments to dictate
  * what to negotiate (e.g., in terms of media to offer, directions, etc.). Variable
  * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
  \verbatim
 	janus_sdp *offer = janus_sdp_generate_offer("My session", "127.0.0.1",
-		JANUS_SDP_OA_AUDIO, TRUE,
-		JANUS_SDP_OA_AUDIO_PT, 100,
-		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_AUDIO_CODEC, "opus",
-		JANUS_SDP_OA_VIDEO, FALSE,
-		JANUS_SDP_OA_DATA, FALSE,
-		JANUS_SDP_OA_DONE);
+		JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+			JANUS_SDP_OA_PT, 100,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDONLY,
+			JANUS_SDP_OA_CODEC, "opus",
+		JANUS_SDP_OA_MLINE, JANUS_SDP_VIDEO,
+			JANUS_SDP_OA_PT, 101,
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+			JANUS_SDP_OA_CODEC, "vp8",
  \endverbatim
- * to only offer a \c sendonly Opus audio stream being offered with 100 as
- * payload type, and avoid video and datachannels. Refer to the property names in
- * the header file for a complete list of how you can drive the offer.
- * The default, if not specified, is to offer everything, using Opus with pt=111
- * for audio, VP8 with pt=96 as video, and data channels, all as \c sendrecv.
+ * to offer a \c sendonly Opus audio stream being offered with 100 as
+ * payload type, and a \c recvonly VP8 video stream with 101 as payload type.
+ * Refer to the property names in the header file for a complete
+ * list of how you can drive the offer. Other media streams can be added,
+ * as long as you prefix/specify them with JANUS_SDP_OA_MLINE as done here.
+ * The default, if not specified, is to not offer anything, meaning it
+ * will be up to you to add m-lines subsequently.
  * @param[in] name The session name (if NULL, a default value will be set)
  * @param[in] address The IP to set in o= and c= fields (if NULL, a default value will be set)
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
 janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
-/*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer, using variable arguments
- * to dictate how to respond (e.g., in terms of media to accept, reject, directions, etc.). Variable
- * arguments are in the form of a sequence of name-value terminated by a JANUS_SDP_OA_DONE, e.g.:
+/*! \brief Method to add a single m-line to a new offer, using the same
+ * variable arguments janus_sdp_generate_offer supports. This is useful
+ * whenever you need to create a new offer, but don't know in advance
+ * how many m-lines you'll need, or it would be hard to do programmatically
+ * in a single call to janus_sdp_generate_offer. The first argument
+ * MUST be JANUS_SDP_OA_MLINE, specifying the type of the media.
+ * \note In case case you add audio and don't specify anything else, the
+ * default is to use Opus and payload type 111. For video, the default
+ * is VP8 and payload type 96. The default media direction is \c sendrecv.
+ * @param[in] offer The Janus SDP offer to add the new m-line to
+ * @returns 0 if successful, a negative integer othwerwise */
+int janus_sdp_generate_offer_mline(janus_sdp *offer, ...);
+/*! \brief Method to generate a janus_sdp answer to a provided janus_sdp offer.
+ * Notice that this doesn't address the individual m-lines: it will just
+ * create an empty response, create the corresponding m-lines, but leave
+ * them all "rejected". To answer each m-line you'll have to iterate on
+ * the offer m-lines and call janus_sdp_generate_answer_mline instead, e.g.:
  \verbatim
-	janus_sdp *answer = janus_sdp_generate_answer(offer,
-		JANUS_SDP_OA_AUDIO, TRUE,
-		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
-		JANUS_SDP_OA_AUDIO_CODEC, "opus",
-		JANUS_SDP_OA_VIDEO, FALSE,
-		JANUS_SDP_OA_DATA, FALSE,
-		JANUS_SDP_OA_DONE);
+	janus_sdp *answer = janus_sdp_generate_answer(offer);
+	GList *temp = offer->m_lines;
+	while(temp) {
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		janus_sdp_generate_answer_mline(offer, answer, m,
+			[..]
+			JANUS_SDP_OA_DONE);
+		temp = temp->next;
+	}
  \endverbatim
  * to only accept the audio stream being offered, but as \c recvonly, use Opus
  * and reject both video and datachannels. Refer to the property names in
@@ -329,44 +350,64 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
  * The default, if not specified, is to accept everything as \c sendrecv.
  * @param[in] offer The Janus SDP offer to respond to
  * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
-janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...);
+janus_sdp *janus_sdp_generate_answer(janus_sdp *offer);
+/*! \brief Method to respond to a single m-line in an offer, using the same
+ * variable arguments janus_sdp_generate_offer_mline supports. The first
+ * argument MUST be JANUS_SDP_OA_MLINE, specifying the type of the media, e.g.:
+ \verbatim
+	janus_sdp_generate_answer_mline(offer, answer, offer_mline,
+		JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+			JANUS_SDP_OA_CODEC, "opus",
+			JANUS_SDP_OA_DIRECTION, JANUS_SDP_RECVONLY,
+		JANUS_SDP_OA_DONE);
+ \endverbatim
+ * to respond to an offered m-line with recvonly audio and use Opus.
+ * @param[in] offer The Janus SDP offer
+ * @param[in] answer The Janus SDP answer to add the new m-line to
+ * @param[in] offered The Janus SDP m-line from the offer to respond to
+ * @returns 0 if successful, a negative integer othwerwise */
+int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_sdp_mline *offered, ...);
 
-/*! \brief Helper to get the payload type associated to a specific codec
+/*! \brief Helper to get the payload type associated to a specific codec in an m-line
  * @note This version doesn't involve profiles, which means that in case
  * of multiple payload types associated to the same codec because of
  * different profiles (e.g., VP9 and H.264), this will simply return the
  * first payload type associated with it the codec itself.
  * @param sdp The Janus SDP instance to process
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param codec The codec to find, as a string
  * @returns The payload type, if found, or -1 otherwise */
-int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec);
+int janus_sdp_get_codec_pt(janus_sdp *sdp, int index, const char *codec);
 
 /*! \brief Helper to get the payload type associated to a specific codec,
- * taking into account a codec profile as a hint as well
+ * in an m-line, taking into account a codec profile as a hint as well
  * @note The profile will only be used if the codec supports it, and the
  * core is aware of it: right now, this is only VP9 and H.264. If the codec
  * is there but the profile is not found, then no payload type is returned.
  * @param sdp The Janus SDP instance to process
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param codec The codec to find, as a string
  * @param profile The codec profile to use as a hint, as a string
  * @returns The payload type, if found, or -1 otherwise */
-int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *profile);
+int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, const char *profile);
 
-/*! \brief Helper to get the codec name associated to a specific payload type
+/*! \brief Helper to get the codec name associated to a specific payload type in an m-line
  * @param sdp The Janus SDP instance to process
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param pt The payload type to find
  * @returns The codec name, if found, or NULL otherwise */
-const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt);
+const char *janus_sdp_get_codec_name(janus_sdp *sdp, int index, int pt);
 
 /*! \brief Helper to get the rtpmap associated to a specific codec
  * @param codec The codec name, as a string (e.g., "opus")
- * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or -1 otherwise */
+ * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or NULL otherwise */
 const char *janus_sdp_get_codec_rtpmap(const char *codec);
 
 /*! \brief Helper to get the fmtp associated to a specific payload type
  * @param sdp The Janus SDP instance to process
+ * @param index The m-line to refer to (use -1 for the first m-line that matches)
  * @param pt The payload type to find
  * @returns The fmtp content, if found, or NULL otherwise */
-const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt);
+const char *janus_sdp_get_fmtp(janus_sdp *sdp, int index, int pt);
 
 #endif

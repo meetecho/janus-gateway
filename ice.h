@@ -1,9 +1,13 @@
 /*! \file    ice.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    ICE/STUN/TURN processing (headers)
- * \details  Implementation (based on libnice) of the ICE process. The
- * code handles the whole ICE process, from the gathering of candidates
+ * \brief    Janus handles and ICE/STUN/TURN processing (headers)
+ * \details  A Janus handle represents an abstraction of the communication
+ * between a user and a specific plugin, within a Janus session. This is
+ * particularly important in terms of media connectivity, as each handle
+ * can be associated with a single WebRTC PeerConnection. This code also
+ * contains the implementation (based on libnice) of a WebRTC PeerConnection.
+ * The code handles the whole ICE process, from the gathering of candidates
  * to the final setup of a virtual channel RTP and RTCP can be transported
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
@@ -184,12 +188,12 @@ gboolean janus_is_opaqueid_in_api_enabled(void);
 const gchar *janus_get_ice_state_name(gint state);
 
 
-/*! \brief Janus ICE handle/session */
+/*! \brief Janus ICE handle in a session */
 typedef struct janus_ice_handle janus_ice_handle;
-/*! \brief Janus ICE stream */
-typedef struct janus_ice_stream janus_ice_stream;
-/*! \brief Janus ICE component */
-typedef struct janus_ice_component janus_ice_component;
+/*! \brief WebRTC PeerConnection associated to a specific handle */
+typedef struct janus_ice_peerconnection janus_ice_peerconnection;
+/*! \brief A single medium (i.e., m-line) in a Janus handle PeerConnection: can be bidirectional */
+typedef struct janus_ice_peerconnection_medium janus_ice_peerconnection_medium;
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 typedef struct janus_ice_trickle janus_ice_trickle;
 
@@ -216,6 +220,14 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_E2EE				(1 << 21)
 
 
+/*! \brief Janus media types */
+typedef enum janus_media_type {
+	JANUS_MEDIA_UNKNOWN = 0,
+	JANUS_MEDIA_AUDIO,
+	JANUS_MEDIA_VIDEO,
+	JANUS_MEDIA_DATA
+} janus_media_type;
+
 /*! \brief Janus media statistics
  * \note To improve with more stuff */
 typedef struct janus_ice_stats_info {
@@ -236,16 +248,10 @@ typedef struct janus_ice_stats_info {
 /*! \brief Janus media statistics container
  * \note To improve with more stuff */
 typedef struct janus_ice_stats {
-	/*! \brief Audio info */
-	janus_ice_stats_info audio;
-	/*! \brief Video info (considering we may be simulcasting) */
-	janus_ice_stats_info video[3];
-	/*! \brief Data info */
-	janus_ice_stats_info data;
-	/*! \brief Last known count of lost audio packets (for slow_link) */
-	guint sl_lost_count_audio;
-	/*! \brief Last known count of lost video packets (for slow_link) */
-	guint sl_lost_count_video;
+	/*! \brief Media stats info (considering we may be simulcasting) */
+	janus_ice_stats_info info[3];
+	/*! \brief Last known count of lost packets (for slow_link) */
+	guint sl_lost_count;
 } janus_ice_stats;
 
 /*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
@@ -311,18 +317,12 @@ struct janus_ice_handle {
 	gint64 agent_created;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
-	/*! \brief Audio mid (media ID) */
-	gchar *audio_mid;
-	/*! \brief Video mid (media ID) */
-	gchar *video_mid;
-	/*! \brief Data channel mid (media ID) */
-	gchar *data_mid;
-	/*! \brief Main mid (will be a pointer to one of the above) */
-	gchar *stream_mid;
+	/*! \brief Main mid */
+	gchar *pc_mid;
 	/*! \brief ICE Stream ID */
 	guint stream_id;
-	/*! \brief ICE stream */
-	janus_ice_stream *stream;
+	/*! \brief WebRTC PeerConnection, if any */
+	janus_ice_peerconnection *pc;
 	/*! \brief RTP profile set by caller (so that we can match it) */
 	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
@@ -357,137 +357,20 @@ struct janus_ice_handle {
 	janus_refcount ref;
 };
 
-/*! \brief Janus ICE stream */
-struct janus_ice_stream {
+/*! \brief Janus handle WebRTC PeerConnection */
+struct janus_ice_peerconnection {
 	/*! \brief Janus ICE handle this stream belongs to */
 	janus_ice_handle *handle;
 	/*! \brief libnice ICE stream ID */
 	guint stream_id;
-	/*! \brief Whether this stream is ready to be used */
-	gint cdone:1;
-	/*! \brief Audio SSRC of the server for this stream */
-	guint32 audio_ssrc;
-	/*! \brief Video SSRC of the server for this stream */
-	guint32 video_ssrc;
-	/*! \brief Video retransmission SSRC of the peer for this stream */
-	guint32 video_ssrc_rtx;
-	/*! \brief Audio SSRC of the peer for this stream */
-	guint32 audio_ssrc_peer, audio_ssrc_peer_new, audio_ssrc_peer_orig;
-	/*! \brief Video SSRC(s) of the peer for this stream (may be simulcasting) */
-	guint32 video_ssrc_peer[3], video_ssrc_peer_new[3], video_ssrc_peer_orig[3], video_ssrc_peer_temp;
-	/*! \brief Video retransmissions SSRC(s) of the peer for this stream */
-	guint32 video_ssrc_peer_rtx[3], video_ssrc_peer_rtx_new[3], video_ssrc_peer_rtx_orig[3];
-	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
-	char *rid[3];
-	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
-	gboolean legacy_rid;
-	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
-	janus_rtp_switching_context rtp_ctx[3];
-	/*! \brief List of payload types we can expect for audio */
-	GList *audio_payload_types;
-	/*! \brief List of payload types we can expect for video */
-	GList *video_payload_types;
-	/*! \brief Mapping of rtx payload types to actual media-related packet types */
-	GHashTable *rtx_payload_types;
-	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
-	GHashTable *clock_rates;
-	/*! \brief RTP payload types of this stream */
-	gint audio_payload_type, video_payload_type, video_rtx_payload_type;
-	/*! \brief Codecs used by this stream */
-	char *audio_codec, *video_codec;
-	/*! \brief Pointer to function to check if a packet is a keyframe (depends on negotiated codec) */
-	gboolean (* video_is_keyframe)(const char* buffer, int len);
-	/*! \brief Media direction */
-	gboolean audio_send, audio_recv, video_send, video_recv;
-	/*! \brief RTCP context for the audio stream */
-	janus_rtcp_context *audio_rtcp_ctx;
-	/*! \brief RTCP context(s) for the video stream (may be simulcasting) */
-	janus_rtcp_context *video_rtcp_ctx[3];
-	/*! \brief Size of the NACK queue (in ms), dynamically updated per the RTT */
-	uint16_t nack_queue_ms;
-	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
-	GHashTable *rtx_nacked[3];
-	/*! \brief Map of the pending NACKed cleanup callback */
-	GHashTable *pending_nacked_cleanup;
-	/*! \brief First received audio NTP timestamp */
-	gint64 audio_first_ntp_ts;
-	/*! \brief First received audio RTP timestamp */
-	guint32 audio_first_rtp_ts;
-	/*! \brief First received video NTP timestamp (for all simulcast video streams) */
-	gint64 video_first_ntp_ts[3];
-	/*! \brief First received video NTP RTP timestamp (for all simulcast video streams) */
-	guint32 video_first_rtp_ts[3];
-	/*! \brief Last sent audio NTP timestamp */
-	gint64 audio_last_ntp_ts;
-	/*! \brief Last sent audio RTP timestamp */
-	guint32 audio_last_rtp_ts;
-	/*! \brief Last sent video NTP timestamp */
-	gint64 video_last_ntp_ts;
-	/*! \brief Last sent video RTP timestamp */
-	guint32 video_last_rtp_ts;
-	/*! \brief SDES mid RTP extension ID */
-	gint mid_ext_id;
-	/*! \brief RTP Stream extension ID, and the related rtx one */
-	gint rid_ext_id, ridrtx_ext_id;
-	/*! \brief Audio levels extension ID */
-	gint audiolevel_ext_id;
-	/*! \brief Video orientation extension ID */
-	gint videoorientation_ext_id;
-	/*! \brief Frame marking extension ID */
-	gint framemarking_ext_id;
-	/*! \brief Whether we do transport wide cc for video */
-	gboolean do_transport_wide_cc;
-	/*! \brief Transport wide cc rtp ext ID */
-	gint transport_wide_cc_ext_id;
-	/*! \brief Last sent transport wide seq num */
-	guint16 transport_wide_cc_out_seq_num;
-	/*! \brief Last received transport wide seq num */
-	guint32 transport_wide_cc_last_seq_num;
-	/*! \brief Last transport wide seq num sent on feedback */
-	guint32 transport_wide_cc_last_feedback_seq_num;
-	/*! \brief Transport wide cc transport seq num wrap cycles */
-	guint16 transport_wide_cc_cycles;
-	/*! \brief Transport wide cc rtp ext ID */
-	guint transport_wide_cc_feedback_count;
-	/*! \brief GLib list of transport wide cc stats in reverse received order */
-	GSList *transport_wide_received_seq_nums;
-	/*! \brief DTLS role of the server for this stream */
-	janus_dtls_role dtls_role;
-	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
-	gchar *remote_hashing;
-	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
-	gchar *remote_fingerprint;
-	/*! \brief The ICE username for this stream */
-	gchar *ruser;
-	/*! \brief The ICE password for this stream */
-	gchar *rpass;
-	/*! \brief GLib hash table of components (IDs are the keys) */
-	GHashTable *components;
-	/*! \brief ICE component */
-	janus_ice_component *component;
-	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gboolean noerrorlog;
-	/*! \brief Mutex to lock/unlock this stream */
-	janus_mutex mutex;
-	/*! \brief Atomic flag to check if this instance has been destroyed */
-	volatile gint destroyed;
-	/*! \brief Reference counter for this instance */
-	janus_refcount ref;
-};
-
-#define LAST_SEQS_MAX_LEN 160
-/*! \brief Janus ICE component */
-struct janus_ice_component {
-	/*! \brief Janus ICE stream this component belongs to */
-	janus_ice_stream *stream;
-	/*! \brief libnice ICE stream ID */
-	guint stream_id;
 	/*! \brief libnice ICE component ID */
 	guint component_id;
+	/*! \brief Whether this stream is ready to be used */
+	gint cdone:1;
 	/*! \brief libnice ICE component state */
 	guint state;
-	/*! \brief Monotonic time of when this component has successfully connected */
-	gint64 component_connected;
+	/*! \brief Monotonic time of when ICE has successfully connected */
+	gint64 connected;
 	/*! \brief GLib list of libnice remote candidates for this component */
 	GSList *candidates;
 	/*! \brief GLib list of local candidates for this component (summary) */
@@ -506,14 +389,126 @@ struct janus_ice_component {
 	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
-	/*! \brief Whether we should do NACKs (in or out) for audio */
-	gboolean do_audio_nacks;
-	/*! \brief Whether we should do NACKs (in or out) for video */
-	gboolean do_video_nacks;
+	/*! \brief SDES mid RTP extension ID */
+	gint mid_ext_id;
+	/*! \brief RTP Stream extension ID, and the related rtx one */
+	gint rid_ext_id, ridrtx_ext_id;
+	/*! \brief Audio levels extension ID */
+	gint audiolevel_ext_id;
+	/*! \brief Video orientation extension ID */
+	gint videoorientation_ext_id;
+	/*! \brief Frame marking extension ID */
+	gint framemarking_ext_id;
+	/*! \brief Whether we do transport wide cc */
+	gboolean do_transport_wide_cc;
+	/*! \brief Transport wide cc rtp ext ID */
+	gint transport_wide_cc_ext_id;
+	/*! \brief Last sent transport wide seq num */
+	guint16 transport_wide_cc_out_seq_num;
+	/*! \brief Last received transport wide seq num */
+	guint32 transport_wide_cc_last_seq_num;
+	/*! \brief Last transport wide seq num sent on feedback */
+	guint32 transport_wide_cc_last_feedback_seq_num;
+	/*! \brief Transport wide cc transport seq num wrap cycles */
+	guint16 transport_wide_cc_cycles;
+	/*! \brief Transport wide cc rtp ext ID */
+	guint transport_wide_cc_feedback_count;
+	/*! \brief GLib list of transport wide cc stats in reverse received order */
+	GSList *transport_wide_received_seq_nums;
+	/*! \brief DTLS role of the server for this stream */
+	janus_dtls_role dtls_role;
+	/*! \brief Data exchanged for DTLS handshakes and messages */
+	janus_ice_stats dtls_in_stats, dtls_out_stats;
+	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
+	gchar *remote_hashing;
+	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
+	gchar *remote_fingerprint;
+	/*! \brief The ICE username for this stream */
+	gchar *ruser;
+	/*! \brief The ICE password for this stream */
+	gchar *rpass;
+	/*! \brief GLib hash table of media (m-line indexes are the keys) */
+	GHashTable *media;
+	/*! \brief GLib hash table of media (SSRCs are the keys) */
+	GHashTable *media_byssrc;
+	/*! \brief GLib hash table of media (mids are the keys) */
+	GHashTable *media_bymid;
+	/*! \brief GLib hash table of media (media types are the keys)
+	 * @note This is just a convenience hash table to track the very first audio
+	 * or video m-line, in order to make it easier for plugins that don't do
+	 * multistream. That said, we don't plan to keep it forever */
+	GHashTable *media_bytype;
+	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
+	gboolean noerrorlog;
+	/*! \brief Mutex to lock/unlock this stream */
+	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
+};
+
+#define LAST_SEQS_MAX_LEN 160
+/*! \brief A single media in a PeerConnection */
+struct janus_ice_peerconnection_medium {
+	/*! \brief WebRTC PeerConnection this m-line belongs to */
+	janus_ice_peerconnection *pc;
+	/*! \brief Type of this medium */
+	janus_media_type type;
+	/*! \brief Index of this medium in the media list */
+	int mindex;
+	/*! \brief Media ID */
+	char *mid;
+	/*! \brief SSRC of the server for this medium */
+	guint32 ssrc;
+	/*! \brief Retransmission SSRC of the server for this medium */
+	guint32 ssrc_rtx;
+	/*! \brief SSRC(s) of the peer for this medium (may be simulcasting) */
+	guint32 ssrc_peer[3], ssrc_peer_new[3], ssrc_peer_orig[3], ssrc_peer_temp;
+	/*! \brief Retransmissions SSRC(s) of the peer for this medium (may be simulcasting) */
+	guint32 ssrc_peer_rtx[3], ssrc_peer_rtx_new[3], ssrc_peer_rtx_orig[3];
+	/*! \brief Array of RTP Stream IDs (for Firefox simulcasting, if enabled) */
+	char *rid[3];
+	/*! \brief Whether we should use the legacy simulcast syntax (a=simulcast:recv rid=..) or the proper one (a=simulcast:recv ..) */
+	gboolean legacy_rid;
+	/*! \brief RTP switching context(s) in case of renegotiations (audio+video and/or simulcast) */
+	janus_rtp_switching_context rtp_ctx[3];
+	/*! \brief List of payload types we can expect */
+	GList *payload_types;
+	/*! \brief Mapping of rtx payload types to actual media-related packet types */
+	GHashTable *rtx_payload_types;
+	/*! \brief Mapping of payload types to their clock rates, as advertised in the SDP */
+	GHashTable *clock_rates;
+	/*! \brief RTP payload types for this medium */
+	gint payload_type, rtx_payload_type;
+	/*! \brief Codec used in this medium */
+	char *codec;
+	/*! \brief Pointer to function to check if a packet is a keyframe (depends on negotiated codec; video only) */
+	gboolean (* video_is_keyframe)(const char* buffer, int len);
+	/*! \brief Media direction */
+	gboolean send, recv;
+	/*! \brief RTCP context(s) for the medium (may be simulcasting) */
+	janus_rtcp_context *rtcp_ctx[3];
+	/*! \brief Size of the NACK queue (in ms), dynamically updated per the RTT */
+	uint16_t nack_queue_ms;
+	/*! \brief Map(s) of the NACKed packets (to track retransmissions and avoid duplicates) */
+	GHashTable *rtx_nacked[3];
+	/*! \brief Map of the pending NACKed cleanup callback */
+	GHashTable *pending_nacked_cleanup;
+	/*! \brief First received NTP timestamp */
+	gint64 first_ntp_ts[3];
+	/*! \brief First received RTP timestamp */
+	guint32 first_rtp_ts[3];
+	/*! \brief Last sent NTP timestamp */
+	gint64 last_ntp_ts;
+	/*! \brief Last sent RTP timestamp */
+	guint32 last_rtp_ts;
+	/*! \brief Whether we should do NACKs (in or out) for this medium */
+	gboolean do_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
-	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
+	GQueue *retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
-	GHashTable *audio_retransmit_seqs, *video_retransmit_seqs;
+	GHashTable *retransmit_seqs;
 	/*! \brief Current sequence number for the RFC4588 rtx SSRC session */
 	guint16 rtx_seq_number;
 	/*! \brief Last time a log message about sending retransmits was printed */
@@ -524,23 +519,27 @@ struct janus_ice_component {
 	gint64 nack_sent_log_ts;
 	/*! \brief Number of NACKs sent since last log message */
 	guint nack_sent_recent_cnt;
-	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
-	janus_seq_info *last_seqs_audio;
-	/*! \brief List of recently received video sequence numbers (as a support to NACK generation, for each simulcast SSRC) */
-	janus_seq_info *last_seqs_video[3];
+	/*! \brief List of recently received sequence numbers (as a support to NACK generation, for each simulcast SSRC) */
+	janus_seq_info *last_seqs[3];
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gboolean noerrorlog;
-	/*! \brief Mutex to lock/unlock this component */
+	/*! \brief Mutex to lock/unlock this medium */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };
+/*! \brief Method to quickly create a medium to be added to a handle PeerConnection
+ * @note This will autogenerate SSRCs, if needed
+ * @param[in] handle The Janus handle instance to add the medium to
+ * @param[in] type The medium type
+ * @returns A pointer to the new medium, if successful, or NULL otherwise */
+janus_ice_peerconnection_medium *janus_ice_peerconnection_medium_create(janus_ice_handle *handle, janus_media_type type);
 
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 struct janus_ice_trickle {
@@ -599,12 +598,9 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup
  * @param[in] reason A description of why this happened */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
-/*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
- * @param[in] stream The Janus ICE stream instance to free */
-void janus_ice_stream_destroy(janus_ice_stream *stream);
-/*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
+/*! \brief Method to only free resources related to a specific Webrtc PeerConnection allocated by a Janus ICE handle
  * @param[in] component The Janus ICE component instance to free */
-void janus_ice_component_destroy(janus_ice_component *component);
+void janus_ice_peerconnection_destroy(janus_ice_peerconnection *pc);
 ///@}
 
 
@@ -655,12 +651,9 @@ void janus_ice_notify_data_ready(janus_ice_handle *handle);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER
- * @param[in] audio Whether audio is enabled
- * @param[in] video Whether video is enabled
- * @param[in] data Whether SCTP data channels are enabled
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int trickle);
+int janus_ice_setup_local(janus_ice_handle *handle, gboolean offer, gboolean trickle);
 /*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] mline The Janus SDP m-line object to add candidates to
@@ -678,9 +671,8 @@ void janus_ice_add_remote_candidate(janus_ice_handle *handle, NiceCandidate *c);
 void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id);
 /*! \brief Callback to be notified when the DTLS handshake for a specific component has been completed
  * \details This method also decides when to notify attached plugins about the availability of a reliable PeerConnection
- * @param[in] handle The Janus ICE handle this callback refers to
- * @param[in] component The Janus ICE component that is now ready to be used */
-void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
+ * @param[in] handle The Janus ICE handle this callback refers to */
+void janus_ice_dtls_handshake_done(janus_ice_handle *handle);
 /*! \brief Method to restart ICE and the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to */
 void janus_ice_restart(janus_ice_handle *handle);

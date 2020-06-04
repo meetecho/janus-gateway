@@ -314,7 +314,7 @@ typedef struct janus_nosip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	char *video_srtp_local_profile, *video_srtp_local_crypto;
 	gboolean video_send;
-	janus_rtp_switching_context context;
+	janus_rtp_switching_context acontext, vcontext;
 	int pipefd[2];
 	gboolean updated;
 	int video_orientation_extension_id;
@@ -626,7 +626,8 @@ void janus_nosip_media_reset(janus_nosip_session *session) {
 	session->media.video_send = TRUE;
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 }
 
 
@@ -918,7 +919,8 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_orientation_extension_id = -1;
 	session->media.audio_level_extension_id = -1;
 	/* Initialize the RTP context */
-	janus_rtp_switching_context_reset(&session->media.context);
+	janus_rtp_switching_context_reset(&session->media.acontext);
+	janus_rtp_switching_context_reset(&session->media.vcontext);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -2423,11 +2425,11 @@ static void *janus_nosip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					janus_rtp_header_update(header, &session->media.context, video, 0);
+					janus_rtp_header_update(header, video ? &session->media.vcontext : &session->media.acontext, video, 0);
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(video ? session->vrc_peer : session->arc_peer, buffer, bytes);
 					/* Relay to browser */
-					janus_plugin_rtp rtp = { .video = video, .buffer = buffer, .length = bytes };
+					janus_plugin_rtp rtp = { .mindex = -1, .video = video, .buffer = buffer, .length = bytes };
 					/* Add audio-level extension, if present */
 					janus_plugin_rtp_extensions_reset(&rtp.extensions);
 					if(!video && session->media.audio_level_extension_id != -1) {
@@ -2474,7 +2476,7 @@ static void *janus_nosip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Relay to browser */
-					janus_plugin_rtcp rtcp = { .video = video, .buffer = buffer, bytes };
+					janus_plugin_rtcp rtcp = { .mindex = -1, .video = video, .buffer = buffer, bytes };
 					gateway->relay_rtcp(session->handle, &rtcp);
 					continue;
 				}
