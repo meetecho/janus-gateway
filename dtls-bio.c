@@ -129,17 +129,12 @@ static int janus_dtls_bio_agent_write(BIO *bio, const char *in, int inl) {
 		JANUS_LOG(LOG_ERR, "No DTLS-SRTP stack, no DTLS bridge...\n");
 		return -1;
 	}
-	janus_ice_component *component = (janus_ice_component *)dtls->component;
-	if(component == NULL) {
-		JANUS_LOG(LOG_ERR, "No component, no DTLS bridge...\n");
+	janus_ice_peerconnection *pc = (janus_ice_peerconnection *)dtls->pc;
+	if(pc == NULL) {
+		JANUS_LOG(LOG_ERR, "No WebRTC PeerConnection, no DTLS bridge...\n");
 		return -1;
 	}
-	janus_ice_stream *stream = component->stream;
-	if(!stream) {
-		JANUS_LOG(LOG_ERR, "No stream, no DTLS bridge...\n");
-		return -1;
-	}
-	janus_ice_handle *handle = stream->handle;
+	janus_ice_handle *handle = pc->handle;
 	if(!handle || !handle->agent || !dtls->write_bio) {
 		JANUS_LOG(LOG_ERR, "No handle/agent/bio, no DTLS bridge...\n");
 		return -1;
@@ -149,17 +144,17 @@ static int janus_dtls_bio_agent_write(BIO *bio, const char *in, int inl) {
 		/* FIXME Just a warning for now, this will need to be solved with proper fragmentation */
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] The DTLS stack is trying to send a packet of %d bytes, this may be larger than the MTU and get dropped!\n", handle->handle_id, inl);
 	}
-	int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, inl, in);
+	int bytes = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, inl, in);
 	if(bytes < inl) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, component->component_id, stream->stream_id, bytes);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, pc->component_id, pc->stream_id, bytes);
 	} else {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
 	}
 	/* Update stats (TODO Do the same for the last second window as well)
 	 * FIXME: the Data stats includes the bytes used for the handshake */
 	if(bytes > 0) {
-		component->out_stats.data.packets++;
-		component->out_stats.data.bytes += bytes;
+		pc->dtls_out_stats.info[0].packets++;
+		pc->dtls_out_stats.info[0].bytes += bytes;
 	}
 	return bytes;
 }

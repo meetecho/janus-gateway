@@ -149,7 +149,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp 
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_echotest_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_echotest_data_ready(janus_plugin_session *handle);
-void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_echotest_query_session(janus_plugin_session *handle);
@@ -702,7 +702,7 @@ void janus_echotest_data_ready(janus_plugin_session *handle) {
 	/* Data channels are writable */
 }
 
-void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_echotest_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -874,14 +874,21 @@ static void *janus_echotest_handler(void *data) {
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-		if(msg_simulcast) {
-			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
-			int rid_ext_id = -1, framemarking_ext_id = -1;
-			janus_rtp_simulcasting_prepare(msg_simulcast, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
-			session->sim_context.rid_ext_id = rid_ext_id;
-			session->sim_context.framemarking_ext_id = framemarking_ext_id;
-			session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
-			session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+		if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
+			size_t i = 0;
+			for(i=0; i<json_array_size(msg_simulcast); i++) {
+				json_t *s = json_array_get(msg_simulcast, i);
+				int mindex = json_integer_value(json_object_get(s, "mindex"));
+				JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting (#%d)\n", mindex);
+				int rid_ext_id = -1, framemarking_ext_id = -1;
+				janus_rtp_simulcasting_prepare(s, &rid_ext_id, &framemarking_ext_id, session->ssrc, session->rid);
+				session->sim_context.rid_ext_id = rid_ext_id;
+				session->sim_context.framemarking_ext_id = framemarking_ext_id;
+				session->sim_context.substream_target = 2;	/* Let's aim for the highest quality */
+				session->sim_context.templayer_target = 2;	/* Let's aim for all temporal layers */
+				/* FIXME We're stopping at the first item, there may be more */
+				break;
+			}
 		}
 		json_t *msg_e2ee = json_object_get(msg->jsep, "e2ee");
 		if(json_is_true(msg_e2ee))
@@ -1082,20 +1089,27 @@ static void *janus_echotest_handler(void *data) {
 				}
 				temp = temp->next;
 			}
-			janus_sdp *answer = janus_sdp_generate_answer(offer,
-				JANUS_SDP_OA_AUDIO_CODEC, json_string_value(audiocodec),
-				JANUS_SDP_OA_AUDIO_FMTP, opus_fec ? "useinbandfec=1" : NULL,
-				JANUS_SDP_OA_VIDEO_CODEC, json_string_value(videocodec),
-				JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),
-				JANUS_SDP_OA_H264_PROFILE, json_string_value(videoprofile),
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
-				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
-				JANUS_SDP_OA_DONE);
+			janus_sdp *answer = janus_sdp_generate_answer(offer);
+			temp = offer->m_lines;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				janus_sdp_generate_answer_mline(offer, answer, m,
+					JANUS_SDP_OA_MLINE, m->type,
+					JANUS_SDP_OA_CODEC, (m->type == JANUS_SDP_AUDIO ? json_string_value(audiocodec) :
+						(m->type == JANUS_SDP_VIDEO ? json_string_value(videocodec) : NULL)),
+					JANUS_SDP_OA_FMTP, (m->type == JANUS_SDP_AUDIO && opus_fec ? "useinbandfec=1" : NULL),
+					JANUS_SDP_OA_VP9_PROFILE, json_string_value(videoprofile),
+					JANUS_SDP_OA_H264_PROFILE, json_string_value(videoprofile),
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
+					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
+					JANUS_SDP_OA_DONE);
+				temp = temp->next;
+			}
 			/* If we ended up sendonly, switch to inactive (as we don't really send anything ourselves) */
 			janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
 			if(m && m->direction == JANUS_SDP_SENDONLY)
@@ -1105,9 +1119,10 @@ static void *janus_echotest_handler(void *data) {
 				m->direction = JANUS_SDP_INACTIVE;
 			/* Check which codecs we ended up with */
 			const char *acodec = NULL, *vcodec = NULL;
-			janus_sdp_find_first_codecs(answer, &acodec, &vcodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_AUDIO, -1, &acodec);
 			if(acodec)
 				session->acodec = janus_audiocodec_from_name(acodec);
+			janus_sdp_find_first_codec(answer, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			session->has_audio = session->acodec != JANUS_AUDIOCODEC_NONE;
@@ -1124,7 +1139,7 @@ static void *janus_echotest_handler(void *data) {
 			g_free(session->vfmtp);
 			session->vfmtp = NULL;
 			if(session->has_video) {
-				const char *vfmtp = janus_sdp_get_fmtp(answer, janus_sdp_get_codec_pt(answer, vcodec));
+				const char *vfmtp = janus_sdp_get_fmtp(answer, -1, janus_sdp_get_codec_pt(answer, -1, vcodec));
 				if(vfmtp != NULL)
 					session->vfmtp = g_strdup(vfmtp);
 			}
