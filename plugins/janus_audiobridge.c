@@ -6252,7 +6252,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* What is the Opus payload type? */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 			if(sdp != NULL) {
-				participant->opus_pt = janus_sdp_get_codec_pt(sdp, "opus");
+				participant->opus_pt = janus_sdp_get_codec_pt(sdp, -1, "opus");
 				if(participant->opus_pt > 0 && strstr(msg_sdp, "useinbandfec=1")){
 					/* Opus codec, inband FEC setted */
 					participant->fec = TRUE;
@@ -6314,14 +6314,23 @@ static void *janus_audiobridge_handler(void *data) {
 			/* If we got an offer, we need to answer */
 			janus_sdp *offer = NULL, *answer = NULL;
 			if(got_offer) {
-				answer = janus_sdp_generate_answer(sdp,
-					/* Reject video and data channels, if offered */
-					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->codec),
-					JANUS_SDP_OA_VIDEO, FALSE,
-					JANUS_SDP_OA_DATA, FALSE,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
-					JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
-					JANUS_SDP_OA_DONE);
+				janus_sdp *answer = janus_sdp_generate_answer(offer);
+				/* Only accept the first audio line, and reject everything else if offered */
+				GList *temp = offer->m_lines;
+				gboolean accepted = FALSE;
+				while(temp) {
+					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+					if(m->type == JANUS_SDP_AUDIO && !accepted) {
+						accepted = TRUE;
+						janus_sdp_generate_answer_mline(offer, answer, m,
+							JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+							JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->codec),
+							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_MID,
+							JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+							JANUS_SDP_OA_DONE);
+					}
+					temp = temp->next;
+				}
 				/* Replace the session name */
 				g_free(answer->s_name);
 				answer->s_name = g_strdup(s_name);
@@ -6342,15 +6351,13 @@ static void *janus_audiobridge_handler(void *data) {
 					pt = 8;
 				offer = janus_sdp_generate_offer(
 					s_name, "1.1.1.1",
-					JANUS_SDP_OA_AUDIO, TRUE,
-					JANUS_SDP_OA_AUDIO_CODEC, janus_audiocodec_name(participant->codec),
-					JANUS_SDP_OA_AUDIO_PT, pt,
-					JANUS_SDP_OA_AUDIO_FMTP, (participant->codec == JANUS_AUDIOCODEC_OPUS ? fmtp : NULL),
-					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDRECV,
-					JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
-					JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL, extmap_id,
-					JANUS_SDP_OA_VIDEO, FALSE,
-					JANUS_SDP_OA_DATA, FALSE,
+					JANUS_SDP_OA_MLINE, JANUS_SDP_AUDIO,
+						JANUS_SDP_OA_CODEC, janus_audiocodec_name(participant->codec),
+						JANUS_SDP_OA_PT, pt,
+						JANUS_SDP_OA_FMTP, (participant->codec == JANUS_AUDIOCODEC_OPUS ? fmtp : NULL),
+						JANUS_SDP_OA_DIRECTION, JANUS_SDP_SENDRECV,
+						JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
+						JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL, extmap_id,
 					JANUS_SDP_OA_DONE);
 				/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 				if(session->sdp_version == 1) {
@@ -7021,7 +7028,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Fix sequence number and timestamp (room switching may be involved) */
 	janus_rtp_header_update(packet->data, &participant->context, FALSE, 0);
 	if(gateway != NULL) {
-		janus_plugin_rtp rtp = { .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
+		janus_plugin_rtp rtp = { .mindex = -1, .video = FALSE, .buffer = (char *)packet->data, .length = packet->length };
 		janus_plugin_rtp_extensions_reset(&rtp.extensions);
 		/* FIXME Should we add our own audio level extension? */
 		gateway->relay_rtp(session->handle, &rtp);

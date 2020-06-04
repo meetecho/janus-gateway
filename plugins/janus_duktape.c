@@ -225,7 +225,7 @@ void janus_duktape_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *
 void janus_duktape_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_duktape_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_duktape_data_ready(janus_plugin_session *handle);
-void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video);
+void janus_duktape_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
 void janus_duktape_hangup_media(janus_plugin_session *handle);
 void janus_duktape_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_duktape_query_session(janus_plugin_session *handle);
@@ -610,7 +610,7 @@ static duk_ret_t janus_duktape_method_pushevent(duk_context *ctx) {
 		if(sdp_type && !strcasecmp(sdp_type, "answer")) {
 			/* Take note of which video codec were negotiated */
 			const char *vcodec = NULL;
-			janus_sdp_find_first_codecs(parsed_sdp, NULL, &vcodec);
+			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
@@ -2018,7 +2018,8 @@ void janus_duktape_create_session(janus_plugin_session *handle, int *error) {
 	janus_duktape_session *session = (janus_duktape_session *)g_malloc0(sizeof(janus_duktape_session));
 	session->handle = handle;
 	session->id = id;
-	janus_rtp_switching_context_reset(&session->rtpctx);
+	janus_rtp_switching_context_reset(&session->artpctx);
+	janus_rtp_switching_context_reset(&session->vrtpctx);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	session->sim_context.substream_target = 2;
 	session->sim_context.templayer_target = 2;
@@ -2187,7 +2188,7 @@ struct janus_plugin_result *janus_duktape_handle_message(janus_plugin_session *h
 			const char *sdp = json_string_value(json_object_get(jsep, "sdp"));
 			janus_sdp *parsed_sdp = janus_sdp_parse(sdp, error_str, sizeof(error_str));
 			const char *vcodec = NULL;
-			janus_sdp_find_first_codecs(parsed_sdp, NULL, &vcodec);
+			janus_sdp_find_first_codec(parsed_sdp, JANUS_SDP_VIDEO, -1, &vcodec);
 			if(vcodec)
 				session->vcodec = janus_videocodec_from_name(vcodec);
 			if(session->vcodec != JANUS_VIDEOCODEC_VP8 && session->vcodec != JANUS_VIDEOCODEC_H264) {
@@ -2591,7 +2592,7 @@ void janus_duktape_data_ready(janus_plugin_session *handle) {
 	}
 }
 
-void janus_duktape_slow_link(janus_plugin_session *handle, int uplink, int video) {
+void janus_duktape_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&duktape_stopping) || !g_atomic_int_get(&duktape_initialized))
 		return;
 	janus_mutex_lock(&duktape_sessions_mutex);
@@ -2662,7 +2663,8 @@ void janus_duktape_hangup_media(janus_plugin_session *handle) {
 	session->pli_freq = 0;
 	session->pli_latest = 0;
 	session->e2ee = FALSE;
-	janus_rtp_switching_context_reset(&session->rtpctx);
+	janus_rtp_switching_context_reset(&session->artpctx);
+	janus_rtp_switching_context_reset(&session->vrtpctx);
 	janus_rtp_simulcasting_context_reset(&session->sim_context);
 	session->sim_context.substream_target = 2;
 	session->sim_context.templayer_target = 2;
@@ -2729,7 +2731,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 			return;
 		/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 		gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
-			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->rtpctx);
+			(char *)packet->data, packet->length, packet->ssrc, NULL, sender->vcodec, &session->vrtpctx);
 		if(session->sim_context.need_pli && sender->handle) {
 			/* Send a PLI */
 			JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
@@ -2778,7 +2780,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 			}
 		}
 		/* If we got here, update the RTP header and send the packet */
-		janus_rtp_header_update(packet->data, &session->rtpctx, TRUE, 0);
+		janus_rtp_header_update(packet->data, &session->vrtpctx, TRUE, 0);
 		char vp8pd[6];
 		if(sender->vcodec == JANUS_VIDEOCODEC_VP8) {
 			/* For VP8, we save the original payload descriptor, to restore it after */
@@ -2801,7 +2803,7 @@ static void janus_duktape_relay_rtp_packet(gpointer data, gpointer user_data) {
 		}
 	} else {
 		/* Fix sequence number and timestamp (publisher switching may be involved) */
-		janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, 0);
+		janus_rtp_header_update(packet->data, packet->is_video ? &session->vrtpctx : &session->artpctx, packet->is_video, 0);
 		/* Send the packet */
 		if(janus_core != NULL) {
 			janus_plugin_rtp rtp = { .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length };
