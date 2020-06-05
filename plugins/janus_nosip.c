@@ -1471,11 +1471,18 @@ static void *janus_nosip_handler(void *data) {
 				}
 				/* If the user negotiated simulcasting, just stick with the base substream */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-				if(msg_simulcast) {
+				if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
 					JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
-					json_t *s = json_object_get(msg_simulcast, "ssrcs");
-					if(s && json_array_size(s) > 0)
-						session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+					size_t i = 0;
+					for(i=0; i<json_array_size(msg_simulcast); i++) {
+						json_t *sobj = json_array_get(msg_simulcast, i);
+						json_t *s = json_object_get(sobj, "ssrcs");
+						if(s && json_array_size(s) > 0)
+							session->media.simulcast_ssrc = json_integer_value(json_array_get(s, 0));
+						session->media.simulcast_ssrc = json_integer_value(json_object_get(s, "ssrc-0"));
+						/* FIXME We're stopping at the first item, there may be more */
+						break;
+					}
 				}
 				/* Send the barebone SDP back */
 				result = json_object();

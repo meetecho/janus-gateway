@@ -7311,13 +7311,28 @@ static void *janus_videoroom_handler(void *data) {
 				char *offer_sdp = janus_sdp_write(offer);
 				if(!sdp_update) {
 					/* Is simulcasting involved */
-					if(msg_simulcast && (participant->vcodec == JANUS_VIDEOCODEC_VP8 ||
-							participant->vcodec == JANUS_VIDEOCODEC_H264)) {
-						JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting\n");
-						janus_rtp_simulcasting_prepare(msg_simulcast,
-							&participant->rid_extmap_id,
-							&participant->framemarking_ext_id,
-							participant->ssrc, participant->rid);
+					if(msg_simulcast && json_array_size(msg_simulcast) > 0) {
+						size_t i = 0;
+						for(i=0; i<json_array_size(msg_simulcast); i++) {
+							json_t *s = json_array_get(msg_simulcast, i);
+							int mindex = json_integer_value(json_object_get(s, "mindex"));
+							JANUS_LOG(LOG_VERB, "Publisher is going to do simulcasting (#%d)\n", mindex);
+							janus_rtp_simulcasting_prepare(s,
+								&participant->rid_extmap_id,
+								&participant->framemarking_ext_id,
+								participant->ssrc, participant->rid);
+							if(participant->vcodec != JANUS_VIDEOCODEC_VP8 && participant->vcodec != JANUS_VIDEOCODEC_H264) {
+								/* VP8 r H.264 were not negotiated, if simulcasting was enabled then disable it here */
+								int i=0;
+								for(i=0; i<3; i++) {
+									participant->ssrc[i] = 0;
+									g_free(participant->rid[i]);
+									participant->rid[i] = NULL;
+								}
+							}
+							/* FIXME We're stopping at the first item, there may be more */
+							break;
+						}
 					} else {
 						/* No simulcasting involved */
 						int i=0;
