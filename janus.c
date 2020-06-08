@@ -532,6 +532,7 @@ void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, janus_plugin_r
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, janus_plugin_rtcp *packet);
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, janus_plugin_data *message);
 void janus_plugin_send_pli(janus_plugin_session *plugin_session);
+void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mindex);
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
@@ -545,6 +546,7 @@ static janus_callbacks janus_handler_plugin =
 		.relay_rtcp = janus_plugin_relay_rtcp,
 		.relay_data = janus_plugin_relay_data,
 		.send_pli = janus_plugin_send_pli,
+		.send_pli_stream = janus_plugin_send_pli_stream,
 		.send_remb = janus_plugin_send_remb,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
@@ -1449,20 +1451,20 @@ int janus_process_incoming_request(janus_request *request) {
 				/* Check if renegotiating has added new RTP extensions */
 				if(offer) {
 					/* Check if the mid RTP extension is being negotiated */
-					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					handle->pc->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
 					/* Check if the RTP Stream ID extension is being negotiated */
-					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
-					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
+					handle->pc->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
+					handle->pc->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
 					/* Check if the audio level ID extension is being negotiated */
-					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+					handle->pc->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					/* Check if the video orientation ID extension is being negotiated */
-					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					handle->pc->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 					/* Check if the frame marking ID extension is being negotiated */
-					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
+					handle->pc->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
 					/* Check if transport wide CC is supported */
 					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
-					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
-					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+					handle->pc->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+					handle->pc->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
 				}
 			}
 			char *tmp = handle->remote_sdp;
@@ -3693,6 +3695,16 @@ void janus_plugin_send_pli(janus_plugin_session *plugin_session) {
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_ice_send_pli(handle);
+}
+
+void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mindex) {
+	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped))
+		return;
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_send_pli_stream(handle, mindex);
 }
 
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate) {
