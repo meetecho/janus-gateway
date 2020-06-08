@@ -436,7 +436,7 @@ function unpublishOwnFeed() {
 	sfutest.send({ message: unpublish });
 }
 
-function newRemoteFeed(id, display) {
+function newRemoteFeed(id, display, audio, video) {
 	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
 	var remoteFeed = null;
 	janus.attach(
