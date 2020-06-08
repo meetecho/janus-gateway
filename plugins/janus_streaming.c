@@ -205,6 +205,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
 			"description" : "<description of mountpoint #1>",
 			"metadata" : "<metadata of mountpoint #1, if any>",
+			"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
 			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
 		},
@@ -2426,6 +2427,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(mp->metadata) {
 				json_object_set_new(ml, "metadata", json_string(mp->metadata));
 			}
+			json_object_set_new(ml, "enabled", mp->enabled ? json_true() : json_false());
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = mp->source;
 				gint64 now = janus_get_monotonic_time();
