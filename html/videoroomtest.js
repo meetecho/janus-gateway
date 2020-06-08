@@ -59,7 +59,8 @@ var mystream = null;
 // We use this other ID just to map our subscriptions to us
 var mypvtid = null;
 
-var feeds = [];
+var localTracks = {}, localVideos = 0;
+var feeds = [], feedStreams = {};
 var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
@@ -128,8 +129,8 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, mid, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
@@ -152,6 +153,10 @@ $(document).ready(function() {
 										return false;
 									});
 								},
+								slowLink: function(uplink, lost, mid) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on mid " + mid + " (" + lost + " lost packets)");
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::", msg);
 									var event = msg["videoroom"];
@@ -169,11 +174,15 @@ $(document).ready(function() {
 												Janus.debug("Got a list of available publishers/feeds:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
-													var display = list[f]["display"];
-													var audio = list[f]["audio_codec"];
-													var video = list[f]["video_codec"];
-													Janus.debug("  >> [" + id + "] " + display + " (audio: " + audio + ", video: " + video + ")");
-													newRemoteFeed(id, display, audio, video);
+													var streams = list[f]["streams"];
+													for(var i in streams) {
+														var stream = streams[i];
+														stream["id"] = id;
+														stream["display"] = display;
+													}
+													feedStreams[id] = streams;
+													Janus.debug("  >> [" + id + "] " + display + ":", streams);
+													newRemoteFeed(id, display, streams);
 												}
 											}
 										} else if(event === "destroyed") {
@@ -183,17 +192,30 @@ $(document).ready(function() {
 												window.location.reload();
 											});
 										} else if(event === "event") {
-											// Any new feed to attach to?
-											if(msg["publishers"]) {
+											// Any info on our streams or a new feed to attach to?
+											if(msg["streams"]) {
+												var streams = msg["streams"];
+												for(var i in streams) {
+													var stream = streams[i];
+													stream["id"] = myid;
+													stream["display"] = myusername;
+												}
+												feedStreams[myid] = streams;
+											} else if(msg["publishers"]) {
 												var list = msg["publishers"];
 												Janus.debug("Got a list of available publishers/feeds:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
-													var audio = list[f]["audio_codec"];
-													var video = list[f]["video_codec"];
-													Janus.debug("  >> [" + id + "] " + display + " (audio: " + audio + ", video: " + video + ")");
-													newRemoteFeed(id, display, audio, video);
+													var streams = list[f]["streams"];
+													for(var i in streams) {
+														var stream = streams[i];
+														stream["id"] = id;
+														stream["display"] = display;
+													}
+													feedStreams[id] = streams;
+													Janus.debug("  >> [" + id + "] " + display + ":", streams);
+													newRemoteFeed(id, display, streams);
 												}
 											} else if(msg["leaving"]) {
 												// One of the publishers has gone away?
@@ -206,13 +228,14 @@ $(document).ready(function() {
 														break;
 													}
 												}
-												if(remoteFeed != null) {
+												if(remoteFeed) {
 													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
 													$('#remote'+remoteFeed.rfindex).empty().hide();
 													$('#videoremote'+remoteFeed.rfindex).empty();
 													feeds[remoteFeed.rfindex] = null;
 													remoteFeed.detach();
 												}
+												delete feedStreams[leaving];
 											} else if(msg["unpublished"]) {
 												// One of the publishers has unpublished?
 												var unpublished = msg["unpublished"];
@@ -229,13 +252,14 @@ $(document).ready(function() {
 														break;
 													}
 												}
-												if(remoteFeed != null) {
+												if(remoteFeed) {
 													Janus.debug("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
 													$('#remote'+remoteFeed.rfindex).empty().hide();
 													$('#videoremote'+remoteFeed.rfindex).empty();
 													feeds[remoteFeed.rfindex] = null;
 													remoteFeed.detach();
 												}
+												delete feedStreams[unpublished];
 											} else if(msg["error"]) {
 												if(msg["error_code"] === 426) {
 													// This is a "no such room" error: give a more meaningful description
@@ -275,13 +299,48 @@ $(document).ready(function() {
 										}
 									}
 								},
-								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::", stream);
-									mystream = stream;
-									$('#videojoin').hide();
+								onlocaltrack: function(track, on) {
+									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
+									// We use the track ID as name of the element, but it may contain invalid characters
+									var trackId = track.id.replace(/[{}]/g, "");
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										var stream = localTracks[trackId];
+										if(stream) {
+											try {
+												var tracks = stream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst !== null && mst !== undefined)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										if(track.kind === "video") {
+											$('#myvideo' + trackId).remove();
+											localVideos--;
+											if(localVideos === 0) {
+												// No video, at least for now: show a placeholder
+												if($('#videolocal .no-video-container').length === 0) {
+													$('#videolocal').append(
+														'<div class="no-video-container">' +
+															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<span class="no-video-text">No webcam available</span>' +
+														'</div>');
+												}
+											}
+										}
+										delete localTracks[trackId];
+										return;
+									}
+									// If we're here, a new track was added
+									var stream = localTracks[trackId];
+									if(stream) {
+										// We've been here already
+										return;
+									}
 									$('#videos').removeClass('hide').show();
-									if($('#myvideo').length === 0) {
-										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
+									if($('#mute').length === 0) {
 										// Add a 'mute' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
 										$('#mute').click(toggleMute);
@@ -289,9 +348,31 @@ $(document).ready(function() {
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>');
 										$('#unpublish').click(unpublishOwnFeed);
 									}
-									$('#publisher').removeClass('hide').html(myusername).show();
-									Janus.attachMediaStream($('#myvideo').get(0), stream);
-									$("#myvideo").get(0).muted = "muted";
+									if(track.kind === "audio") {
+										// We ignore local audio tracks, they'd generate echo anyway
+										if(localVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#videolocal .no-video-container').length === 0) {
+												$('#videolocal').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No webcam available</span>' +
+													'</div>');
+											}
+										}
+									} else {
+										// New video track: create a stream out of it
+										localVideos++;
+										$('#videolocal .no-video-container').remove();
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										localTracks[trackId] = stream;
+										Janus.log("Created local stream:", stream);
+										Janus.log(stream.getTracks());
+										Janus.log(stream.getVideoTracks());
+										$('#videolocal').append('<video class="rounded centered" id="myvideo' + trackId + '" width=100% autoplay playsinline muted="muted"/>');
+										Janus.attachMediaStream($('#myvideo' + trackId).get(0), stream);
+									}
 									if(sfutest.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											sfutest.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videolocal").parent().parent().block({
@@ -303,33 +384,21 @@ $(document).ready(function() {
 											}
 										});
 									}
-									var videoTracks = stream.getVideoTracks();
-									if(!videoTracks || videoTracks.length === 0) {
-										// No webcam
-										$('#myvideo').hide();
-										if($('#videolocal .no-video-container').length === 0) {
-											$('#videolocal').append(
-												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-													'<span class="no-video-text">No webcam available</span>' +
-												'</div>');
-										}
-									} else {
-										$('#videolocal .no-video-container').remove();
-										$('#myvideo').removeClass('hide').show();
-									}
 								},
-								onremotestream: function(stream) {
+								onremotetrack: function(track, mid, on) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification: we are unpublished now :::");
 									mystream = null;
+									delete feedStreams[myid];
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 									$("#videolocal").parent().parent().unblock();
 									$('#bitrate').parent().parent().addClass('hide');
 									$('#bitrate a').unbind('click');
+									localTracks = {};
+									localVideos = 0;
 								}
 							});
 					},
@@ -451,44 +520,65 @@ function unpublishOwnFeed() {
 	sfutest.send({ message: unpublish });
 }
 
-function newRemoteFeed(id, display, audio, video) {
+function newRemoteFeed(id, display, streams) {
 	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
 	var remoteFeed = null;
+	if(!streams)
+		streams = feedStreams[id];
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
 			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
+				remoteFeed.remoteTracks = {};
+				remoteFeed.remoteVideos = 0;
 				remoteFeed.simulcastStarted = false;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
+				// Prepare the streams to subscribe to, as an array: we have the list of
+				// streams the feed is publishing, so we can choose what to pick or skip
+				var subscription = [];
+				for(var i in streams) {
+					var stream = streams[i];
+					// If the publisher is VP8/VP9 and this is an older Safari, let's avoid video
+					if(stream.type === "video" && Janus.webRTCAdapter.browserDetails.browser === "safari" &&
+							(stream.codec === "vp9" || (stream.codec === "vp8" && !Janus.safariVp8))) {
+						toastr.warning("Publisher is using " + stream.codec.toUpperCase +
+							", but Safari doesn't support it: disabling video stream #" + stream.mindex);
+						continue;
+					}
+					subscription.push({
+						feed: stream.id,	// This is mandatory
+						mid: stream.mid		// This is optional (all streams, if missing)
+					});
+					// FIXME Right now, this is always the same feed: in the future, it won't
+					remoteFeed.rfid = stream.id;
+					remoteFeed.rfdisplay = stream.display;
+				}
 				// We wait for the plugin to send us an offer
 				var subscribe = {
 					request: "join",
 					room: myroom,
 					ptype: "subscriber",
-					feed: id,
+					streams: subscription,
 					private_id: mypvtid
 				};
-				// In case you don't want to receive audio, video or data, even if the
-				// publisher is sending them, set the 'offer_audio', 'offer_video' or
-				// 'offer_data' properties to false (they're true by default), e.g.:
-				// 		subscribe["offer_video"] = false;
-				// For example, if the publisher is VP8 and this is Safari, let's avoid video
-				if(Janus.webRTCAdapter.browserDetails.browser === "safari" &&
-						(video === "vp9" || (video === "vp8" && !Janus.safariVp8))) {
-					if(video)
-						video = video.toUpperCase()
-					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
-					subscribe["offer_video"] = false;
-				}
-				remoteFeed.videoCodec = video;
 				remoteFeed.send({ message: subscribe });
 			},
 			error: function(error) {
 				Janus.error("  -- Error attaching plugin...", error);
 				bootbox.alert("Error attaching plugin... " + error);
+			},
+			iceState: function(state) {
+				Janus.log("ICE state (feed #" + remoteFeed.rfindex + ") changed to " + state);
+			},
+			webrtcState: function(on) {
+				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
+			},
+			slowLink: function(uplink, lost, mid) {
+				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (subscriber) :::", msg);
@@ -506,15 +596,13 @@ function newRemoteFeed(id, display, audio, video) {
 								break;
 							}
 						}
-						remoteFeed.rfid = msg["id"];
-						remoteFeed.rfdisplay = msg["display"];
 						if(!remoteFeed.spinner) {
 							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
 						} else {
 							remoteFeed.spinner.spin();
 						}
-						Janus.log("Successfully attached to feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") in room " + msg["room"]);
+						Janus.log("Successfully attached to feed in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
 					} else if(event === "event") {
 						// Check if we got an event on a simulcast-related event from this publisher
@@ -554,78 +642,95 @@ function newRemoteFeed(id, display, audio, video) {
 						});
 				}
 			},
-			iceState: function(state) {
-				Janus.log("ICE state of this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") changed to " + state);
-			},
-			webrtcState: function(on) {
-				Janus.log("Janus says this WebRTC PeerConnection (feed #" + remoteFeed.rfindex + ") is " + (on ? "up" : "down") + " now");
-			},
-			onlocalstream: function(stream) {
+			onlocaltrack: function(track, on) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
-			onremotestream: function(stream) {
-				Janus.debug("Remote feed #" + remoteFeed.rfindex + ", stream:", stream);
-				var addButtons = false;
-				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
-					addButtons = true;
-					// No remote video yet
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay playsinline/>');
+			onremotetrack: function(track, mid, on) {
+				Janus.debug("Remote feed #" + remoteFeed.rfindex + ", remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+				if(!on) {
+					// Track removed, get rid of the stream and the rendering
+					var stream = remoteFeed.remoteTracks[mid];
+					if(stream) {
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					}
+					$('#remotevideo'+remoteFeed.rfindex + '-' + mid).remove();
+					if(track.kind === "video") {
+						remoteFeed.remoteVideos--;
+						if(remoteFeed.remoteVideos === 0) {
+							// No video, at least for now: show a placeholder
+							if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+								$('#videoremote'+remoteFeed.rfindex).append(
+									'<div class="no-video-container">' +
+										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<span class="no-video-text">No remote video available</span>' +
+									'</div>');
+							}
+						}
+					}
+					delete remoteFeed.remoteTracks[mid];
+					return;
+				}
+				// If we're here, a new track was added
+				if(remoteFeed.spinner) {
+					remoteFeed.spinner.stop();
+					remoteFeed.spinner = null;
+				}
+				if($('#remotevideo' + remoteFeed.rfindex + '-' + mid).length > 0)
+					return;
+				if(track.kind === "audio") {
+					// New audio track: create a stream out of it, and use a hidden <audio> element
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					remoteFeed.remoteTracks[mid] = stream;
+					Janus.log("Created remote audio stream:", stream);
+					$('#videoremote'+remoteFeed.rfindex).append('<audio class="hide" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" autoplay playsinline/>');
+					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
+					if(remoteFeed.remoteVideos === 0) {
+						// No video, at least for now: show a placeholder
+						if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
+							$('#videoremote'+remoteFeed.rfindex).append(
+								'<div class="no-video-container">' +
+									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<span class="no-video-text">No remote video available</span>' +
+								'</div>');
+						}
+					}
+				} else {
+					// New video track: create a stream out of it
+					remoteFeed.remoteVideos++;
+					$('#videoremote'+remoteFeed.rfindex + ' .no-video-container').remove();
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					remoteFeed.remoteTracks[mid] = stream;
+					Janus.log("Created remote video stream:", stream);
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '-' + mid + '" width=100% autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
 						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 						'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
-					// Show the video, hide the spinner and show the resolution when we get a playing event
-					$("#remotevideo"+remoteFeed.rfindex).bind("playing", function () {
-						if(remoteFeed.spinner)
-							remoteFeed.spinner.stop();
-						remoteFeed.spinner = null;
-						$('#waitingvideo'+remoteFeed.rfindex).remove();
-						if(this.videoWidth)
-							$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
-						var width = this.videoWidth;
-						var height = this.videoHeight;
-						$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-						if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
-							// Firefox Stable has a bug: width and height are not immediately available after a playing
-							setTimeout(function() {
-								var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-								var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+					Janus.attachMediaStream($('#remotevideo' + remoteFeed.rfindex + '-' + mid).get(0), stream);
+					// Note: we'll need this for additional videos too
+					if(!bitrateTimer[remoteFeed.rfindex]) {
+						$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
+						bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+							if(!$("#videoremote" + remoteFeed.rfindex + ' video').get(0))
+								return;
+							// Display updated bitrate, if supported
+							var bitrate = remoteFeed.getBitrate();
+							$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+							// Check if the resolution changed too
+							var width = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoWidth;
+							var height = $("#videoremote" + remoteFeed.rfindex + ' video').get(0).videoHeight;
+							if(width > 0 && height > 0)
 								$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-							}, 2000);
-						}
-					});
-				}
-				Janus.attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
-				var videoTracks = stream.getVideoTracks();
-				if(!videoTracks || videoTracks.length === 0) {
-					// No remote video
-					$('#remotevideo'+remoteFeed.rfindex).hide();
-					if($('#videoremote'+remoteFeed.rfindex + ' .no-video-container').length === 0) {
-						$('#videoremote'+remoteFeed.rfindex).append(
-							'<div class="no-video-container">' +
-								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-								'<span class="no-video-text">No remote video available</span>' +
-							'</div>');
+						}, 1000);
 					}
-				} else {
-					$('#videoremote'+remoteFeed.rfindex+ ' .no-video-container').remove();
-					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
-				}
-				if(!addButtons)
-					return;
-				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
-						Janus.webRTCAdapter.browserDetails.browser === "safari") {
-					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
-					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
-						// Display updated bitrate, if supported
-						var bitrate = remoteFeed.getBitrate();
-						$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
-						// Check if the resolution changed too
-						var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
-						var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
-						if(width > 0 && height > 0)
-							$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					}, 1000);
 				}
 			},
 			oncleanup: function() {
@@ -643,6 +748,8 @@ function newRemoteFeed(id, display, audio, video) {
 				bitrateTimer[remoteFeed.rfindex] = null;
 				remoteFeed.simulcastStarted = false;
 				$('#simulcast'+remoteFeed.rfindex).remove();
+				remoteFeed.remoteTracks = {};
+				remoteFeed.remoteVideos = 0;
 			}
 		});
 }

@@ -150,6 +150,7 @@ multistream-test: {
 	type = "rtp"
 	id = 123
 	description = "Multistream test (1 audio, 2 video)"
+	metadata = "This is an example of a multistream mountpoint: you'll get an audio stream and two video feeds"
 	media = (
 		{
 			type = "audio"

@@ -721,7 +721,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.mediaState(json["type"], json["receiving"]);
+			pluginHandle.mediaState(json["type"], json["receiving"], json["mid"]);
 		} else if(json["janus"] === "slowlink") {
 			Janus.debug("Got a slowlink event on session " + sessionId);
 			Janus.debug(json);
@@ -736,7 +736,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.slowLink(json["uplink"], json["lost"]);
+			pluginHandle.slowLink(json["uplink"], json["lost"], json["mid"]);
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
@@ -1084,8 +1084,8 @@ function Janus(gatewayCallbacks) {
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
 		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : Janus.noop;
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : Janus.noop;
-		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : Janus.noop;
-		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : Janus.noop;
+		callbacks.onlocaltrack = (typeof callbacks.onlocaltrack == "function") ? callbacks.onlocaltrack : Janus.noop;
+		callbacks.onremotetrack = (typeof callbacks.onremotetrack == "function") ? callbacks.onremotetrack : Janus.noop;
 		callbacks.ondata = (typeof callbacks.ondata == "function") ? callbacks.ondata : Janus.noop;
 		callbacks.ondataopen = (typeof callbacks.ondataopen == "function") ? callbacks.ondataopen : Janus.noop;
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : Janus.noop;
@@ -1138,31 +1138,20 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							volume : {
-								value : null,
-								timer : null
-							},
-							bitrate : {
-								value : null,
-								bsnow : null,
-								bsbefore : null,
-								tsnow : null,
-								tsbefore : null,
-								timer : null
-							}
+							bitrate : {}
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId, true); },
-						getRemoteVolume : function() { return getVolume(handleId, true); },
-						getLocalVolume : function() { return getVolume(handleId, false); },
-						isAudioMuted : function() { return isMuted(handleId, false); },
-						muteAudio : function() { return mute(handleId, false, true); },
-						unmuteAudio : function() { return mute(handleId, false, false); },
-						isVideoMuted : function() { return isMuted(handleId, true); },
-						muteVideo : function() { return mute(handleId, true, true); },
-						unmuteVideo : function() { return mute(handleId, true, false); },
-						getBitrate : function() { return getBitrate(handleId); },
+						getVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getRemoteVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getLocalVolume : function(mid, result) { return getVolume(handleId, mid, false, result); },
+						isAudioMuted : function(mid) { return isMuted(handleId, mid, false); },
+						muteAudio : function(mid) { return mute(handleId, mid, false, true); },
+						unmuteAudio : function(mid) { return mute(handleId, mid, false, false); },
+						isVideoMuted : function(mid) { return isMuted(handleId, mid, true); },
+						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
+						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
+						getBitrate : function(mid) { return getBitrate(handleId, mid); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1175,8 +1164,8 @@ function Janus(gatewayCallbacks) {
 						createOffer : function(callbacks) { prepareWebrtc(handleId, true, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, false, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-						onlocalstream : callbacks.onlocalstream,
-						onremotestream : callbacks.onremotestream,
+						onlocaltrack : callbacks.onlocaltrack,
+						onremotetrack : callbacks.onremotetrack,
 						ondata : callbacks.ondata,
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
@@ -1223,31 +1212,20 @@ function Janus(gatewayCallbacks) {
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
-							volume : {
-								value : null,
-								timer : null
-							},
-							bitrate : {
-								value : null,
-								bsnow : null,
-								bsbefore : null,
-								tsnow : null,
-								tsbefore : null,
-								timer : null
-							}
+							bitrate: {}
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
-						getVolume : function() { return getVolume(handleId, true); },
-						getRemoteVolume : function() { return getVolume(handleId, true); },
-						getLocalVolume : function() { return getVolume(handleId, false); },
-						isAudioMuted : function() { return isMuted(handleId, false); },
-						muteAudio : function() { return mute(handleId, false, true); },
-						unmuteAudio : function() { return mute(handleId, false, false); },
-						isVideoMuted : function() { return isMuted(handleId, true); },
-						muteVideo : function() { return mute(handleId, true, true); },
-						unmuteVideo : function() { return mute(handleId, true, false); },
-						getBitrate : function() { return getBitrate(handleId); },
+						getVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getRemoteVolume : function(mid, result) { return getVolume(handleId, mid, true, result); },
+						getLocalVolume : function(mid, result) { return getVolume(handleId, mid, false, result); },
+						isAudioMuted : function(mid) { return isMuted(handleId, mid, false); },
+						muteAudio : function(mid) { return mute(handleId, mid, false, true); },
+						unmuteAudio : function(mid) { return mute(handleId, mid, false, false); },
+						isVideoMuted : function(mid) { return isMuted(handleId, mid, true); },
+						muteVideo : function(mid) { return mute(handleId, mid, true, true); },
+						unmuteVideo : function(mid) { return mute(handleId, mid, true, false); },
+						getBitrate : function(mid) { return getBitrate(handleId, mid); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1260,8 +1238,8 @@ function Janus(gatewayCallbacks) {
 						createOffer : function(callbacks) { prepareWebrtc(handleId, true, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, false, callbacks); },
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-						onlocalstream : callbacks.onlocalstream,
-						onremotestream : callbacks.onremotestream,
+						onlocaltrack : callbacks.onlocaltrack,
+						onremotetrack : callbacks.onremotetrack,
 						ondata : callbacks.ondata,
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
@@ -1803,7 +1781,15 @@ function Janus(gatewayCallbacks) {
 				if(!event.streams)
 					return;
 				config.remoteStream = event.streams[0];
-				pluginHandle.onremotestream(config.remoteStream);
+				if(!event.track)
+					return;
+				// Notify about the new track event
+				var mid = event.transceiver ? event.transceiver.mid : event.track.id;
+				try {
+					pluginHandle.onremotetrack(event.track, mid, true);
+				} catch(e) {
+					Janus.error(e);
+				};
 				if(event.track.onended)
 					return;
 				if(config.receiverTransforms) {
@@ -1826,7 +1812,18 @@ function Janus(gatewayCallbacks) {
 					if(config.remoteStream) {
 						clearTimeout(trackMutedTimeoutId);
 						config.remoteStream.removeTrack(ev.target);
-						pluginHandle.onremotestream(config.remoteStream);
+						// Notify the application
+						var mid = ev.target.id;
+						if(Janus.unifiedPlan) {
+							var transceiver = config.pc.getTransceivers().find(
+								t => t.receiver.track === ev.target);
+							mid = transceiver.mid;
+						}
+						try {
+							pluginHandle.onremotetrack(ev.target, mid, false);
+						} catch(e) {
+							Janus.error(e);
+						};
 					}
 				};
 				event.track.onmute = function(ev) {
@@ -1836,7 +1833,18 @@ function Janus(gatewayCallbacks) {
 							Janus.log("Removing remote track");
 							if (config.remoteStream) {
 								config.remoteStream.removeTrack(ev.target);
-								pluginHandle.onremotestream(config.remoteStream);
+								// Notify the application the track is gone
+								var mid = ev.target.id;
+								if(Janus.unifiedPlan) {
+									var transceiver = config.pc.getTransceivers().find(
+										t => t.receiver.track === ev.target);
+									mid = transceiver.mid;
+								}
+								try {
+									pluginHandle.onremotetrack(ev.target, mid, false);
+								} catch(e) {
+									Janus.error(e);
+								};
 							}
 							trackMutedTimeoutId = null;
 						// Chrome seems to raise mute events only at multiples of 834ms;
@@ -1852,7 +1860,14 @@ function Janus(gatewayCallbacks) {
 					} else {
 						try {
 							config.remoteStream.addTrack(ev.target);
-							pluginHandle.onremotestream(config.remoteStream);
+							// Notify the application the track is back
+							var mid = ev.target.id;
+							if(Janus.unifiedPlan) {
+								var transceiver = config.pc.getTransceivers().find(
+									t => t.receiver.track === ev.target);
+								mid = transceiver.mid;
+							}
+							pluginHandle.onremotetrack(ev.target, mid, true);
 						} catch(e) {
 							Janus.error(e);
 						};
@@ -1911,7 +1926,24 @@ function Janus(gatewayCallbacks) {
 		}
 		// If there's a new local stream, let's notify the application
 		if(config.myStream) {
-			pluginHandle.onlocalstream(config.myStream);
+			var tracks = config.myStream.getTracks();
+			for(var i in tracks) {
+				var track = tracks[i];
+				track.onended = function(ev) {
+					// FIXME What does this event contain? Is there a reference to the track?
+					Janus.log("Local track removed:", ev);
+					try {
+						pluginHandle.onlocaltrack(ev.track, false);
+					} catch(e) {
+						Janus.error(e);
+					};
+				}
+				try {
+					pluginHandle.onlocaltrack(track, true);
+				} catch(e) {
+					Janus.error(e);
+				};
+			}
 		}
 		// Create offer/answer now
 		if(!jsep) {
@@ -2114,6 +2146,11 @@ function Janus(gatewayCallbacks) {
 					Janus.log("Removing audio track:", at);
 					config.myStream.removeTrack(at);
 					try {
+						pluginHandle.onlocaltrack(at, false);
+					} catch(e) {
+						Janus.error(e);
+					};
+					try {
 						at.stop();
 					} catch(e) {}
 				}
@@ -2138,6 +2175,11 @@ function Janus(gatewayCallbacks) {
 					var vt = config.myStream.getVideoTracks()[0];
 					Janus.log("Removing video track:", vt);
 					config.myStream.removeTrack(vt);
+					try {
+						pluginHandle.onlocaltrack(vt, false);
+					} catch(e) {
+						Janus.error(e);
+					};
 					try {
 						vt.stop();
 					} catch(e) {}
@@ -2981,11 +3023,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.success(config.mySdp);
 	}
 
-	function getVolume(handleId, remote) {
+	function getVolume(handleId, mid, remote, result) {
+		result = (typeof result == "function") ? result : Janus.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
-			return 0;
+			result(0);
+			return;
 		}
 		var stream = remote ? "remote" : "local";
 		var config = pluginHandle.webrtcStuff;
@@ -2997,37 +3041,56 @@ function Janus(gatewayCallbacks) {
 				Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 			if(remote && !config.remoteStream) {
 				Janus.warn("Remote stream unavailable");
-				return 0;
+				result(0);
+				return;
 			} else if(!remote && !config.myStream) {
 				Janus.warn("Local stream unavailable");
-				return 0;
+				result(0);
+				return;
 			}
-			if(!config.volume[stream].timer) {
-				Janus.log("Starting " + stream + " volume monitor");
-				config.volume[stream].timer = setInterval(function() {
-					config.pc.getStats()
-						.then(function(stats) {
-							stats.forEach(function (res) {
-								if(!res || res.kind !== "audio")
-									return;
-								if((remote && !res.remoteSource) || (!remote && res.type !== "media-source"))
-									return;
-								config.volume[stream].value = (res.audioLevel ? res.audioLevel : 0);
-							});
-						});
-				}, 200);
-				return 0;	// We don't have a volume to return yet
+			// Are we interested in a mid in particular? (only if transceivers are in use)
+			var query = config.pc;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					result(0);
+					return;
+				}
+				if(remote && !transceiver.receiver) {
+					Janus.warn("Remote transceiver track unavailable");
+					result(0);
+					return;
+				} else if(!remote && !transceiver.sender) {
+					Janus.warn("Local transceiver track unavailable");
+					result(0);
+					return;
+				}
+				query = remote ? transceiver.receiver : transceiver.sender;
 			}
+			var currentVolume = -1;
+			query.getStats()
+				.then(function(stats) {
+					stats.forEach(function (res) {
+						if(!res || res.kind !== "audio")
+							return;
+						if((remote && !res.remoteSource) || (!remote && res.type !== "media-source"))
+							return;
+						result(res.audioLevel ? res.audioLevel : 0);
+					});
+				});
 			return config.volume[stream].value;
 		} else {
 			// audioInputLevel and audioOutputLevel seem only available in Chrome? audioLevel
 			// seems to be available on Chrome and Firefox, but they don't seem to work
 			Janus.warn("Getting the " + stream + " volume unsupported by browser");
-			return 0;
+			result(0);
+			return;
 		}
 	}
 
-	function isMuted(handleId, video) {
+	function isMuted(handleId, mid, video) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
@@ -3048,18 +3111,46 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No video track");
 				return true;
 			}
-			return !config.myStream.getVideoTracks()[0].enabled;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return true;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No video sender with mid " + mid);
+					return true;
+				}
+				return !transceiver.sender.track.enabled;
+			} else {
+				return !config.myStream.getVideoTracks()[0].enabled;
+			}
 		} else {
 			// Check audio track
 			if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return true;
 			}
-			return !config.myStream.getAudioTracks()[0].enabled;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					return true;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No audio sender with mid " + mid);
+					return true;
+				}
+				return !transceiver.sender.track.enabled;
+			} else {
+				return !config.myStream.getAudioTracks()[0].enabled;
+			}
 		}
 	}
 
-	function mute(handleId, video, mute) {
+	function mute(handleId, mid, video, mute) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
@@ -3080,20 +3171,47 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("No video track");
 				return false;
 			}
-			config.myStream.getVideoTracks()[0].enabled = !mute;
-			return true;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return false;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No video sender with mid " + mid);
+					return false;
+				}
+				transceiver.sender.track.enabled = mute ? false : true;
+			} else {
+				config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+			}
 		} else {
 			// Mute/unmute audio track
 			if(!config.myStream.getAudioTracks() || config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return false;
 			}
-			config.myStream.getAudioTracks()[0].enabled = !mute;
-			return true;
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "audio"));
+				if(!transceiver) {
+					Janus.warn("No audio transceiver with mid " + mid);
+					return false;
+				}
+				if(!transceiver.sender || !transceiver.sender.track) {
+					Janus.warn("No audio sender with mid " + mid);
+					return false;
+				}
+				transceiver.sender.track.enabled = mute ? false : true;
+			} else {
+				config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+			}
 		}
+		return true;
 	}
 
-	function getBitrate(handleId) {
+	function getBitrate(handleId, mid) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
@@ -3104,10 +3222,35 @@ function Janus(gatewayCallbacks) {
 			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats) {
-			if(!config.bitrate.timer) {
-				Janus.log("Starting bitrate timer (via getStats)");
-				config.bitrate.timer = setInterval(function() {
-					config.pc.getStats()
+			var query = config.pc;
+			var target = mid ? mid : "default";
+			if(mid && Janus.unifiedPlan) {
+				var transceiver = config.pc.getTransceivers()
+					.find(t => (t.mid === mid && t.receiver.track.kind === "video"));
+				if(!transceiver) {
+					Janus.warn("No video transceiver with mid " + mid);
+					return ("No video transceiver with mid " + mid);
+				}
+				if(!transceiver.receiver) {
+					Janus.warn("No video receiver with mid " + mid);
+					return ("No video receiver with mid " + mid);
+				}
+				query = transceiver.receiver;
+			}
+			if(!config.bitrate[target]) {
+				config.bitrate[target] = {
+					timer: null,
+					bsnow: null,
+					bsbefore: null,
+					tsnow: null,
+					tsbefore: null,
+					value: "0 kbits/sec"
+				};
+			}
+			if(!config.bitrate[target].timer) {
+				Janus.log("Starting bitrate timer" + (mid ? (" for mid " + mid) : "") + " (via getStats)");
+				config.bitrate[target].timer = setInterval(function() {
+					query.getStats()
 						.then(function(stats) {
 							stats.forEach(function (res) {
 								if(!res)
@@ -3125,24 +3268,24 @@ function Janus(gatewayCallbacks) {
 								}
 								// Parse stats now
 								if(inStats) {
-									config.bitrate.bsnow = res.bytesReceived;
-									config.bitrate.tsnow = res.timestamp;
-									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+									config.bitrate[target].bsnow = res.bytesReceived;
+									config.bitrate[target].tsnow = res.timestamp;
+									if(config.bitrate[target].bsbefore === null || config.bitrate[target].tsbefore === null) {
 										// Skip this round
-										config.bitrate.bsbefore = config.bitrate.bsnow;
-										config.bitrate.tsbefore = config.bitrate.tsnow;
+										config.bitrate[target].bsbefore = config.bitrate[target].bsnow;
+										config.bitrate[target].tsbefore = config.bitrate[target].tsnow;
 									} else {
 										// Calculate bitrate
-										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
+										var timePassed = config.bitrate[target].tsnow - config.bitrate[target].tsbefore;
 										if(Janus.webRTCAdapter.browserDetails.browser === "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
-										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
+										var bitRate = Math.round((config.bitrate[target].bsnow - config.bitrate[target].bsbefore) * 8 / timePassed);
 										if(Janus.webRTCAdapter.browserDetails.browser === "safari")
 											bitRate = parseInt(bitRate/1000);
-										config.bitrate.value = bitRate + ' kbits/sec';
+										config.bitrate[target].value = bitRate + ' kbits/sec';
 										//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
-										config.bitrate.bsbefore = config.bitrate.bsnow;
-										config.bitrate.tsbefore = config.bitrate.tsnow;
+										config.bitrate[target].bsbefore = config.bitrate[target].bsnow;
+										config.bitrate[target].tsbefore = config.bitrate[target].tsnow;
 									}
 								}
 							});
@@ -3150,7 +3293,7 @@ function Janus(gatewayCallbacks) {
 				}, 1000);
 				return "0 kbits/sec";	// We don't have a bitrate value yet
 			}
-			return config.bitrate.value;
+			return config.bitrate[target].value;
 		} else {
 			Janus.warn("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
@@ -3199,15 +3342,11 @@ function Janus(gatewayCallbacks) {
 				if(config.volume["remote"] && config.volume["remote"].timer)
 					clearInterval(config.volume["remote"].timer);
 			}
-			config.volume = {};
-			if(config.bitrate.timer)
-				clearInterval(config.bitrate.timer);
-			config.bitrate.timer = null;
-			config.bitrate.bsnow = null;
-			config.bitrate.bsbefore = null;
-			config.bitrate.tsnow = null;
-			config.bitrate.tsbefore = null;
-			config.bitrate.value = null;
+			for(var i in config.bitrate) {
+				if(config.bitrate[i].timer)
+					clearInterval(config.bitrate[i].timer);
+			}
+			config.bitrate = {};
 			if(!config.streamExternal && config.myStream) {
 				Janus.log("Stopping local stream tracks");
 				Janus.stopAllTracks(config.myStream);
