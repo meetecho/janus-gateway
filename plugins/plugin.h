@@ -380,11 +380,18 @@ struct janus_callbacks {
 	 * @param[in] packet The message data and related info */
 	void (* const relay_data)(janus_plugin_session *handle, janus_plugin_data *packet);
 
-	/*! \brief Helper to ask for a keyframe via a RTCP PLI
+	/*! \brief Helper to ask for a keyframe via a RTCP PLI to all video streams
 	 * @note This is a shortcut, as it is also possible to do the same by crafting
 	 * an RTCP PLI message manually, and passing it to the core via relay_rtcp
 	 * @param[in] handle The plugin/gateway session that will be used for this peer */
 	void (* const send_pli)(janus_plugin_session *handle);
+	/*! \brief Helper to ask for a keyframe via a RTCP PLI to a specific video stream
+	 * @note This is a shortcut, as it is also possible to do the same by crafting
+	 * an RTCP PLI message manually, and passing it to the core via relay_rtcp
+	 * @param[in] handle The plugin/gateway session that will be used for this peer
+	 * @param[in] mindex Index of the stream to send the PLI to (relative to the SDP;
+	 * passing -1 will send it to the first video stream in the SDP) */
+	void (* const send_pli_stream)(janus_plugin_session *handle, int mindex);
 	/*! \brief Helper to ask for a keyframe via a RTCP PLI
 	 * @note This is a shortcut, as it is also possible to do the same by crafting
 	 * an RTCP REMB message manually, and passing it to the core via relay_rtcp

@@ -582,6 +582,7 @@ void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, janus_plugin_r
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, janus_plugin_rtcp *packet);
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, janus_plugin_data *message);
 void janus_plugin_send_pli(janus_plugin_session *plugin_session);
+void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mindex);
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
@@ -595,6 +596,7 @@ static janus_callbacks janus_handler_plugin =
 		.relay_rtcp = janus_plugin_relay_rtcp,
 		.relay_data = janus_plugin_relay_data,
 		.send_pli = janus_plugin_send_pli,
+		.send_pli_stream = janus_plugin_send_pli_stream,
 		.send_remb = janus_plugin_send_remb,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
@@ -3813,6 +3815,16 @@ void janus_plugin_send_pli(janus_plugin_session *plugin_session) {
 			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 	janus_ice_send_pli(handle);
+}
+
+void janus_plugin_send_pli_stream(janus_plugin_session *plugin_session, int mindex) {
+	if((plugin_session < (janus_plugin_session *)0x1000) || g_atomic_int_get(&plugin_session->stopped))
+		return;
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_send_pli_stream(handle, mindex);
 }
 
 void janus_plugin_send_remb(janus_plugin_session *plugin_session, uint32_t bitrate) {
