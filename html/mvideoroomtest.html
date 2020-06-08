@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Server: Video Room Demo</title>
+<title>Janus WebRTC Server: Video Room Demo (multistream)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,19 +13,19 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="videoroomtest.js"></script>
+<script type="text/javascript" src="mvideoroomtest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='videoroomtest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='mvideoroomtest.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
 </script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
 </head>
 <body>
@@ -39,7 +39,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Video Room
+				<h1>Plugin Demo: Video Room (multistream)
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -47,30 +47,11 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This demo is an example of how you can use the Video Room plugin to
-						implement a simple videoconferencing application. In particular, this
-						demo page allows you to have up to 6 active participants at the same time:
-						more participants joining the room will be instead just passive users.
-						No mixing is involved: all media are just relayed in a publisher/subscriber
-						approach. This means that the plugin acts as a SFU (Selective Forwarding Unit)
-						rather than an MCU (Multipoint Control Unit).</p>
-						<div class="alert alert-info">Notice that this is the <b>original</b> VideoRoom
-						demo, and uses a different PeerConnections per each subscription: if
-						you want to test the new multistream support, instead, try the
-						<a href="mvideoroomtest.html">multistream VideoRoom demo</a>
-						instead. The two demos are interoperable, if you want to see how
-						different subscription mechanisms are used on the same sources.</div>
-						<p>If you're interested in testing how simulcasting can be used within
-						the context of a videoconferencing application, just pass the
-						<code>?simulcast=true</code> query string to the url of this page and
-						reload it. If you're using a browser that does support simulcasting
-						(Chrome or Firefox) and the room is configured to use VP8, you'll
-						send multiple qualities of the video you're capturing. Notice that
-						simulcasting will only occur if the browser thinks there is enough
-						bandwidth, so you'll have to play with the Bandwidth selector to
-						increase it. New buttons to play with the feature will automatically
-						appear for viewers when receiving any simulcasted stream. Notice that
-						no simulcast support is needed for watching, only for publishing.</p>
+						<p>This is a variant of the <a href="videoroomtest.html">original VideoRoom demo</a>,
+						but taking advantage of the recently added multistream support to use a
+						single PeerConnection to receive all the contributions, rather than
+						creating a different one for each subscription. Apart from this, the
+						same considerations apply.</p>
 						<p>To use the demo, just insert a username to join the default room that
 						is configured. This will add you to the list of participants, and allow
 						you to automatically send your audio/video frames and receive the other
@@ -87,7 +68,7 @@
 					<div class="col-md-12" id="controls">
 						<div class="input-group margin-bottom-md hide" id="registernow">
 							<span class="input-group-addon">@</span>
-							<input autocomplete="off" class="form-control" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);" />
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
 							<span class="input-group-btn">
 								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
 							</span>

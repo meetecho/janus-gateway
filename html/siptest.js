@@ -52,6 +52,8 @@ var janus = null;
 var sipcall = null;
 var opaqueId = "siptest-"+Janus.randomString(12);
 
+var localTracks = {}, localVideos = 0,
+	remoteTracks = {}, remoteVideos = 0;
 var spinner = null;
 
 var selectedApproach = null;
@@ -146,12 +148,16 @@ $(document).ready(function() {
 								iceState: function(state) {
 									Janus.log("ICE state changed to " + state);
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								mediaState: function(medium, mid, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
+								},
+								slowLink: function(uplink, lost, mid) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on mid " + mid + " (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
@@ -449,13 +455,72 @@ $(document).ready(function() {
 										}
 									}
 								},
-								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::", stream);
-									$('#videos').removeClass('hide').show();
-									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
-									Janus.attachMediaStream($('#myvideo').get(0), stream);
-									$("#myvideo").get(0).muted = "muted";
+								onlocaltrack: function(track, on) {
+									Janus.debug("Local track " + (on ? "added" : "removed") + ":", track);
+									// We use the track ID as name of the element, but it may contain invalid characters
+									var trackId = track.id.replace(/[{}]/g, "");
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										var stream = localTracks[trackId];
+										if(stream) {
+											try {
+												var tracks = stream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										if(track.kind === "video") {
+											$('#myvideot' + trackId).remove();
+											localVideos--;
+											if(localVideos === 0) {
+												// No video, at least for now: show a placeholder
+												if($('#videoleft .no-video-container').length === 0) {
+													$('#videoleft').append(
+														'<div class="no-video-container">' +
+															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<span class="no-video-text">No webcam available</span>' +
+														'</div>');
+												}
+											}
+										}
+										delete localTracks[trackId];
+										return;
+									}
+									// If we're here, a new track was added
+									var stream = localTracks[trackId];
+									if(stream) {
+										// We've been here already
+										return;
+									}
+									if($('#videoleft video').length === 0) {
+										$('#videos').removeClass('hide').show();
+									}
+									if(track.kind === "audio") {
+										// We ignore local audio tracks, they'd generate echo anyway
+										if(localVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#videoleft .no-video-container').length === 0) {
+												$('#videoleft').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No webcam available</span>' +
+													'</div>');
+											}
+										}
+									} else {
+										// New video track: create a stream out of it
+										localVideos++;
+										$('#videoleft .no-video-container').remove();
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										localTracks[trackId] = stream;
+										Janus.log("Created local stream:", stream);
+										$('#videoleft').append('<video class="rounded centered" id="myvideot' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+										Janus.attachMediaStream($('#myvideot' + trackId).get(0), stream);
+									}
 									if(sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
 											sipcall.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videoleft").parent().block({
@@ -466,43 +531,45 @@ $(document).ready(function() {
 												color: 'white'
 											}
 										});
-										// No remote video yet
-										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-										if(spinner == null) {
-											var target = document.getElementById('videoright');
-											spinner = new Spinner({top:100}).spin(target);
-										} else {
-											spinner.spin();
-										}
-									}
-									var videoTracks = stream.getVideoTracks();
-									if(!videoTracks || videoTracks.length === 0) {
-										// No webcam
-										$('#myvideo').hide();
-										if($('#videoleft .no-video-container').length === 0) {
-											$('#videoleft').append(
-												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-													'<span class="no-video-text">No webcam available</span>' +
-												'</div>');
-										}
-									} else {
-										$('#videoleft .no-video-container').remove();
-										$('#myvideo').removeClass('hide').show();
 									}
 								},
-								onremotestream: function(stream) {
-									Janus.debug(" ::: Got a remote stream :::", stream);
-									if($('#remotevideo').length === 0) {
+								onremotetrack: function(track, mid, on) {
+									Janus.debug("Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+									if(!on) {
+										// Track removed, get rid of the stream and the rendering
+										var stream = remoteTracks[mid];
+										if(stream) {
+											try {
+												var tracks = stream.getTracks();
+												for(var i in tracks) {
+													var mst = tracks[i];
+													if(mst)
+														mst.stop();
+												}
+											} catch(e) {}
+										}
+										$('#peervideom' + mid).remove();
+										if(track.kind === "video") {
+											remoteVideos--;
+											if(remoteVideos === 0) {
+												// No video, at least for now: show a placeholder
+												if($('#videoright .no-video-container').length === 0) {
+													$('#videoright').append(
+														'<div class="no-video-container">' +
+															'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+															'<span class="no-video-text">No remote video available</span>' +
+														'</div>');
+												}
+											}
+										}
+										delete remoteTracks[mid];
+										return;
+									}
+									// If we're here, a new track was added
+									if($('#videoright audio').length === 0 && $('#videoright video').length === 0) {
+										$('#videos').removeClass('hide').show();
 										$('#videoright').parent().find('h3').html(
-											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>' +
-											'<span id="ctrls" class="pull-right btn-group btn-group-xs">' +
-												'<button id="msg" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-												'<button id="info" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-												'<button id="transfer" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
-											'</span>');
-										$('#videoright').append(
-											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
+											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -515,7 +582,7 @@ $(document).ready(function() {
 											// Send DTMF tone (inband)
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 											// Notice you can also send DTMF tones using SIP INFO
-											// 		sipcall.send({ message: { request: "dtmf_info", digit: $(this).text() }});
+											// 		sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
 										});
 										$('#msg').click(function() {
 											bootbox.prompt("Insert message to send", function(result) {
@@ -595,43 +662,49 @@ $(document).ready(function() {
 												}
 											});
 										});
-										// Show the peer and hide the spinner when we get a playing event
-										$("#remotevideo").bind("playing", function () {
-											$('#waitingvideo').remove();
-											if(this.videoWidth)
-												$('#remotevideo').removeClass('hide').show();
-											if(spinner)
-												spinner.stop();
-											spinner = null;
-										});
 									}
-									Janus.attachMediaStream($('#remotevideo').get(0), stream);
-									var videoTracks = stream.getVideoTracks();
-									if(!videoTracks || videoTracks.length === 0) {
-										// No remote video
-										$('#remotevideo').hide();
-										if($('#videoright .no-video-container').length === 0) {
-											$('#videoright').append(
-												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-													'<span class="no-video-text">No remote video available</span>' +
-												'</div>');
+									if(track.kind === "audio") {
+										// New audio track: create a stream out of it, and use a hidden <audio> element
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										remoteTracks[mid] = stream;
+										Janus.log("Created remote audio stream:", stream);
+										$('#videoright').append('<audio class="hide" id="peervideom' + mid + '" autoplay playsinline/>');
+										Janus.attachMediaStream($('#peervideom' + mid).get(0), stream);
+										if(remoteVideos === 0) {
+											// No video, at least for now: show a placeholder
+											if($('#videoright .no-video-container').length === 0) {
+												$('#videoright').append(
+													'<div class="no-video-container">' +
+														'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+														'<span class="no-video-text">No remote video available</span>' +
+													'</div>');
+											}
 										}
 									} else {
+										// New video track: create a stream out of it
+										remoteVideos++;
 										$('#videoright .no-video-container').remove();
-										$('#remotevideo').removeClass('hide').show();
+										stream = new MediaStream();
+										stream.addTrack(track.clone());
+										remoteTracks[mid] = stream;
+										Janus.log("Created remote video stream:", stream);
+										$('#videoright').append('<video class="rounded centered" id="peervideom' + mid + '" width=320 height=240 autoplay playsinline/>');
+										Janus.attachMediaStream($('#peervideom' + mid).get(0), stream);
 									}
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
-									$('#myvideo').remove();
-									$('#waitingvideo').remove();
-									$('#remotevideo').remove();
-									$('#videos .no-video-container').remove();
+									$("#videoleft").empty().parent().unblock();
+									$('#videoright').empty();
 									$('#videos').hide();
 									$('#dtmf').parent().html("Remote UA");
 									if(sipcall)
 										sipcall.callId = null;
+									localTracks = {};
+									localVideos = 0;
+									remoteTracks = {};
+									remoteVideos = 0;
 								}
 							});
 					},
@@ -945,7 +1018,9 @@ function doHangup(ev) {
 function addHelper(helperCreated) {
 	helpersCount++;
 	var helperId = helpersCount;
-	helpers[helperId] = { id: helperId };
+	helpers[helperId] = { id: helperId,
+		localTracks: {}, localVideos: 0,
+		remoteTracks: {}, remoteVideos: 0 };
 	// Add another row with a new "phone"
 	$('.footer').before(
 		'<div class="container" id="sipcall' + helperId + '">' +
@@ -1035,12 +1110,16 @@ function addHelper(helperCreated) {
 			iceState: function(state) {
 				Janus.log("[Helper #" + helperId + "] ICE state changed to " + state);
 			},
-			mediaState: function(medium, on) {
-				Janus.log("[Helper #" + helperId + "] Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+			mediaState: function(medium, mid, on) {
+				Janus.log("[Helper #" + helperId + "] Janus " + (on ? "started" : "stopped") + " receiving our " + medium + " (mid=" + mid + ")");
 			},
 			webrtcState: function(on) {
 				Janus.log("[Helper #" + helperId + "] Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 				$("#videoleft" + helperId).parent().unblock();
+			},
+			slowLink: function(uplink, lost, mid) {
+				Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+					" packets on mid " + mid + " (" + lost + " lost packets)");
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug("[Helper #" + helperId + "]  ::: Got a message :::", msg);
@@ -1316,13 +1395,72 @@ function addHelper(helperCreated) {
 					}
 				}
 			},
-			onlocalstream: function(stream) {
-				Janus.debug("[Helper #" + helperId + "]  ::: Got a local stream :::", stream);
-				$('#videos' + helperId).removeClass('hide').show();
-				if($('#myvideo' + helperId).length === 0)
-					$('#videoleft' + helperId).append('<video class="rounded centered" id="myvideo' + helperId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
-				Janus.attachMediaStream($('#myvideo' + helperId).get(0), stream);
-				$("#myvideo" + helperId).get(0).muted = "muted";
+			onlocaltrack: function(track, on) {
+				Janus.debug("[Helper #" + helperId + "] Local track " + (on ? "added" : "removed") + ":", track);
+				// We use the track ID as name of the element, but it may contain invalid characters
+				var trackId = track.id.replace(/[{}]/g, "");
+				if(!on) {
+					// Track removed, get rid of the stream and the rendering
+					var stream = helpers[helperId].localTracks[trackId];
+					if(stream) {
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst)
+									mst.stop();
+							}
+						} catch(e) {}
+					}
+					if(track.kind === "video") {
+						$('#myvideo' + helperId + 't' + trackId).remove();
+						helpers[helperId].localVideos--;
+						if(helpers[helperId].localVideos === 0) {
+							// No video, at least for now: show a placeholder
+							if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
+								$('#videoleft' + helperId).append(
+									'<div class="no-video-container">' +
+										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<span class="no-video-text">No webcam available</span>' +
+									'</div>');
+							}
+						}
+					}
+					delete helpers[helperId].localTracks[trackId];
+					return;
+				}
+				// If we're here, a new track was added
+				var stream = helpers[helperId].localTracks[trackId];
+				if(stream) {
+					// We've been here already
+					return;
+				}
+				if($('#videoleft' + helperId + ' video').length === 0) {
+					$('#videos' + helperId).removeClass('hide').show();
+				}
+				if(track.kind === "audio") {
+					// We ignore local audio tracks, they'd generate echo anyway
+					if(helpers[helperId].localVideos === 0) {
+						// No video, at least for now: show a placeholder
+						if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
+							$('#videoleft' + helperId).append(
+								'<div class="no-video-container">' +
+									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<span class="no-video-text">No webcam available</span>' +
+								'</div>');
+						}
+					}
+				} else {
+					// New video track: create a stream out of it
+					helpers[helperId].localVideos++;
+					$('#videoleft' + helperId + ' .no-video-container').remove();
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					helpers[helperId].localTracks[trackId] = stream;
+					Janus.log("[Helper #" + helperId + "] Created local stream:", stream);
+					$('#videoleft' + helperId).append('<video class="rounded centered" id="myvideo' + helperId + 't' + trackId + '" width=320 height=240 autoplay playsinline muted="muted"/>');
+					Janus.attachMediaStream($('#myvideo' + helperId + 't' + trackId).get(0), stream);
+				}
 				if(helpers[helperId].sipcall.webrtcStuff.pc.iceConnectionState !== "completed" &&
 						helpers[helperId].sipcall.webrtcStuff.pc.iceConnectionState !== "connected") {
 					$("#videoleft" + helperId).parent().block({
@@ -1333,43 +1471,45 @@ function addHelper(helperCreated) {
 							color: 'white'
 						}
 					});
-					// No remote video yet
-					$('#videoright' + helperId).append('<video class="rounded centered" id="waitingvideo' + helperId + '" width=320 height=240 />');
-					if(helpers[helperId].spinner == null) {
-						var target = document.getElementById('videoright' + helperId);
-						helpers[helperId].spinner = new Spinner({top:100}).spin(target);
-					} else {
-						helpers[helperId].spinner.spin();
-					}
-				}
-				var videoTracks = stream.getVideoTracks();
-				if(!videoTracks || videoTracks.length === 0) {
-					// No webcam
-					$('#myvideo' + helperId).hide();
-					if($('#videoleft' + helperId + ' .no-video-container').length === 0) {
-						$('#videoleft' + helperId).append(
-							'<div class="no-video-container">' +
-								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-								'<span class="no-video-text">No webcam available</span>' +
-							'</div>');
-					}
-				} else {
-					$('#videoleft' + helperId + ' .no-video-container').remove();
-					$('#myvideo' + helperId).removeClass('hide').show();
 				}
 			},
-			onremotestream: function(stream) {
-				Janus.debug("[Helper #" + helperId + "]  ::: Got a remote stream :::", stream);
-				if($('#remotevideo' + helperId).length === 0) {
+			onremotetrack: function(track, mid, on) {
+				Janus.debug("[Helper #" + helperId + "] Remote track (mid=" + mid + ") " + (on ? "added" : "removed") + ":", track);
+				if(!on) {
+					// Track removed, get rid of the stream and the rendering
+					var stream = helpers[helperId].remoteTracks[mid];
+					if(stream) {
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst)
+									mst.stop();
+							}
+						} catch(e) {}
+					}
+					$('#peervideo' + helperId + 'm' + mid).remove();
+					if(track.kind === "video") {
+						remoteVideos--;
+						if(remoteVideos === 0) {
+							// No video, at least for now: show a placeholder
+							if($('#videoright' + helperId + ' .no-video-container').length === 0) {
+								$('#videoright').append(
+									'<div class="no-video-container">' +
+										'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+										'<span class="no-video-text">No remote video available</span>' +
+									'</div>');
+							}
+						}
+					}
+					delete helpers[helperId].remoteTracks[mid];
+					return;
+				}
+				// If we're here, a new track was added
+				if($('#videoright' + helperId + ' audio').length === 0 && $('#videoright' + helperId + ' video').length === 0) {
+					$('#videos' + helperId).removeClass('hide').show();
 					$('#videoright' + helperId).parent().find('h3').html(
-						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>' +
-						'<span id="ctrls' + helperId + '" class="pull-right btn-group btn-group-xs">' +
-							'<button id="msg' + helperId + '" title="Send message" class="btn btn-info"><i class="fa fa-envelope"></i></button>' +
-							'<button id="info' + helperId + '" title="Send INFO" class="btn btn-info"><i class="fa fa-info"></i></button>' +
-							'<button id="transfer' + helperId + '" title="Transfer call" class="btn btn-info"><i class="fa fa-mail-forward"></i></button>' +
-						'</span>');
-					$('#videoright' + helperId).append(
-						'<video class="rounded centered hide" id="remotevideo' + helperId + '" width=320 height=240 autoplay playsinline/>');
+						'Send DTMF: <span id="dtmf' + helperId + '" class="btn-group btn-group-xs"></span>');
 					for(var i=0; i<12; i++) {
 						if(i<10)
 							$('#dtmf' + helperId).append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -1469,43 +1609,51 @@ function addHelper(helperCreated) {
 							}
 						});
 					});
-					// Show the peer and hide the spinner when we get a playing event
-					$("#remotevideo" + helperId).bind("playing", function () {
-						$('#waitingvideo' + helperId).remove();
-						if(this.videoWidth)
-							$('#remotevideo' + helperId).removeClass('hide').show();
-						if(helpers[helperId].spinner)
-							helpers[helperId].spinner.stop();
-						helpers[helperId].spinner = null;
-					});
 				}
-				Janus.attachMediaStream($('#remotevideo' + helperId).get(0), stream);
-				var videoTracks = stream.getVideoTracks();
-				if(!videoTracks || videoTracks.length === 0) {
-					// No remote video
-					$('#remotevideo' + helperId).hide();
-					if($('#videoright' + helperId + ' .no-video-container').length === 0) {
-						$('#videoright' + helperId).append(
-							'<div class="no-video-container">' +
-								'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-								'<span class="no-video-text">No remote video available</span>' +
-							'</div>');
+				if(track.kind === "audio") {
+					// New audio track: create a stream out of it, and use a hidden <audio> element
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					helpers[helperId].remoteTracks[mid] = stream;
+					Janus.log("[Helper #" + helperId + "] Created remote audio stream:", stream);
+					$('#videoright' + helperId).append('<audio class="hide" id="peervideo' + helperId + 'm' + mid + '" autoplay playsinline/>');
+					Janus.attachMediaStream($('#peervideo' + helperId + 'm' + mid).get(0), stream);
+					if(helpers[helperId].remoteVideos === 0) {
+						// No video, at least for now: show a placeholder
+						if($('#videoright' + helperId + ' .no-video-container').length === 0) {
+							$('#videoright' + helperId).append(
+								'<div class="no-video-container">' +
+									'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+									'<span class="no-video-text">No remote video available</span>' +
+								'</div>');
+						}
 					}
 				} else {
+					// New video track: create a stream out of it
+					helpers[helperId].remoteVideos++;
 					$('#videoright' + helperId + ' .no-video-container').remove();
-					$('#remotevideo' + helperId).removeClass('hide').show();
+					stream = new MediaStream();
+					stream.addTrack(track.clone());
+					helpers[helperId].remoteTracks[mid] = stream;
+					Janus.log("[Helper #" + helperId + "] Created remote video stream:", stream);
+					$('#videoright' + helperId).append('<video class="rounded centered" id="peervideo' + helperId + 'm' + mid + '" width=320 height=240 autoplay playsinline/>');
+					Janus.attachMediaStream($('#peervideo' + helperId + 'm' + mid).get(0), stream);
 				}
 			},
 			oncleanup: function() {
 				Janus.log("[Helper #" + helperId + "]  ::: Got a cleanup notification :::");
-				$('#myvideo' + helperId).remove();
-				$('#waitingvideo' + helperId).remove();
-				$('#remotevideo' + helperId).remove();
-				$('#videos' + helperId + ' .no-video-container').remove();
+				$('#videoleft' + helperId).empty().parent().unblock();
+				$('#videoleft' + helperId).empty();
 				$('#videos' + helperId).hide();
 				$('#dtmf' + helperId).parent().html("Remote UA");
 				if(helpers[helperId] && helpers[helperId].sipcall)
 					helpers[helperId].sipcall.callId = null;
+				if(helpers[helperId]) {
+					helpers[helperId].localTracks = {};
+					helpers[helperId].localVideos = 0;
+					helpers[helperId].remoteTracks = {};
+					helpers[helperId].remoteVideos = 0;
+				}
 			}
 		});
 
