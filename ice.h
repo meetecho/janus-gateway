@@ -622,6 +622,10 @@ void janus_ice_relay_data(janus_ice_handle *handle, janus_plugin_data *packet);
 /*! \brief Helper core callback, called when a plugin wants to send a RTCP PLI to a peer
  * @param[in] handle The Janus ICE handle associated with the peer */
 void janus_ice_send_pli(janus_ice_handle *handle);
+/*! \brief Helper core callback, called when a plugin wants to send a RTCP PLI to a single video stream of a peer
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] mindex Index of the stream to send the PLI to (relative to the SDP) */
+void janus_ice_send_pli_stream(janus_ice_handle *handle, int mindex);
 /*! \brief Helper core callback, called when a plugin wants to send a RTCP REMB to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] bitrate The bitrate value to put in the REMB message */

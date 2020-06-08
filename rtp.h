@@ -90,6 +90,7 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_FRAME_MARKING		"http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07"
 /*! \brief \note Note: We don't support encrypted extensions yet */
 #define JANUS_RTP_EXTMAP_ENCRYPTED			"urn:ietf:params:rtp-hdrext:encrypt"
+int janus_rtp_extension_id(const char *type);
 
 
 typedef enum janus_audiocodec {

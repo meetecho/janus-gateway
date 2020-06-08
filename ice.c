@@ -4447,11 +4447,25 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, janus_plugin_rtcp *packet) {
 }
 
 void janus_ice_send_pli(janus_ice_handle *handle) {
+	if(handle == NULL || handle->pc == NULL)
+		return;
+	/* Iterate on all video streams, and send the PLI there */
+	janus_ice_peerconnection_medium *medium = NULL;
+	uint mi=0;
+	for(mi=0; mi<g_hash_table_size(handle->pc->media); mi++) {
+		medium = g_hash_table_lookup(handle->pc->media, GUINT_TO_POINTER(mi));
+		if(!medium || medium->type != JANUS_MEDIA_VIDEO)
+			continue;
+		janus_ice_send_pli_stream(handle, medium->mindex);
+	}
+}
+
+void janus_ice_send_pli_stream(janus_ice_handle *handle, int mindex) {
 	char rtcpbuf[12];
 	memset(rtcpbuf, 0, 12);
 	janus_rtcp_pli((char *)&rtcpbuf, 12);
 	/* FIXME We send the PLI on the first video m-line we have */
-	janus_plugin_rtcp rtcp = { .mindex = -1, .video = TRUE, .buffer = rtcpbuf, .length = 12 };
+	janus_plugin_rtcp rtcp = { .mindex = mindex, .video = TRUE, .buffer = rtcpbuf, .length = 12 };
 	janus_ice_relay_rtcp(handle, &rtcp);
 }
 
