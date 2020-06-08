@@ -46,10 +46,14 @@ typedef struct janus_recorder {
 	FILE *file;
 	/*! \brief Codec the packets to record are encoded in ("vp8", "vp9", "h264", "opus", "pcma", "pcmu", "g722") */
 	char *codec;
+	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
+	char *fmtp;
 	/*! \brief When the recording file has been created and started */
 	gint64 created, started;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
+	/*! \brief Whether the recording contains end-to-end encrypted media or not */
+	gboolean encrypted;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */
@@ -77,6 +81,23 @@ void janus_recorder_deinit(void);
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
 janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
+/*! \brief Create a new recorder with additional info
+ * \note This is to allow adding more arguments to janus_recorder_create, but
+ * still keep janus_recorder_create in place for backwards compatibility.
+ * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
+ * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
+ * @param[in] fmtp Codec-specific details (e.g., the H.264 or VP9 profile)
+ * @param[in] filename Filename to use for the recording
+ * @returns A valid janus_recorder instance in case of success, NULL otherwise */
+janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename);
+/*! \brief Mark this recorder as end-to-end encrypted (e.g., via Insertable Streams)
+ * \note This will only be possible BEFORE the first frame is written, as it needs to
+ * be reflected in the .mjr header: doing this after that will return an error. Also
+ * notice that an encrypted recording will NOT be processable with \c janus-pp-rec
+ * out of the box, since the post-processor will not have access to unencrypted media
+ * @param[in] recorder The janus_recorder instance to mark as encrypted
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_encrypted(janus_recorder *recorder);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save

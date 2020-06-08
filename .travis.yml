@@ -46,12 +46,20 @@ addons:
       - libsofia-sip-ua-dev
       - libssl-dev
       - libvorbis-dev
+      - ninja-build
       - openssl
+      - python3
+      - python3-pip
+      - python3-setuptools
+
+before_install:
+  - pip3 install wheel
+  - pip3 install meson
 
 before_script:
   - if [ $LIBCURL = YES ]; then sudo apt-get -y install libcurl4-openssl-dev; fi
   - travis_retry git clone -b master https://gitlab.freedesktop.org/libnice/libnice.git libnice
-  - if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi; pushd libnice && ./autogen.sh && ./configure CFLAGS=$LNICE_CFLAGS --prefix=/usr --disable-gtk-doc --disable-gtk-doc-html --disable-gupnp && make -j$(nproc) && sudo make install && popd
+  - if [ $CC = clang ]; then LNICE_CFLAGS="-Wno-cast-align"; fi; pushd libnice && meson setup -Dprefix=/usr -Dlibdir=lib -Dc_args="$LNICE_CFLAGS" -Ddebug=false -Doptimization=0 -Dexamples=disabled -Dgtk_doc=disabled -Dgupnp=disabled -Dgstreamer=disabled -Dtests=disabled build && ninja -C build && sudo ninja -C build install && popd
   - travis_retry git clone -b v2.3.0 https://github.com/cisco/libsrtp.git libsrtp
   - pushd libsrtp && ./configure --prefix=/usr --enable-openssl && make -j$(nproc) shared_library && sudo make install && popd
   - if [ $DATACHANNELS = YES ]; then git clone -b master https://github.com/sctplab/usrsctp usrsctp; fi
@@ -64,5 +72,9 @@ before_script:
   - pushd paho.mqtt.c && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_SAMPLES=FALSE -DPAHO_BUILD_DOCUMENTATION=FALSE && make -j$(nproc) && sudo make install && popd
 
 script:
-  - ./autogen.sh && ./configure $JANUS_COMMON_OPTS $JANUS_CONFIG_OPTS && make -j$(nproc)
+  - ./autogen.sh
+  - if [ $LIBCURL = NO ]; then export LCURL=$(sudo find /usr -type f -name libcurl.pc); sudo mv "$LCURL" "$LCURL".bak; fi
+  - ./configure $JANUS_COMMON_OPTS $JANUS_CONFIG_OPTS
+  - if [ $LIBCURL = NO ]; then sudo mv "$LCURL".bak "$LCURL"; fi
+  - make -j$(nproc)
   - make check-fuzzers

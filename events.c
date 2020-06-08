@@ -57,7 +57,9 @@ int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers)
 			eventsenabled = FALSE;
 			g_free(server);
 			g_async_queue_unref(events);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			return -1;
 		}
 	}
@@ -177,6 +179,11 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 				 * that's the only place we had the opaque_id present before */
 				json_object_set_new(body, "opaque_id", json_string(opaque_id));
 			}
+			/* The token used to attach may be provided as well: just as with the opaque_id,
+			 * in event handlers, it may be useful for inter-handle mappings or other things */
+			char *token = va_arg(args, char *);
+			if(token != NULL)
+				json_object_set_new(body, "token", json_string(token));
 			break;
 		}
 		case JANUS_EVENT_TYPE_JSEP: {

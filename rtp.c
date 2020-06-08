@@ -781,6 +781,7 @@ const char *janus_srtp_error_str(int error) {
 
 /* Payload types we'll offer internally */
 #define OPUS_PT		111
+#define MULTIOPUS_PT	OPUS_PT
 #define ISAC32_PT	104
 #define ISAC16_PT	103
 #define PCMU_PT		0
@@ -789,12 +790,16 @@ const char *janus_srtp_error_str(int error) {
 #define VP8_PT		96
 #define VP9_PT		101
 #define H264_PT		107
+#define AV1_PT		98
+#define H265_PT		100
 const char *janus_audiocodec_name(janus_audiocodec acodec) {
 	switch(acodec) {
 		case JANUS_AUDIOCODEC_NONE:
 			return "none";
 		case JANUS_AUDIOCODEC_OPUS:
 			return "opus";
+		case JANUS_AUDIOCODEC_MULTIOPUS:
+			return "multiopus";
 		case JANUS_AUDIOCODEC_PCMU:
 			return "pcmu";
 		case JANUS_AUDIOCODEC_PCMA:
@@ -815,6 +820,8 @@ janus_audiocodec janus_audiocodec_from_name(const char *name) {
 		return JANUS_AUDIOCODEC_NONE;
 	else if(!strcasecmp(name, "opus"))
 		return JANUS_AUDIOCODEC_OPUS;
+	else if(!strcasecmp(name, "multiopus"))
+		return JANUS_AUDIOCODEC_MULTIOPUS;
 	else if(!strcasecmp(name, "isac32"))
 		return JANUS_AUDIOCODEC_ISAC_32K;
 	else if(!strcasecmp(name, "isac16"))
@@ -834,6 +841,8 @@ int janus_audiocodec_pt(janus_audiocodec acodec) {
 			return -1;
 		case JANUS_AUDIOCODEC_OPUS:
 			return OPUS_PT;
+		case JANUS_AUDIOCODEC_MULTIOPUS:
+			return MULTIOPUS_PT;
 		case JANUS_AUDIOCODEC_ISAC_32K:
 			return ISAC32_PT;
 		case JANUS_AUDIOCODEC_ISAC_16K:
@@ -860,6 +869,10 @@ const char *janus_videocodec_name(janus_videocodec vcodec) {
 			return "vp9";
 		case JANUS_VIDEOCODEC_H264:
 			return "h264";
+		case JANUS_VIDEOCODEC_AV1:
+			return "av1";
+		case JANUS_VIDEOCODEC_H265:
+			return "h265";
 		default:
 			/* Shouldn't happen */
 			return "vp8";
@@ -874,6 +887,10 @@ janus_videocodec janus_videocodec_from_name(const char *name) {
 		return JANUS_VIDEOCODEC_VP9;
 	else if(!strcasecmp(name, "h264"))
 		return JANUS_VIDEOCODEC_H264;
+	else if(!strcasecmp(name, "av1"))
+		return JANUS_VIDEOCODEC_AV1;
+	else if(!strcasecmp(name, "h265"))
+		return JANUS_VIDEOCODEC_H265;
 	JANUS_LOG(LOG_WARN, "Unsupported video codec '%s'\n", name);
 	return JANUS_VIDEOCODEC_NONE;
 }
@@ -887,6 +904,10 @@ int janus_videocodec_pt(janus_videocodec vcodec) {
 			return VP9_PT;
 		case JANUS_VIDEOCODEC_H264:
 			return H264_PT;
+		case JANUS_VIDEOCODEC_AV1:
+			return AV1_PT;
+		case JANUS_VIDEOCODEC_H265:
+			return H265_PT;
 		default:
 			/* Shouldn't happen */
 			return VP8_PT;
@@ -997,9 +1018,9 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		/* Let's start slow */
 		context->last_relayed = janus_get_monotonic_time();
 	} else {
-		/* Check if 250ms went by with no packet relayed */
+		/* Check if too much time went by with no packet relayed */
 		gint64 now = janus_get_monotonic_time();
-		if(now-context->last_relayed >= 250000) {
+		if(now-context->last_relayed >= (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
 			int substream = context->substream-1;
 			if(substream < 0)

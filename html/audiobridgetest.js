@@ -120,12 +120,20 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+								},
 								onmessage: function(msg, jsep) {
-									Janus.debug(" ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug(" ::: Got a message :::", msg);
 									var event = msg["audiobridge"];
 									Janus.debug("Event: " + event);
-									if(event != undefined && event != null) {
+									if(event) {
 										if(event === "joined") {
 											// Successfully joined, negotiate WebRTC now
 											if(msg["id"]) {
@@ -138,23 +146,21 @@ $(document).ready(function() {
 														{
 															media: { video: false},	// This is an audio only room
 															success: function(jsep) {
-																Janus.debug("Got SDP!");
-																Janus.debug(jsep);
-																var publish = { "request": "configure", "muted": false };
-																mixertest.send({"message": publish, "jsep": jsep});
+																Janus.debug("Got SDP!", jsep);
+																var publish = { request: "configure", muted: false };
+																mixertest.send({ message: publish, jsep: jsep });
 															},
 															error: function(error) {
 																Janus.error("WebRTC error:", error);
-																bootbox.alert("WebRTC error... " + JSON.stringify(error));
+																bootbox.alert("WebRTC error... " + error.message);
 															}
 														});
 												}
 											}
 											// Any room participant?
-											if(msg["participants"] !== undefined && msg["participants"] !== null) {
+											if(msg["participants"]) {
 												var list = msg["participants"];
-												Janus.debug("Got a list of participants:");
-												Janus.debug(list);
+												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
@@ -184,10 +190,9 @@ $(document).ready(function() {
 											Janus.log("Moved to room " + msg["room"] + ", new ID: " + myid);
 											// Any room participant?
 											$('#list').empty();
-											if(msg["participants"] !== undefined && msg["participants"] !== null) {
+											if(msg["participants"]) {
 												var list = msg["participants"];
-												Janus.debug("Got a list of participants:");
-												Janus.debug(list);
+												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
@@ -218,10 +223,9 @@ $(document).ready(function() {
 												window.location.reload();
 											});
 										} else if(event === "event") {
-											if(msg["participants"] !== undefined && msg["participants"] !== null) {
+											if(msg["participants"]) {
 												var list = msg["participants"];
-												Janus.debug("Got a list of participants:");
-												Janus.debug(list);
+												Janus.debug("Got a list of participants:", list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
@@ -244,7 +248,7 @@ $(document).ready(function() {
 													else
 														$('#rp'+id + ' > i.absetup').removeClass('hide').show();
 												}
-											} else if(msg["error"] !== undefined && msg["error"] !== null) {
+											} else if(msg["error"]) {
 												if(msg["error_code"] === 485) {
 													// This is a "no such room" error: give a more meaningful description
 													bootbox.alert(
@@ -259,7 +263,7 @@ $(document).ready(function() {
 												return;
 											}
 											// Any new feed to attach to?
-											if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
+											if(msg["leaving"]) {
 												// One of the participants has gone away?
 												var leaving = msg["leaving"];
 												Janus.log("Participant left: " + leaving + " (we have " + $('#rp'+leaving).length + " elements with ID #rp" +leaving + ")");
@@ -267,15 +271,13 @@ $(document).ready(function() {
 											}
 										}
 									}
-									if(jsep !== undefined && jsep !== null) {
-										Janus.debug("Handling SDP as well...");
-										Janus.debug(jsep);
-										mixertest.handleRemoteJsep({jsep: jsep});
+									if(jsep) {
+										Janus.debug("Handling SDP as well...", jsep);
+										mixertest.handleRemoteJsep({ jsep: jsep });
 									}
 								},
 								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(stream);
+									Janus.debug(" ::: Got a local stream :::", stream);
 									// We're not going to attach the local audio stream
 									$('#audiojoin').hide();
 									$('#room').removeClass('hide').show();
@@ -300,7 +302,7 @@ $(document).ready(function() {
 												$('#toggleaudio').html("Mute").removeClass("btn-success").addClass("btn-danger");
 											else
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
-											mixertest.send({message: { "request": "configure", "muted": !audioenabled }});
+											mixertest.send({ message: { request: "configure", muted: !audioenabled }});
 										}).removeClass('hide').show();
 
 								},
@@ -364,8 +366,8 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		var register = { "request": "join", "room": myroom, "display": username };
+		var register = { request: "join", room: myroom, display: username };
 		myusername = username;
-		mixertest.send({"message": register});
+		mixertest.send({ message: register});
 	}
 }

@@ -95,6 +95,7 @@ typedef struct janus_rtp_header_extension {
 typedef enum janus_audiocodec {
 	JANUS_AUDIOCODEC_NONE,
 	JANUS_AUDIOCODEC_OPUS,
+	JANUS_AUDIOCODEC_MULTIOPUS,
 	JANUS_AUDIOCODEC_PCMU,
 	JANUS_AUDIOCODEC_PCMA,
 	JANUS_AUDIOCODEC_G722,
@@ -109,7 +110,9 @@ typedef enum janus_videocodec {
 	JANUS_VIDEOCODEC_NONE,
 	JANUS_VIDEOCODEC_VP8,
 	JANUS_VIDEOCODEC_VP9,
-	JANUS_VIDEOCODEC_H264
+	JANUS_VIDEOCODEC_H264,
+	JANUS_VIDEOCODEC_AV1,
+	JANUS_VIDEOCODEC_H265
 } janus_videocodec;
 const char *janus_videocodec_name(janus_videocodec vcodec);
 janus_videocodec janus_videocodec_from_name(const char *name);
@@ -288,6 +291,8 @@ typedef struct janus_rtp_simulcasting_context {
 	int templayer;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer_target;
+	/*! \brief How much time (in us, default 250000) without receiving packets will make us drop to the substream below */
+	guint32 drop_trigger;
 	/*! \brief When we relayed the last packet (used to detect when substreams become unavailable) */
 	gint64 last_relayed;
 	/*! \brief Whether the substream has changed after processing a packet */
@@ -319,7 +324,6 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, int *fra
  * @param[in] len The length of the RTP packet (header, extension and payload)
  * @param[in] ssrcs The simulcast SSRCs to refer to (may be updated if rids are involved)
  * @param[in] rids The simulcast rids to refer to, if any
- * @param[in] rid_ext_id The rid RTP extension id to check, if any
  * @param[in] vcodec Video codec of the RTP payload
  * @param[in] sc RTP switching context to refer to, if any (only needed for VP8 and dropping temporal layers)
  * @returns TRUE if the packet should be relayed, FALSE if it should be dropped instead */

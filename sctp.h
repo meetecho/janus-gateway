@@ -82,6 +82,8 @@ typedef struct janus_sctp_channel {
 	uint32_t id;
 	/*! \brief SCTP channel label */
 	char label[64];
+	/*! \brief SCTP protocol */
+	char protocol[64];
 	/*! \brief Value of the PR-SCTP policy (http://tools.ietf.org/html/rfc6458) */
 	uint32_t pr_value;
 	/*! \brief PR-SCTP policy to use (http://tools.ietf.org/html/rfc6458) */
@@ -123,6 +125,8 @@ typedef struct janus_sctp_association {
 	size_t buflen;
 	/*! \brief Current offset of the buffer for handling partial messages */
 	size_t offset;
+	/*! \brief Buffer of pending messages */
+	GQueue *pending_messages;
 #ifdef DEBUG_SCTP
 	FILE *debug_dump;
 #endif
@@ -162,7 +166,7 @@ typedef struct janus_datachannel_open_request {
 	uint16_t protocol_length;
 	/*! \brief Optional label */
 	char label[0];
-	/* We ignore the Protocol field */
+	/* The Protocol field will come after the label, if available */
 } janus_datachannel_open_request;
 
 typedef struct janus_datachannel_open_response {
@@ -203,10 +207,11 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 /*! \brief Method to send data via SCTP to the peer
  * \param[in] sctp The SCTP association this data is from
  * @param[in] label The label of the data channel to use
+ * @param[in] protocol The protocol of the data channel to use
  * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-void janus_sctp_send_data(janus_sctp_association *sctp, char *label, gboolean textdata, char *buf, int len);
+void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *protocol, gboolean textdata, char *buf, int len);
 
 #endif
 

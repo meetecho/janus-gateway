@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server: Demo Tests</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
@@ -16,7 +16,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
@@ -93,6 +93,14 @@
 				<tr>
 					<td><a href="devicetest.html">Device Selection</a></td>
 					<td>A variant of the Echo Test demo, that allows you to choose a specific capture device.</td>
+				</tr>
+				<tr>
+					<td><a href="e2etest.html">End-to-end Encryption</a></td>
+					<td>A variant of the Echo Test demo, that allows you to encrypt the video in a way that Janus can't access it, but can still route it.</td>
+				</tr>
+				<tr>
+					<td><a href="multiopus.html">Multichannel Opus (surround)</a></td>
+					<td>A variant of the Echo Test demo, that shows multichannel/surround Opus support.</td>
 				</tr>
 				<tr>
 					<td><a href="vp9svctest.html">VP9-SVC Video Room</a></td>

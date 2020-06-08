@@ -56,6 +56,9 @@ var opaqueId = Janus.randomString(12);
 
 var spinner = null;
 
+var videoenabled = true;
+var srtp = undefined ; // use "sdes_mandatory" to test SRTP-SDES
+
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -91,10 +94,9 @@ $(document).ready(function() {
 										Janus.debug("[caller] Trying a createOffer too (audio/video sendrecv)");
 										caller.createOffer(
 											{
-												// No media provided: by default, it's sendrecv for audio and video
+												media: {audio: true, video: videoenabled},
 												success: function(jsep) {
-													Janus.debug("[caller] Got SDP!");
-													Janus.debug(jsep);
+													Janus.debug("[caller] Got SDP!", jsep);
 													// We now have a WebRTC SDP: to get a barebone SDP legacy
 													// peers can digest, we ask the NoSIP plugin to generate
 													// an offer for us. For the sake of simplicity, no SRTP:
@@ -102,13 +104,14 @@ $(document).ready(function() {
 													// the SIP plugin uses (mandatory vs. optional). We'll
 													// get the result in an event called "generated" here.
 													var body = {
-														request: "generate"
+														request: "generate",
+														srtp: srtp
 													};
-													caller.send({message: body, jsep: jsep});
+													caller.send({ message: body, jsep: jsep });
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
-													bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													bootbox.alert("WebRTC error... " + error.message);
 												}
 											});
 									}, 1000);
@@ -151,8 +154,7 @@ $(document).ready(function() {
 										" packets on this PeerConnection (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
-									Janus.debug("[caller]  ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug("[caller]  ::: Got a message :::", msg);
 									// Any error?
 									var error = msg["error"];
 									if(error) {
@@ -174,24 +176,23 @@ $(document).ready(function() {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
-												update: result["update"]
+												update: result["update"],
+												srtp: srtp
 											}
-											callee.send({message: processOffer});
+											callee.send({ message: processOffer });
 										} else if(event === "processed") {
 											// As a caller, this means the remote, barebone SDP answer
 											// we got from the legacy peer has been turned into a full
 											// WebRTC SDP answer we can consume here, let's do that
 											if(jsep) {
-												Janus.debug("[caller] Handling SDP as well...");
-												Janus.debug(jsep);
-												caller.handleRemoteJsep({jsep: jsep});
+												Janus.debug("[caller] Handling SDP as well...", jsep);
+												caller.handleRemoteJsep({ jsep: jsep });
 											}
 										}
 									}
 								},
 								onlocalstream: function(stream) {
-									Janus.debug("[caller]  ::: Got a local stream :::");
-									Janus.debug(stream);
+									Janus.debug("[caller]  ::: Got a local stream :::", stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
@@ -217,7 +218,7 @@ $(document).ready(function() {
 										}
 									}
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+									if(!videoTracks || videoTracks.length === 0) {
 										// No webcam
 										$('#myvideo').hide();
 										if($('#videoleft .no-video-container').length === 0) {
@@ -233,8 +234,7 @@ $(document).ready(function() {
 									}
 								},
 								onremotestream: function(stream) {
-									Janus.debug("[caller]  ::: Got a remote stream :::");
-									Janus.debug(stream);
+									Janus.debug("[caller]  ::: Got a remote stream :::", stream);
 									if($('#peervideo').length === 0) {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
@@ -251,22 +251,20 @@ $(document).ready(function() {
 										$('.dtmf').click(function() {
 											// Send DTMF tone (inband)
 											caller.dtmf({dtmf: { tones: $(this).text()}});
-											// Notice you can also send DTMF tones using SIP INFO
-											// 		caller.send({message: {request: "dtmf_info", digit: $(this).text()}});
 										});
 										// Show the peer and hide the spinner when we get a playing event
 										$("#peervideo").bind("playing", function () {
 											$('#waitingvideo').remove();
 											if(this.videoWidth)
 												$('#peervideo').removeClass('hide').show();
-											if(spinner !== null && spinner !== undefined)
+											if(spinner)
 												spinner.stop();
 											spinner = null;
 										});
 									}
 									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+									if(!videoTracks || videoTracks.length === 0) {
 										// No remote video
 										$('#peervideo').hide();
 										if($('#videoright .no-video-container').length === 0) {
@@ -280,10 +278,47 @@ $(document).ready(function() {
 										$('#videoright .no-video-container').remove();
 										$('#peervideo').removeClass('hide').show();
 									}
+
+									if(videoenabled) {
+										$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
+									} else {
+										$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
+									}
+
+									$('#togglevideo').unbind('click').removeAttr('disabled').click(
+										function() {
+											videoenabled = !videoenabled;
+											var media;
+											if(videoenabled) {
+												$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
+												media = {addVideo: true};
+											} else {
+												$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
+												media = {removeVideo: true};
+											}
+											caller.createOffer(
+												{
+													media: media,
+													success: function(jsep) {
+														Janus.debug("[caller] Got UPDATE SDP!");
+														Janus.debug(jsep);
+														var body = {
+															request: "generate",
+															update: true,
+															srtp: srtp
+														};
+														caller.send({message: body, jsep: jsep});
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
+										});
 								},
 								oncleanup: function() {
 									Janus.log("[caller]  ::: Got a cleanup notification :::");
-									if(spinner !== null && spinner !== undefined)
+									if(spinner)
 										spinner.stop();
 									spinner = null;
 									$('#myvideo').remove();
@@ -339,8 +374,7 @@ $(document).ready(function() {
 										" packets on this PeerConnection (" + lost + " lost packets)");
 								},
 								onmessage: function(msg, jsep) {
-									Janus.debug("[callee]  ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug("[callee]  ::: Got a message :::", msg);
 									// Any error?
 									var error = msg["error"];
 									if(error) {
@@ -364,21 +398,21 @@ $(document).ready(function() {
 													jsep: jsep,
 													// No media provided: by default, it's sendrecv for audio and video
 													success: function(jsep) {
-														Janus.debug("[callee] Got SDP!");
-														Janus.debug(jsep);
+														Janus.debug("[callee] Got SDP!", jsep);
 														// We now have a WebRTC SDP: to get a barebone SDP legacy
 														// peers can digest, we ask the NoSIP plugin to generate
 														// an answer for us, just as we did for the caller's offer.
 														// We'll get the result in an event called "generated" here.
 														var body = {
 															request: "generate",
-															update: update
+															update: update,
+															srtp: srtp
 														};
-														callee.send({message: body, jsep: jsep});
+														callee.send({ message: body, jsep: jsep });
 													},
 													error: function(error) {
 														Janus.error("WebRTC error:", error);
-														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+														bootbox.alert("WebRTC error... " + error.message);
 													}
 												});
 
@@ -394,9 +428,10 @@ $(document).ready(function() {
 												request: "process",
 												type: result["type"],
 												sdp: result["sdp"],
-												update: result["update"]
+												update: result["update"],
+												srtp: srtp
 											}
-											caller.send({message: processAnswer});
+											caller.send({ message: processAnswer });
 										}
 									}
 								},

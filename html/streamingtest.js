@@ -102,12 +102,17 @@ $(document).ready(function() {
 									Janus.error("  -- Error attaching plugin... ", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+								},
 								onmessage: function(msg, jsep) {
-									Janus.debug(" ::: Got a message :::");
-									Janus.debug(msg);
+									Janus.debug(" ::: Got a message :::", msg);
 									var result = msg["result"];
-									if(result !== null && result !== undefined) {
-										if(result["status"] !== undefined && result["status"] !== null) {
+									if(result) {
+										if(result["status"]) {
 											var status = result["status"];
 											if(status === 'starting')
 												$('#status').removeClass('hide').text("Starting, please wait...").show();
@@ -139,37 +144,41 @@ $(document).ready(function() {
 												updateSvcButtons(spatial, temporal);
 											}
 										}
-									} else if(msg["error"] !== undefined && msg["error"] !== null) {
+									} else if(msg["error"]) {
 										bootbox.alert(msg["error"]);
 										stopStream();
 										return;
 									}
-									if(jsep !== undefined && jsep !== null) {
-										Janus.debug("Handling SDP as well...");
-										Janus.debug(jsep);
+									if(jsep) {
+										Janus.debug("Handling SDP as well...", jsep);
+										var stereo = (jsep.sdp.indexOf("stereo=1") !== -1);
 										// Offer from the plugin, let's answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,
 												// We want recvonly audio/video and, if negotiated, datachannels
 												media: { audioSend: false, videoSend: false, data: true },
+												customizeSdp: function(jsep) {
+													if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+														// Make sure that our offer contains stereo too
+														jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+													}
+												},
 												success: function(jsep) {
-													Janus.debug("Got SDP!");
-													Janus.debug(jsep);
-													var body = { "request": "start" };
-													streaming.send({"message": body, "jsep": jsep});
+													Janus.debug("Got SDP!", jsep);
+													var body = { request: "start" };
+													streaming.send({ message: body, jsep: jsep });
 													$('#watch').html("Stop").removeAttr('disabled').click(stopStream);
 												},
 												error: function(error) {
 													Janus.error("WebRTC error:", error);
-													bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													bootbox.alert("WebRTC error... " + error.message);
 												}
 											});
 									}
 								},
 								onremotestream: function(stream) {
-									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(stream);
+									Janus.debug(" ::: Got a remote stream :::", stream);
 									var addButtons = false;
 									if($('#remotevideo').length === 0) {
 										addButtons = true;
@@ -179,11 +188,11 @@ $(document).ready(function() {
 											$('#waitingvideo').remove();
 											if(this.videoWidth)
 												$('#remotevideo').removeClass('hide').show();
-											if(spinner !== null && spinner !== undefined)
+											if(spinner)
 												spinner.stop();
 											spinner = null;
 											var videoTracks = stream.getVideoTracks();
-											if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0)
+											if(!videoTracks || videoTracks.length === 0)
 												return;
 											var width = this.videoWidth;
 											var height = this.videoHeight;
@@ -200,7 +209,7 @@ $(document).ready(function() {
 									}
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
-									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+									if(!videoTracks || videoTracks.length === 0) {
 										// No remote video
 										$('#remotevideo').hide();
 										if($('#stream .no-video-container').length === 0) {
@@ -224,7 +233,6 @@ $(document).ready(function() {
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
 											var bitrate = streaming.getBitrate();
-											//~ Janus.debug("Current bitrate is " + streaming.getBitrate());
 											$('#curbitrate').text(bitrate);
 											// Check if the resolution changed too
 											var width = $("#remotevideo").get(0).videoWidth;
@@ -240,12 +248,12 @@ $(document).ready(function() {
 									$('#stream').append(
 										'<input class="form-control" type="text" id="datarecv" disabled></input>'
 									);
-									if(spinner !== null && spinner !== undefined)
+									if(spinner)
 										spinner.stop();
 									spinner = null;
 								},
 								ondata: function(data) {
-									Janus.debug("We got data from the DataChannel! " + data);
+									Janus.debug("We got data from the DataChannel!", data);
 									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
@@ -257,11 +265,13 @@ $(document).ready(function() {
 									$('#bitrate').attr('disabled', true);
 									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 									$('#curbitrate').hide();
-									if(bitrateTimer !== null && bitrateTimer !== undefined)
+									if(bitrateTimer)
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#metadata').empty();
+									$('#info').addClass('hide').hide();
 									simulcastStarted = false;
 								}
 							});
@@ -282,22 +292,31 @@ $(document).ready(function() {
 
 function updateStreamsList() {
 	$('#update-streams').unbind('click').addClass('fa-spin');
-	var body = { "request": "list" };
-	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
-	streaming.send({"message": body, success: function(result) {
+	var body = { request: "list" };
+	Janus.debug("Sending message:", body);
+	streaming.send({ message: body, success: function(result) {
 		setTimeout(function() {
 			$('#update-streams').removeClass('fa-spin').click(updateStreamsList);
 		}, 500);
-		if(result === null || result === undefined) {
+		if(!result) {
 			bootbox.alert("Got no response to our query for available streams");
 			return;
 		}
-		if(result["list"] !== undefined && result["list"] !== null) {
+		if(result["list"]) {
 			$('#streams').removeClass('hide').show();
 			$('#streamslist').empty();
 			$('#watch').attr('disabled', true).unbind('click');
 			var list = result["list"];
 			Janus.log("Got a list of available streams");
+			if(list && Array.isArray(list)) {
+				list.sort(function(a, b) {
+					if(!a || a.id < (b ? b.id : 0))
+						return -1;
+					if(!b || b.id < (a ? a.id : 0))
+						return 1;
+					return 0;
+				});
+			}
 			Janus.debug(list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
@@ -314,17 +333,32 @@ function updateStreamsList() {
 	}});
 }
 
+function getStreamInfo() {
+	$('#metadata').empty();
+	$('#info').addClass('hide').hide();
+	if(!selectedStream)
+		return;
+	// Send a request for more info on the mountpoint we subscribed to
+	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
+	streaming.send({ message: body, success: function(result) {
+		if(result && result.info && result.info.metadata) {
+			$('#metadata').html(result.info.metadata);
+			$('#info').removeClass('hide').show();
+		}
+	}});
+}
+
 function startStream() {
 	Janus.log("Selected video id #" + selectedStream);
-	if(selectedStream === undefined || selectedStream === null) {
+	if(!selectedStream) {
 		bootbox.alert("Select a stream from the list");
 		return;
 	}
 	$('#streamset').attr('disabled', true);
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
-	var body = { "request": "watch", id: parseInt(selectedStream) };
-	streaming.send({"message": body});
+	var body = { request: "watch", id: parseInt(selectedStream) || selectedStream};
+	streaming.send({ message: body });
 	// No remote video yet
 	$('#stream').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 	if(spinner == null) {
@@ -333,12 +367,14 @@ function startStream() {
 	} else {
 		spinner.spin();
 	}
+	// Get some more info for the mountpoint to display, if any
+	getStreamInfo();
 }
 
 function stopStream() {
 	$('#watch').attr('disabled', true).unbind('click');
-	var body = { "request": "stop" };
-	streaming.send({"message": body});
+	var body = { request: "stop" };
+	streaming.send({ message: body });
 	streaming.hangup();
 	$('#streamset').removeAttr('disabled');
 	$('#streamslist').removeAttr('disabled');
@@ -347,7 +383,7 @@ function stopStream() {
 	$('#bitrate').attr('disabled', true);
 	$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 	$('#curbitrate').hide();
-	if(bitrateTimer !== null && bitrateTimer !== undefined)
+	if(bitrateTimer)
 		clearInterval(bitrateTimer);
 	bitrateTimer = null;
 	$('#curres').empty().hide();
@@ -383,7 +419,7 @@ function addSimulcastButtons(temporal) {
 			if(!$('#sl-1').hasClass('btn-success'))
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			streaming.send({message: { request: "configure", substream: 0 }});
+			streaming.send({ message: { request: "configure", substream: 0 }});
 		});
 	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -393,7 +429,7 @@ function addSimulcastButtons(temporal) {
 			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", substream: 1 }});
+			streaming.send({ message: { request: "configure", substream: 1 }});
 		});
 	$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -403,7 +439,7 @@ function addSimulcastButtons(temporal) {
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", substream: 2 }});
+			streaming.send({ message: { request: "configure", substream: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
@@ -416,7 +452,7 @@ function addSimulcastButtons(temporal) {
 			if(!$('#tl-1').hasClass('btn-success'))
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			streaming.send({message: { request: "configure", temporal: 0 }});
+			streaming.send({ message: { request: "configure", temporal: 0 }});
 		});
 	$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -426,7 +462,7 @@ function addSimulcastButtons(temporal) {
 			$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", temporal: 1 }});
+			streaming.send({ message: { request: "configure", temporal: 1 }});
 		});
 	$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -436,7 +472,7 @@ function addSimulcastButtons(temporal) {
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", temporal: 2 }});
+			streaming.send({ message: { request: "configure", temporal: 2 }});
 		});
 }
 
@@ -505,7 +541,7 @@ function addSvcButtons() {
 			if(!$('#sl-1').hasClass('btn-success'))
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			streaming.send({message: { request: "configure", spatial_layer: 0 }});
+			streaming.send({ message: { request: "configure", spatial_layer: 0 }});
 		});
 	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -513,7 +549,7 @@ function addSvcButtons() {
 			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", spatial_layer: 1 }});
+			streaming.send({ message: { request: "configure", spatial_layer: 1 }});
 		});
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -523,7 +559,7 @@ function addSvcButtons() {
 			if(!$('#tl-1').hasClass('btn-success'))
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			streaming.send({message: { request: "configure", temporal_layer: 0 }});
+			streaming.send({ message: { request: "configure", temporal_layer: 0 }});
 		});
 	$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -533,7 +569,7 @@ function addSvcButtons() {
 			$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", temporal_layer: 1 }});
+			streaming.send({ message: { request: "configure", temporal_layer: 1 }});
 		});
 	$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -543,7 +579,7 @@ function addSvcButtons() {
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({message: { request: "configure", temporal_layer: 2 }});
+			streaming.send({ message: { request: "configure", temporal_layer: 2 }});
 		});
 }
 

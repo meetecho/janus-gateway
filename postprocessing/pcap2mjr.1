@@ -1,0 +1,46 @@
+.TH PCAP2MJR 1
+.SH NAME
+pcap2mjr \- Helper tool to convert a pcap dump to a Janus recording.
+.SH SYNOPSIS
+.B pcap2mjr [options]
+.IR source.pcap
+.IR destination.mjr
+.SH DESCRIPTION
+.B pcap2mjr
+is a simple utility that allows you take .pcap network captures, extract a specific RTP session via its SSRC, and convert it to an .mjr Janus recording instead. Its main purpose is helping convert .pcap captures to media files, or make it easier to replay them via Janus.
+.TP
+The tool requires a path to the .pcap file to read, and a path to the target .pcap file; besides, it needs info on the codec and the SSRC to filter. Notice that if the tool can't detect any RTP packet with that SSRC, it will result in an error.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help and exit
+.TP
+.BR \-V ", " \-\-version
+Print version and exit
+.TP
+.BR \-c ", " \-\-codec=\fIcodec\fR
+Codec the recording will contain (e.g., opus, vp8, etc.)
+.TP
+.BR \-s ", " \-\-ssrc=\fISSRC (numeric)\fR
+SSRC of the packets in the pcap file to save
+.TP
+.BR \-w ", " \-\-warnings
+Show warnings for skipped packets (e.g., not RTP or wrong SSRC)
+.SH EXAMPLES
+\fBpcap2mjr -c opus -s 12345678 rec1234.pcap rec1234.mjr\fR \- Read all RTP packets with SSRC 12345678 from the provided .pcap file, and save them to a new .mjr file as an Opus recording
+.SH BUGS
+.TP
+If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
+.TP
+Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+.SH SEE ALSO
+.TP
+https://github.com/meetecho/janus-gateway \- Official repository
+.TP
+http://janus.conf.meetecho.com \- Demos and documentation
+.TP
+https://groups.google.com/forum/#!forum/meetecho-janus \- Community
+.TP
+http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+.SH AUTHORS
+Lorenzo Miniero (lorenzo@meetecho.com)
