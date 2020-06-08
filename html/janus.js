@@ -1820,8 +1820,10 @@ function Janus(gatewayCallbacks) {
 					if(config.remoteStream && trackMutedTimeoutId == null) {
 						trackMutedTimeoutId = setTimeout(function() {
 							Janus.log("Removing remote track");
-							config.remoteStream.removeTrack(ev.target);
-							pluginHandle.onremotestream(config.remoteStream);
+							if (config.remoteStream) {
+								config.remoteStream.removeTrack(ev.target);
+								pluginHandle.onremotestream(config.remoteStream);
+							}
 							trackMutedTimeoutId = null;
 						// Chrome seems to raise mute events only at multiples of 834ms;
 						// we set the timeout to three times this value (rounded to 840ms)
