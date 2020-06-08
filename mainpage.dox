@@ -359,8 +359,8 @@ var janus = new Janus(
  * possibly react accordingly (e.g., decrease the bitrate if most of our
  * packets are getting lost);
  * 		- \c onmessage: a message/event has been received from the plugin;
- * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
- * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
+ * 		- \c onlocaltrack: a local \c MediaStreamTrack is available and ready to be displayed;
+ * 		- \c onremotetrack: a remote \c MediaStreamTrack is available and ready to be displayed;
  * 		- \c ondataopen: a Data Channel is available and ready to be used;
  * 		- \c ondata: data has been received through the Data Channel;
  * 		- \c oncleanup: the WebRTC PeerConnection with the plugin was closed;
@@ -387,11 +387,11 @@ janus.attach(
 			// We got a message/event (msg) from the plugin
 			// If jsep is not null, this involves a WebRTC negotiation
 		},
-		onlocalstream: function(stream) {
-			// We have a local stream (getUserMedia worked!) to display
+		onlocaltrack: function(track, added) {
+			// A local track to display has just been added (getUserMedia worked!) or removed
 		},
-		onremotestream: function(stream) {
-			// We have a remote stream (working PeerConnection!) to display
+		onremotetrack: function(track, mid, added) {
+			// A remote track (working PeerConnection!) with a specific mid has just been added or removed
 		},
 		oncleanup: function() {
 			// PeerConnection with the plugin closed, clean the UI
@@ -421,7 +421,8 @@ janus.attach(
  * - \c handleRemoteJsep(callbacks): asks the library to handle an incoming WebRTC compliant session description;
  * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
  * - \c data(parameters): sends data through the Data Channel, if available;
- * - \c getBitrate(): gets a verbose description of the currently received stream bitrate;
+ * - \c getBitrate(mid): gets a verbose description of the currently received
+ * video stream bitrate (optional mid to specify the stream, first video stream if missing);
  * - \c hangup(sendRequest): tells the library to close the PeerConnection; if the optional \c sendRequest argument is
  * set to \c true, then a \c hangup Janus API request is sent to Janus as well (disabled by default, Janus can usually
  * figure this out via DTLS alerts and the like but it may be useful to enable it sometimes);
@@ -447,8 +448,8 @@ janus.attach(
  * <code>send({msg, jsep})</code> to close the loop with the plugin), otherwise use
  * \c handleRemoteJsep ;
  * -# whether you took the initiative to set up a PeerConnection or the plugin did,
- * the \c onlocalstream and/or the \c onremotestream callbacks will provide
- * you with a stream you can display in your page;
+ * the \c onlocaltrack and/or the \c onremotetrack callbacks will provide
+ * you with info on media tracks you can display or play in your page;
  * -# each plugin may allow you to manipulate what should flow through the
  * PeerConnection channel: the \c send method and \c onmessage callback
  * will allow you to handle this interaction (e.g., to tell the plugin
@@ -553,13 +554,13 @@ janus.attach(
 			}
 		},
 		[..]
-		onlocalstream: function(stream) {
+		onlocaltrack: function(track, added) {
 			// Invoked after createOffer
-			// This is our video
+			// This is info on a local track: when added, we can choose to render
 		},
-		onremotestream: function(stream) {
+		onremotetrack: function(track, mid, added) {
 			// Invoked after handleRemoteJsep has got us a PeerConnection
-			// This is the remote video
+			// This is info on a remote track: when added, we can choose to render
 		},
 		[..]
   \endverbatim
@@ -567,7 +568,7 @@ janus.attach(
  * This, instead, is an example of how to use \c createAnswer, taken from the Streaming demo page:
  *
  \verbatim
-// Attach to echo test plugin
+// Attach to the Streaming plugin
 janus.attach(
 	{
 		plugin: "janus.plugin.streaming",
@@ -599,12 +600,12 @@ janus.attach(
 			}
 		},
 		[..]
-		onlocalstream: function(stream) {
+		onlocaltrack: function(track, added) {
 			// This will NOT be invoked, we chose recvonly
 		},
-		onremotestream: function(stream) {
+		onremotetrack: function(track, mid, added) {
 			// Invoked after send has got us a PeerConnection
-			// This is the remote video
+			// This is info on a remote track: when added, we can choose to render
 		},
 		[..]
   \endverbatim
@@ -735,7 +736,7 @@ echotest.createOffer(
  \endverbatim
  *
  * Notice that renegotiations involving media changes (both local and remote)
- * will likely result in new calls to the \c onlocalstream and \c onremotestream
+ * will likely result in new calls to the \c onlocaltrack and \c onremotetrack
  * application callbacks: as such, be prepared to see those callbacks called
  * for the same PeerConnection more than once during the course of a media session.
  *
