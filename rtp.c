@@ -367,6 +367,32 @@ int janus_rtp_header_extension_replace_id(char *buf, int len, int id, int new_id
 	return -3;
 }
 
+int janus_rtp_extension_id(const char *type) {
+	if(type == NULL)
+		return 0;
+	if(!strcasecmp(type, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
+		return 1;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_TOFFSET))
+		return 14;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_ABS_SEND_TIME))
+		return 2;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
+		return 13;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC))
+		return 3;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_PLAYOUT_DELAY))
+		return 12;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_MID))
+		return 4;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_RID))
+		return 5;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_REPAIRED_RID))
+		return 6;
+	else if(!strcasecmp(type, JANUS_RTP_EXTMAP_FRAME_MARKING))
+		return 8;
+	return 0;
+}
+
 /* RTP context related methods */
 void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 	if(context == NULL)
