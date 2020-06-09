@@ -34,6 +34,7 @@ gboolean janus_auth_is_enabled(void);
  * @param[in] secret the secret to validate signed tokens against, or NULL to use stored secret */
 void carbyne_janus_sanityhealthcheck_auth_init(const char *shc_auth_secret);
 
+// Validates that the received token is a valid token of sanity health check
 gboolean carbyne_janus_auth_sanityhealthcheck_signature(const char * token);
 
 /* CARBYNE-SHC end */
