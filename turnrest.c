@@ -117,7 +117,7 @@ void janus_turnrest_response_destroy(janus_turnrest_response *response) {
 	g_list_free_full(response->servers, janus_turnrest_instance_destroy);
 }
 
-janus_turnrest_response *janus_turnrest_request(char *user) {
+janus_turnrest_response *janus_turnrest_request(const char *user) {
 	janus_mutex_lock(&api_mutex);
 	if(api_server == NULL) {
 		janus_mutex_unlock(&api_mutex);

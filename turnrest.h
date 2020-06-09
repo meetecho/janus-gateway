@@ -68,7 +68,7 @@ void janus_turnrest_response_destroy(janus_turnrest_response *response);
  * @note Use janus_turnrest_response_destroy to get rid of the response, once done
  * @param[in] user Username to provide in the TURN REST API request
  * @returns A valid janus_turnrest_response instance, if successful, NULL otherwise */
-janus_turnrest_response *janus_turnrest_request(char *user);
+janus_turnrest_response *janus_turnrest_request(const char *user);
 
 #endif
 

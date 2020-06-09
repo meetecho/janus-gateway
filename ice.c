@@ -3376,7 +3376,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_session *session = (janus_session *)handle->session;
 		g_snprintf(turnrest_username, sizeof(turnrest_username), "%"SCNu64, session->session_id);
 	}
-	janus_turnrest_response *turnrest_credentials = janus_turnrest_request(handle->opaque_id ? handle->opaque_id : turnrest_username);
+	janus_turnrest_response *turnrest_credentials = janus_turnrest_request((const char *)(handle->opaque_id ?
+		handle->opaque_id : turnrest_username));
 	if(turnrest_credentials != NULL) {
 		have_turnrest_credentials = TRUE;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got credentials from the TURN REST API backend!\n", handle->handle_id);
