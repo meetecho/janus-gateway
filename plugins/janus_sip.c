@@ -3416,6 +3416,7 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_atomic_int_set(&session->establishing, 1);
+			janus_refcount_increase(&session->ref);	/* Add a reference for this call */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -4514,9 +4515,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_sip_call_update_status(session, janus_sip_call_status_incall);
 			}
 			break;
-		case nua_i_terminated:
+		case nua_i_terminated: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* We had a reference to this session for this call, get rid of it */
+			janus_refcount_decrease(&session->ref);
 			break;
+		}
 	/* SIP requests */
 		case nua_i_ack: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -4548,6 +4552,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			janus_refcount_increase(&session->ref);	/* Add a reference for this call */
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
@@ -4598,6 +4603,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					/* Bind the call to the helper and handle it there */
 					JANUS_LOG(LOG_VERB, "Passing INVITE to helper %p\n", helper);
 					nua_handle_bind(nh, helper);
+					/* Pass the reference for this call to this helper */
+					janus_refcount_decrease(&session->ref);
+					janus_refcount_increase(&helper->ref);
 					janus_sip_sofia_callback(event, status, phrase, nua, magic, nh, helper, sip, tags);
 					break;
 				}
@@ -4634,6 +4642,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(!reinvite) {
 				g_atomic_int_set(&session->establishing, 1);
+			} else {
+				/* This is a re-INVITE, we have a reference already */
+				janus_refcount_decrease(&session->ref);
 			}
 			/* Check if there's an SDP to process */
 			janus_sdp *sdp = NULL;
