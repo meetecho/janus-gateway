@@ -3483,7 +3483,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			mp->description = new_description;
 			g_free(old_description);
 		}
-		if(md != NULL) > 0) {
+		if(md != NULL) {
 			char *old_metadata = mp->metadata;
 			char *new_metadata = g_strdup(json_string_value(md));
 			mp->metadata = new_metadata;
