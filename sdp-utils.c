@@ -717,8 +717,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 						JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
 						if(check_profile) {
 							return pt;
-						}
-						else {
+						} else {
 							got_profile = TRUE;
 						}
 					}
@@ -733,8 +732,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
 						if(check_profile) {
 							return pt;
-						}
-						else {
+						} else {
 							got_profile = TRUE;
 						}
 					}
@@ -747,8 +745,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
 						if(check_profile) {
 							return pt;
-						}
-						else {
+						} else {
 							got_profile = TRUE;
 						}
 					}
