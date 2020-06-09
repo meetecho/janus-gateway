@@ -1324,6 +1324,7 @@ int janus_process_incoming_request(janus_request *request) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
 			char error_str[512];
+			error_str[0] = '\0';
 			int audio = 0, video = 0, data = 0;
 			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
@@ -3368,6 +3369,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	}
 	/* Is this valid SDP? */
 	char error_str[512];
+	error_str[0] = '\0';
 	int audio = 0, video = 0, data = 0;
 	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
 	if(parsed_sdp == NULL) {

@@ -63,6 +63,7 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->value);
 						if(strlen(a->value) > 16) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Audio mid too large: (%zu > 16)\n", handle->handle_id, strlen(a->value));
+							janus_sdp_destroy(parsed_sdp);
 							return NULL;
 						}
 						if(handle->audio_mid == NULL)
@@ -73,6 +74,7 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->value);
 						if(strlen(a->value) > 16) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Video mid too large: (%zu > 16)\n", handle->handle_id, strlen(a->value));
+							janus_sdp_destroy(parsed_sdp);
 							return NULL;
 						}
 						if(handle->video_mid == NULL)
