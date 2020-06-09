@@ -114,7 +114,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 	GList *temp = remote_sdp->attributes;
 	while(temp) {
 		janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
-		if(a && a->name) {
+		if(a && a->name && a->value) {
 			if(!strcasecmp(a->name, "fingerprint")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (global) : %s\n", handle->handle_id, a->value);
 				if(strcasestr(a->value, "sha-256 ") == a->value) {
