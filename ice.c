@@ -16,6 +16,7 @@
 
 #include <ifaddrs.h>
 #include <poll.h>
+#include <stdlib.h>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -3781,7 +3782,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			sr->si.rtp_ts = htonl(stream->audio_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->audio_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->audio_last_rtp_ts;
+			lldiv_t q = lldiv(ntp - stream->audio_last_ntp_ts, 1000000);
+			uint32_t rtp_ts = (q.quot * (int64_t)rtcp_ctx->tb + q.rem * (int64_t)rtcp_ctx->tb / 1000000) + stream->audio_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.audio.packets);
@@ -3842,7 +3844,8 @@ static gboolean janus_ice_outgoing_rtcp_handle(gpointer user_data) {
 			sr->si.rtp_ts = htonl(stream->video_last_rtp_ts);	/* FIXME */
 		} else {
 			int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-			uint32_t rtp_ts = ((ntp-stream->video_last_ntp_ts)*(rtcp_ctx->tb))/1000000 + stream->video_last_rtp_ts;
+			lldiv_t q = lldiv(ntp - stream->video_last_ntp_ts, 1000000);
+			uint32_t rtp_ts = (q.quot * (int64_t)rtcp_ctx->tb + q.rem * (int64_t)rtcp_ctx->tb / 1000000) + stream->video_last_rtp_ts;
 			sr->si.rtp_ts = htonl(rtp_ts);
 		}
 		sr->si.s_packets = htonl(stream->component->out_stats.video[0].packets);
