@@ -152,6 +152,7 @@ janus_CFLAGS = \
 	-DLOGGERDIR=\"$(loggerdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
+	$(RNNOISE_CFLAGS) \
 	$(NULL)
 
 janus_LDADD = \
@@ -160,6 +161,7 @@ janus_LDADD = \
 	$(JANUS_MANUAL_LIBS) \
 	$(LIBSRTP_LDFLAGS) $(LIBSRTP_LIBS) \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
+	$(RNNOISE_LIBS) \
 	$(NULL)
 
 dist_man1_MANS = janus.1

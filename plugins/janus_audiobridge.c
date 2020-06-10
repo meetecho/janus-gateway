@@ -810,6 +810,7 @@ room-<unique room ID>: {
 #endif
 #include <netdb.h>
 #include <sys/time.h>
+#include <rnnoise.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -6710,6 +6711,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	outpkt->length = 0;
 	outpkt->silence = FALSE;
 	uint8_t *payload = (uint8_t *)outpkt->data;
+	DenoiseState *denoiseState;
+	denoiseState = rnnoise_create(NULL);
 
 	janus_audiobridge_rtp_relay_packet *mixedpkt = NULL;
 
@@ -6725,6 +6728,20 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				}
 				int i = 0;
 				opus_int16 *outBuffer = (opus_int16 *)mixedpkt->data;
+#ifdef HAVE_RNNOISE
+				if (denoiseState) {
+					float denoiseFrames[sizeof(outBuffer)];
+					for (int i = 0; i < sizeof(outBuffer); i++) {
+						denoiseFrames[i] = outBuffer[i];
+					}
+
+					rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
+
+					for (int i = 0; i < sizeof(outBuffer); i++) {
+						outBuffer[i] = denoiseFrames[i];
+					}
+				}
+#endif
 				if(participant->codec == JANUS_AUDIOCODEC_PCMA) {
 					/* A-law */
 					for(i=0; i<160; i++)
@@ -6749,8 +6766,24 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				janus_audiobridge_relay_rtp_packet(participant->session, outpkt);
 			} else if(g_atomic_int_get(&participant->active) && participant->encoder &&
 					g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1)) {
+
 				/* Encode raw frame to Opus */
 				opus_int16 *outBuffer = (opus_int16 *)mixedpkt->data;
+#ifdef HAVE_RNNOISE
+				if (denoiseState) {
+					float denoiseFrames[sizeof(outBuffer)];
+					float denoisedFrames[sizeof(outBuffer)];
+					for (int i = 0; i < sizeof(outBuffer); i++) {
+						denoiseFrames[i] = outBuffer[i];
+					}
+
+					rnnoise_process_frame(denoiseState, denoisedFrames, denoiseFrames);
+
+					for (int i = 0; i < sizeof(outBuffer); i++) {
+						outBuffer[i] = denoisedFrames[i];
+					}
+				}
+#endif
 				outpkt->length = opus_encode(participant->encoder, outBuffer, mixedpkt->length, payload+12, 1500-12);
 				g_atomic_int_set(&participant->encoding, 0);
 				if(outpkt->length < 0) {
@@ -6775,6 +6808,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		}
 	}
 	/* We're done, get rid of the resources */
+	rnnoise_destroy(denoiseState);
 	g_free(outpkt->data);
 	g_free(outpkt);
 	JANUS_LOG(LOG_VERB, "AudioBridge Participant thread leaving...\n");
@@ -6818,3 +6852,4 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);
 }
+

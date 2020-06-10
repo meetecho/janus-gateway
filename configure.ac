@@ -120,6 +120,18 @@ AC_ARG_ENABLE([boringssl],
               ],
               [boringssl_dir=])
 
+AC_ARG_ENABLE([rnnoise],
+              [AS_HELP_STRING([--enable-rnnoise],
+                              [Enable Rnnoise noise cancellation])],
+              [
+                case "${enableval}" in
+                  yes) rnnoise_dir=/opt/rnnoise ;;
+                  no)  rnnoise_dir= ;;
+                  *) rnnoise_dir=${enableval} ;;
+                esac
+              ],
+              [rnnoise_dir=])
+
 AC_ARG_ENABLE([libsrtp2],
               [AS_HELP_STRING([--enable-libsrtp2],
                               [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
@@ -377,6 +389,20 @@ AS_IF([test "x$enable_pthread_mutex" = "xyes"],
       AC_MSG_NOTICE([Will use pthread_mutex instead of GMutex])
       ])
 AM_CONDITIONAL([ENABLE_PTHREAD_MUTEX], [test "x$enable_pthread_mutex" = "xyes"])
+
+AS_IF([test "x${rnnoise_dir}" != "x"],
+	  [echo "Checking for rnnoise lib";
+	   AC_MSG_NOTICE([Rnnoise directory is ${rnnoise_dir}])
+	   CFLAGS="$CFLAGS -I${rnnoise_dir}/include";
+	   RNNOISE_CFLAGS=" -I${rnnoise_dir}/include";  
+       AC_SUBST(RNNOISE_CFLAGS)
+	   RNNOISE_LIBS=" -L${rnnoise_dir}/lib";
+       AC_SUBST(RNNOISE_LIBS)
+	   AC_CHECK_HEADERS([${rnnoise_dir}/include/rnnoise.h],
+	                    [AC_DEFINE(HAVE_RNNOISE)],
+	                    [AC_MSG_ERROR([Rnnoise headers not found in ${rnnoise_dir}, use --disable-rnnoise])])
+      ])
+AM_CONDITIONAL([ENABLE_RNNOISE], [test "x${rnnoise_dir}" != "x"])
 
 AC_SEARCH_LIBS([tls_config_set_ca_mem],[tls],
              [AM_CONDITIONAL([LIBRESSL_DETECTED], true)],
@@ -975,6 +1001,9 @@ AM_COND_IF([ENABLE_POST_PROCESSING],
 AM_COND_IF([ENABLE_TURN_REST_API],
 	[echo "TURN REST API client:      yes"],
 	[echo "TURN REST API client:      no"])
+AM_COND_IF([ENABLE_RNNOISE],
+	[echo "Rnnoise support:           yes"],
+	[echo "Rnnoise support:           no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Doxygen documentation:     yes"],
 	[echo "Doxygen documentation:     no"])
