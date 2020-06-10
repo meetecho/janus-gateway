@@ -4601,7 +4601,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 					}
 					janus_mutex_unlock(&participant->rec_mutex);
 				}
-		}
+			}
         }
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
