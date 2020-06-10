@@ -4603,9 +4603,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					/* Bind the call to the helper and handle it there */
 					JANUS_LOG(LOG_VERB, "Passing INVITE to helper %p\n", helper);
 					nua_handle_bind(nh, helper);
-					/* Pass the reference for this call to this helper */
+					/* This session won't need the reference anymore, the helper will */
 					janus_refcount_decrease(&session->ref);
-					janus_refcount_increase(&helper->ref);
 					janus_sip_sofia_callback(event, status, phrase, nua, magic, nh, helper, sip, tags);
 					break;
 				}
