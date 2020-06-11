@@ -6801,6 +6801,27 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
+				json_t *spatial = json_object_get(root, "spatial_layer");
+				json_t *sc_substream = json_object_get(root, "substream");
+				if(json_integer_value(spatial) < 0 || json_integer_value(spatial) > 2 ||
+						json_integer_value(sc_substream) < 0 || json_integer_value(sc_substream) > 2) {
+					JANUS_LOG(LOG_ERR, "Invalid element (substream/spatial_layer should be 0, 1 or 2)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value (substream/spatial_layer should be 0, 1 or 2)");
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
+				json_t *temporal = json_object_get(root, "temporal_layer");
+				json_t *sc_temporal = json_object_get(root, "temporal");
+				if(json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2 ||
+						json_integer_value(sc_temporal) < 0 || json_integer_value(sc_temporal) > 2) {
+					JANUS_LOG(LOG_ERR, "Invalid element (temporal/temporal_layer should be 0, 1 or 2)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value (temporal/temporal_layer should be 0, 1 or 2)");
+					janus_refcount_decrease(&subscriber->ref);
+					goto error;
+				}
+				json_t *sc_fallback = json_object_get(root, "fallback");
 				if(!subscriber->room) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -6862,16 +6883,24 @@ static void *janus_videoroom_handler(void *data) {
 				subscriber->data = data ? json_is_true(data) : TRUE;	/* True by default */
 				if(!publisher->data)
 					subscriber->data = FALSE;	/* ... unless the publisher isn't sending any data */
+				/* Check if a simulcasting-related request is involved */
+				janus_rtp_simulcasting_context_reset(&subscriber->sim_context);
+				subscriber->sim_context.rid_ext_id = publisher->rid_extmap_id;
+				subscriber->sim_context.substream_target = sc_substream ? json_integer_value(sc_substream) : 2;
+				subscriber->sim_context.templayer_target = sc_temporal ? json_integer_value(sc_temporal) : 2;
+				subscriber->sim_context.drop_trigger = sc_fallback ? json_integer_value(sc_fallback) : 0;
+				janus_vp8_simulcast_context_reset(&subscriber->vp8_context);
+				/* Check if a VP9 SVC-related request is involved */
 				if(subscriber->room && subscriber->room->do_svc) {
 					/* This subscriber belongs to a room where VP9 SVC has been enabled,
 					 * let's assume we're interested in all layers for the time being */
 					subscriber->spatial_layer = -1;
-					subscriber->target_spatial_layer = 2;		/* FIXME Chrome sends 0, 1 and 2 (if using EnabledByFlag_3SL3TL) */
+					subscriber->target_spatial_layer = spatial ? json_integer_value(spatial) : 2;
 					subscriber->last_spatial_layer[0] = 0;
 					subscriber->last_spatial_layer[1] = 0;
 					subscriber->last_spatial_layer[2] = 0;
 					subscriber->temporal_layer = -1;
-					subscriber->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+					subscriber->target_temporal_layer = temporal ? json_integer_value(temporal) : 2;
 				}
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_append(publisher->subscribers, subscriber);

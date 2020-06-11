@@ -5159,6 +5159,74 @@ done:
 				g_snprintf(error_cause, 512, "Can't switch: target is not a live RTP mountpoint");
 				goto error;
 			}
+			janus_streaming_rtp_source *source = (janus_streaming_rtp_source *)mp->source;
+			if(source && source->simulcast) {
+				JANUS_VALIDATE_JSON_OBJECT(root, simulcast_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+				if(error_code != 0) {
+					janus_refcount_decrease(&oldmp->ref);
+					janus_refcount_decrease(&mp->ref);
+					janus_mutex_unlock(&mountpoints_mutex);
+					janus_mutex_unlock(&session->mutex);
+					goto error;
+				}
+				/* In case this mountpoint is simulcasting, let's aim high by default */
+				janus_rtp_simulcasting_context_reset(&session->sim_context);
+				session->sim_context.substream_target = 2;
+				session->sim_context.templayer_target = 2;
+				janus_vp8_simulcast_context_reset(&session->vp8_context);
+				/* Unless the request contains a target for either layer */
+				json_t *substream = json_object_get(root, "substream");
+				if(substream) {
+					session->sim_context.substream_target = json_integer_value(substream);
+					JANUS_LOG(LOG_VERB, "Setting video substream to let through (simulcast): %d (was %d)\n",
+						session->sim_context.substream_target, session->sim_context.substream);
+				}
+				json_t *temporal = json_object_get(root, "temporal");
+				if(temporal) {
+					session->sim_context.templayer_target = json_integer_value(temporal);
+					JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
+						session->sim_context.templayer_target, session->sim_context.templayer);
+				}
+				/* Check if we need a custom fallback timer for the substream */
+				json_t *fallback = json_object_get(root, "fallback");
+				if(fallback) {
+					JANUS_LOG(LOG_VERB, "Setting fallback timer (simulcast): %lld (was %"SCNu32")\n",
+						json_integer_value(fallback) ? json_integer_value(fallback) : 250000,
+						session->sim_context.drop_trigger ? session->sim_context.drop_trigger : 250000);
+					session->sim_context.drop_trigger = json_integer_value(fallback);
+				}
+			} else if(source && source->svc) {
+				JANUS_VALIDATE_JSON_OBJECT(root, svc_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+				if(error_code != 0) {
+					janus_refcount_decrease(&oldmp->ref);
+					janus_refcount_decrease(&mp->ref);
+					janus_mutex_unlock(&mountpoints_mutex);
+					janus_mutex_unlock(&session->mutex);
+					goto error;
+				}
+				/* In case this mountpoint is doing VP9-SVC, let's aim high by default */
+				session->spatial_layer = -1;
+				session->target_spatial_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 (if using EnabledByFlag_3SL3TL) */
+				session->temporal_layer = -1;
+				session->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
+				/* Unless the request contains a target for either layer */
+				json_t *spatial = json_object_get(root, "spatial_layer");
+				if(spatial) {
+					session->target_spatial_layer = json_integer_value(spatial);
+					JANUS_LOG(LOG_VERB, "Setting video spatial layer to let through (SVC): %d (was %d)\n",
+						session->target_spatial_layer, session->spatial_layer);
+				}
+				json_t *temporal = json_object_get(root, "temporal_layer");
+				if(temporal) {
+					session->target_temporal_layer = json_integer_value(temporal);
+					JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (SVC): %d (was %d)\n",
+						session->target_temporal_layer, session->temporal_layer);
+				}
+			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "Request to switch to mountpoint/stream %s (old: %s)\n", mp->id_str, oldmp->id_str);
 			g_atomic_int_set(&session->paused, 1);
