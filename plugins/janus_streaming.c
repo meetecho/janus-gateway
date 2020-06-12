@@ -8307,6 +8307,15 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &session->context);
+				if(session->sim_context.need_pli) {
+					/* Schedule a PLI */
+					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+					if(session->mountpoint != NULL) {
+						janus_streaming_rtp_source *source = session->mountpoint->source;
+						if(source != NULL)
+							g_atomic_int_set(&source->need_pli, 1);
+					}
+				}
 				/* Do we need to drop this? */
 				if(!relay)
 					return;
@@ -8320,15 +8329,6 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_object_set_new(event, "result", result);
 					gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 					json_decref(event);
-				}
-				if(session->sim_context.need_pli) {
-					/* Schedule a PLI */
-					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-					if(session->mountpoint != NULL) {
-						janus_streaming_rtp_source *source = session->mountpoint->source;
-						if(source != NULL)
-							g_atomic_int_set(&source->need_pli, 1);
-					}
 				}
 				if(session->sim_context.changed_temporal) {
 					/* Notify the user about the temporal layer change */
