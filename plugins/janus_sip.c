@@ -1658,11 +1658,12 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 static void janus_sip_ref_active_call(janus_sip_session *session) {
 	if(session == NULL)
 		return;
-	if(session->master) {
-		janus_mutex_lock(&session->master->mutex);
-		session->master->active_calls = g_list_append(session->master->active_calls, session);
+	janus_sip_session *master = session->master;
+	if(master) {
+		janus_mutex_lock(&master->mutex);
+		master->active_calls = g_list_append(master->active_calls, session);
 		janus_refcount_increase(&session->ref);
-		janus_mutex_unlock(&session->master->mutex);
+		janus_mutex_unlock(&master->mutex);
 	} else {
 		janus_mutex_lock(&session->mutex);
 		session->active_calls = g_list_append(session->active_calls, session);
@@ -1673,13 +1674,14 @@ static void janus_sip_ref_active_call(janus_sip_session *session) {
 static void janus_sip_unref_active_call(janus_sip_session *session) {
 	if(session == NULL)
 		return;
-	if(session->master) {
-		janus_mutex_lock(&session->master->mutex);
-		if(g_list_find(session->master->active_calls, session) != NULL) {
-			session->master->active_calls = g_list_remove(session->master->active_calls, session);
+	janus_sip_session *master = session->master;
+	if(master) {
+		janus_mutex_lock(&master->mutex);
+		if(g_list_find(master->active_calls, session) != NULL) {
+			master->active_calls = g_list_remove(master->active_calls, session);
 			janus_refcount_decrease(&session->ref);
 		}
-		janus_mutex_unlock(&session->master->mutex);
+		janus_mutex_unlock(&master->mutex);
 	} else {
 		janus_mutex_lock(&session->mutex);
 		if(g_list_find(session->active_calls, session) != NULL) {
