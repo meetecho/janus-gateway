@@ -6476,19 +6476,20 @@ static void *janus_videoroom_handler(void *data) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Handle this subscriber */
 			janus_videoroom_subscriber *subscriber = (janus_videoroom_subscriber *)session->participant;
-			if(subscriber == NULL || g_atomic_int_get(&subscriber->destroyed)) {
+			if(subscriber == NULL) {
 				JANUS_LOG(LOG_ERR, "Invalid subscriber instance\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid subscriber instance");
 				goto error;
 			}
+			janus_refcount_increase(&subscriber->ref);
 			if(subscriber->room == NULL) {
 				JANUS_LOG(LOG_ERR, "No such room\n");
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room");
+				janus_refcount_decrease(&subscriber->ref);
 				goto error;
 			}
-			janus_refcount_increase(&subscriber->ref);
 			if(!strcasecmp(request_text, "join")) {
 				JANUS_LOG(LOG_ERR, "Already in as a subscriber on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
