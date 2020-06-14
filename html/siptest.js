@@ -47,6 +47,7 @@ if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
 else
 	server = "https://" + window.location.hostname + ":8089/janus";
+server = ["https://" + window.location.hostname + "/janus", "wss://" + window.location.hostname + "/janus-ws", ];
 
 var janus = null;
 var sipcall = null;
@@ -54,7 +55,8 @@ var opaqueId = "siptest-"+Janus.randomString(12);
 
 var spinner = null;
 
-var selectedApproach = null;
+//var selectedApproach = null;
+var selectedApproach = "secret";
 var registered = false;
 var masterId = null, helpers = {}, helpersCount = 0;
 
