@@ -203,7 +203,7 @@ Janus.dataChanDefaultLabel = "JanusDataChannel";
 Janus.endOfCandidates = null;
 
 // Stop all tracks from a given stream
-Janus.stopAllTracks  = function(stream) {
+Janus.stopAllTracks = function(stream) {
 	try {
 		// Try a MediaStreamTrack.stop() for each track
 		var tracks = stream.getTracks();
