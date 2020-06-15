@@ -202,6 +202,22 @@ Janus.dataChanDefaultLabel = "JanusDataChannel";
 // attempted in https://github.com/meetecho/janus-gateway/issues/1670
 Janus.endOfCandidates = null;
 
+// Stop all tracks from a given stream
+Janus.stopAllTracks  = function(stream) {
+	try {
+		// Try a MediaStreamTrack.stop() for each track
+		var tracks = stream.getTracks();
+		for(var mst of tracks) {
+			Janus.log(mst);
+			if(mst) {
+				mst.stop();
+			}
+		}
+	} catch(e) {
+		// Do nothing if this fails
+	}
+}
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
@@ -276,13 +292,7 @@ Janus.init = function(options) {
 						Janus.debug(devices);
 						callback(devices);
 						// Get rid of the now useless stream
-						try {
-							var tracks = stream.getTracks();
-							for(var mst of tracks) {
-								if(mst)
-									mst.stop();
-							}
-						} catch(e) {}
+						Janus.stopAllTracks(stream)
 					});
 				})
 				.catch(function(err) {
@@ -1639,6 +1649,10 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(!pluginHandle || !pluginHandle.webrtcStuff) {
 			Janus.warn("Invalid handle");
+			// Close all tracks if the given stream has been created internally
+			if(!callbacks.stream) {
+				Janus.stopAllTracks(stream);
+			}
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -2154,17 +2168,7 @@ function Janus(gatewayCallbacks) {
 			if(media.update) {
 				if(config.myStream && config.myStream !== callbacks.stream && !config.streamExternal) {
 					// We're replacing a stream we captured ourselves with an external one
-					try {
-						// Try a MediaStreamTrack.stop() for each track
-						var tracks = config.myStream.getTracks();
-						for(var mst of tracks) {
-							Janus.log(mst);
-							if(mst)
-								mst.stop();
-						}
-					} catch(e) {
-						// Do nothing if this fails
-					}
+					Janus.stopAllTracks(config.myStream);
 					config.myStream = null;
 				}
 			}
@@ -3204,19 +3208,9 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.tsnow = null;
 			config.bitrate.tsbefore = null;
 			config.bitrate.value = null;
-			try {
-				// Try a MediaStreamTrack.stop() for each track
-				if(!config.streamExternal && config.myStream) {
-					Janus.log("Stopping local stream tracks");
-					var tracks = config.myStream.getTracks();
-					for(var mst of tracks) {
-						Janus.log(mst);
-						if(mst)
-							mst.stop();
-					}
-				}
-			} catch(e) {
-				// Do nothing if this fails
+			if(!config.streamExternal && config.myStream) {
+				Janus.log("Stopping local stream tracks");
+				Janus.stopAllTracks(config.myStream);
 			}
 			config.streamExternal = false;
 			config.myStream = null;
