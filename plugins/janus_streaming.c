@@ -1824,13 +1824,13 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				gboolean dovideortcp = (vrtcpport != NULL && vrtcpport->value != NULL);
 				if(dovideo && vport2 != NULL && vport2->value != NULL &&
-						(janus_string_to_uint16(vport2->value, &video_port2) < 0 || video_port2 == 0)) {
+						(janus_string_to_uint16(vport2->value, &video_port2) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint '%s', invalid simulcast port...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
 				if(dovideo && vport3 != NULL && vport3->value != NULL &&
-						(janus_string_to_uint16(vport3->value, &video_port3) < 0 || video_port3 == 0)) {
+						(janus_string_to_uint16(vport3->value, &video_port3) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint '%s', invalid simulcast port...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -5776,48 +5776,44 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			vrtcpport = janus_streaming_get_fd_port(video_rtcp_fd);
 		}
 		if(simulcast) {
-			if(vport2 > 0) {
-				video_fd[1] = janus_streaming_create_fd(vport2, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-					NULL, 0, "Video", "video", name ? name : tempname, FALSE);
-				if(video_fd[1] < 0) {
-					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (2nd port)...\n", vport2);
-					if(audio_fd > -1)
-						close(audio_fd);
-					if(audio_rtcp_fd > -1)
-						close(audio_rtcp_fd);
-					if(video_fd[0] > -1)
-						close(video_fd[0]);
-					if(video_rtcp_fd > -1)
-						close(video_rtcp_fd);
-					janus_mutex_lock(&mountpoints_mutex);
-					g_hash_table_remove(mountpoints_temp, &id);
-					janus_mutex_unlock(&mountpoints_mutex);
-					return NULL;
-				}
-				vport2 = janus_streaming_get_fd_port(video_fd[1]);
+			video_fd[1] = janus_streaming_create_fd(vport2, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
+				NULL, 0, "Video", "video", name ? name : tempname, FALSE);
+			if(video_fd[1] < 0) {
+				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (2nd port)...\n", vport2);
+				if(audio_fd > -1)
+					close(audio_fd);
+				if(audio_rtcp_fd > -1)
+					close(audio_rtcp_fd);
+				if(video_fd[0] > -1)
+					close(video_fd[0]);
+				if(video_rtcp_fd > -1)
+					close(video_rtcp_fd);
+				janus_mutex_lock(&mountpoints_mutex);
+				g_hash_table_remove(mountpoints_temp, &id);
+				janus_mutex_unlock(&mountpoints_mutex);
+				return NULL;
 			}
-			if(vport3 > 0) {
-				video_fd[2] = janus_streaming_create_fd(vport3, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
-					NULL, 0, "Video", "video", name ? name : tempname, FALSE);
-				if(video_fd[2] < 0) {
-					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (3rd port)...\n", vport3);
-					if(audio_fd > -1)
-						close(audio_fd);
-					if(audio_rtcp_fd > -1)
-						close(audio_rtcp_fd);
-					if(video_rtcp_fd > -1)
-						close(video_rtcp_fd);
-					if(video_fd[0] > -1)
-						close(video_fd[0]);
-					if(video_fd[1] > -1)
-						close(video_fd[1]);
-					janus_mutex_lock(&mountpoints_mutex);
-					g_hash_table_remove(mountpoints_temp, &id);
-					janus_mutex_unlock(&mountpoints_mutex);
-					return NULL;
-				}
-				vport3 = janus_streaming_get_fd_port(video_fd[2]);
+			vport2 = janus_streaming_get_fd_port(video_fd[1]);
+			video_fd[2] = janus_streaming_create_fd(vport3, vmcast ? inet_addr(vmcast) : INADDR_ANY, viface,
+				NULL, 0, "Video", "video", name ? name : tempname, FALSE);
+			if(video_fd[2] < 0) {
+				JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (3rd port)...\n", vport3);
+				if(audio_fd > -1)
+					close(audio_fd);
+				if(audio_rtcp_fd > -1)
+					close(audio_rtcp_fd);
+				if(video_rtcp_fd > -1)
+					close(video_rtcp_fd);
+				if(video_fd[0] > -1)
+					close(video_fd[0]);
+				if(video_fd[1] > -1)
+					close(video_fd[1]);
+				janus_mutex_lock(&mountpoints_mutex);
+				g_hash_table_remove(mountpoints_temp, &id);
+				janus_mutex_unlock(&mountpoints_mutex);
+				return NULL;
 			}
+			vport3 = janus_streaming_get_fd_port(video_fd[2]);
 		}
 	}
 	int data_fd = -1;
@@ -8311,6 +8307,15 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &session->context);
+				if(session->sim_context.need_pli) {
+					/* Schedule a PLI */
+					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
+					if(session->mountpoint != NULL) {
+						janus_streaming_rtp_source *source = session->mountpoint->source;
+						if(source != NULL)
+							g_atomic_int_set(&source->need_pli, 1);
+					}
+				}
 				/* Do we need to drop this? */
 				if(!relay)
 					return;
@@ -8324,15 +8329,6 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					json_object_set_new(event, "result", result);
 					gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 					json_decref(event);
-				}
-				if(session->sim_context.need_pli) {
-					/* Schedule a PLI */
-					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
-					if(session->mountpoint != NULL) {
-						janus_streaming_rtp_source *source = session->mountpoint->source;
-						if(source != NULL)
-							g_atomic_int_set(&source->need_pli, 1);
-					}
 				}
 				if(session->sim_context.changed_temporal) {
 					/* Notify the user about the temporal layer change */
