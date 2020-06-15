@@ -978,10 +978,11 @@ typedef struct janus_sip_session {
 	struct janus_sip_session *master;
 	gboolean helper;		/* Whether this session is a helper or not */
 	GList *helpers;			/* The helper sessions, if this is the "master" */
-	janus_refcount ref;
 	janus_mutex mutex;
 	char *hangup_reason_header;
 	GList *incoming_header_prefixes;
+	GList *active_calls;
+	janus_refcount ref;
 } janus_sip_session;
 static GHashTable *sessions;
 static GHashTable *identities;
@@ -1653,6 +1654,44 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 	}
 }
 
+/* Helpers to ref/unref sessions with active calls */
+static void janus_sip_ref_active_call(janus_sip_session *session) {
+	if(session == NULL)
+		return;
+	janus_sip_session *master = session->master;
+	if(master) {
+		janus_mutex_lock(&master->mutex);
+		master->active_calls = g_list_append(master->active_calls, session);
+		janus_refcount_increase(&session->ref);
+		janus_mutex_unlock(&master->mutex);
+	} else {
+		janus_mutex_lock(&session->mutex);
+		session->active_calls = g_list_append(session->active_calls, session);
+		janus_refcount_increase(&session->ref);
+		janus_mutex_unlock(&session->mutex);
+	}
+}
+static void janus_sip_unref_active_call(janus_sip_session *session) {
+	if(session == NULL)
+		return;
+	janus_sip_session *master = session->master;
+	if(master) {
+		janus_mutex_lock(&master->mutex);
+		if(g_list_find(master->active_calls, session) != NULL) {
+			master->active_calls = g_list_remove(master->active_calls, session);
+			janus_refcount_decrease(&session->ref);
+		}
+		janus_mutex_unlock(&master->mutex);
+	} else {
+		janus_mutex_lock(&session->mutex);
+		if(g_list_find(session->active_calls, session) != NULL) {
+			session->active_calls = g_list_remove(session->active_calls, session);
+			janus_refcount_decrease(&session->ref);
+		}
+		janus_mutex_unlock(&session->mutex);
+	}
+}
+
 
 /* Plugin implementation */
 int janus_sip_init(janus_callbacks *callback, const char *config_path) {
@@ -2067,7 +2106,6 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 				janus_refcount_decrease(&master->ref);
 			}
 			janus_mutex_unlock(&master->mutex);
-			session->master = NULL;
 		}
 	}
 	/* If this session was involved in a transfer, get rid of the reference */
@@ -3416,6 +3454,9 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(callids, session->callid, session);
 			janus_mutex_unlock(&sessions_mutex);
 			g_atomic_int_set(&session->establishing, 1);
+			/* Add a reference for this call */
+			janus_sip_ref_active_call(session);
+			/* Send the INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -4514,9 +4555,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_sip_call_update_status(session, janus_sip_call_status_incall);
 			}
 			break;
-		case nua_i_terminated:
+		case nua_i_terminated: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* We had a reference to this session for this call, get rid of it */
+			janus_sip_unref_active_call(session);
 			break;
+		}
 	/* SIP requests */
 		case nua_i_ack: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -4548,6 +4592,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* Add a reference for this call */
+			janus_sip_ref_active_call(session);
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
@@ -4598,6 +4644,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					/* Bind the call to the helper and handle it there */
 					JANUS_LOG(LOG_VERB, "Passing INVITE to helper %p\n", helper);
 					nua_handle_bind(nh, helper);
+					/* This session won't need the reference anymore, the helper will */
+					janus_sip_unref_active_call(session);
 					janus_sip_sofia_callback(event, status, phrase, nua, magic, nh, helper, sip, tags);
 					break;
 				}
@@ -4634,6 +4682,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(!reinvite) {
 				g_atomic_int_set(&session->establishing, 1);
+			} else {
+				/* This is a re-INVITE, we have a reference already */
+				janus_sip_unref_active_call(session);
 			}
 			/* Check if there's an SDP to process */
 			janus_sdp *sdp = NULL;
@@ -4995,8 +5046,21 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* shutdown in progress -> return */
 				break;
 			}
-			if(ssip != NULL) {
-				/* end the event loop. su_root_run() will return */
+			if(status >= 200 && ssip != NULL) {
+				/* Check if this session (and/or its helpers) had dangling
+				 * references for ongoing calls: we won't receive other events
+				 * after this, so it's up to us to clean up after ourselfes */
+				janus_mutex_lock(&session->mutex);
+				while(session->active_calls) {
+					janus_sip_session *s = (janus_sip_session *)session->active_calls->data;
+					if(s != NULL) {
+						JANUS_LOG(LOG_VERB, "[%p] Removing reference\n", s);
+						janus_refcount_decrease(&s->ref);
+					}
+					session->active_calls = g_list_remove(session->active_calls, s);
+				}
+				janus_mutex_unlock(&session->mutex);
+				/* End the event loop: su_root_run() will return */
 				su_root_break(ssip->s_root);
 			}
 			break;
