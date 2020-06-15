@@ -91,7 +91,7 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 			if(strstr(line, extmap)) {
 				/* Gotcha! */
 				char extension[100];
-				if(sscanf(line, "a=extmap:%d %s", &id, extension) == 2) {
+				if(sscanf(line, "a=extmap:%d %99s", &id, extension) == 2) {
 					*next = '\n';
 					if(strstr(extension, JANUS_RTP_EXTMAP_AUDIO_LEVEL))
 						return JANUS_RTP_EXTMAP_AUDIO_LEVEL;
