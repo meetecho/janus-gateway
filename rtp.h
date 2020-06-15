@@ -286,7 +286,7 @@ typedef struct janus_rtp_simulcasting_context {
 	/*! \brief Which simulcast substream we should forward back */
 	int substream;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe, or get this if available) */
-	int substream_target;
+	int substream_target, substream_target_temp;
 	/*! \brief Which simulcast temporal layer we should forward back */
 	int templayer;
 	/*! \brief As above, but to handle transitions (e.g., wait for keyframe) */

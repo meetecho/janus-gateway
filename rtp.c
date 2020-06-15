@@ -921,6 +921,7 @@ void janus_rtp_simulcasting_context_reset(janus_rtp_simulcasting_context *contex
 	memset(context, 0, sizeof(*context));
 	context->rid_ext_id = -1;
 	context->substream = -1;
+	context->substream_target_temp = -1;
 	context->templayer = -1;
 }
 
@@ -965,7 +966,14 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	uint32_t ssrc = ntohl(header->ssrc);
-	if(ssrc != ssrcs[0] && ssrc != ssrcs[1] && ssrc != ssrcs[2]) {
+	int substream = -1;
+	if(ssrc == *(ssrcs)) {
+		substream = 0;
+	} else if(ssrc == *(ssrcs+1)) {
+		substream = 1;
+	} else if(ssrc == *(ssrcs+2)) {
+		substream = 2;
+	} else {
 		/* We don't recognize this SSRC, check if rid can help us */
 		if(context->rid_ext_id < 1 || rids == NULL)
 			return FALSE;
@@ -975,12 +983,15 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 		if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs) = ssrc;
+			substream = 0;
 		} else if(rids[1] != NULL && !strcmp(rids[1], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+1) = ssrc;
+			substream = 1;
 		} else if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
 			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
 			*(ssrcs+2) = ssrc;
+			substream = 2;
 		} else {
 			JANUS_LOG(LOG_WARN, "Simulcasting: unknown rid '%s'...\n", sdes_item);
 			return FALSE;
@@ -990,54 +1001,78 @@ gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_conte
 	context->changed_substream = FALSE;
 	context->changed_temporal = FALSE;
 	context->need_pli = FALSE;
+	gint64 now = janus_get_monotonic_time();
 	/* Access the packet payload */
 	int plen = 0;
 	char *payload = janus_rtp_payload(buf, len, &plen);
 	if(payload == NULL)
 		return FALSE;
-	if(context->substream != context->substream_target) {
-		/* There has been a change: let's wait for a keyframe on the target */
-		int step = (context->substream < 1 && context->substream_target == 2);
-		if((ssrc == *(ssrcs + context->substream_target)) || (step && ssrc == *(ssrcs + step))) {
-			if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
-					(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen))) {
-				uint32_t ssrc_old = 0;
-				if(context->substream != -1)
-					ssrc_old = *(ssrcs + context->substream);
-				JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
-				context->substream = (ssrc == *(ssrcs + context->substream_target) ? context->substream_target : step);
-				/* Notify the caller that the substream changed */
-				context->changed_substream = TRUE;
-			//~ } else {
-				//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
-			}
+	/* Check what's our target */
+	if(context->substream_target_temp != -1 && (substream > context->substream_target_temp ||
+			context->substream_target <= context->substream_target_temp)) {
+		/* We either just received media on a substream that is higher than
+		 * the target we dropped to (which means the one we want is now flowing
+		 * again) or we've been requested a lower substream target instead */
+		context->substream_target_temp = -1;
+	}
+	int target = (context->substream_target_temp == -1) ? context->substream_target : context->substream_target_temp;
+	/* Check what we need to do with the packet */
+	if(context->substream == -1) {
+		if((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
+				(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen))) {
+			context->substream = substream;
+			/* Notify the caller that the substream changed */
+			context->changed_substream = TRUE;
+			context->last_relayed = now;
+		} else {
+			/* Don't relay anything until we get a keyframe */
+			return FALSE;
+		}
+	} else if(context->substream != target) {
+		/* We're not on the substream we'd like: let's wait for a keyframe on the target */
+		if(((context->substream < target && substream > context->substream) ||
+				(context->substream > target && substream < context->substream)) &&
+					((vcodec == JANUS_VIDEOCODEC_VP8 && janus_vp8_is_keyframe(payload, plen)) ||
+					(vcodec == JANUS_VIDEOCODEC_H264 && janus_h264_is_keyframe(payload, plen)))) {
+			JANUS_LOG(LOG_VERB, "Received keyframe on #%d (SSRC %"SCNu32"), switching (was #%d/%"SCNu32")\n",
+				substream, ssrc, context->substream, *(ssrcs + context->substream));
+			context->substream = substream;
+			/* Notify the caller that the substream changed */
+			context->changed_substream = TRUE;
+			context->last_relayed = now;
 		}
 	}
 	/* If we haven't received our desired substream yet, let's drop temporarily */
 	if(context->last_relayed == 0) {
 		/* Let's start slow */
-		context->last_relayed = janus_get_monotonic_time();
-	} else {
+		context->last_relayed = now;
+	} else if(context->substream > 0) {
 		/* Check if too much time went by with no packet relayed */
-		gint64 now = janus_get_monotonic_time();
-		if(now-context->last_relayed >= (context->drop_trigger ? context->drop_trigger : 250000)) {
+		if((now - context->last_relayed) > (context->drop_trigger ? context->drop_trigger : 250000)) {
 			context->last_relayed = now;
-			int substream = context->substream-1;
-			if(substream < 0)
-				substream = 0;
-			if(context->substream != substream) {
-				if(context->substream_target != substream) {
-					JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
-						context->substream, substream);
-					context->substream_target = substream;
+			if(context->substream != substream && context->substream_target_temp != 0) {
+				if(context->substream_target > substream) {
+					int prev_target = context->substream_target_temp;
+					if(context->substream_target_temp == -1)
+						context->substream_target_temp = context->substream_target - 1;
+					else
+						context->substream_target_temp--;
+					if(context->substream_target_temp < 0)
+						context->substream_target_temp = 0;
+					if(context->substream_target_temp != prev_target) {
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+							context->substream, context->substream_target_temp);
+						/* Notify the caller that we (still) need a PLI */
+						context->need_pli = TRUE;
+					}
 				}
-				/* Notify the caller that we (still) need a PLI */
-				context->need_pli = TRUE;
 			}
 		}
 	}
 	/* Do we need to drop this? */
-	if(ssrc != *(ssrcs + context->substream)) {
+	if(context->substream < 0)
+		return FALSE;
+	if(substream != context->substream) {
 		JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
 			ssrc, *(ssrcs + context->substream));
 		return FALSE;
