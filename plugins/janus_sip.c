@@ -5831,7 +5831,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, janus_sdp *sdp, gbool
 			while(ma) {
 				janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 				if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
-					if(sscanf(a->value, "%3d %s", &pt, codec) == 2) {
+					if(sscanf(a->value, "%3d %49s", &pt, codec) == 2) {
 						if(g_hash_table_lookup(codecs, codec) != NULL) {
 							/* We already have a version of this codec, remove the payload type */
 							pts_to_remove = g_list_append(pts_to_remove, GINT_TO_POINTER(pt));

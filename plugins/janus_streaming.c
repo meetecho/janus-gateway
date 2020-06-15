@@ -6280,7 +6280,7 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	char ip[256];
 	in_addr_t mcast = INADDR_ANY;
 	if(c != NULL) {
-		if(sscanf(c, "c=IN IP4 %[^/]", ip) != 0) {
+		if(sscanf(c, "c=IN IP4 %255[^/]", ip) != 0) {
 			memcpy(host, ip, sizeof(ip));
 			c = strstr(host, "\r\n");
 			if(c)

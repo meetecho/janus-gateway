@@ -406,7 +406,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 			if(strstr(line, rtpmap)) {
 				/* Gotcha! */
 				char name[100];
-				if(sscanf(line, "a=rtpmap:%d %s", &pt, name) == 2) {
+				if(sscanf(line, "a=rtpmap:%d %99s", &pt, name) == 2) {
 					*next = '\n';
 					if(strstr(name, "vp8") || strstr(name, "VP8"))
 						return "vp8";
