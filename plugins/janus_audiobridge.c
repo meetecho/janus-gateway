@@ -6768,7 +6768,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				janus_audiobridge_relay_rtp_packet(participant->session, outpkt);
 			} else if(g_atomic_int_get(&participant->active) && participant->encoder &&
 					g_atomic_int_compare_and_exchange(&participant->encoding, 0, 1)) {
-
 				/* Encode raw frame to Opus */
 				opus_int16 *outBuffer = (opus_int16 *)mixedpkt->data;
 				outpkt->length = opus_encode(participant->encoder, outBuffer, mixedpkt->length, payload+12, 1500-12);
@@ -6838,4 +6837,3 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);
 }
-
