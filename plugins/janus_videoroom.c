@@ -5547,7 +5547,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
         participant_type = session->participant_type;
 	if(publisher && publisher->room) {
 		room_id = publisher->room_id;
-		room_id_str = g_strdup(publisher->room_id_str);
+		room_id_str = publisher->room_id_str ? g_strdup(publisher->room_id_str): NULL;
 		JANUS_LOG(LOG_INFO, "CARBYNE:::PUBLISHER  logic-1 for room (%"SCNu64") %s\n", room_id, room_id_str );
 		if(!string_ids) {
 			if (!room_id) {
@@ -5583,35 +5583,31 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "[%s-%p] session->room_id_str: %s \n", JANUS_VIDEOROOM_PACKAGE, handle,session->room_id_str);
 		JANUS_LOG(LOG_ERR, "[%s-%p] session->participant_type: %d \n", JANUS_VIDEOROOM_PACKAGE, handle,session->participant_type); 
 		room_id = session->room_id;
-		room_id_str = g_strdup(session->room_id_str);
+		room_id_str = session->room_id_str ? g_strdup(session->room_id_str): NULL;
 		participant_type = session->participant_type;
 	}
 	janus_mutex_unlock(&sessions_mutex);
 	/*CARBYNE-LOGIC end patch */
 	if(participant_type == janus_videoroom_p_type_publisher || participant_type == janus_videoroom_p_type_none ) {
         	int error;
-		guint64 old_room_id  = room_id;
-		char *old_room_id_str = room_id_str ? g_strdup(room_id_str) : NULL;
- 		g_free(room_id_str); 
 		janus_videoroom_destroy_session(handle, &error);
  		g_atomic_int_set(&session->hangingup, 1);
 
-        	JANUS_LOG(LOG_INFO, "CARBYNE:::PUBLISHER  logic-2 for room (%"SCNu64") %s\n", old_room_id, old_room_id_str );
-        	if((!string_ids && old_room_id) ||
-			(string_ids && (old_room_id_str!=NULL)))  {
-			janus_videoroom *videoroom =  g_hash_table_lookup(rooms,string_ids ? (gpointer)old_room_id_str:(gpointer)&old_room_id);
+        	JANUS_LOG(LOG_INFO, "CARBYNE:::PUBLISHER  logic-2 for room (%"SCNu64") %s\n", room_id, room_id_str );
+        	if((!string_ids && room_id) || (string_ids && (room_id_str != NULL)))  {
+			janus_videoroom *videoroom =  g_hash_table_lookup(rooms,string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
 			if(videoroom) {
  				/* Remove room, but add a reference until we're done */
 				if(!string_ids) {
-					JANUS_LOG(LOG_INFO, "PUBLISHER: Remove room %"SCNu64" permanently \n",old_room_id);
+					JANUS_LOG(LOG_INFO, "PUBLISHER: Remove room %"SCNu64" permanently \n",room_id);
 			}
 			else {
-				JANUS_LOG(LOG_INFO, "PUBLISHER: Remove room %s permanently \n", old_room_id_str);
+				JANUS_LOG(LOG_INFO, "PUBLISHER: Remove room %s permanently \n", room_id_str);
 			}
 			janus_mutex_lock(&videoroom->mutex);
 			janus_refcount_increase(&videoroom->ref);
-			g_hash_table_remove(rooms, string_ids ? (gpointer)old_room_id_str:(gpointer)&old_room_id);
- 			g_free(old_room_id_str);
+			g_hash_table_remove(rooms, string_ids ? (gpointer)room_id_str : (gpointer)&room_id);
+ 			g_free(room_id_str);
 			/*CARBYNE-RF FREE */
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
