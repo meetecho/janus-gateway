@@ -7,9 +7,11 @@ docs/html/
 /janus-cfgconv
 /janus-pp-rec
 /mjr2pcap
+/pcap2mjr
 /plugins/*.so
 /transports/*.so
 /events/*.so
+/loggers/*.so
 
 Makefile
 Makefile.in
@@ -45,9 +47,15 @@ Makefile.in
 /events/*.lo
 /events/*.la
 /events/.libs
+/loggers/*.o
+/loggers/*.lo
+/loggers/*.la
+/loggers/.libs
 /postprocessing/*.o
 /postprocessing/pp-cmdline.c
 /postprocessing/pp-cmdline.h
+/postprocessing/p2m-cmdline.c
+/postprocessing/p2m-cmdline.h
 /fuzzers/*.a
 /fuzzers/*.o
 /fuzzers/out

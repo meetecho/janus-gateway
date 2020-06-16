@@ -846,7 +846,9 @@ static int janus_mqttevh_init(const char *config_path) {
 	handler_thread = g_thread_try_new("janus mqttevh handler", janus_mqttevh_handler, ctx, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the MQTT EventHandler handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the MQTT EventHandler handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 
@@ -964,10 +966,6 @@ static void *janus_mqttevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get event from queue */
 		event = g_async_queue_pop(events);
-		if(event == NULL) {
-			/* There was nothing in the queue */
-			continue;
-		}
 		if(event == &exit_event) {
 			break;
 		}

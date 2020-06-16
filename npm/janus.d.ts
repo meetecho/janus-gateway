@@ -23,9 +23,9 @@ declare namespace JanusJS {
 		dependencies?: Dependencies;
 	}
 
-	interface ConstuctorOptions {
+	interface ConstructorOptions {
 		server: string | string[];
-		iceServers?: string[];
+		iceServers?: RTCIceServer[];
 		ipv6?: boolean;
 		withCredentials?: boolean;
 		max_poll_events?: number;
@@ -137,8 +137,10 @@ declare namespace JanusJS {
 		static warn(...args: any[]): void;
 		static error(...args: any[]): void;
 		static randomString(length: number): string;
+		static attachMediaStream(element: HTMLMediaElement, stream: MediaStream): void;
+		static reattachMediaStream(to: HTMLMediaElement, from: HTMLMediaElement): void;
 
-		constructor(options: ConstuctorOptions);
+		constructor(options: ConstructorOptions);
 
 		getServer(): string;
 		isConnected(): boolean;

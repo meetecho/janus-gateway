@@ -81,6 +81,10 @@ static janus_mutex evh_mutex;
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
+/* Compression, if any */
+static gboolean compress = FALSE;
+static int compression = 6;		/* Z_DEFAULT_COMPRESSION */
+
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
 static gboolean group_events = TRUE;
@@ -215,6 +219,20 @@ int janus_sampleevh_init(const char *config_path) {
 						json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 					}
 				}
+				/* Check if we need any compression */
+				item = janus_config_get(config, config_general, janus_config_type_item, "compress");
+				if(item && item->value && janus_is_true(item->value)) {
+					compress = TRUE;
+					item = janus_config_get(config, config_general, janus_config_type_item, "compression");
+					if(item && item->value) {
+						int c = atoi(item->value);
+						if(c < 0 || c > 9) {
+							JANUS_LOG(LOG_WARN, "Invalid compression factor '%d', falling back to '%d'...\n", c, compression);
+						} else {
+							compression = c;
+						}
+					}
+				}
 				/* Done */
 				enabled = TRUE;
 			}
@@ -243,7 +261,9 @@ int janus_sampleevh_init(const char *config_path) {
 	handler_thread = g_thread_try_new("janus sampleevh handler", janus_sampleevh_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SampleEventHandler handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SAMPLEEVH_NAME);
@@ -342,13 +362,19 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		/* Parameters we can change */
 		const char *req_events = NULL, *req_backend = NULL,
 			*req_backend_user = NULL, *req_backend_pwd = NULL;
-		int req_grouping = -1, req_maxretr = -1, req_backoff = -1;
+		int req_grouping = -1, req_maxretr = -1, req_backoff = -1,
+			req_compress = -1, req_compression = -1;
 		/* Events */
 		if(json_object_get(request, "events"))
 			req_events = json_string_value(json_object_get(request, "events"));
 		/* Grouping */
 		if(json_object_get(request, "grouping"))
 			req_grouping = json_is_true(json_object_get(request, "grouping"));
+		/* Compression */
+		if(json_object_get(request, "compress"))
+			req_compress = json_is_true(json_object_get(request, "compress"));
+		if(json_object_get(request, "compression"))
+			req_compression = json_integer_value(json_object_get(request, "compression"));
 		/* Backend stuff */
 		if(json_object_get(request, "backend"))
 			req_backend = json_string_value(json_object_get(request, "backend"));
@@ -368,12 +394,16 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 		if(json_object_get(request, "retransmissions_backoff"))
 			req_backoff = json_integer_value(json_object_get(request, "retransmissions_backoff"));
 		/* If we got here, we can enforce */
+		janus_mutex_lock(&evh_mutex);
 		if(req_events)
 			janus_events_edit_events_mask(req_events, &janus_sampleevh.events_mask);
 		if(req_grouping > -1)
 			group_events = req_grouping ? TRUE : FALSE;
+		if(req_compress > -1)
+			compress = req_compress ? TRUE : FALSE;
+		if(req_compression > -1 && req_compression < 10)
+			compression = req_compression;
 		if(req_backend || req_backend_user || req_backend_pwd) {
-			janus_mutex_lock(&evh_mutex);
 			if(req_backend) {
 				g_free(backend);
 				backend = g_strdup(req_backend);
@@ -386,12 +416,12 @@ json_t *janus_sampleevh_handle_request(json_t *request) {
 				g_free(backend_pwd);
 				backend_pwd = g_strdup(req_backend_pwd);
 			}
-			janus_mutex_unlock(&evh_mutex);
 		}
 		if(req_maxretr > -1)
 			max_retransmissions = req_maxretr;
 		if(req_backoff > -1)
 			retransmissions_backoff = req_backoff;
+		janus_mutex_unlock(&evh_mutex);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_SAMPLEEVH_ERROR_INVALID_REQUEST;
@@ -418,13 +448,13 @@ static void *janus_sampleevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SampleEventHandler handler thread\n");
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
+	char compressed_text[8192];
+	size_t compressed_len = 0;
 	int count = 0, max = group_events ? 100 : 1;
 	int retransmit = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!retransmit) {
 			event = g_async_queue_pop(events);
-			if(event == NULL)
-				continue;
 			if(event == &exit_event)
 				break;
 			count = 0;
@@ -695,11 +725,26 @@ static void *janus_sampleevh_handler(void *data) {
 			curl_easy_setopt(curl, CURLOPT_PASSWORD, backend_pwd);
 		}
 		janus_mutex_unlock(&evh_mutex);
-		headers = curl_slist_append(headers, "Accept: application/json");
-		headers = curl_slist_append(headers, "Content-Type: application/json");
+		/* Check if we need to compress the data */
+		if(compress) {
+			compressed_len = janus_gzip_compress(compression,
+				event_text, strlen(event_text),
+				compressed_text, sizeof(compressed_text));
+			if(compressed_len == 0) {
+				JANUS_LOG(LOG_ERR, "Failed to compress event (%zu bytes)...\n", strlen(event_text));
+				/* Nothing we can do... get rid of the event */
+				g_free(event_text);
+				json_decref(output);
+				output = NULL;
+				continue;
+			}
+		}
+		headers = curl_slist_append(headers, compress ? "Accept: application/gzip": "Accept: application/json");
+		headers = curl_slist_append(headers, compress ? "Content-Type: application/gzip" : "Content-Type: application/json");
 		headers = curl_slist_append(headers, "charsets: utf-8");
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, event_text);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, compress ? compressed_text : event_text);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, compress ? compressed_len : strlen(event_text));
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_sampleehv_write_data);
 		/* Don't wait forever (let's say, 10 seconds) */
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);

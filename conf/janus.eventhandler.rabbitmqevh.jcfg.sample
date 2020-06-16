@@ -19,6 +19,7 @@ general: {
 	#vhost = "/"					# Virtual host to specify when logging in, if needed
 	#exchange = "janus-exchange"
 	route_key = "janus-events"		# Name of the queue for event messages
+	#exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
 
 	#ssl_enable = false				# Whether ssl support must be enabled
 	#ssl_verify_peer = true			# Whether peer verification must be enabled

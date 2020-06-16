@@ -76,7 +76,9 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	}
 #endif
 	/* Setup FFmpeg */
+#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
 	av_register_all();
+#endif
 	/* Adjust logging to match the postprocessor's */
 	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
 		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
@@ -98,7 +100,8 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
 		return -1;
 	}
-	snprintf(fctx->filename, sizeof(fctx->filename), "%s", destination);
+    char filename[1024];
+	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
 	AVCodec *codec = avcodec_find_encoder(vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9);
 	if(!codec) {
@@ -153,17 +156,11 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 #endif
-	//~ fctx->timestamp = 0;
-	//~ if(url_fopen(&fctx->pb, fctx->filename, URL_WRONLY) < 0) {
-	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
+	int res = avio_open(&fctx->pb, filename, AVIO_FLAG_WRITE);
+	if(res < 0) {
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
 		return -1;
 	}
-	//~ memset(&parameters, 0, sizeof(AVFormatParameters));
-	//~ av_set_parameters(fctx, &parameters);
-	//~ fctx->preload = (int)(0.5 * AV_TIME_BASE);
-	//~ fctx->max_delay = (int)(0.7 * AV_TIME_BASE);
-	//~ if(av_write_header(fctx) < 0) {
 	if(avformat_write_header(fctx, NULL) < 0) {
 		JANUS_LOG(LOG_ERR, "Error writing header\n");
 		return -1;
@@ -373,7 +370,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, gboolean vp8,
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(10000), *start = buffer;
+	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;

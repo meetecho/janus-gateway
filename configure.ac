@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.7.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=76
+JANUS_VERSION=102
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.7.6"
+JANUS_VERSION_STRING="0.10.2"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -126,6 +126,12 @@ AC_ARG_ENABLE([libsrtp2],
               [],
               [enable_libsrtp2=maybe])
 
+AC_ARG_ENABLE([aes-gcm],
+              [AS_HELP_STRING([--disable-aes-gcm],
+                              [Disable AES-GCM support in libsrtp(2)])],
+              [],
+              [AC_DEFINE(HAVE_SRTP_AESGCM)])
+
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
                               [Use DTLSv1_set_initial_timeout_duration (only available in recent BoringSSL versions)])],
@@ -160,8 +166,6 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
-               AS_IF([test "x$enable_plugin_sipre" != "xyes"],
-                     [enable_plugin_sipre=no])
                AS_IF([test "x$enable_plugin_nosip" != "xyes"],
                      [enable_plugin_nosip=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
@@ -176,6 +180,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_auviousroom=no])
                AS_IF([test "x$enable_plugin_auviousrecordplay" != "xyes"],
                      [enable_plugin_auviousrecordplay=no])
+               AS_IF([test "x$enable_plugin_auvioussip" != "xyes"],
+                     [enable_plugin_auvioussip=no])
                AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
                      [enable_plugin_voicemail=no])
               ],
@@ -214,6 +220,17 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_mqtt_event_handler=no])
                AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])
+               AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-loggers],
+              [AS_HELP_STRING([--disable-all-loggers],
+                              [Disable building all loggers (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_json_logger" != "xyes"],
+                     [enable_json_logger=no])
               ],
               [])
 
@@ -305,6 +322,20 @@ AC_ARG_ENABLE([nanomsg-event-handler],
                      [enable_nanomsg_event_handler=no])],
               [enable_nanomsg_event_handler=maybe])
 
+AC_ARG_ENABLE([gelf-event-handler],
+              [AS_HELP_STRING([--disable-gelf-event-handler],
+                              [Disable gelf event handler ])],
+              [AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])],
+              [enable_gelf_event_handler=yes])
+
+AC_ARG_ENABLE([json-logger],
+              [AS_HELP_STRING([--enable-json-logger],
+                              [Enable external JSON file logger ])],
+              [AS_IF([test "x$enable_json_logger" != "xyes"],
+                     [enable_json_logger=no])],
+              [enable_json_logger=no])
+
 AC_ARG_ENABLE([systemd-sockets],
               [AS_HELP_STRING([--enable-systemd-sockets],
                               [Enable Systemd Unix Sockets management])],
@@ -314,11 +345,13 @@ AC_ARG_ENABLE([systemd-sockets],
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
-					libconfig
+                    gio-2.0 >= $glib_version
+                    libconfig
                     nice
                     jansson >= $jansson_version
                     libssl >= $ssl_version
                     libcrypto
+                    zlib
                   ])
 JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
@@ -375,51 +408,25 @@ AC_CHECK_LIB([dl],
 
 AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
 AS_IF([test "x$enable_libsrtp2" != "xno"],
-      [AC_CHECK_LIB([srtp2],
-                    [srtp_init],
-                    [
-                      AC_CHECK_HEADER([srtp2/srtp.h],
-                                      [
-                                        AC_DEFINE(HAVE_SRTP_2)
-                                        JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp2"
-                                        enable_libsrtp2=yes
-                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
-                                        AC_CHECK_LIB([srtp2],
-                                                     [srtp_crypto_policy_set_aes_gcm_256_16_auth],
-                                                     [AC_DEFINE(HAVE_SRTP_AESGCM)],
-                                                     [AC_MSG_NOTICE([libsrtp2 does not have support for AES-GCM profiles])])
-                                      ],
-                                      [
-                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
-                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
-                                      ])
-                    ],
-                    [
-                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
-                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
-                    ])
+      [PKG_CHECK_MODULES([LIBSRTP],
+                         [libsrtp2],
+                         [
+                          AC_DEFINE(HAVE_SRTP_2)
+                          enable_libsrtp2=yes
+                          AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                         ],
+                         [
+                          AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                         ])
       ])
 AM_COND_IF([ENABLE_LIBSRTP_2],
            [],
-           [AC_CHECK_LIB([srtp],
-                         [srtp_init],
-                         [
-                           AC_CHECK_HEADER([srtp/srtp.h],
-                                           [
-                                             JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lsrtp"
-                                             enable_libsrtp2=no
-                                             PKG_CHECK_MODULES([SRTP15X],
-                                                               [
-                                                                 libsrtp >= 1.5.0
-                                                               ])
-                                             AC_CHECK_LIB([srtp],
-                                                          [crypto_policy_set_aes_gcm_256_16_auth],
-                                                          [AC_DEFINE(HAVE_SRTP_AESGCM)],
-                                                          [AC_MSG_NOTICE([libsrtp does not have support for AES-GCM profiles])])
-                                           ],
-                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
-                         ],
-                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           [PKG_CHECK_MODULES([LIBSRTP],
+                              [libsrtp >= 1.5.0],
+                              [enable_libsrtp2=no],
+                              [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])
+                              ])
            ])
 
 AC_CHECK_LIB([usrsctp],
@@ -442,7 +449,6 @@ PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
                     AC_DEFINE(HAVE_LIBCURL)
-                    JANUS_MANUAL_LIBS="${JANUS_MANUAL_LIBS} -lcurl"
                     AS_IF(
                       [test "x$enable_turn_rest_api" != "xno"],
                       [
@@ -479,10 +485,16 @@ AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 if test "x$enable_docs" = "xyes"; then
 	doxygen_version=$($DOXYGEN --version)
 	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
-					   [],
-					   [],
-					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
-					  )
+                           [],
+                           [],
+                           [
+                            AS_VERSION_COMPARE([$doxygen_version], [1.8.14],
+                                               [AC_MSG_ERROR([Doxygen $doxygen_version not usable: versions between 1.8.12 and 1.8.14 are known to render poorly.])],
+                                               [],
+                                               []
+                                              )
+                           ]
+                          )
 fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
@@ -504,7 +516,7 @@ PKG_CHECK_MODULES([TRANSPORTS],
                   ])
 
 PKG_CHECK_MODULES([MHD],
-                  [libmicrohttpd],
+                  [libmicrohttpd >= 0.9.59],
                   [
                     AS_IF([test "x$enable_rest" = "xmaybe"],
                           [enable_rest=yes])
@@ -610,6 +622,9 @@ AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
+
+AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -696,13 +711,6 @@ AC_ARG_ENABLE([plugin-sip],
                      [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
-AC_ARG_ENABLE([plugin-sipre],
-              [AS_HELP_STRING([--disable-plugin-sipre],
-                              [Disable sipre plugin])],
-              [AS_IF([test "x$enable_plugin_sipre" != "xyes"],
-                     [enable_plugin_sipre=no])],
-              [enable_plugin_sipre=maybe])
-
 AC_ARG_ENABLE([plugin-nosip],
               [AS_HELP_STRING([--disable-plugin-nosip],
                               [Disable nosip plugin])],
@@ -752,6 +760,12 @@ AC_ARG_ENABLE([plugin-auviousrecordplay],
                      [enable_plugin_auviousrecordplay=no])],
               [enable_plugin_auviousrecordplay=yes])
 
+AC_ARG_ENABLE([plugin-auvioussip],
+              [AS_HELP_STRING([--disable-plugin-auvioussip],
+                              [Disable auvioussip plugin])],
+              [AS_IF([test "x$enable_plugin_auvioussip" != "xyes"],
+                     [enable_plugin_auvioussip=no])],
+              [enable_plugin_auvioussip=maybe])
 
 AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
@@ -770,41 +784,18 @@ PKG_CHECK_MODULES([SOFIA],
                     AS_IF([test "x$enable_plugin_sip" = "xyes"],
                           [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
-AC_SUBST([SOFIA_CFLAGS])
-AC_SUBST([SOFIA_LIBS])
 
-PKG_CHECK_MODULES([LIBRE],
-                  [libre >= 0.5.7],
+PKG_CHECK_MODULES([SOFIA],
+                  [sofia-sip-ua],
                   [
-                    AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
-                          [
-                           enable_plugin_sipre=yes
-                           AC_DEFINE(HAVE_LIBRE_SIPREGNEWAPI)
-                           AC_CHECK_LIB([re],
-                                        [sip_set_trace],
-                                        [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
-                                        [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
-                                       )
-                          ])
+                    AS_IF([test "x$enable_plugin_auvioussip" = "xmaybe"],
+                          [enable_plugin_auvioussip=yes])
                   ],
-                  [PKG_CHECK_MODULES([LIBRE],
-                                     [libre],
-                                     [
-                                      AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
-                                            [
-                                             enable_plugin_sipre=yes
-                                             AC_CHECK_LIB([re],
-                                                          [sip_set_trace],
-                                                          [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
-                                                          [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
-                                                         )
-                                            ])
-                                     ],
-                                     [
-                                      AS_IF([test "x$enable_plugin_sipre" = "xyes"],
-                                            [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
-                                     ])
+                  [
+                    AS_IF([test "x$enable_plugin_auvioussip" = "xyes"],
+                          [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-auvioussip])])
                   ])
+
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
@@ -824,6 +815,7 @@ AC_SUBST([OPUS_LIBS])
 PKG_CHECK_MODULES([OGG],
                   [ogg],
                   [
+                    AC_DEFINE(HAVE_LIBOGG)
                     AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
                           [enable_plugin_voicemail=yes])
                   ],
@@ -860,13 +852,13 @@ AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xye
 AM_CONDITIONAL([ENABLE_PLUGIN_LUA], [test "x$enable_plugin_lua" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
-AM_CONDITIONAL([ENABLE_PLUGIN_SIPRE], [test "x$enable_plugin_sipre" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_AUVIOUSROOM], [test "x$enable_plugin_auviousroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_AUVIOUSRECORDPLAY], [test "x$enable_plugin_auviousrecordplay" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_AUVIOUSSIP], [test "x$enable_plugin_auvioussip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
@@ -876,6 +868,17 @@ AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xye
 ##
 
 PKG_CHECK_MODULES([EVENTS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson >= $jansson_version
+                  ])
+
+
+##
+# Loggers
+##
+
+PKG_CHECK_MODULES([LOGGERS],
                   [
                     glib-2.0 >= $glib_version
                     jansson >= $jansson_version
@@ -954,11 +957,25 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                            libavcodec
                            libavformat
                            ogg
+                           zlib
                          ])
       ])
 
+PKG_CHECK_MODULES([PCAP],
+                  [libpcap],
+                  [
+                   AC_DEFINE(HAVE_LIBPCAP)
+                   enable_pcap2mjr=yes
+                  ],
+                  [
+                   enable_pcap2mjr=no
+                  ])
+AC_SUBST([PCAP_CFLAGS])
+AC_SUBST([PCAP_LIBS])
+
 AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
+AM_CONDITIONAL([ENABLE_PCAP2MJR], [test "x$enable_pcap2mjr" = "xyes"])
 
 AC_CONFIG_FILES([
   Makefile
@@ -1033,11 +1050,8 @@ AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
 	[echo "    Video Call:            yes"],
 	[echo "    Video Call:            no"])
 AM_COND_IF([ENABLE_PLUGIN_SIP],
-	[echo "    SIP Gateway (Sofia):   yes"],
-	[echo "    SIP Gateway (Sofia):   no"])
-AM_COND_IF([ENABLE_PLUGIN_SIPRE],
-	[echo "    SIP Gateway (libre):   yes"],
-	[echo "    SIP Gateway (libre):   no"])
+	[echo "    SIP Gateway:           yes"],
+	[echo "    SIP Gateway:           no"])
 AM_COND_IF([ENABLE_PLUGIN_NOSIP],
 	[echo "    NoSIP (RTP Bridge):    yes"],
 	[echo "    NoSIP (RTP Bridge):    no"])
@@ -1084,6 +1098,13 @@ AM_COND_IF([ENABLE_MQTTEVH],
 AM_COND_IF([ENABLE_NANOMSGEVH],
 	[echo "    Nanomsg event handler: yes"],
 	[echo "    Nanomsg event handler: no"])
+AM_COND_IF([ENABLE_GELFEVH],
+	[echo "    GELF event handler:    yes"],
+	[echo "    GELF event handler:    no"])
+echo "External loggers:"
+AM_COND_IF([ENABLE_JSONLOGGER],
+	[echo "    JSON file logger:      yes"],
+	[echo "    JSON file logger:      no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"

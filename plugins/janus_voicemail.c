@@ -136,8 +136,8 @@ const char *janus_voicemail_get_package(void);
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_voicemail_setup_media(janus_plugin_session *handle);
-void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_voicemail_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_voicemail_hangup_media(janus_plugin_session *handle);
 void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_voicemail_query_session(janus_plugin_session *handle);
@@ -205,8 +205,8 @@ typedef struct janus_voicemail_session {
 	FILE *file;
 	ogg_stream_state *stream;
 	int seq;
-	gboolean started;
-	gboolean stopping;
+	volatile gint started;
+	volatile gint stopping;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -224,6 +224,9 @@ static void janus_voicemail_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
+	g_free(session->filename);
+	if(session->file)
+		fclose(session->file);
 	g_free(session);
 }
 static void janus_voicemail_message_free(janus_voicemail_message *msg) {
@@ -361,7 +364,9 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("voicemail handler", janus_voicemail_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VoiceMail handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VoiceMail handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VOICEMAIL_NAME);
@@ -442,8 +447,8 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->filename = g_strdup(f);
 	session->file = NULL;
 	session->seq = 0;
-	session->started = FALSE;
-	session->stopping = FALSE;
+	g_atomic_int_set(&session->started, 0);
+	g_atomic_int_set(&session->stopping, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_voicemail_session_free);
@@ -471,7 +476,6 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
 	janus_voicemail_hangup_media_internal(handle);
-	handle->plugin_handle = NULL;
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 
@@ -550,7 +554,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->hangingup, 0);
 	/* Only start recording this peer when we get this event */
 	session->start_time = janus_get_monotonic_time();
-	session->started = TRUE;
+	g_atomic_int_set(&session->started, 1);
 	/* Prepare JSON event */
 	json_t *event = json_object();
 	json_object_set_new(event, "voicemail", json_string("event"));
@@ -561,17 +565,18 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_voicemail_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
-	if(!session || g_atomic_int_get(&session->destroyed) || session->stopping || !session->started || session->start_time == 0)
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->stopping) ||
+			!g_atomic_int_get(&session->started) || session->start_time == 0)
 		return;
 	gint64 now = janus_get_monotonic_time();
 	/* Have 10 seconds passed? */
 	if((now-session->start_time) >= 10*G_USEC_PER_SEC) {
 		/* FIXME Simulate a "stop" coming from the browser */
-		session->started = FALSE;
+		g_atomic_int_set(&session->started, 0);
 		janus_refcount_increase(&session->ref);
 		janus_voicemail_message *msg = g_malloc(sizeof(janus_voicemail_message));
 		msg->handle = handle;
@@ -582,6 +587,8 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	}
 	/* Save the frame */
+	char *buf = packet->buffer;
+	uint16_t len = packet->length;
 	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	uint16_t seq = ntohs(rtp->seq_number);
 	if(session->seq == 0)
@@ -600,7 +607,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	ogg_write(session);
 }
 
-void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME Should we care? */
@@ -621,7 +628,7 @@ static void janus_voicemail_hangup_media_internal(janus_plugin_session *handle) 
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	session->started = FALSE;
+	g_atomic_int_set(&session->started, 0);
 	if(g_atomic_int_get(&session->destroyed))
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
@@ -726,7 +733,7 @@ static void *janus_voicemail_handler(void *data) {
 			/* Done: now wait for the setup_media callback to be called */
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
-			json_object_set_new(event, "status", json_string(session->started ? "started" : "starting"));
+			json_object_set_new(event, "status", json_string(g_atomic_int_get(&session->started) ? "started" : "starting"));
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -736,7 +743,7 @@ static void *janus_voicemail_handler(void *data) {
 		} else if(!strcasecmp(request_text, "update")) {
 			/* Only needed in case of renegotiations and ICE restarts (but with 10s messages is this worth it?) */
 			JANUS_LOG(LOG_VERB, "Updating existing recording\n");
-			if(session->stream == NULL || !session->started) {
+			if(session->stream == NULL || !g_atomic_int_get(&session->started)) {
 				JANUS_LOG(LOG_ERR, "Invalid state (not recording)\n");
 				error_code = JANUS_VOICEMAIL_ERROR_INVALID_STATE;
 				g_snprintf(error_cause, 512, "Invalid state (not recording)");
@@ -748,8 +755,8 @@ static void *janus_voicemail_handler(void *data) {
 			json_object_set_new(event, "status", json_string("updating"));
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
-			session->started = FALSE;
-			session->stopping = TRUE;
+			g_atomic_int_set(&session->started, 0);
+			g_atomic_int_set(&session->stopping, 1);
 			if(session->file)
 				fclose(session->file);
 			session->file = NULL;
@@ -760,9 +767,11 @@ static void *janus_voicemail_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "status", json_string("done"));
-			char url[1024];
-			g_snprintf(url, 1024, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
-			json_object_set_new(event, "recording", json_string(url));
+			if(session->recording_id > 0) {
+				char url[1024];
+				g_snprintf(url, 1024, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
+				json_object_set_new(event, "recording", json_string(url));
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -787,6 +796,13 @@ static void *janus_voicemail_handler(void *data) {
 			json_decref(event);
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			if(json_is_true(json_object_get(msg->jsep, "e2ee"))) {
+				/* Media is encrypted, but we need to save the unencrypted media frames to an .opus file */
+				JANUS_LOG(LOG_ERR, "Media encryption unsupported by this plugin\n");
+				error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Media encryption unsupported by this plugin");
+				goto error;
+			}
 			const char *type = NULL;
 			if(!strcasecmp(msg_sdp_type, "offer"))
 				type = "answer";
@@ -829,11 +845,11 @@ static void *janus_voicemail_handler(void *data) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			}
 		}
-		janus_voicemail_message_free(msg);
 
-		if(session->stopping) {
+		/* Tear down the session if we're done */
+		if(g_atomic_int_get(&session->stopping))
 			gateway->end_session(session->handle);
-		}
+		janus_voicemail_message_free(msg);
 
 		continue;
 

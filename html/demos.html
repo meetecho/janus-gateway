@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server: Demo Tests</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
@@ -16,11 +16,11 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
-	
+
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
 <nav class="navbar navbar-default navbar-static-top">
@@ -49,7 +49,7 @@
 					<td>A Video Call demo, a bit like AppRTC but with media passing through Janus.</td>
 				</tr>
 				<tr>
-					<td><a href="siptest.html">SIP Gateway (Sofia)</a></td>
+					<td><a href="siptest.html">SIP Gateway</a></td>
 					<td>A SIP Gateway demo, allowing you to register at a SIP server and start/receive calls.</td>
 				</tr>
 				<tr>
@@ -82,10 +82,6 @@
 					<td colspan=2><h3>Other legacy demos</h3></td>
 				</tr>
 				<tr>
-					<td><a href="sipretest.html">SIP Gateway (libre)</a></td>
-					<td>Same as the SIP demo above, but using the libre-based plugin instead of the Sofia-based one.</td>
-				</tr>
-				<tr>
 					<td><a href="nosiptest.html">NoSIP (SDP/RTP)</a></td>
 					<td>A legacy interop demo (e.g., with a SIP peer) where signalling is up to the application.</td>
 				</tr>
@@ -97,6 +93,14 @@
 				<tr>
 					<td><a href="devicetest.html">Device Selection</a></td>
 					<td>A variant of the Echo Test demo, that allows you to choose a specific capture device.</td>
+				</tr>
+				<tr>
+					<td><a href="e2etest.html">End-to-end Encryption</a></td>
+					<td>A variant of the Echo Test demo, that allows you to encrypt the video in a way that Janus can't access it, but can still route it.</td>
+				</tr>
+				<tr>
+					<td><a href="multiopus.html">Multichannel Opus (surround)</a></td>
+					<td>A variant of the Echo Test demo, that shows multichannel/surround Opus support.</td>
 				</tr>
 				<tr>
 					<td><a href="vp9svctest.html">VP9-SVC Video Room</a></td>

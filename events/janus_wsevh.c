@@ -321,6 +321,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler client thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 	/* Start another thread to handle incoming events */
@@ -330,6 +331,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 
@@ -485,7 +487,7 @@ static void *janus_wsevh_thread(void *data) {
 			if(reconnect_retries > 0) {
 				/* Wait a few seconds before retrying */
 				gint64 now = janus_get_monotonic_time();
-				if((now-disconnected) < reconnect_retries*G_USEC_PER_SEC) {
+				if((now-disconnected) < (gint64)reconnect_retries*G_USEC_PER_SEC) {
 					/* Try again later */
 					g_usleep(100000);
 					continue;
@@ -535,8 +537,6 @@ static void *janus_wsevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 
 		event = g_async_queue_pop(events);
-		if(event == NULL)
-			continue;
 		if(event == &exit_event)
 			break;
 		count = 0;

@@ -69,6 +69,10 @@ guint32 janus_random_uint32(void);
  * @returns A random 64-bit unsigned integer */
 guint64 janus_random_uint64(void);
 
+/*! \brief Helper to generate random UUIDs (needed by some plugins)
+ * @returns A random UUID string, which must be deallocated with \c g_free */
+char *janus_random_uuid(void);
+
 /*! \brief Helper to generate an allocated copy of a guint64 number
  * @note While apparently silly, this is needed in order to make sure guint64 values
  * used as keys in GHashTable operations are not lost: using temporary guint64 numbers
@@ -153,6 +157,19 @@ int janus_pidfile_create(const char *file);
 /*! \brief Unlock and remove a previously created PID file
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
+
+/*! \brief Add a folder to the protected list (meaning we won't create
+ * files there, like recordings or pcap dumps)
+ * @param folder Folder to protect */
+void janus_protected_folder_add(const char *folder);
+
+/*! \brief Check if the path points to a protected folder
+ * @param path Path we need to check
+ * @returns TRUE if the folder is protected, and FALSE otherwise */
+gboolean janus_is_folder_protected(const char *path);
+
+/*! \brief Cleanup the list of protected folder */
+void janus_protected_folders_clear(void);
 
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
@@ -262,6 +279,20 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len);
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
 
+/*! \brief Helper method to check if an AV1 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_av1_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.265 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_h265_is_keyframe(const char *buffer, int len);
+
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {
 	uint16_t last_picid, base_picid, base_picid_prev;
@@ -339,5 +370,17 @@ void janus_set3(guint8 *data, size_t i, guint32 val);
  * @param[in] val value to write
  */
 void janus_set4(guint8 *data, size_t i, guint32 val);
+
+/*! \brief Helper method to compress a string to gzip (using zlib)
+ * \note It's up to you to provide a buffer large enough for the compressed
+ * data: in case the buffer isn't large enough, the request will fail
+ * @param[in] compression Compression factor (1=fastest, 9=best compression)
+ * @param[in] text Pointer to the string to compress
+ * @param[in] tlen Length of the string to compress
+ * @param[in] compressed Pointer to the buffer where to compress the string to
+ * @param[in] zlen Size of the output buffer
+ * @returns The size of the compressed data, if successful, or 0 otherwise
+ */
+size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen);
 
 #endif

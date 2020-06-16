@@ -68,8 +68,10 @@ typedef struct janus_duktape_session {
 	janus_recorder *arc;				/* The Janus recorder instance for audio, if enabled */
 	janus_recorder *vrc;				/* The Janus recorder instance for video, if enabled */
 	janus_recorder *drc;				/* The Janus recorder instance for data, if enabled */
+	gboolean e2ee;						/* Whether media is encrypted, e.g., using Insertable Streams */
 	janus_mutex rec_mutex;				/* Mutex to protect the recorders from race conditions */
 	volatile gint started;				/* Whether this session's PeerConnection is ready or not */
+	volatile gint dataready;			/* Whether the data channel was established on this sessions's PeerConnection */
 	volatile gint hangingup;			/* Whether this session's PeerConnection is hanging up */
 	volatile gint destroyed;			/* Whether this session's been marked as destroyed */
 	/* If you need any additional property (e.g., for hooks you added in janus_duktape_extra.c) add them below this line */

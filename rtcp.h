@@ -276,6 +276,9 @@ typedef struct rtcp_context
 	double in_media_link_quality;
 	double out_link_quality;
 	double out_media_link_quality;
+
+	/* TODO Incoming transport-wide CC feedback*/
+
 } rtcp_context;
 typedef rtcp_context janus_rtcp_context;
 
@@ -319,6 +322,12 @@ uint32_t janus_rtcp_context_get_out_link_quality(janus_rtcp_context *ctx);
  * @param[in] ctx The RTCP context to query
  * @returns Outbound media link quality estimation */
 uint32_t janus_rtcp_context_get_out_media_link_quality(janus_rtcp_context *ctx);
+/*! \brief Method to swap Report Blocks and move media RB in first position in case rtx SSRC comes first
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[in] rtx_ssrc The rtx SSRC
+ * @returns The receiver SSRC, or 0 in case of error */
+void janus_rtcp_swap_report_blocks(char *packet, int len, uint32_t rtx_ssrc);
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
@@ -332,29 +341,29 @@ guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
 
 /*! \brief Method to check that a RTCP packet size is at least the minimum necessary (8 bytes)
  *  and to validate the length field against the actual size
- * @param[in] packet The message data
+ * @param[in] rtcp The RTCP message
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_len(janus_rtcp_header *rtcp, int len);
 /*! \brief Method to check if a RTCP packet could contain a Receiver Report
- * @param[in] packet The message data
+ * @param[in] rtcp The RTCP message
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_rr(janus_rtcp_header *rtcp, int len);
 /*! \brief Method to check if a RTCP packet could contain a Sender Report
- * @param[in] packet The message data
+ * @param[in] rtcp The RTCP message
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_sr(janus_rtcp_header *rtcp, int len);
 /*! \brief Method to check if a RTCP packet could contain a Feedback Message
  * with a defined FCI size.
- * @param[in] packet The message data
+ * @param[in] rtcp The RTCP message
  * @param[in] len The message data length in bytes
  * @param[in] sizeof_fci The size of a FCI entry
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_fci(janus_rtcp_header *rtcp, int len, int sizeof_fci);
 /*! \brief Method to check if a RTCP packet could contain an AFB REMB Message
- * @param[in] packet The message data
+ * @param[in] rtcp The RTCP message
  * @param[in] len The message data length in bytes
  * @returns TRUE if packet is OK, or FALSE in case of error */
 gboolean janus_rtcp_check_remb(janus_rtcp_header *rtcp, int len);
@@ -387,7 +396,6 @@ int janus_rtcp_fix_report_data(char *packet, int len, uint32_t base_ts, uint32_t
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
- * @param[in] fixssrc Whether the method needs to fix the message or just parse it
  * @param[in] fixssrc Whether the method needs to fix the message or just parse it
  * @param[in] newssrcl The SSRC of the sender to put in the message
  * @param[in] newssrcr The SSRC of the receiver to put in the message

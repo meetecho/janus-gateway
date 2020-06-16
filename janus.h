@@ -33,6 +33,7 @@
 #include "refcount.h"
 #include "transports/transport.h"
 #include "events/eventhandler.h"
+#include "loggers/logger.h"
 #include "plugins/plugin.h"
 
 
@@ -126,6 +127,10 @@ struct janus_request {
 	gboolean admin;
 	/*! \brief Pointer to the original request, if available */
 	json_t *message;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 /*! \brief Helper to allocate a janus_request instance
  * @param[in] transport Pointer to the transport
@@ -211,6 +216,26 @@ void janus_eventhandler_close(void *key, void *value, void *user_data);
  * @param[in] value The janus_eventhandler instance to close
  * @param[in] user_data User provided data (unused) */
 void janus_eventhandlerso_close(void *key, void *value, void *user_data);
+///@}
+
+/** @name Janus external logger plugin management
+ * By default, Janus has integrated support for logging to stdout and to
+ * a static file. Custom and advanced logging can be accomplished using
+ * additional logger plugins. These logger plugins are shared objects that
+ * need to implement the interfaces defined in logger.h and as such are
+ * dynamically loaded by the server at startup, and unloaded when the server closes.
+ */
+///@{
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy a logger instance
+ * @param[in] key Key of the loggers hash table (package name)
+ * @param[in] value The janus_logger instance to destroy
+ * @param[in] user_data User provided data (unused) */
+void janus_logger_close(void *key, void *value, void *user_data);
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close a logger plugin
+ * @param[in] key Key of the events hash table (package name)
+ * @param[in] value The janus_logger instance to close
+ * @param[in] user_data User provided data (unused) */
+void janus_loggerso_close(void *key, void *value, void *user_data);
 ///@}
 
 /** @name Janus plugin management

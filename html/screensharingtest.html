@@ -6,10 +6,10 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server: Screen Sharing Demo</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="screensharingtest.js"></script>
@@ -22,9 +22,9 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 </head>
 <body>
 
@@ -52,24 +52,8 @@
 						<p>When started, the demo asks you whether you want to be the one sharing the screen
 						(or an application you're using, if your browser version is recent enough)
 						or a viewer to an existing session. When sharing your screen/application, an ID will be returned
-						that you'll be able to share with other people to act as viewers. Just notice that,
-						for the sake of simplicity, just the screen is shared, without any additional audio
-						and video feed: you may want to try and add those yourself to the demo, by relying,
-						for instance, on the AudioBridge plugin for the purpose.</p>
-						<div class="alert alert-info"><b>Note well!</b> Sharing your screen is an experimental
-						feature in WebRTC, and only works if the browser you're using meets particular requirements.
-						If you're using a relatively recent version of Chrome (34+), you'll need to install
-						<b><a href="https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj">this extension</a></b>.
-						If you're using an older verson of Chrome, instead, you'll need to manually enable the Chrome flag
-						<b><a href="chrome://flags/#enable-usermedia-screen-capture">chrome://flags/#enable-usermedia-screen-capture</a></b>
-						or otherwise you'll get a permission error. Besides, please beware that some versions of Chrome may only
-						support the feature if you explicitly pass the <code>--enable-usermedia-screen-capturing</code>
-						parameter on the command line. Finally, active screen/application sharing will only work from
-						Firefox if you have at least version 33 installed: if so, make sure you also manually enable
-						the <code>media.getusermedia.screensharing.enabled</code> setting in
-						<b><a href="about:config">about:config</a></b>, and that the domain this web application is from
-						is listed in <code>media.getusermedia.screensharing.allowed_domains</code>.</div>
-						<div class="alert alert-info"><b>Note well (part 2)!</b> If you want to share your screen, you may need to open
+						that you'll be able to share with other people to act as viewers.</p>
+						<div class="alert alert-info"><b>Note well!</b> If you want to share your screen, you may need to open
 						the <b>HTTPS</b> version of this page. If Janus is not behind the same webserver
 						as the pages that are served (that is, you didn't configure a proxying of HTTP requests
 						to Janus via a web frontend, e.g., Apache HTTPD), make sure you started it
@@ -86,7 +70,7 @@
 				<div class="row">
 					<div class="input-group margin-bottom-md hide" id="createnow">
 						<span class="input-group-addon"><i class="fa fa-users fa-1"></i></span>
-						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);"></input>
+						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="create">Share your screen</button>
 						</span>
@@ -98,7 +82,7 @@
 				<div class="row">
 					<div class="input-group margin-bottom-md hide" id="joinnow">
 						<span class="input-group-addon"><i class="fa fa-play-circle-o fa-1"></i></span>
-						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);"></input>
+						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);" />
 						<span class="input-group-btn">
 							<button class="btn btn-success" autocomplete="off" id="join">Join an existing session</button>
 						</span>

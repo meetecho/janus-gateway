@@ -267,7 +267,7 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
 	int fd = -1;
 	if(addr_type == janus_network_query_options_ipv4 || addr_type == janus_network_query_options_any_ip) {
 		/* Let's try IPv4 (FIXME Should probably use other internal methods) */
-		struct sockaddr_in addr;
+		struct sockaddr_in addr = { 0 };
 		socklen_t len;
 		fd = socket(AF_INET, SOCK_DGRAM, 0);
 		if(fd > -1) {
@@ -290,7 +290,7 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
 	fd = -1;
 	if(!found && (addr_type == janus_network_query_options_ipv6 || addr_type == janus_network_query_options_any_ip)) {
 		/* Let's try IPv6 (FIXME Should probably use other internal methods) */
-		struct sockaddr_in6 addr;
+		struct sockaddr_in6 addr = { 0 };
 		socklen_t len;
 		fd = socket(AF_INET6, SOCK_DGRAM, 0);
 		if(fd > -1) {

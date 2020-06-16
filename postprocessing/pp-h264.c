@@ -1,7 +1,7 @@
 /*! \file    pp-h264.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Post-processing to generate .mp4 files
+ * \brief    Post-processing to generate .mp4 files out of H.264 frames
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
  *
@@ -62,7 +62,9 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 	if(destination == NULL)
 		return -1;
 	/* Setup FFmpeg */
+#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
 	av_register_all();
+#endif
 	/* Adjust logging to match the postprocessor's */
 	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
 		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
@@ -84,7 +86,8 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 		JANUS_LOG(LOG_ERR, "Error guessing format\n");
 		return -1;
 	}
-	snprintf(fctx->filename, sizeof(fctx->filename), "%s", destination);
+    char filename[1024];
+	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
 	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
 	if(!codec) {
@@ -137,8 +140,9 @@ int janus_pp_h264_create(char *destination, char *metadata, gboolean faststart) 
 	if(faststart)
 		av_dict_set(&options, "movflags", "+faststart", 0);
 
-	if(avio_open2(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE, NULL, &options) < 0) {
-		JANUS_LOG(LOG_ERR, "Error opening file for output\n");
+	int res = avio_open2(&fctx->pb, filename, AVIO_FLAG_WRITE, NULL, &options);
+	if(res < 0) {
+		JANUS_LOG(LOG_ERR, "Error opening file for output (%d)\n", res);
 		return -1;
 	}
 	if(avformat_write_header(fctx, &options) < 0) {
@@ -357,7 +361,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
 	uint8_t *received_frame = g_malloc0(numBytes);
-	uint8_t *buffer = g_malloc0(10000), *start = buffer;
+	uint8_t *buffer = g_malloc0(numBytes), *start = buffer;
 	int len = 0, frameLen = 0;
 	int keyFrame = 0;
 	gboolean keyframe_found = FALSE;
@@ -426,6 +430,14 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				while(tot > 0) {
 					memcpy(&psize, buffer, 2);
 					psize = ntohs(psize);
+					if((frameLen + psize) >= numBytes) {
+						JANUS_LOG(LOG_ERR, "Invalid size %u + %"SCNu16" (exceeds buffer size)\n", frameLen, psize);
+						/* Done, we'll wait for the next video data to write the frame */
+						if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+							break;
+						tmp = tmp->next;
+						continue;
+					}
 					buffer += 2;
 					tot -= 2;
 					/* Now we have a single NAL */

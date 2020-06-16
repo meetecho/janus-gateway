@@ -116,7 +116,9 @@ function handleMessage(id, tr, msg, jsep)
 			end
 			local offer = sdp.parse(cojsep.sdp)
 			logger.print("Got offer: " .. sdp.render(offer))
-			local answer = sdp.generateAnswer(offer, { audio = true, video = true, data = true })
+			local answer = sdp.generateAnswer(offer, { audio = true, video = true, data = true,
+				audioCodec = comsg["audiocodec"], videoCodec = comsg["videocodec"],
+				vp9Profile = comsg["videoprofile"], h264Profile = comsg["videoprofile"] })
 			logger.print("Generated answer: " .. sdp.render(answer))
 			logger.print("Processing request: " .. dumpTable(comsg))
 			processRequest(id, comsg)
@@ -169,11 +171,24 @@ function hangupMedia(id)
 	end
 end
 
-function incomingData(id, buf, len)
+function incomingTextData(id, buf, len)
 	-- Relaying RTP/RTCP in Lua makes no sense, but just for fun
-	-- we handle data channel messages ourselves to manipulate them
+	-- we handle text data channel messages ourselves to manipulate them
 	local edit = "[" .. name .. "] --> " .. buf
-	relayData(id, edit, string.len(edit));
+	relayTextData(id, edit, string.len(edit));
+end
+
+function incomingBinaryData(id, buf, len)
+	-- If the data we're getting is binary, send it back as it is
+	relayBinaryData(id, buf, len);
+end
+
+function dataReady(id)
+	-- This callback is invoked when the datachannel first becomes
+	-- available (meaning you should never send data before it has been
+	-- invoked at least once), but also when the datachannel is ready to
+	-- receive more data (buffers are empty), which means it can be used
+	-- to throttle outgoing data and not send too much at a time.
 end
 
 function resumeScheduler()
@@ -229,6 +244,11 @@ function processRequest(id, msg)
 		if fnbase == nil then
 			fnbase = "lua-echotest-" .. id .. "-" .. require 'socket'.gettime()
 		end
+		-- For the sake of simplicity, we're assuming Opus/VP8 here; in
+		-- practice, you'll need to check what was negotiated. If you
+		-- want the codec-specific info to be saved to the .mjr file as
+		-- well, you'll need to add the '/fmtp=<info>' to the codec name,
+		-- e.g.:    "vp9/fmtp=profile-id=2"
 		startRecording(id,
 			"audio", "opus", "/tmp", fnbase .. "-audio",
 			"video", "vp8", "/tmp", fnbase .. "-video",

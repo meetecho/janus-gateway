@@ -20,7 +20,7 @@
  * these requests addressed to Janus should include as part of their payload,
  * when needed, additional pieces of information like \c session_id and
  * \c handle_id. That is, where you'd send a Janus request related to a
- * specific session to the \c /janus/<session> path, with RabbitMQ
+ * specific session to the \c /janus/\<session> path, with RabbitMQ
  * you'd have to send the same request with an additional \c session_id
  * field in the JSON payload.
  * \note When you create a session using RabbitMQ, a subscription to the
@@ -109,7 +109,6 @@ static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
-/* FIXME: Should it be configurable? */
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
 
 /* JSON serialization options */
@@ -154,7 +153,7 @@ static janus_transport_session *rmq_session = NULL;
 /* Global properties */
 static char *rmqhost = NULL, *vhost = NULL, *username = NULL, *password = NULL,
 	*ssl_cacert_file = NULL, *ssl_cert_file = NULL, *ssl_key_file = NULL,
-	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL;
+	*to_janus = NULL, *from_janus = NULL, *to_janus_admin = NULL, *from_janus_admin = NULL, *janus_exchange = NULL, *janus_exchange_type = NULL;
 
 
 /* Transport implementation */
@@ -301,6 +300,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
+		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange_type");
+		if(!item || !item->value) {
+			janus_exchange_type = (char *)JANUS_RABBITMQ_EXCHANGE_TYPE;
+		} else {
+			janus_exchange_type = g_strdup(item->value);
+		}
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_INFO, "Missing name of outgoing exchange for RabbitMQ integration, using default\n");
@@ -308,9 +313,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			janus_exchange = g_strdup(item->value);
 		}
 		if (janus_exchange == NULL) {
-			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
+			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)  exchange_type:%s \n", rmqhost, rmqport, to_janus, from_janus, janus_exchange_type);
 		} else {
-			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s) exch: (%s)\n", rmqhost, rmqport, to_janus, from_janus, janus_exchange);
+			JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s) exch: (%s) exchange_type:%s \n", rmqhost, rmqport, to_janus, from_janus, janus_exchange, janus_exchange_type);
 		}
 		rmq_janus_api_enabled = TRUE;
 	}
@@ -414,7 +419,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		if(janus_exchange != NULL) {
 			JANUS_LOG(LOG_VERB, "Declaring exchange...\n");
 			rmq_client->janus_exchange = amqp_cstring_bytes(janus_exchange);
-			amqp_exchange_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange, amqp_cstring_bytes(JANUS_RABBITMQ_EXCHANGE_TYPE), 0, 0, 0, 0, amqp_empty_table);
+			amqp_exchange_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->janus_exchange, amqp_cstring_bytes(janus_exchange_type), 0, 0, 0, 0, amqp_empty_table);
 			result = amqp_get_rpc_reply(rmq_client->rmq_conn);
 			if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 				JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
@@ -482,7 +487,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->in_thread = g_thread_try_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -491,7 +498,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->out_thread = g_thread_try_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -748,8 +757,6 @@ void *janus_rmq_out_thread(void *data) {
 	while(!rmq_client->destroy && !g_atomic_int_get(&stopping)) {
 		/* We send messages from here as well, not only notifications */
 		janus_rabbitmq_response *response = g_async_queue_pop(rmq_client->messages);
-		if(response == NULL)
-			continue;
 		if(response == &exit_message)
 			break;
 		if(!rmq_client->destroy && !g_atomic_int_get(&stopping) && response->payload) {
