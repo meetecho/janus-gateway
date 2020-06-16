@@ -1,13 +1,13 @@
 /*
- *  Duktape public API for Duktape 2.2.1.
+ *  Duktape public API for Duktape 2.5.0.
  *
  *  See the API reference for documentation on call semantics.  The exposed,
  *  supported API is between the "BEGIN PUBLIC API" and "END PUBLIC API"
  *  comments.  Other parts of the header are Duktape internal and related to
  *  e.g. platform/compiler/feature detection.
  *
- *  Git commit external (external).
- *  Git branch external.
+ *  Git commit 6001888049cb42656f8649db020e804bcdeca6a7 (v2.5.0).
+ *  Git branch master.
  *
  *  See Duktape AUTHORS.rst and LICENSE.txt for copyright and
  *  licensing information.
@@ -21,7 +21,7 @@
  *  
  *  (http://opensource.org/licenses/MIT)
  *  
- *  Copyright (c) 2013-2017 by Duktape authors (see AUTHORS.rst)
+ *  Copyright (c) 2013-2019 by Duktape authors (see AUTHORS.rst)
  *  
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to deal
@@ -92,6 +92,24 @@
  *  * Steven Don (https://github.com/shdon)
  *  * Simon Stone (https://github.com/sstone1)
  *  * \J. McC. (https://github.com/jmhmccr)
+ *  * Jakub Nowakowski (https://github.com/jimvonmoon)
+ *  * Tommy Nguyen (https://github.com/tn0502)
+ *  * Fabrice Fontaine (https://github.com/ffontaine)
+ *  * Christopher Hiller (https://github.com/boneskull)
+ *  * Gonzalo Diethelm (https://github.com/gonzus)
+ *  * Michal Kasperek (https://github.com/michalkas)
+ *  * Andrew Janke (https://github.com/apjanke)
+ *  * Steve Fan (https://github.com/stevefan1999)
+ *  * Edward Betts (https://github.com/edwardbetts)
+ *  * Ozhan Duz (https://github.com/webfolderio)
+ *  * Akos Kiss (https://github.com/akosthekiss)
+ *  * TheBrokenRail (https://github.com/TheBrokenRail)
+ *  * Jesse Doyle (https://github.com/jessedoyle)
+ *  * Gero Kuehn (https://github.com/dc6jgk)
+ *  * James Swift (https://github.com/phraemer)
+ *  * Luis de Bethencourt (https://github.com/luisbg)
+ *  * Ian Whyman (https://github.com/v00d00)
+ *  * Rick Sayre (https://github.com/whorfin)
  *  
  *  Other contributions
  *  ===================
@@ -130,6 +148,10 @@
  *  * https://github.com/chris-y
  *  * Laurent Zubiaur (https://github.com/lzubiaur)
  *  * Neil Kolban (https://github.com/nkolban)
+ *  * Wilhelm Wanecek (https://github.com/wanecek)
+ *  * Andrew Janke (https://github.com/apjanke)
+ *  * Unamer (https://github.com/unamer)
+ *  * Karl Dahlke (eklhad@gmail.com)
  *  
  *  If you are accidentally missing from this list, send me an e-mail
  *  (``sami.vaarala@iki.fi``) and I'll fix the omission.
@@ -150,20 +172,20 @@
 
 /* Duktape version, (major * 10000) + (minor * 100) + patch.  Allows C code
  * to #if (DUK_VERSION >= NNN) against Duktape API version.  The same value
- * is also available to Ecmascript code in Duktape.version.  Unofficial
+ * is also available to ECMAScript code in Duktape.version.  Unofficial
  * development snapshots have 99 for patch level (e.g. 0.10.99 would be a
  * development version after 0.10.0 but before the next official release).
  */
-#define DUK_VERSION                       20201L
+#define DUK_VERSION                       20500L
 
 /* Git commit, describe, and branch for Duktape build.  Useful for
  * non-official snapshot builds so that application code can easily log
- * which Duktape snapshot was used.  Not available in the Ecmascript
+ * which Duktape snapshot was used.  Not available in the ECMAScript
  * environment.
  */
-#define DUK_GIT_COMMIT                    "external"
-#define DUK_GIT_DESCRIBE                  "external"
-#define DUK_GIT_BRANCH                    "external"
+#define DUK_GIT_COMMIT                    "6001888049cb42656f8649db020e804bcdeca6a7"
+#define DUK_GIT_DESCRIBE                  "v2.5.0"
+#define DUK_GIT_BRANCH                    "master"
 
 /* External duk_config.h provides platform/compiler/OS dependent
  * typedefs and macros, and DUK_USE_xxx config options so that
@@ -258,7 +280,7 @@ struct duk_number_list_entry {
 };
 
 struct duk_time_components {
-	duk_double_t year;          /* year, e.g. 2016, Ecmascript year range */
+	duk_double_t year;          /* year, e.g. 2016, ECMAScript year range */
 	duk_double_t month;         /* month: 1-12 */
 	duk_double_t day;           /* day: 1-31 */
 	duk_double_t hours;         /* hour: 0-59 */
@@ -294,12 +316,12 @@ struct duk_time_components {
 /* Value types, used by e.g. duk_get_type() */
 #define DUK_TYPE_MIN                      0U
 #define DUK_TYPE_NONE                     0U    /* no value, e.g. invalid index */
-#define DUK_TYPE_UNDEFINED                1U    /* Ecmascript undefined */
-#define DUK_TYPE_NULL                     2U    /* Ecmascript null */
-#define DUK_TYPE_BOOLEAN                  3U    /* Ecmascript boolean: 0 or 1 */
-#define DUK_TYPE_NUMBER                   4U    /* Ecmascript number: double */
-#define DUK_TYPE_STRING                   5U    /* Ecmascript string: CESU-8 / extended UTF-8 encoded */
-#define DUK_TYPE_OBJECT                   6U    /* Ecmascript object: includes objects, arrays, functions, threads */
+#define DUK_TYPE_UNDEFINED                1U    /* ECMAScript undefined */
+#define DUK_TYPE_NULL                     2U    /* ECMAScript null */
+#define DUK_TYPE_BOOLEAN                  3U    /* ECMAScript boolean: 0 or 1 */
+#define DUK_TYPE_NUMBER                   4U    /* ECMAScript number: double */
+#define DUK_TYPE_STRING                   5U    /* ECMAScript string: CESU-8 / extended UTF-8 encoded */
+#define DUK_TYPE_OBJECT                   6U    /* ECMAScript object: includes objects, arrays, functions, threads */
 #define DUK_TYPE_BUFFER                   7U    /* fixed or dynamic, garbage collected byte buffer */
 #define DUK_TYPE_POINTER                  8U    /* raw void pointer */
 #define DUK_TYPE_LIGHTFUNC                9U    /* lightweight function pointer */
@@ -373,30 +395,35 @@ struct duk_time_components {
 #define DUK_DEFPROP_C                     DUK_DEFPROP_CONFIGURABLE
 #define DUK_DEFPROP_WE                    (DUK_DEFPROP_WRITABLE | DUK_DEFPROP_ENUMERABLE)
 #define DUK_DEFPROP_WC                    (DUK_DEFPROP_WRITABLE | DUK_DEFPROP_CONFIGURABLE)
+#define DUK_DEFPROP_EC                    (DUK_DEFPROP_ENUMERABLE | DUK_DEFPROP_CONFIGURABLE)
 #define DUK_DEFPROP_WEC                   (DUK_DEFPROP_WRITABLE | DUK_DEFPROP_ENUMERABLE | DUK_DEFPROP_CONFIGURABLE)
 #define DUK_DEFPROP_HAVE_W                DUK_DEFPROP_HAVE_WRITABLE
 #define DUK_DEFPROP_HAVE_E                DUK_DEFPROP_HAVE_ENUMERABLE
 #define DUK_DEFPROP_HAVE_C                DUK_DEFPROP_HAVE_CONFIGURABLE
 #define DUK_DEFPROP_HAVE_WE               (DUK_DEFPROP_HAVE_WRITABLE | DUK_DEFPROP_HAVE_ENUMERABLE)
 #define DUK_DEFPROP_HAVE_WC               (DUK_DEFPROP_HAVE_WRITABLE | DUK_DEFPROP_HAVE_CONFIGURABLE)
+#define DUK_DEFPROP_HAVE_EC               (DUK_DEFPROP_HAVE_ENUMERABLE | DUK_DEFPROP_HAVE_CONFIGURABLE)
 #define DUK_DEFPROP_HAVE_WEC              (DUK_DEFPROP_HAVE_WRITABLE | DUK_DEFPROP_HAVE_ENUMERABLE | DUK_DEFPROP_HAVE_CONFIGURABLE)
 #define DUK_DEFPROP_SET_W                 DUK_DEFPROP_SET_WRITABLE
 #define DUK_DEFPROP_SET_E                 DUK_DEFPROP_SET_ENUMERABLE
 #define DUK_DEFPROP_SET_C                 DUK_DEFPROP_SET_CONFIGURABLE
 #define DUK_DEFPROP_SET_WE                (DUK_DEFPROP_SET_WRITABLE | DUK_DEFPROP_SET_ENUMERABLE)
 #define DUK_DEFPROP_SET_WC                (DUK_DEFPROP_SET_WRITABLE | DUK_DEFPROP_SET_CONFIGURABLE)
+#define DUK_DEFPROP_SET_EC                (DUK_DEFPROP_SET_ENUMERABLE | DUK_DEFPROP_SET_CONFIGURABLE)
 #define DUK_DEFPROP_SET_WEC               (DUK_DEFPROP_SET_WRITABLE | DUK_DEFPROP_SET_ENUMERABLE | DUK_DEFPROP_SET_CONFIGURABLE)
 #define DUK_DEFPROP_CLEAR_W               DUK_DEFPROP_CLEAR_WRITABLE
 #define DUK_DEFPROP_CLEAR_E               DUK_DEFPROP_CLEAR_ENUMERABLE
 #define DUK_DEFPROP_CLEAR_C               DUK_DEFPROP_CLEAR_CONFIGURABLE
 #define DUK_DEFPROP_CLEAR_WE              (DUK_DEFPROP_CLEAR_WRITABLE | DUK_DEFPROP_CLEAR_ENUMERABLE)
 #define DUK_DEFPROP_CLEAR_WC              (DUK_DEFPROP_CLEAR_WRITABLE | DUK_DEFPROP_CLEAR_CONFIGURABLE)
+#define DUK_DEFPROP_CLEAR_EC              (DUK_DEFPROP_CLEAR_ENUMERABLE | DUK_DEFPROP_CLEAR_CONFIGURABLE)
 #define DUK_DEFPROP_CLEAR_WEC             (DUK_DEFPROP_CLEAR_WRITABLE | DUK_DEFPROP_CLEAR_ENUMERABLE | DUK_DEFPROP_CLEAR_CONFIGURABLE)
 #define DUK_DEFPROP_ATTR_W                (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_W)
 #define DUK_DEFPROP_ATTR_E                (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_E)
 #define DUK_DEFPROP_ATTR_C                (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_C)
 #define DUK_DEFPROP_ATTR_WE               (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_WE)
 #define DUK_DEFPROP_ATTR_WC               (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_WC)
+#define DUK_DEFPROP_ATTR_EC               (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_EC)
 #define DUK_DEFPROP_ATTR_WEC              (DUK_DEFPROP_HAVE_WEC | DUK_DEFPROP_WEC)
 
 /* Flags for duk_push_thread_raw() */
@@ -437,18 +464,24 @@ struct duk_time_components {
  *  Macros to create Symbols as C statically constructed strings.
  *
  *  Call e.g. as DUK_HIDDEN_SYMBOL("myProperty") <=> ("\xFF" "myProperty").
+ *
  *  Local symbols have a unique suffix, caller should take care to avoid
  *  conflicting with the Duktape internal representation by e.g. prepending
  *  a '!' character: DUK_LOCAL_SYMBOL("myLocal", "!123").
  *
  *  Note that these can only be used for string constants, not dynamically
  *  created strings.
+ *
+ *  You shouldn't normally use DUK_INTERNAL_SYMBOL() at all.  It is reserved
+ *  for Duktape internal symbols only.  There are no versioning guarantees
+ *  for internal symbols.
  */
 
 #define DUK_HIDDEN_SYMBOL(x)     ("\xFF" x)
 #define DUK_GLOBAL_SYMBOL(x)     ("\x80" x)
 #define DUK_LOCAL_SYMBOL(x,uniq) ("\x81" x "\xff" uniq)
 #define DUK_WELLKNOWN_SYMBOL(x)  ("\x81" x "\xff")
+#define DUK_INTERNAL_SYMBOL(x)   ("\x82" x)
 
 /*
  *  If no variadic macros, __FILE__ and __LINE__ are passed through globals
@@ -634,6 +667,7 @@ DUK_EXTERNAL_DECL void duk_swap_top(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL void duk_dup(duk_context *ctx, duk_idx_t from_idx);
 DUK_EXTERNAL_DECL void duk_dup_top(duk_context *ctx);
 DUK_EXTERNAL_DECL void duk_insert(duk_context *ctx, duk_idx_t to_idx);
+DUK_EXTERNAL_DECL void duk_pull(duk_context *ctx, duk_idx_t from_idx);
 DUK_EXTERNAL_DECL void duk_replace(duk_context *ctx, duk_idx_t to_idx);
 DUK_EXTERNAL_DECL void duk_copy(duk_context *ctx, duk_idx_t from_idx, duk_idx_t to_idx);
 DUK_EXTERNAL_DECL void duk_remove(duk_context *ctx, duk_idx_t idx);
@@ -668,7 +702,21 @@ DUK_EXTERNAL_DECL void duk_push_pointer(duk_context *ctx, void *p);
 DUK_EXTERNAL_DECL const char *duk_push_sprintf(duk_context *ctx, const char *fmt, ...);
 DUK_EXTERNAL_DECL const char *duk_push_vsprintf(duk_context *ctx, const char *fmt, va_list ap);
 
+/* duk_push_literal() may evaluate its argument (a C string literal) more than
+ * once on purpose.  When speed is preferred, sizeof() avoids an unnecessary
+ * strlen() at runtime.  Sizeof("foo") == 4, so subtract 1.  The argument
+ * must be non-NULL and should not contain internal NUL characters as the
+ * behavior will then depend on config options.
+ */
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_push_literal(ctx,cstring)  duk_push_string((ctx), (cstring))
+#else
+DUK_EXTERNAL_DECL const char *duk_push_literal_raw(duk_context *ctx, const char *str, duk_size_t len);
+#define duk_push_literal(ctx,cstring)  duk_push_literal_raw((ctx), (cstring), sizeof((cstring)) - 1U)
+#endif
+
 DUK_EXTERNAL_DECL void duk_push_this(duk_context *ctx);
+DUK_EXTERNAL_DECL void duk_push_new_target(duk_context *ctx);
 DUK_EXTERNAL_DECL void duk_push_current_function(duk_context *ctx);
 DUK_EXTERNAL_DECL void duk_push_current_thread(duk_context *ctx);
 DUK_EXTERNAL_DECL void duk_push_global_object(duk_context *ctx);
@@ -679,6 +727,7 @@ DUK_EXTERNAL_DECL void duk_push_thread_stash(duk_context *ctx, duk_context *targ
 DUK_EXTERNAL_DECL duk_idx_t duk_push_object(duk_context *ctx);
 DUK_EXTERNAL_DECL duk_idx_t duk_push_bare_object(duk_context *ctx);
 DUK_EXTERNAL_DECL duk_idx_t duk_push_array(duk_context *ctx);
+DUK_EXTERNAL_DECL duk_idx_t duk_push_bare_array(duk_context *ctx);
 DUK_EXTERNAL_DECL duk_idx_t duk_push_c_function(duk_context *ctx, duk_c_function func, duk_idx_t nargs);
 DUK_EXTERNAL_DECL duk_idx_t duk_push_c_lightfunc(duk_context *ctx, duk_c_function func, duk_idx_t nargs, duk_idx_t length, duk_int_t magic);
 DUK_EXTERNAL_DECL duk_idx_t duk_push_thread_raw(duk_context *ctx, duk_uint_t flags);
@@ -913,6 +962,8 @@ DUK_EXTERNAL_DECL duk_context *duk_require_context(duk_context *ctx, duk_idx_t i
 DUK_EXTERNAL_DECL void duk_require_function(duk_context *ctx, duk_idx_t idx);
 #define duk_require_callable(ctx,idx) \
 	duk_require_function((ctx), (idx))
+DUK_EXTERNAL_DECL void duk_require_constructor_call(duk_context *ctx);
+DUK_EXTERNAL_DECL void duk_require_constructable(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL void *duk_require_heapptr(duk_context *ctx, duk_idx_t idx);
 
 /* Symbols are object coercible and covered by DUK_TYPE_MASK_STRING. */
@@ -962,6 +1013,8 @@ DUK_EXTERNAL_DECL void duk_to_primitive(duk_context *ctx, duk_idx_t idx, duk_int
 
 /* safe variants of a few coercion operations */
 DUK_EXTERNAL_DECL const char *duk_safe_to_lstring(duk_context *ctx, duk_idx_t idx, duk_size_t *out_len);
+DUK_EXTERNAL_DECL const char *duk_to_stacktrace(duk_context *ctx, duk_idx_t idx);
+DUK_EXTERNAL_DECL const char *duk_safe_to_stacktrace(duk_context *ctx, duk_idx_t idx);
 #define duk_safe_to_string(ctx,idx) \
 	duk_safe_to_lstring((ctx), (idx), NULL)
 
@@ -986,6 +1039,8 @@ DUK_EXTERNAL_DECL const char *duk_hex_encode(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL void duk_hex_decode(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL const char *duk_json_encode(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL void duk_json_decode(duk_context *ctx, duk_idx_t idx);
+DUK_EXTERNAL_DECL void duk_cbor_encode(duk_context *ctx, duk_idx_t idx, duk_uint_t encode_flags);
+DUK_EXTERNAL_DECL void duk_cbor_decode(duk_context *ctx, duk_idx_t idx, duk_uint_t decode_flags);
 
 DUK_EXTERNAL_DECL const char *duk_buffer_to_string(duk_context *ctx, duk_idx_t idx);
 
@@ -1000,29 +1055,55 @@ DUK_EXTERNAL_DECL void duk_config_buffer(duk_context *ctx, duk_idx_t idx, void *
 /*
  *  Property access
  *
- *  The basic function assumes key is on stack.  The _string variant takes
- *  a C string as a property name, while the _index variant takes an array
- *  index as a property name (e.g. 123 is equivalent to the key "123").
+ *  The basic function assumes key is on stack.  The _(l)string variant takes
+ *  a C string as a property name; the _literal variant takes a C literal.
+ *  The _index variant takes an array index as a property name (e.g. 123 is
+ *  equivalent to the key "123").  The _heapptr variant takes a raw, borrowed
+ *  heap pointer.
  */
 
 DUK_EXTERNAL_DECL duk_bool_t duk_get_prop(duk_context *ctx, duk_idx_t obj_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_get_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_get_prop_lstring(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_get_prop_literal(ctx,obj_idx,key)  duk_get_prop_string((ctx), (obj_idx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_get_prop_literal_raw(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#define duk_get_prop_literal(ctx,obj_idx,key)  duk_get_prop_literal_raw((ctx), (obj_idx), (key), sizeof((key)) - 1U)
+#endif
 DUK_EXTERNAL_DECL duk_bool_t duk_get_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_get_prop_heapptr(duk_context *ctx, duk_idx_t obj_idx, void *ptr);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_prop(duk_context *ctx, duk_idx_t obj_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_prop_lstring(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_put_prop_literal(ctx,obj_idx,key)  duk_put_prop_string((ctx), (obj_idx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_put_prop_literal_raw(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#define duk_put_prop_literal(ctx,obj_idx,key)  duk_put_prop_literal_raw((ctx), (obj_idx), (key), sizeof((key)) - 1U)
+#endif
 DUK_EXTERNAL_DECL duk_bool_t duk_put_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_prop_heapptr(duk_context *ctx, duk_idx_t obj_idx, void *ptr);
 DUK_EXTERNAL_DECL duk_bool_t duk_del_prop(duk_context *ctx, duk_idx_t obj_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_del_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_del_prop_lstring(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_del_prop_literal(ctx,obj_idx,key)  duk_del_prop_string((ctx), (obj_idx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_del_prop_literal_raw(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#define duk_del_prop_literal(ctx,obj_idx,key)  duk_del_prop_literal_raw((ctx), (obj_idx), (key), sizeof((key)) - 1U)
+#endif
 DUK_EXTERNAL_DECL duk_bool_t duk_del_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_del_prop_heapptr(duk_context *ctx, duk_idx_t obj_idx, void *ptr);
 DUK_EXTERNAL_DECL duk_bool_t duk_has_prop(duk_context *ctx, duk_idx_t obj_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_has_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_has_prop_lstring(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_has_prop_literal(ctx,obj_idx,key)  duk_has_prop_string((ctx), (obj_idx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_has_prop_literal_raw(duk_context *ctx, duk_idx_t obj_idx, const char *key, duk_size_t key_len);
+#define duk_has_prop_literal(ctx,obj_idx,key)  duk_has_prop_literal_raw((ctx), (obj_idx), (key), sizeof((key)) - 1U)
+#endif
 DUK_EXTERNAL_DECL duk_bool_t duk_has_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx);
 DUK_EXTERNAL_DECL duk_bool_t duk_has_prop_heapptr(duk_context *ctx, duk_idx_t obj_idx, void *ptr);
 
@@ -1031,8 +1112,22 @@ DUK_EXTERNAL_DECL void duk_def_prop(duk_context *ctx, duk_idx_t obj_idx, duk_uin
 
 DUK_EXTERNAL_DECL duk_bool_t duk_get_global_string(duk_context *ctx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_get_global_lstring(duk_context *ctx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_get_global_literal(ctx,key)  duk_get_global_string((ctx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_get_global_literal_raw(duk_context *ctx, const char *key, duk_size_t key_len);
+#define duk_get_global_literal(ctx,key)  duk_get_global_literal_raw((ctx), (key), sizeof((key)) - 1U)
+#endif
+DUK_EXTERNAL_DECL duk_bool_t duk_get_global_heapptr(duk_context *ctx, void *ptr);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_global_string(duk_context *ctx, const char *key);
 DUK_EXTERNAL_DECL duk_bool_t duk_put_global_lstring(duk_context *ctx, const char *key, duk_size_t key_len);
+#if defined(DUK_USE_PREFER_SIZE)
+#define duk_put_global_literal(ctx,key)  duk_put_global_string((ctx), (key))
+#else
+DUK_EXTERNAL_DECL duk_bool_t duk_put_global_literal_raw(duk_context *ctx, const char *key, duk_size_t key_len);
+#define duk_put_global_literal(ctx,key)  duk_put_global_literal_raw((ctx), (key), sizeof((key)) - 1U)
+#endif
+DUK_EXTERNAL_DECL duk_bool_t duk_put_global_heapptr(duk_context *ctx, void *ptr);
 
 /*
  *  Inspection
@@ -1099,13 +1194,19 @@ DUK_EXTERNAL_DECL void duk_trim(duk_context *ctx, duk_idx_t idx);
 DUK_EXTERNAL_DECL duk_codepoint_t duk_char_code_at(duk_context *ctx, duk_idx_t idx, duk_size_t char_offset);
 
 /*
- *  Ecmascript operators
+ *  ECMAScript operators
  */
 
 DUK_EXTERNAL_DECL duk_bool_t duk_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2);
 DUK_EXTERNAL_DECL duk_bool_t duk_strict_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2);
 DUK_EXTERNAL_DECL duk_bool_t duk_samevalue(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2);
 DUK_EXTERNAL_DECL duk_bool_t duk_instanceof(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2);
+
+/*
+ *  Random
+ */
+
+DUK_EXTERNAL_DECL duk_double_t duk_random(duk_context *ctx);
 
 /*
  *  Function (method) calls
@@ -1257,7 +1358,7 @@ DUK_EXTERNAL_DECL duk_double_t duk_components_to_time(duk_context *ctx, duk_time
 #define DUK_DATE_MSEC_HOUR            (60L * 60L * 1000L)
 #define DUK_DATE_MSEC_DAY             (24L * 60L * 60L * 1000L)
 
-/* Ecmascript date range is 100 million days from Epoch:
+/* ECMAScript date range is 100 million days from Epoch:
  * > 100e6 * 24 * 60 * 60 * 1000  // 100M days in millisecs
  * 8640000000000000
  * (= 8.64e15)
@@ -1265,7 +1366,7 @@ DUK_EXTERNAL_DECL duk_double_t duk_components_to_time(duk_context *ctx, duk_time
 #define DUK_DATE_MSEC_100M_DAYS         (8.64e15)
 #define DUK_DATE_MSEC_100M_DAYS_LEEWAY  (8.64e15 + 24 * 3600e3)
 
-/* Ecmascript year range:
+/* ECMAScript year range:
  * > new Date(100e6 * 24 * 3600e3).toISOString()
  * '+275760-09-13T00:00:00.000Z'
  * > new Date(-100e6 * 24 * 3600e3).toISOString()
@@ -1275,7 +1376,7 @@ DUK_EXTERNAL_DECL duk_double_t duk_components_to_time(duk_context *ctx, duk_time
 #define DUK_DATE_MAX_ECMA_YEAR     275760L
 
 /* Part indices for internal breakdowns.  Part order from DUK_DATE_IDX_YEAR
- * to DUK_DATE_IDX_MILLISECOND matches argument ordering of Ecmascript API
+ * to DUK_DATE_IDX_MILLISECOND matches argument ordering of ECMAScript API
  * calls (like Date constructor call).  Some functions in duk_bi_date.c
  * depend on the specific ordering, so change with care.  16 bits are not
  * enough for all parts (year, specifically).
