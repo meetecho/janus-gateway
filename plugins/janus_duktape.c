@@ -1085,7 +1085,7 @@ static duk_ret_t janus_duktape_method_relaytextdata(duk_context *ctx) {
 	janus_plugin_data data = {
 		.label = NULL,
 		.protocol = NULL,
-		.binary = TRUE,
+		.binary = FALSE,
 		.buffer = (char *)payload,
 		.length = len
 	};
