@@ -6222,6 +6222,8 @@ error:
 static void *janus_audiobridge_mixer_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Audio bridge thread starting...\n");
 	janus_audiobridge_room *audiobridge = (janus_audiobridge_room *)data;
+	DenoiseState *denoiseState = rnnoise_create(NULL);
+
 	if(!audiobridge) {
 		JANUS_LOG(LOG_ERR, "Invalid room!\n");
 		return NULL;
@@ -6515,6 +6517,20 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
+#ifdef HAVE_RNNOISE
+			if (denoiseState) {
+				float denoiseFrames[sizeof(outBuffer)];
+				for (int i = 0; i < sizeof(outBuffer); i++) {
+					denoiseFrames[i] = outBuffer[i];
+				}
+
+				rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
+
+				for (int i = 0; i < sizeof(outBuffer); i++) {
+					outBuffer[i] = denoiseFrames[i];
+				}
+			}
+#endif
 			if(p->codec != JANUS_AUDIOCODEC_OPUS && audiobridge->sampling_rate != 8000) {
 				/* Downsample this from whatever the mixer uses */
 				i = janus_audiobridge_resample(outBuffer, samples, audiobridge->sampling_rate, (int16_t *)mixedpkt->data, 8000);
@@ -6637,6 +6653,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		janus_mutex_unlock(&audiobridge->rtp_mutex);
 	}
+	rnnoise_destroy(denoiseState);
+
 	if(audiobridge->recording) {
 		/* Update the length in the header */
 		fseek(audiobridge->recording, 0, SEEK_END);
@@ -6711,8 +6729,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	outpkt->length = 0;
 	outpkt->silence = FALSE;
 	uint8_t *payload = (uint8_t *)outpkt->data;
-	DenoiseState *denoiseState;
-	denoiseState = rnnoise_create(NULL);
 
 	janus_audiobridge_rtp_relay_packet *mixedpkt = NULL;
 
@@ -6728,20 +6744,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 				}
 				int i = 0;
 				opus_int16 *outBuffer = (opus_int16 *)mixedpkt->data;
-#ifdef HAVE_RNNOISE
-				if (denoiseState) {
-					float denoiseFrames[sizeof(outBuffer)];
-					for (int i = 0; i < sizeof(outBuffer); i++) {
-						denoiseFrames[i] = outBuffer[i];
-					}
-
-					rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
-
-					for (int i = 0; i < sizeof(outBuffer); i++) {
-						outBuffer[i] = denoiseFrames[i];
-					}
-				}
-#endif
 				if(participant->codec == JANUS_AUDIOCODEC_PCMA) {
 					/* A-law */
 					for(i=0; i<160; i++)
@@ -6769,21 +6771,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 				/* Encode raw frame to Opus */
 				opus_int16 *outBuffer = (opus_int16 *)mixedpkt->data;
-#ifdef HAVE_RNNOISE
-				if (denoiseState) {
-					float denoiseFrames[sizeof(outBuffer)];
-					float denoisedFrames[sizeof(outBuffer)];
-					for (int i = 0; i < sizeof(outBuffer); i++) {
-						denoiseFrames[i] = outBuffer[i];
-					}
-
-					rnnoise_process_frame(denoiseState, denoisedFrames, denoiseFrames);
-
-					for (int i = 0; i < sizeof(outBuffer); i++) {
-						outBuffer[i] = denoisedFrames[i];
-					}
-				}
-#endif
 				outpkt->length = opus_encode(participant->encoder, outBuffer, mixedpkt->length, payload+12, 1500-12);
 				g_atomic_int_set(&participant->encoding, 0);
 				if(outpkt->length < 0) {
@@ -6808,7 +6795,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		}
 	}
 	/* We're done, get rid of the resources */
-	rnnoise_destroy(denoiseState);
 	g_free(outpkt->data);
 	g_free(outpkt);
 	JANUS_LOG(LOG_VERB, "AudioBridge Participant thread leaving...\n");
