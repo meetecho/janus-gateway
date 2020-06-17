@@ -1749,7 +1749,7 @@ function Janus(gatewayCallbacks) {
 				pc_config.bundlePolicy = "max-bundle";
 			}
 			// Check if a sender or receiver transform has been provided
-			if(RTCRtpSender.prototype.createEncodedAudioStreams &&
+			if(RTCRtpSender && RTCRtpSender.prototype.createEncodedAudioStreams &&
 					RTCRtpSender.prototype.createEncodedVideoStreams &&
 					(callbacks.senderTransforms || callbacks.receiverTransforms)) {
 				config.senderTransforms = callbacks.senderTransforms;
