@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.10.2] - 2020-06-17
+
+- Fixed sscanf-related security issues [[PR-2229](https://github.com/meetecho/janus-gateway/pull/2229)]
+- Fixed some RTP extensions not working after renegotiations [[Issue-2192](https://github.com/meetecho/janus-gateway/issues/2192)]
+- Fixed occasionally broken simulcast behaviour [[PR-2231](https://github.com/meetecho/janus-gateway/pull/2231)]
+- Fixed "switch" request not taking simulcast/SVC into account in VideoRoom and Streaming plugins [[Issue-2219](https://github.com/meetecho/janus-gateway/issues/2219)]
+- Fixed inability to ask for random ports when creating Streaming plugin mountpoints with simulcast support [[PR-2225](https://github.com/meetecho/janus-gateway/pull/2225)]
+- Fixed occasional crashes in SIP plugin when using helpers [[PR-2216](https://github.com/meetecho/janus-gateway/pull/2216)]
+- Updated Duktape dependencies to v2.5, and fixed Duktape plugin relaying text data as binary [[PR-2233](https://github.com/meetecho/janus-gateway/pull/2233)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
+
 ## [v0.10.1] - 2020-06-11
 
 - Added initial support for AV1 and H.265 video codecs [[PR-2120](https://github.com/meetecho/janus-gateway/pull/2120)]
