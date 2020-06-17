@@ -2454,7 +2454,7 @@ function Janus(gatewayCallbacks) {
 				})
 				.catch(function(error) {
 					pluginHandle.consentDialog(false);
-					callbacks.error('enumerateDevices error', error);
+					callbacks.error(error);
 				});
 			}
 		} else {
