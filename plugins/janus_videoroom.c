@@ -8805,6 +8805,16 @@ static void *janus_videoroom_handler(void *data) {
 					ps->subscribers = g_slist_append(ps->subscribers, stream);
 					janus_refcount_increase(&ps->ref);
 					janus_refcount_increase(&stream->ref);
+					/* Reset simulcast and SVC properties too */
+					janus_rtp_simulcasting_context_reset(&stream->sim_context);
+					stream->sim_context.rid_ext_id = ps->rid_extmap_id;
+					stream->sim_context.substream_target = 2;
+					stream->sim_context.templayer_target = 2;
+					janus_vp8_simulcast_context_reset(&stream->vp8_context);
+					stream->spatial_layer = -1;
+					stream->target_spatial_layer = 1;		/* FIXME Chrome sends 0 and 1 */
+					stream->temporal_layer = -1;
+					stream->target_temporal_layer = 2;	/* FIXME Chrome sends 0, 1 and 2 */
 					janus_mutex_unlock(&ps->subscribers_mutex);
 					janus_videoroom_reqpli(ps, "Subscriber switch");
 					if(unref)
