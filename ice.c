@@ -2743,6 +2743,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						return;
 					}
 				}
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
+					janus_rtcp_swap_report_blocks(buf, buflen, medium->ssrc_rtx);
+				}
 				video = (medium->type == JANUS_MEDIA_VIDEO);
 				/* If this is video, check if this is simulcast */
 				if(video) {
