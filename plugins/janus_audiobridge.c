@@ -1334,7 +1334,9 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 		}
 		g_async_queue_unref(participant->outbuf);
 	}
+#ifdef HAVE_LIBOGG
 	janus_audiobridge_file_free(participant->annc);
+#endif
 	g_free(participant);
 }
 
@@ -6385,6 +6387,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_mutex_unlock(&p->qmutex);
 			ps = ps->next;
 		}
+#ifdef HAVE_LIBOGG
 		/* If there are announcements playing, mix those too */
 		GList *anncs_list = g_hash_table_get_values(audiobridge->anncs);
 		if(anncs_list != NULL) {
@@ -6458,6 +6461,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				ps = ps->next;
 			}
 		}
+#endif
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
 		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
 			for(i=0; i<samples; i++) {
