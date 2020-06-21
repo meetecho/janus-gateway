@@ -320,14 +320,8 @@ function updateStreamsList() {
 			Janus.debug(list);
 			for(var mp in list) {
 				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
-				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
+				$('#streamset').append("<option value='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</option>");
 			}
-			$('#streamslist a').unbind('click').click(function() {
-				selectedStream = $(this).attr("id");
-				$('#streamset').html($(this).html()).parent().removeClass('open');
-				return false;
-
-			});
 			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}
 	}});
@@ -336,6 +330,7 @@ function updateStreamsList() {
 function getStreamInfo() {
 	$('#metadata').empty();
 	$('#info').addClass('hide').hide();
+	selectedStream = $('#streamset').children("option:selected").val();
 	if(!selectedStream)
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
@@ -349,6 +344,7 @@ function getStreamInfo() {
 }
 
 function startStream() {
+	selectedStream = $('#streamset').children("option:selected").val();
 	Janus.log("Selected video id #" + selectedStream);
 	if(!selectedStream) {
 		bootbox.alert("Select a stream from the list");
@@ -389,6 +385,8 @@ function stopStream() {
 	$('#curres').empty().hide();
 	$('#simulcast').remove();
 	simulcastStarted = false;
+	if(spinner)
+		spinner.stop();
 }
 
 // Helpers to create Simulcast-related UI, if enabled
