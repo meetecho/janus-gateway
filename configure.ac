@@ -195,8 +195,8 @@ AC_ARG_ENABLE([all-transports],
                      [enable_mqtt=no])
                AS_IF([test "x$enable_unix_sockets" != "xyes"],
                      [enable_unix_sockets=no])
-               AS_IF([test "x$enable_nanomsg" != "xyes"],
-                     [enable_nanomsg=no])
+               AS_IF([test "x$enable_nng" != "xyes"],
+                     [enable_nng=no])
               ],
               [])
 
@@ -212,8 +212,8 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_rabbitmq_event_handler=no])
                AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
                      [enable_mqtt_event_handler=no])
-               AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
-                     [enable_nanomsg_event_handler=no])
+               AS_IF([test "x$enable_nng_event_handler" != "xyes"],
+                     [enable_nng_event_handler=no])
                AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
                      [enable_gelf_event_handler=no])
               ],
@@ -274,12 +274,12 @@ AC_ARG_ENABLE([unix-sockets],
                      [enable_unix_sockets=no])],
               [enable_unix_sockets=maybe])
 
-AC_ARG_ENABLE([nanomsg],
-              [AS_HELP_STRING([--disable-nanomsg],
-                              [Disable Nanomsg integration])],
-              [AS_IF([test "x$enable_nanomsg" != "xyes"],
-                     [enable_nanomsg=no])],
-              [enable_nanomsg=maybe])
+AC_ARG_ENABLE([nng],
+              [AS_HELP_STRING([--disable-nng],
+                              [Disable NNG integration])],
+              [AS_IF([test "x$enable_nng" != "xyes"],
+                     [enable_nng=no])],
+              [enable_nng=maybe])
 
 AC_ARG_ENABLE([sample-event-handler],
               [AS_HELP_STRING([--disable-sample-event-handler],
@@ -309,12 +309,12 @@ AC_ARG_ENABLE([mqtt-event-handler],
                      [enable_mqtt_event_handler=no])],
               [enable_mqtt_event_handler=maybe])
 
-AC_ARG_ENABLE([nanomsg-event-handler],
-              [AS_HELP_STRING([--disable-nanomsg-event-handler],
-                              [Disable Nanomsg event handler ])],
-              [AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
-                     [enable_nanomsg_event_handler=no])],
-              [enable_nanomsg_event_handler=maybe])
+AC_ARG_ENABLE([nng-event-handler],
+              [AS_HELP_STRING([--disable-nng-event-handler],
+                              [Disable NNG event handler ])],
+              [AS_IF([test "x$enable_nng_event_handler" != "xyes"],
+                     [enable_nng_event_handler=no])],
+              [enable_nng_event_handler=maybe])
 
 AC_ARG_ENABLE([gelf-event-handler],
               [AS_HELP_STRING([--disable-gelf-event-handler],
@@ -590,32 +590,32 @@ AC_CHECK_LIB([paho-mqtt3a],
                AS_IF([test "x$enable_mqtt_event_handler" = "xyes"],
                      [AC_MSG_ERROR([paho c not found. See README.md for installation instructions or use --disable-mqtt-event-handler])])
              ])
-AC_CHECK_LIB([nanomsg],
+AC_CHECK_LIB([nng],
              [nn_socket],
              [
-               AS_IF([test "x$enable_nanomsg" != "xno"],
+               AS_IF([test "x$enable_nng" != "xno"],
                [
-                  AC_DEFINE(HAVE_NANOMSG)
-                  enable_nanomsg=yes
+                  AC_DEFINE(HAVE_NNG)
+                  enable_nng=yes
                ])
-               AS_IF([test "x$enable_nanomsg_event_handler" != "xno"],
+               AS_IF([test "x$enable_nng_event_handler" != "xno"],
                [
-                 AC_DEFINE(HAVE_NANOMSGEVH)
-                 enable_nanomsg_event_handler=yes
+                 AC_DEFINE(HAVE_NNGEVH)
+                 enable_nng_event_handler=yes
                ])
              ],
              [
-               AS_IF([test "x$enable_nanomsg" = "xyes"],
-                     [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg])])
-               AS_IF([test "x$enable_nanomsg_event_handler" = "xyes"],
-                     [AC_MSG_ERROR([nanomsg not found. See README.md for installation instructions or use --disable-nanomsg-event-handler])])
+               AS_IF([test "x$enable_nng" = "xyes"],
+                     [AC_MSG_ERROR([nng not found. See README.md for installation instructions or use --disable-nng])])
+               AS_IF([test "x$enable_nng_event_handler" = "xyes"],
+                     [AC_MSG_ERROR([nng not found. See README.md for installation instructions or use --disable-nng-event-handler])])
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
-AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
-AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_NNG], [test "x$enable_nng" = "xyes"])
+AM_CONDITIONAL([ENABLE_NNGEVH], [test "x$enable_nng_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
@@ -994,9 +994,9 @@ AM_COND_IF([ENABLE_MQTT],
 AM_COND_IF([ENABLE_PFUNIX],
 	[echo "    Unix Sockets:          yes"],
 	[echo "    Unix Sockets:          no"])
-AM_COND_IF([ENABLE_NANOMSG],
-	[echo "    Nanomsg:               yes"],
-	[echo "    Nanomsg:               no"])
+AM_COND_IF([ENABLE_NNG],
+	[echo "    NNG:                   yes"],
+	[echo "    NNG:                   no"])
 echo "Plugins:"
 AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
 	[echo "    Echo Test:             yes"],
@@ -1047,9 +1047,9 @@ AM_COND_IF([ENABLE_RABBITMQEVH],
 AM_COND_IF([ENABLE_MQTTEVH],
 	[echo "    MQTT event handler:    yes"],
 	[echo "    MQTT event handler:    no"])
-AM_COND_IF([ENABLE_NANOMSGEVH],
-	[echo "    Nanomsg event handler: yes"],
-	[echo "    Nanomsg event handler: no"])
+AM_COND_IF([ENABLE_NNGEVH],
+	[echo "    NNG event handler:     yes"],
+	[echo "    NNG event handler:     no"])
 AM_COND_IF([ENABLE_GELFEVH],
 	[echo "    GELF event handler:    yes"],
 	[echo "    GELF event handler:    no"])

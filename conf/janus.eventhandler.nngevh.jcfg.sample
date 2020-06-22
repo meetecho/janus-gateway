@@ -1,9 +1,9 @@
-# This configures the Nanomsg event handler. Since this plugin only
-# forwards each event it receives via Nanomsg, you simply need to
+# This configures the NNG event handler. Since this plugin only
+# forwards each event it receives via NNG, you simply need to
 # configure (i) which events to subscribe to, (ii) the address to use for
 # the communication, and (iii) whether the address should be used to bind
 # locally or to connect to a remote endpoint. Notice that the only supported
-# pattern is NN_PUBSUB, where the Nanomsg event handler is the publisher.
+# pattern is NN_PUBSUB, where the NNG event handler is the publisher.
 
 general: {
 	enabled = false		# By default the module is not enabled
@@ -23,8 +23,8 @@ general: {
 	json = "indented"	# Whether the JSON messages should be indented (default),
 						# plain (no indentation) or compact (no indentation and no spaces)
 
-	#mode = "bind"						# Whether we should 'bind' to the specified
-										# address, or connect to it if remote (default)
-	address = "ipc:///tmp/janusevh.ipc"	# Address to use, refer to the Nanomsg documentation
+	#mode = "listen"					# Whether we should 'listen' to the specified
+										# address, or 'dial' to it if remote (default)
+	address = "ipc:///tmp/janusevh.ipc"	# Address to use, refer to the NNG documentation
 										# for more info on different transports you can use here
 }

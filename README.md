@@ -26,7 +26,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [cmake](http://www.cmake.org/) (only needed if you are interested in WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if you are interested in RabbitMQ support for the Janus API or events)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if you are interested in MQTT support for the Janus API or events)
-* [nanomsg](https://nanomsg.org/) (only needed if you are interested in Nanomsg support for the Janus API)
+* [nng](https://nng.nanomsg.org/) (only needed if you are interested in NNG support for the Janus API or events)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in the TURN REST API support)
 
 A couple of plugins depend on a few more libraries:

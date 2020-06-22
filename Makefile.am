@@ -295,14 +295,14 @@ conf_DATA += conf/janus.transport.pfunix.jcfg.sample
 EXTRA_DIST += conf/janus.transport.pfunix.jcfg.sample
 endif
 
-if ENABLE_NANOMSG
-transport_LTLIBRARIES += transports/libjanus_nanomsg.la
-transports_libjanus_nanomsg_la_SOURCES = transports/janus_nanomsg.c
-transports_libjanus_nanomsg_la_CFLAGS = $(transports_cflags)
-transports_libjanus_nanomsg_la_LDFLAGS = $(transports_ldflags) -lnanomsg
-transports_libjanus_nanomsg_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.nanomsg.jcfg.sample
-EXTRA_DIST += conf/janus.transport.nanomsg.jcfg.sample
+if ENABLE_NNG
+transport_LTLIBRARIES += transports/libjanus_nng.la
+transports_libjanus_nng_la_SOURCES = transports/janus_nng.c
+transports_libjanus_nng_la_CFLAGS = $(transports_cflags)
+transports_libjanus_nng_la_LDFLAGS = $(transports_ldflags) -lnng
+transports_libjanus_nng_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.nng.jcfg.sample
+EXTRA_DIST += conf/janus.transport.nng.jcfg.sample
 endif
 
 ##
@@ -358,14 +358,14 @@ conf_DATA += conf/janus.eventhandler.mqttevh.jcfg.sample
 EXTRA_DIST += conf/janus.eventhandler.mqttevh.jcfg.sample
 endif
 
-if ENABLE_NANOMSGEVH
-event_LTLIBRARIES += events/libjanus_nanomsgevh.la
-events_libjanus_nanomsgevh_la_SOURCES = events/janus_nanomsgevh.c
-events_libjanus_nanomsgevh_la_CFLAGS = $(events_cflags)
-events_libjanus_nanomsgevh_la_LDFLAGS = $(events_ldflags) -lnanomsg
-events_libjanus_nanomsgevh_la_LIBADD = $(events_libadd)
-conf_DATA += conf/janus.eventhandler.nanomsgevh.jcfg.sample
-EXTRA_DIST += conf/janus.eventhandler.nanomsgevh.jcfg.sample
+if ENABLE_NNGEVH
+event_LTLIBRARIES += events/libjanus_nngevh.la
+events_libjanus_nngevh_la_SOURCES = events/janus_nngevh.c
+events_libjanus_nngevh_la_CFLAGS = $(events_cflags)
+events_libjanus_nngevh_la_LDFLAGS = $(events_ldflags) -lnng
+events_libjanus_nngevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.nngevh.jcfg.sample
+EXTRA_DIST += conf/janus.eventhandler.nngevh.jcfg.sample
 endif
 
 if ENABLE_GELFEVH
