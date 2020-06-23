@@ -1059,7 +1059,7 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		/* Check if the codec contains some fmtp stuff too */
 		const char *c = codec, *f = NULL;
 		gchar **parts = NULL;
-		if(strstr(codec, "/fmtp=") != NULL) {
+		if(codec != NULL && strstr(codec, "/fmtp=") != NULL) {
 			parts = g_strsplit(codec, "/fmtp=", 2);
 			c = parts[0];
 			f = parts[1];

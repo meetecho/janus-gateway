@@ -1190,7 +1190,7 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		/* Check if the codec contains some fmtp stuff too */
 		const char *c = codec, *f = NULL;
 		gchar **parts = NULL;
-		if(strstr(codec, "/fmtp=") != NULL) {
+		if(codec != NULL && strstr(codec, "/fmtp=") != NULL) {
 			parts = g_strsplit(codec, "/fmtp=", 2);
 			c = parts[0];
 			f = parts[1];
