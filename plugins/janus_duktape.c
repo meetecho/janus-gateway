@@ -1173,6 +1173,7 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_mutex_unlock(&duktape_sessions_mutex);
 	/* Iterate on all arguments, to see what we're being asked to record */
+	int recordings = 0;
 	n--;
 	int i = 0;
 	janus_recorder *arc = NULL, *vrc = NULL, *drc = NULL;
@@ -1185,12 +1186,14 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		const char *folder = duk_get_string(ctx, i);
 		i++; n--;
 		const char *filename = duk_get_string(ctx, i);
-		if(type == NULL)
+		if(type == NULL || codec == NULL) {
+			/* No type or codec provided, skip this */
 			continue;
+		}
 		/* Check if the codec contains some fmtp stuff too */
 		const char *c = codec, *f = NULL;
 		gchar **parts = NULL;
-		if(codec != NULL && strstr(codec, "/fmtp=") != NULL) {
+		if(strstr(codec, "/fmtp=") != NULL) {
 			parts = g_strsplit(codec, "/fmtp=", 2);
 			c = parts[0];
 			f = parts[1];
@@ -1206,8 +1209,8 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		if(!strcasecmp(type, "audio")) {
 			if(arc != NULL || session->arc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate audio recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate audio recording, skipping\n");
+				continue;
 			}
 			/* If media is encrypted, mark it in the recording */
 			if(session->e2ee)
@@ -1216,8 +1219,8 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		} else if(!strcasecmp(type, "video")) {
 			if(vrc != NULL || session->vrc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate video recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate video recording, skipping\n");
+				continue;
 			}
 			/* If media is encrypted, mark it in the recording */
 			if(session->e2ee)
@@ -1226,12 +1229,15 @@ static duk_ret_t janus_duktape_method_startrecording(duk_context *ctx) {
 		} else if(!strcasecmp(type, "data")) {
 			if(drc != NULL || session->drc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate data recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate data recording, skipping\n");
+				continue;
 			}
 			drc = rc;
 		}
+		recordings++;
 	}
+	if(recordings == 0)
+		goto error;
 	if(arc) {
 		session->arc = arc;
 	}
