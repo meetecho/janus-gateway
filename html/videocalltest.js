@@ -304,7 +304,7 @@ $(document).ready(function() {
 										$('#bitrate').attr('disabled', true);
 										$('#curbitrate').hide();
 										$('#curres').hide();
-										if(bitrateTimer !== null && bitrateTimer !== null)
+										if(bitrateTimer)
 											clearInterval(bitrateTimer);
 										bitrateTimer = null;
 									}
@@ -466,7 +466,7 @@ $(document).ready(function() {
 									$('#bitrate').attr('disabled', true);
 									$('#curbitrate').hide();
 									$('#curres').hide();
-									if(bitrateTimer !== null && bitrateTimer !== null)
+									if(bitrateTimer)
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;
 									$('#waitingvideo').remove();
