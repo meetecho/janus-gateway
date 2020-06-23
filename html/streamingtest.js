@@ -331,7 +331,7 @@ function getStreamInfo() {
 	$('#metadata').empty();
 	$('#info').addClass('hide').hide();
 	selectedStream = $('#streamset').children("option:selected").val();
-	if(!selectedStream)
+	if(selectedStream == 'invalid')
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
 	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
@@ -346,7 +346,7 @@ function getStreamInfo() {
 function startStream() {
 	selectedStream = $('#streamset').children("option:selected").val();
 	Janus.log("Selected video id #" + selectedStream);
-	if(!selectedStream) {
+	if(selectedStream == 'invalid') {
 		bootbox.alert("Select a stream from the list");
 		return;
 	}
