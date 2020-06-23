@@ -617,7 +617,7 @@ function newRemoteFeed(id, display, audio, video) {
 				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null)
+				if(bitrateTimer[remoteFeed.rfindex])
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 				$('#sl'+remoteFeed.rfindex+'-1').unbind('click');
