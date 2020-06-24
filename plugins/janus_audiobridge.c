@@ -40,6 +40,11 @@ room-<unique room ID>: {
 	default_prebuffering = number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)
 	record = true|false (whether this room should be recorded, default=false)
 	record_file =	/path/to/recording.wav (where to save the recording)
+	rnnoise_complexity = 0-3 (default = 2, how agressive noise canceling will be, 
+		3 - all frames will be denoised but audio quality will be degraded,
+		2 - 2 frames are denoised, third is skipped,
+		1 - every second frame denoised,
+		0 - dissabled)
 
 		[The following lines are only needed if you want the mixed audio
 		to be automatically forwarded via plain RTP to an external component
@@ -131,6 +136,7 @@ room-<unique room ID>: {
 	"default_prebuffering" : <number of packets to buffer before decoding each participant (default=DEFAULT_PREBUFFERING)>,
 	"record" : <true|false, whether to record the room or not, default=false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
+	"rnnoise_complexity" : <0-3, how agressive to denoise audio frames, default=2> 
 }
 \endverbatim
  *
@@ -934,7 +940,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"audiolevel_event", JANUS_JSON_BOOL, 0},
 	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"default_prebuffering", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"default_prebuffering", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"rnnoise_complexity", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"secret", JSON_STRING, 0},
@@ -1064,6 +1071,7 @@ typedef struct janus_audiobridge_room {
 	janus_mutex rtp_mutex;		/* Mutex to lock the RTP forwarders list */
 	int rtp_udp_sock;			/* UDP socket to use to forward RTP packets */
 	janus_refcount ref;			/* Reference counter for this room */
+	int rnnoise_complexity;		/* How frequent to denoise audio using rnnoise lib*/
 } janus_audiobridge_room;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
@@ -1687,10 +1695,10 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 		/* Invalid sampling rate */
 		return 0;
 	}
-	if(input_rate != 8000 && output_rate != 8000) {
-		/* We only use this for G.711, so one of the two MUST be 8000 */
-		return 0;
-	}
+	// if(input_rate != 8000 && output_rate != 8000) {
+	// 	/* We only use this for G.711, so one of the two MUST be 8000 */
+	// 	return 0;
+	// }
 	if(input_rate == output_rate) {
 		/* Easy enough */
 		memcpy(output, input, input_num*sizeof(int16_t));
@@ -2019,6 +2027,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *pin = janus_config_get(config, cat, janus_config_type_item, "pin");
 			janus_config_item *record = janus_config_get(config, cat, janus_config_type_item, "record");
 			janus_config_item *recfile = janus_config_get(config, cat, janus_config_type_item, "record_file");
+			janus_config_item *rnnoise_complexity = janus_config_get(config, cat, janus_config_type_item, "rnnoise_complexity");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the AudioBridge room, missing mandatory information...\n");
 				cl = cl->next;
@@ -2126,6 +2135,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);
 			audiobridge->recording = NULL;
+			audiobridge->rnnoise_complexity = 2;
+			if(rnnoise_complexity != NULL && rnnoise_complexity->value != NULL)
+				audiobridge->rnnoise_complexity = atoi(rnnoise_complexity->value);
 			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new_full(
 				string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -2441,6 +2453,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		json_t *default_prebuffering = json_object_get(root, "default_prebuffering");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
+		json_t *rnnoise_complexity = json_object_get(root, "rnnoise_complexity");
 		json_t *permanent = json_object_get(root, "permanent");
 		if(allowed) {
 			/* Make sure the "allowed" array only contains strings */
@@ -2587,6 +2600,9 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		if(recfile)
 			audiobridge->record_file = g_strdup(json_string_value(recfile));
 		audiobridge->recording = NULL;
+		audiobridge->rnnoise_complexity = 2;
+		if(json_integer_value(rnnoise_complexity) > 0)
+			audiobridge->rnnoise_complexity = json_integer_value(rnnoise_complexity);
 		audiobridge->destroy = 0;
 		audiobridge->participants = g_hash_table_new_full(
 			string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -6223,6 +6239,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Audio bridge thread starting...\n");
 	janus_audiobridge_room *audiobridge = (janus_audiobridge_room *)data;
 	DenoiseState *denoiseState = rnnoise_create(NULL);
+	int denoise_again = 0;
 
 	if(!audiobridge) {
 		JANUS_LOG(LOG_ERR, "Invalid room!\n");
@@ -6519,16 +6536,42 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			mixedpkt->data = g_malloc(samples*2);
 #ifdef HAVE_RNNOISE
 			if (denoiseState) {
-				float denoiseFrames[sizeof(outBuffer)];
-				for (int i = 0; i < sizeof(outBuffer); i++) {
+				size_t i;
+				float denoiseFrames[OPUS_SAMPLES*2];
+				if(audiobridge->sampling_rate != 16000){
+					float inFrames[OPUS_SAMPLES], outFrames[OPUS_SAMPLES];
+					int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, audiobridge->sampling_rate, (int16_t *)sumBuffer, 16000);
+					if(n == 0) {
+						JANUS_LOG(LOG_WARN, "[Rnnoise] Error re-sampling from %d to 16000\n", audiobridge->sampling_rate);
+						janus_refcount_decrease(&p->ref);
+						ps = ps->next;
+						continue;
+					}
+				}
+
+				for (i = 0; i < OPUS_SAMPLES*2; i++) {
 					denoiseFrames[i] = outBuffer[i];
 				}
 
 				rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
 
-				for (int i = 0; i < sizeof(outBuffer); i++) {
+				denoise_again = 0;
+
+				for (i = 0; i < OPUS_SAMPLES*2; i++) {
 					outBuffer[i] = denoiseFrames[i];
 				}
+				if(audiobridge->sampling_rate != 16000){
+					int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, 16000, (int16_t *)outBuffer, audiobridge->sampling_rate);
+					if(n == 0) {
+						JANUS_LOG(LOG_WARN, "[Rnnoise] Error re-sampling from 16000 to %d\n", audiobridge->sampling_rate);
+						janus_refcount_decrease(&p->ref);
+						ps = ps->next;
+						continue;
+					}
+				}
+
+			} else {
+				denoise_again = 1;
 			}
 #endif
 			if(p->codec != JANUS_AUDIOCODEC_OPUS && audiobridge->sampling_rate != 8000) {
