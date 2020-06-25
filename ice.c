@@ -4421,7 +4421,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							component->out_stats.audio.bytes_lastsec_temp += pkt->length;
 							struct timeval tv;
 							gettimeofday(&tv, NULL);
-							if ((gint32)(timestamp - stream->audio_last_rtp_ts) > 0) {
+							if(stream->audio_last_ntp_ts == 0 || (gint32)(timestamp - stream->audio_last_rtp_ts) > 0) {
 								stream->audio_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->audio_last_rtp_ts = timestamp;
 							}
@@ -4452,7 +4452,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							component->out_stats.video[0].bytes_lastsec_temp += pkt->length;
 							struct timeval tv;
 							gettimeofday(&tv, NULL);
-							if ((gint32)(timestamp - stream->video_last_rtp_ts) > 0) {
+							if(stream->video_last_ntp_ts == 0 || (gint32)(timestamp - stream->video_last_rtp_ts) > 0) {
 								stream->video_last_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 								stream->video_last_rtp_ts = timestamp;
 							}
