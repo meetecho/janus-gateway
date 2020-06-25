@@ -2114,8 +2114,12 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		session->refer_id = 0;
 	}
 	/* Shutdown the NUA */
-	if(session->stack && session->stack->s_nua)
-		nua_shutdown(session->stack->s_nua);
+	if(session->stack) {
+		janus_mutex_lock(&session->stack->smutex);
+		if(session->stack->s_nua)
+			nua_shutdown(session->stack->s_nua);
+		janus_mutex_unlock(&session->stack->smutex);
+	}
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
@@ -2978,7 +2982,16 @@ static void *janus_sip_handler(void *data) {
 				char custom_params[2048];
 				janus_sip_parse_custom_contact_params(root, (char *)&custom_params, sizeof(custom_params));
 				/* Create a new NUA handle */
+				janus_mutex_lock(&session->stack->smutex);
+				if(session->stack->s_nua == NULL) {
+					janus_mutex_unlock(&session->stack->smutex);
+					JANUS_LOG(LOG_ERR, "NUA destroyed while registering?\n");
+					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+					g_snprintf(error_cause, 512, "Invalid NUA");
+					goto error;
+				}
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
+				janus_mutex_unlock(&session->stack->smutex);
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
 					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
@@ -3090,16 +3103,34 @@ static void *janus_sip_handler(void *data) {
 				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
 			if(nh == NULL) {
 				/* We don't, create one now */
-				if(!session->helper)
+				if(!session->helper) {
+					janus_mutex_lock(&session->stack->smutex);
+					if(session->stack->s_nua == NULL) {
+						janus_mutex_unlock(&session->stack->smutex);
+						JANUS_LOG(LOG_ERR, "NUA destroyed while subscribing?\n");
+						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+						g_snprintf(error_cause, 512, "Invalid NUA");
+						goto error;
+					}
 					nh = nua_handle(session->stack->s_nua, session, TAG_END());
-				else {
+					janus_mutex_unlock(&session->stack->smutex);
+				} else {
 					/* This is a helper, we need to use the master's SIP stack */
 					if(session->master == NULL || session->master->stack == NULL) {
 						error_code = JANUS_SIP_ERROR_HELPER_ERROR;
 						g_snprintf(error_cause, 512, "Invalid master SIP stack");
 						goto error;
 					}
+					janus_mutex_lock(&session->master->stack->smutex);
+					if(session->master->stack->s_nua == NULL) {
+						janus_mutex_unlock(&session->master->stack->smutex);
+						JANUS_LOG(LOG_ERR, "NUA destroyed while subscribing?\n");
+						error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+						g_snprintf(error_cause, 512, "Invalid NUA");
+						goto error;
+					}
 					nh = nua_handle(session->master->stack->s_nua, session, TAG_END());
+					janus_mutex_unlock(&session->master->stack->smutex);
 				}
 				if(session->stack->subscriptions == NULL) {
 					/* We still need a table for mapping these subscriptions as well */
@@ -3328,7 +3359,16 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
 			if(!session->helper) {
+				janus_mutex_lock(&session->stack->smutex);
+				if(session->stack->s_nua == NULL) {
+					janus_mutex_unlock(&session->stack->smutex);
+					JANUS_LOG(LOG_ERR, "NUA destroyed while calling?\n");
+					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+					g_snprintf(error_cause, 512, "Invalid NUA");
+					goto error;
+				}
 				session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
+				janus_mutex_unlock(&session->stack->smutex);
 				if(session->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
 				} else {
@@ -3344,7 +3384,18 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid master SIP stack");
 					goto error;
 				}
+				janus_mutex_lock(&session->master->stack->smutex);
+				if(session->master->stack->s_nua == NULL) {
+					janus_mutex_unlock(&session->master->stack->smutex);
+					g_free(sdp);
+					session->sdp = NULL;
+					janus_sdp_destroy(parsed_sdp);
+					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+					g_snprintf(error_cause, 512, "Invalid NUA");
+					goto error;
+				}
 				session->stack->s_nh_i = nua_handle(session->master->stack->s_nua, session, TAG_END());
+				janus_mutex_unlock(&session->master->stack->smutex);
 				if(session->master->account.display_name) {
 					g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->master->account.display_name, session->master->account.identity);
 				} else {
@@ -6516,7 +6567,19 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
-	nua_destroy(session->stack->s_nua);
+	janus_mutex_lock(&session->stack->smutex);
+	nua_t *s_nua = session->stack->s_nua;
+	session->stack->s_nua = NULL;
+	janus_mutex_unlock(&session->stack->smutex);
+	if(session->stack->s_nh_r != NULL) {
+		nua_handle_destroy(session->stack->s_nh_r);
+		session->stack->s_nh_r = NULL;
+	}
+	if(session->stack->s_nh_i != NULL) {
+		nua_handle_destroy(session->stack->s_nh_i);
+		session->stack->s_nh_i = NULL;
+	}
+	nua_destroy(s_nua);
 	su_root_destroy(session->stack->s_root);
 	session->stack->s_root = NULL;
 	janus_refcount_decrease(&session->ref);
