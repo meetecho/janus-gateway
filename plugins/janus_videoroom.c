@@ -4649,9 +4649,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		}
 		/* Are we using the new approach, or the old deprecated one? */
 		response = json_object();
-		json_t *rtp_stream = json_object();
 		janus_videoroom_publisher_stream *ps = NULL;
-		json_t *new_forwarders = NULL;
+		json_t *new_forwarders = NULL, *rtp_stream = NULL;
 		if(streams != NULL) {
 			/* New approach: iterate on all objects, and create the related forwarder(s) */
 			new_forwarders = json_array();
@@ -4811,6 +4810,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			}
 		} else {
 			/* Old deprecated approach: return the legacy info as well */
+			rtp_stream = json_object();
 			int video_port[3] = {-1, -1, -1}, video_rtcp_port = -1, video_pt[3] = {0, 0, 0};
 			uint32_t video_ssrc[3] = {0, 0, 0};
 			int audio_port = -1, audio_rtcp_port = -1, audio_pt = 0;
@@ -5060,7 +5060,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		janus_refcount_decrease(&videoroom->ref);
 		json_object_set_new(rtp_stream, "host", json_string(host));
 		json_object_set_new(response, "publisher_id", string_ids ? json_string(publisher_id_str) : json_integer(publisher_id));
-		json_object_set_new(response, "rtp_stream", rtp_stream);
+		if(new_forwarders != NULL)
+			json_object_set_new(response, "forwarders", new_forwarders);
+		if(rtp_stream != NULL)
+			json_object_set_new(response, "rtp_stream", rtp_stream);
 		json_object_set_new(response, "room", string_ids ? json_string(room_id_str) : json_integer(room_id));
 		json_object_set_new(response, "videoroom", json_string("rtp_forward"));
 		goto prepare_response;
