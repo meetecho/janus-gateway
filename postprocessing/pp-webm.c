@@ -65,6 +65,7 @@ static AVStream *vStream;
 static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
+static int16_t last_frame = 0, frame_count = 0;
 
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if(destination == NULL)
@@ -176,6 +177,31 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
+	
+	/* Temp list and loop to get frame count, seems overkill – I'm sure there is a better way */
+	janus_pp_frame_packet *tmpCount = list;
+	int tmpBytes = 0;
+	char tmpPrebuffer[1500];
+	memset(tmpPrebuffer, 0, 1500);
+	FILE *tmpFile = file;
+
+	while(tmpCount) {
+		if(tmpCount->drop) {
+			tmpCount = tmpCount->next;
+			continue;
+		}
+		if(vp8) {
+			fseek(filee, tmpCount->offset + 12 + tmpCount->skip, SEEK_SET);
+			tmpBytes = fread(tmpPrebuffer, sizeof(char), 16, tmpFile);
+			if(tmpBytes != 16) {
+				tmpCount = tmpCount->next;
+				continue;
+			}
+		}
+		frame_count = tmpCount->seq;
+		tmpCount = tmpCount->next;
+	}
+
 	while(tmp) {
 		if(tmp == list || tmp->ts > tmp->prev->ts) {
 			if(tmp->prev != NULL && tmp->ts > tmp->prev->ts) {
@@ -264,10 +290,17 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
 						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-						if(vp8w > max_width)
-							max_width = vp8w;
-						if(vp8h > max_height)
-							max_height = vp8h;
+						if(vp8w > max_width || vp8h > max_height) {
+							if(last_frame == 0 || ((tmp->seq - last_frame) > 10 && (frame_count - tmp->seq) > 10)) {
+								if(vp8w > max_width)
+									max_width = vp8w;
+
+								if(vp8h > max_height)
+									max_height = vp8h;
+								
+								last_frame = tmp->seq;
+							}
+						}
 					}
 				}
 			}
