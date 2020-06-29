@@ -36,6 +36,8 @@ A couple of plugins depend on a few more libraries:
 * [libogg](http://xiph.org/ogg/) (needed for the VoiceMail plugin and/or post-processor, and optionally AudioBridge and Streaming plugins)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are interested in RTSP support in the Streaming plugin or in the sample Event Handler plugin)
 * [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
+* [Rnnoise](https://github.com/xiph/rnnoise) (only needed for noise suppression based on a recurrent neural network in audiobridge plugin)
+
 
 Additionally, you'll need the following libraries and tools:
 
@@ -164,6 +166,16 @@ Finally, the same can be said for rabbitmq-c as well, which is needed for the op
 	make && sudo make install
 
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure script if you're installing on a x86_64 distribution.
+
+In case you want to use neural network noise supression library in AudioBridge audio mix you will need to compile Rnnoise lib and pass --enable-rnnoise when compiling Janus lib. Installation:
+
+	git clone https://github.com/xiph/rnnoise.git
+	cd rnnoise
+	./autogen.sh
+	./configure --prefix=/usr
+	make && sudo make install
+
+* *Note:* for audio rooom configuration refer to https://github.com/meetecho/janus-gateway/blob/master/conf/janus.plugin.audiobridge.jcfg.sample
 
 To conclude, should you be interested in building the Janus documentation as well, you'll need some additional tools too:
 
