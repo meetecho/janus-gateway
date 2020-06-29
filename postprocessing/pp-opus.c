@@ -85,11 +85,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			int i=0;
 			for(i=0; i<silence_count; i++) {
 				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
-				if(tmp->next == NULL) {
-					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence, next is NULL\n", pos);
-					break;
-				}
-				nextPos = (tmp->next->ts - list->ts) / 48 / 20;
+				if(tmp->next != NULL)
+					nextPos = (tmp->next->ts - list->ts) / 48 / 20;
 				if(pos >= nextPos) {
 					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos);
 					break;
