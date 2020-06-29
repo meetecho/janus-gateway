@@ -172,26 +172,21 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
 	if(!file || !list)
 		return -1;
-	janus_pp_frame_packet *tmp = list;
-	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
-	int rotation = -1;
-	char prebuffer[1500];
-	memset(prebuffer, 0, 1500);
 	
-	/* Temp list and loop to get frame count, seems overkill – I'm sure there is a better way */
+	/* Temp list & loop to get frame count /*
+	/* seems overkill – I'm sure there is a better way */
 	janus_pp_frame_packet *tmpCount = list;
 	int tmpBytes = 0;
 	char tmpPrebuffer[1500];
 	memset(tmpPrebuffer, 0, 1500);
 	FILE *tmpFile = file;
-
 	while(tmpCount) {
 		if(tmpCount->drop) {
 			tmpCount = tmpCount->next;
 			continue;
 		}
 		if(vp8) {
-			fseek(filee, tmpCount->offset + 12 + tmpCount->skip, SEEK_SET);
+			fseek(tmpFile, tmpCount->offset + 12 + tmpCount->skip, SEEK_SET);
 			tmpBytes = fread(tmpPrebuffer, sizeof(char), 16, tmpFile);
 			if(tmpBytes != 16) {
 				tmpCount = tmpCount->next;
@@ -200,8 +195,14 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 		}
 		frame_count = tmpCount->seq;
 		tmpCount = tmpCount->next;
-	}
-
+	}	
+	
+	janus_pp_frame_packet *tmp = list;
+	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
+	int rotation = -1;
+	char prebuffer[1500];
+	memset(prebuffer, 0, 1500);
+	
 	while(tmp) {
 		if(tmp == list || tmp->ts > tmp->prev->ts) {
 			if(tmp->prev != NULL && tmp->ts > tmp->prev->ts) {
