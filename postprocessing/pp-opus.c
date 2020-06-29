@@ -64,13 +64,13 @@ int janus_pp_opus_create(char *destination, char *metadata) {
 	return 0;
 }
 
-int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working, uint32_t count) {
+int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
 	long int offset = 0;
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
-	uint64_t pos = 0;
+	uint64_t pos = 0, nextPos = 0;
 	uint8_t *buffer = g_malloc0(1500);
 	while(*working && tmp != NULL) {
 		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
@@ -85,8 +85,13 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working,
 			int i=0;
 			for(i=0; i<silence_count; i++) {
 				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
-				if(pos > count) {
-					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping silence after position\n", pos);
+				if(tmp->next == NULL) {
+					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence, next is NULL\n", pos);
+					break;
+				}
+				nextPos = (tmp->next->ts - list->ts) / 48 / 20;
+				if(pos >= nextPos) {
+					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos);
 					break;
 				}
 				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
