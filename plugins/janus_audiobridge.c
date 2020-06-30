@@ -6535,12 +6535,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc(sizeof(janus_audiobridge_rtp_relay_packet));
 			mixedpkt->data = g_malloc(samples*2);
 #ifdef HAVE_RNNOISE
-			if (denoiseState && audiobridge->rnnoise_complexity) {
+			if(denoiseState && audiobridge->rnnoise_complexity) {
 				/* after 3 frames denoised, there is no point skiping them anymore, effect will be barelly noticable*/ 
 				if(denoise_again >= 3 || denoise_again < audiobridge->rnnoise_complexity) {
 					size_t i;
 					float denoiseFrames[OPUS_SAMPLES*2];
-					if(audiobridge->sampling_rate != 16000){
+					if(audiobridge->sampling_rate != 16000) {
 						float inFrames[OPUS_SAMPLES], outFrames[OPUS_SAMPLES];
 						int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, audiobridge->sampling_rate, (int16_t *)sumBuffer, 16000);
 						if(n == 0) {
@@ -6551,7 +6551,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						}
 					}
 
-					for (i = 0; i < OPUS_SAMPLES*2; i++) {
+					for(i = 0; i < OPUS_SAMPLES*2; i++) {
 						denoiseFrames[i] = outBuffer[i];
 					}
 					
@@ -6561,10 +6561,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						denoise_again++;
 					}
 
-					for (i = 0; i < OPUS_SAMPLES*2; i++) {
+					for(i = 0; i < OPUS_SAMPLES*2; i++) {
 						outBuffer[i] = denoiseFrames[i];
 					}
-					if(audiobridge->sampling_rate != 16000){
+					if(audiobridge->sampling_rate != 16000) {
 						int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, 16000, (int16_t *)outBuffer, audiobridge->sampling_rate);
 						if(n == 0) {
 							JANUS_LOG(LOG_WARN, "[Rnnoise] Error re-sampling from 16000 to %d\n", audiobridge->sampling_rate);
