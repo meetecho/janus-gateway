@@ -1419,7 +1419,23 @@ typedef struct janus_audiobridge_rtp_forwarder {
 	gboolean is_srtp;
 	srtp_t srtp_ctx;
 	srtp_policy_t srtp_policy;
+	/* Reference */
+	volatile gint destroyed;
+	janus_refcount ref;
 } janus_audiobridge_rtp_forwarder;
+static void janus_audiobridge_rtp_forwarder_destroy(janus_audiobridge_rtp_forwarder *rf) {
+	if(rf && g_atomic_int_compare_and_exchange(&rf->destroyed, 0, 1)) {
+		janus_refcount_decrease(&rf->ref);
+	}
+}
+static void janus_audiobridge_rtp_forwarder_free(const janus_refcount *f_ref) {
+	janus_audiobridge_rtp_forwarder *rf = janus_refcount_containerof(f_ref, janus_audiobridge_rtp_forwarder, ref);
+	if(rf->is_srtp) {
+		srtp_dealloc(rf->srtp_ctx);
+		g_free(rf->srtp_policy.key);
+	}
+	g_free(rf);
+}
 static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room,
 		const gchar *host, uint16_t port, uint32_t ssrc, int pt,
 		janus_audiocodec codec, int srtp_suite, const char *srtp_crypto,
@@ -1495,6 +1511,7 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 	while(g_hash_table_lookup(room->rtp_forwarders, GUINT_TO_POINTER(actual_stream_id)) != NULL) {
 		actual_stream_id = janus_random_uint32();
 	}
+	janus_refcount_init(&rf->ref, janus_audiobridge_rtp_forwarder_free);
 	g_hash_table_insert(room->rtp_forwarders, GUINT_TO_POINTER(actual_stream_id), rf);
 
 	janus_mutex_unlock(&room->rtp_mutex);
@@ -2136,7 +2153,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 			g_atomic_int_set(&audiobridge->destroyed, 0);
 			janus_mutex_init(&audiobridge->mutex);
-			audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+			audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_rtp_forwarder_destroy);
 			audiobridge->rtp_encoder = NULL;
 			audiobridge->rtp_udp_sock = -1;
 			janus_mutex_init(&audiobridge->rtp_mutex);
@@ -2608,7 +2625,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 		}
 		g_atomic_int_set(&audiobridge->destroyed, 0);
 		janus_mutex_init(&audiobridge->mutex);
-		audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_free);
+		audiobridge->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_rtp_forwarder_destroy);
 		audiobridge->rtp_encoder = NULL;
 		audiobridge->rtp_udp_sock = -1;
 		janus_mutex_init(&audiobridge->rtp_mutex);
@@ -6294,6 +6311,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	/* RTP */
 	gint16 seq = 0;
 	gint32 ts = 0;
+	/* SRTP buffer, if needed */
+	char sbuf[1500];
 
 	/* Loop */
 	int i=0;
@@ -6623,16 +6642,31 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					rtph->seq_number = htons(forwarder->seq_number);
 					forwarder->timestamp += (forwarder->codec == JANUS_AUDIOCODEC_OPUS ? OPUS_SAMPLES : G711_SAMPLES);
 					rtph->timestamp = htonl(forwarder->timestamp);
-					/* Send RTP packet */
+					/* Check if this packet needs to be encrypted */
+					char *payload = (char *)rtph;
+					int plen = (JANUS_AUDIOCODEC_OPUS ? (length+12) : 172);
+					if(forwarder->is_srtp) {
+						memcpy(sbuf, payload, plen);
+						int protected = plen;
+						int res = srtp_protect(forwarder->srtp_ctx, sbuf, &protected);
+						if(res != srtp_err_status_ok) {
+							janus_rtp_header *header = (janus_rtp_header *)sbuf;
+							guint32 timestamp = ntohl(header->timestamp);
+							guint16 seq = ntohs(header->seq_number);
+							JANUS_LOG(LOG_ERR, "Error encrypting RTP packet for room %s... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+								audiobridge->room_id_str, janus_srtp_error_str(res), plen, protected, timestamp, seq);
+						} else {
+							payload = (char *)&sbuf;
+							plen = protected;
+						}
+					}
+					/* No encryption, send the RTP packet as it is */
 					struct sockaddr *address = (forwarder->serv_addr.sin_family == AF_INET ?
 						(struct sockaddr *)&forwarder->serv_addr : (struct sockaddr *)&forwarder->serv_addr6);
 					size_t addrlen = (forwarder->serv_addr.sin_family == AF_INET ? sizeof(forwarder->serv_addr) : sizeof(forwarder->serv_addr6));
-					if(sendto(audiobridge->rtp_udp_sock, (char *)rtph,
-							(forwarder->codec == JANUS_AUDIOCODEC_OPUS ? (length+12) : 172),
-							0, address, addrlen) < 0) {
+					if(sendto(audiobridge->rtp_udp_sock, payload, plen, 0, address, addrlen) < 0) {
 						JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %s... %s (len=%d)...\n",
-							audiobridge->room_id_str, strerror(errno),
-							(forwarder->codec == JANUS_AUDIOCODEC_OPUS ? (length+12) : 172));
+							audiobridge->room_id_str, strerror(errno), plen);
 					}
 				}
 			}
