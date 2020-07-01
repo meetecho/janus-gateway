@@ -1695,8 +1695,8 @@ static int janus_audiobridge_resample(int16_t *input, int input_num, int input_r
 		/* Invalid sampling rate */
 		return 0;
 	}
-	if((input_rate != 8000 && output_rate != 8000) || !HAVE_RNNOISE) {
-		/* We only use this for G.711, so one of the two MUST be 8000  or if rnnoise is used*/
+	if((input_rate != 8000 && output_rate != 8000)) {
+		/* We only use this for G.711, so one of the two MUST be 8000 */
 		return 0;
 	}
 	if(input_rate == output_rate) {
@@ -6536,45 +6536,31 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			mixedpkt->data = g_malloc(samples*2);
 #ifdef HAVE_RNNOISE
 			if(denoiseState && audiobridge->rnnoise_complexity) {
-				/* after 3 frames denoised, there is no point skiping them anymore, effect will be barelly noticable*/ 
-				if(denoise_again >= 3 || denoise_again < audiobridge->rnnoise_complexity) {
-					size_t i;
-					float denoiseFrames[OPUS_SAMPLES*2];
-					if(audiobridge->sampling_rate != 16000) {
-						float inFrames[OPUS_SAMPLES], outFrames[OPUS_SAMPLES];
-						int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, audiobridge->sampling_rate, (int16_t *)sumBuffer, 16000);
-						if(n == 0) {
-							JANUS_LOG(LOG_WARN, "[Rnnoise] Error re-sampling from %d to 16000\n", audiobridge->sampling_rate);
-							janus_refcount_decrease(&p->ref);
-							ps = ps->next;
-							continue;
-						}
-					}
-
-					for(i = 0; i < OPUS_SAMPLES*2; i++) {
-						denoiseFrames[i] = outBuffer[i];
-					}
-					
-					rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
-					
-					if(denoise_again != 3) {
-						denoise_again++;
-					}
-
-					for(i = 0; i < OPUS_SAMPLES*2; i++) {
-						outBuffer[i] = denoiseFrames[i];
-					}
-					if(audiobridge->sampling_rate != 16000) {
-						int n = janus_audiobridge_resample((int16_t *)outBuffer, samples, 16000, (int16_t *)outBuffer, audiobridge->sampling_rate);
-						if(n == 0) {
-							JANUS_LOG(LOG_WARN, "[Rnnoise] Error re-sampling from 16000 to %d\n", audiobridge->sampling_rate);
-							janus_refcount_decrease(&p->ref);
-							ps = ps->next;
-							continue;
-						}
-					}
+				/* TODO: re-smaple if 16000 is not used */
+				if(audiobridge->sampling_rate != 16000) {
+					JANUS_LOG(LOG_WARN, "[Rnnoise] Denoising only possible on 16000 sampling rate, currently set: [%d]\n", audiobridge->sampling_rate);
 				} else {
-					denoise_again = 0;
+					/* after 3 frames denoised, there is no point skiping them anymore, effect will be barelly noticable*/ 
+					if(denoise_again >= 3 || denoise_again < audiobridge->rnnoise_complexity) {
+						int i;
+						float denoiseFrames[OPUS_SAMPLES*2];
+
+						for(i = 0; i < OPUS_SAMPLES*2; i++) {
+							denoiseFrames[i] = outBuffer[i];
+						}
+						
+						rnnoise_process_frame(denoiseState, denoiseFrames, denoiseFrames);
+						
+						if(denoise_again != 3) {
+							denoise_again++;
+						}
+
+						for(i = 0; i < OPUS_SAMPLES*2; i++) {
+							outBuffer[i] = denoiseFrames[i];
+						}
+					} else {
+						denoise_again = 0;
+					}
 				}
 			}
 #endif
