@@ -697,7 +697,7 @@ room-<unique room ID>: {
  *
  \verbatim
 {
-	"request" : "<mute|unmute, whether to mute or unmute >",
+	"request" : "<mute|unmute, whether to mute or unmute>",
 	"secret" : "<room secret, mandatory if configured>",
 	"room" : <unique numeric ID of the room>,
 	"id" : <unique numeric ID of the participant to mute|unmute>
@@ -716,10 +716,9 @@ room-<unique room ID>: {
  *
  \verbatim
 {
-	"request" : "<mute|unmute, whether to mute or unmute >",
+	"request" : "<mute_room|unmute_room, whether to mute or unmute>",
 	"secret" : "<room secret, mandatory if configured>",
-	"room" : <unique numeric ID of the room>,
-	"id" : <unique numeric ID of the participant to mute|unmute>
+	"room" : <unique numeric ID of the room>
 }
 \endverbatim
  *
