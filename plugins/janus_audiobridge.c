@@ -1446,7 +1446,7 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 		} else if(srtp_suite == 80) {
 			srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
 		}
-		policy->ssrc.type = ssrc_any_inbound;
+		policy->ssrc.type = ssrc_any_outbound;
 		policy->key = decoded;
 		policy->next = NULL;
 		/* Create SRTP context */
