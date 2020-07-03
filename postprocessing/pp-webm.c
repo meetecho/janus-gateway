@@ -24,6 +24,7 @@
 
 #include "pp-webm.h"
 #include "../debug.h"
+#include "pp-utils.h"
 
 
 /* WebRTC stuff (VP8/VP9) */
@@ -65,7 +66,6 @@ static AVStream *vStream;
 static AVCodecContext *vEncoder;
 #endif
 static int max_width = 0, max_height = 0, fps = 0;
-static int16_t last_frame = 0, frame_count = 0;
 
 int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 	if(destination == NULL)
@@ -172,37 +172,13 @@ int janus_pp_webm_create(char *destination, char *metadata, gboolean vp8) {
 int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean vp8) {
 	if(!file || !list)
 		return -1;
-	
-	/* Temp list & loop to get frame count /*
-	/* seems overkill – I'm sure there is a better way */
-	janus_pp_frame_packet *tmpCount = list;
-	int tmpBytes = 0;
-	char tmpPrebuffer[1500];
-	memset(tmpPrebuffer, 0, 1500);
-	FILE *tmpFile = file;
-	while(tmpCount) {
-		if(tmpCount->drop) {
-			tmpCount = tmpCount->next;
-			continue;
-		}
-		if(vp8) {
-			fseek(tmpFile, tmpCount->offset + 12 + tmpCount->skip, SEEK_SET);
-			tmpBytes = fread(tmpPrebuffer, sizeof(char), 16, tmpFile);
-			if(tmpBytes != 16) {
-				tmpCount = tmpCount->next;
-				continue;
-			}
-		}
-		frame_count = tmpCount->seq;
-		tmpCount = tmpCount->next;
-	}	
-	
+	dimension_array dimension_arr;
+	init_dimension_array(&dimension_arr, 1);
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
 	int rotation = -1;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
-	
 	while(tmp) {
 		if(tmp == list || tmp->ts > tmp->prev->ts) {
 			if(tmp->prev != NULL && tmp->ts > tmp->prev->ts) {
@@ -291,17 +267,11 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
 						JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-						if(vp8w > max_width || vp8h > max_height) {
-							if(last_frame == 0 || ((tmp->seq - last_frame) > 10 && (frame_count - tmp->seq) > 10)) {
-								if(vp8w > max_width)
-									max_width = vp8w;
-
-								if(vp8h > max_height)
-									max_height = vp8h;
-								
-								last_frame = tmp->seq;
-							}
-						}
+						dimension_item dimensions;
+						dimensions.width = vp8w;
+						dimensions.height = vp8h;
+						dimensions.seq = tmp->seq;
+						insert_dimension_array(&dimension_arr, dimensions);
 					}
 				}
 			}
@@ -372,16 +342,21 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, gboolean v
 						uint16_t *h = (uint16_t *)buffer;
 						int height = ntohs(*h);
 						buffer += 2;
-						if(width > max_width)
-							max_width = width;
-						if(height > max_height)
-							max_height = height;
+						dimension_item dimensions;
+						dimensions.width = width;
+						dimensions.height = height;
+						dimensions.seq = tmp->seq;
+						insert_dimension_array(&dimension_arr, dimensions);
 					}
 				}
 			}
 		}
 		tmp = tmp->next;
 	}
+	dimension_item dimensions = get_optimal_dimensions(dimension_arr.array, dimension_arr.used, 10);
+	max_width = dimensions.width;
+	max_height = dimensions.height;
+	free_dimension_array(&dimension_arr);
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
 	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);

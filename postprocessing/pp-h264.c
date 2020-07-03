@@ -24,6 +24,7 @@
 
 #include "pp-h264.h"
 #include "../debug.h"
+#include "pp-utils.h"
 
 
 #define LIBAVCODEC_VER_AT_LEAST(major, minor) \
@@ -251,6 +252,8 @@ static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
 int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(!file || !list)
 		return -1;
+	dimension_array dimension_arr;
+	init_dimension_array(&dimension_arr, 1);
 	janus_pp_frame_packet *tmp = list;
 	int bytes = 0, min_ts_diff = 0, max_ts_diff = 0;
 	int rotation = -1;
@@ -288,10 +291,11 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
 			int width = 0, height = 0;
 			janus_pp_h264_parse_sps(prebuffer, &width, &height);
-			if(width > max_width)
-				max_width = width;
-			if(height > max_height)
-				max_height = height;
+			dimension_item dimensions;
+			dimensions.width = width;
+			dimensions.height = height;
+			dimensions.seq = tmp->seq;
+			insert_dimension_array(&dimension_arr, dimensions);
 		} else if((prebuffer[0] & 0x1F) == 24) {
 			/* May we find an SPS in this STAP-A? */
 			JANUS_LOG(LOG_HUGE, "Parsing STAP-A...\n");
@@ -310,10 +314,11 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					JANUS_LOG(LOG_VERB, "Parsing width/height\n");
 					int width = 0, height = 0;
 					janus_pp_h264_parse_sps(buffer, &width, &height);
-					if(width > max_width)
-						max_width = width;
-					if(height > max_height)
-						max_height = height;
+					dimension_item dimensions;
+					dimensions.width = width;
+					dimensions.height = height;
+					dimensions.seq = tmp->seq;
+					insert_dimension_array(&dimension_arr, dimensions);
 				}
 				buffer += psize;
 				tot -= psize;
@@ -331,6 +336,10 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		}
 		tmp = tmp->next;
 	}
+	dimension_item dimensions = get_optimal_dimensions(dimension_arr.array, dimension_arr.used, 10);
+	max_width = dimensions.width;
+	max_height = dimensions.height;
+	free_dimension_array(&dimension_arr);
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
 	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
 	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);

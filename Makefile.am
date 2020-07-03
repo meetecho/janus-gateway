@@ -593,6 +593,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-rtp.h \
 	postprocessing/pp-srt.c \
 	postprocessing/pp-srt.h \
+	postprocessing/pp-utils.c \
+	postprocessing/pp-utils.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
