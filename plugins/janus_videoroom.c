@@ -690,12 +690,13 @@ room-<unique room ID>: {
 	"video_ssrc" : <video SSRC to use to use when streaming; optional>,
 	"video_pt" : <video payload type to use when streaming; optional>,
 	"video_rtcp_port" : <port to contact to receive video RTCP feedback from the recipient; optional>,
-	"video_port_2" : <if simulcasting, port to forward the video RTP packets from the second substream/layer to>,
-	"video_ssrc_2" : <if simulcasting, video SSRC to use to use the second substream/layer; optional>,
-	"video_pt_2" : <if simulcasting, video payload type to use the second substream/layer; optional>,
-	"video_port_3" : <if simulcasting, port to forward the video RTP packets from the third substream/layer to>,
-	"video_ssrc_3" : <if simulcasting, video SSRC to use to use the third substream/layer; optional>,
-	"video_pt_3" : <if simulcasting, video payload type to use the third substream/layer; optional>,
+	"simulcast" : <true|false, set to true if the source is simulcast and you want the forwarder to act as a regular viewer (single stream being forwarded) or false otherwise (substreams forwarded separately); optional, default=false>,
+	"video_port_2" : <if simulcasting and forwarding each substream, port to forward the video RTP packets from the second substream/layer to>,
+	"video_ssrc_2" : <if simulcasting and forwarding each substream, video SSRC to use to use the second substream/layer; optional>,
+	"video_pt_2" : <if simulcasting and forwarding each substream, video payload type to use the second substream/layer; optional>,
+	"video_port_3" : <if simulcasting and forwarding each substream, port to forward the video RTP packets from the third substream/layer to>,
+	"video_ssrc_3" : <if simulcasting and forwarding each substream, video SSRC to use to use the third substream/layer; optional>,
+	"video_pt_3" : <if simulcasting and forwarding each substream, video payload type to use the third substream/layer; optional>,
 	"data_port" : <port to forward the datachannel messages to>,
 	"srtp_suite" : <length of authentication tag (32 or 80); optional>,
 	"srtp_crypto" : "<key to use as crypto (base64 encoded key as in SDES); optional>"
@@ -706,6 +707,23 @@ room-<unique room ID>: {
  * property and extended it to RTP forwarding as well, you'll need to provide
  * it in the request as well or it will be rejected as unauthorized. By
  * default no limitation is posed on \c rtp_forward .
+ *
+ * It's worth spending some more words on how to forward simulcast publishers,
+ * as this can lead to some confusion. There are basically two ways to forward
+ * a simulcast publisher:
+ *
+ * -# you treat the forwarder as a regular viewer, which means you still only
+ * forward a single stream to the recipient, that is the highest quality
+ * available at any given time: you can do that by setting
+ * <code>simulcast: true</code> in the \c rtp_forward request;
+ * -# you forward each substream separately instead, to different target
+ * ports: you do that by specifying \c video_port_2 , \c video_port_3 and
+ * optionally the other related \c _2 and \c _3 properties; this is what
+ * you should use when you want to forward to a simulcast-aware Streaming
+ * mountpoint (see the \ref streaming for more details).
+ *
+ * The two approaches are mutually exclusive: you can NOT use them together
+ * in the same RTP forwarder.
  *
  * A successful request will result in an \c rtp_forward response, containing
  * the relevant info associated to the new forwarder(s):
