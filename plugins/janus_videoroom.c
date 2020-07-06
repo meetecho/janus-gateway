@@ -51,7 +51,7 @@
  * \verbatim
 room-<unique room ID>: {
 	description = This is my awesome room
-	is_private = true|false (private rooms don't appear when you do a 'list' request)
+	is_private = true|false (private rooms don't appear when you do a 'list' request, default=false)
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
 	require_pvtid = true|false (whether subscriptions are required to provide a valid
@@ -70,7 +70,7 @@ room-<unique room ID>: {
 	video_svc = true|false (whether SVC support must be enabled; only works for VP9, default=false)
 	audiolevel_ext = true|false (whether the ssrc-audio-level RTP extension must be
 		negotiated/used or not for new publishers, default=true)
-	audiolevel_event = true|false (whether to emit event to other users or not)
+	audiolevel_event = true|false (whether to emit event to other users or not, default=false)
 	audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 	audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 	videoorient_ext = true|false (whether the video-orientation RTP extension must be
