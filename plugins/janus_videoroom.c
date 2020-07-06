@@ -59,6 +59,7 @@ room-<unique room ID>: {
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
 	bitrate = <max video bitrate for senders> (e.g., 128000)
+	bitrate_cap = <true|false, whether the above cap should act as a limit to dynamic bitrate changes by publishers, default=false>,
 	fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 	audiocodec = opus|g722|pcmu|pcma|isac32|isac16 (audio codec to force on publishers, default=opus
 				can be a comma separated list in order of preference, e.g., opus,pcmu)
