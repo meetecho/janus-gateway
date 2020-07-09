@@ -15,6 +15,7 @@ general: {
 	#keep_alive_interval = 20			# Keep connection for N seconds
 	#cleansession = 0					# Clean session flag
 	#max_inflight = 10					# Maximum number of inflight messages
+	#max_buffered = 100					# Maximum number of buffered messages
 	#disconnect_timeout = 100			# Milliseconds to wait before destroying client
 	subscribe_topic = "to-janus"		# Topic for incoming messages
 	#subscribe_qos = 1					# QoS for incoming messages

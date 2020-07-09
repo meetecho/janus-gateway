@@ -117,6 +117,7 @@ typedef struct janus_mqtt_context {
 		char *username;
 		char *password;
 		int max_inflight;
+		int max_buffered;
 	} connect;
 	struct {
 		int timeout;
@@ -432,6 +433,15 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		ctx->connect.max_inflight = 10;
 	}
 
+	janus_config_item *max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	ctx->connect.max_buffered = (max_buffered_item && max_buffered_item->value) ?
+		atoi(max_buffered_item->value) : 100;
+	if(ctx->connect.max_buffered < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-buffered value: %s (falling back to default)\n", max_buffered_item->value);
+		ctx->connect.max_buffered = 100;
+	}
+
 	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 	if(enabled_item == NULL) {
 		/* Try legacy property */
@@ -659,6 +669,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		create_options.MQTTVersion = MQTTVERSION_5;
 	}
 #endif
+
+	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
 	if(MQTTAsync_createWithOptions(
 			&ctx->client,
