@@ -77,8 +77,8 @@ janus_eventhandler *create(void) {
 static volatile gint initialized = 0, stopping = 0;
 static GThread *handler_thread;
 static GThread *in_thread;
-static void *janus_rabbitmqevh_handler(void *data);
-static void *janus_rabbitmqevh_heartbeat_handler(void *data);
+static void *jns_rmqevh_hdlr(void *data);
+static void *jns_rmqevh_hrtbt(void *data);
 int janus_rabbitmqevh_connect(void);
 
 /* Queue of events to handle */
@@ -277,8 +277,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	}
 
 	/* Connect */
-	int result=janus_rabbitmqevh_connect();
-	if(result < 0){
+	int result = janus_rabbitmqevh_connect();
+	if(result < 0) {
 		goto error;
 	}
 
@@ -287,7 +287,7 @@ int janus_rabbitmqevh_init(const char *config_path) {
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
-	handler_thread = g_thread_try_new("janus rabbitmqevh handler", janus_rabbitmqevh_handler, NULL, &error);
+	handler_thread = g_thread_try_new("janus rabbitmqevh handler", jns_rmqevh_hdlr, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQEventHandler handler thread...\n",
@@ -295,8 +295,8 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		g_error_free(error);
 		goto error;
 	}
-	if(heartbeat > 0){
-		in_thread = g_thread_try_new("janus rabbitmqevh heartbeat handler", janus_rabbitmqevh_heartbeat_handler, NULL, &error);
+	if(heartbeat > 0) {
+		in_thread = g_thread_try_new("janus rabbitmqevh heartbeat handler", jns_rmqevh_hrtbt, NULL, &error);
 		if(error != NULL) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQEventHandler heartbeat thread...\n",
@@ -553,7 +553,7 @@ plugin_response:
 }
 
 /* Thread to handle incoming events */
-static void *janus_rabbitmqevh_handler(void *data) {
+static void *jns_rmqevh_hdlr(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining RabbitMQEventHandler handler thread\n");
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
@@ -619,10 +619,10 @@ static void *janus_rabbitmqevh_handler(void *data) {
 
 
 /* Thread to handle heartbeats */
-static void *janus_rabbitmqevh_heartbeat_handler(void *data) {
+static void *jns_rmqevh_hrtbt(void *data) {
 	JANUS_LOG(LOG_VERB, "Monitoring RabbitMQ HeartBeat\n");
-		struct timeval timeout;
-	timeout.tv_sec = 0;
+	struct timeval timeout;
+	timeout.tv_sec = heartbeat/2;
 	timeout.tv_usec = 20000;
 	amqp_frame_t frame;
 
@@ -643,10 +643,9 @@ static void *janus_rabbitmqevh_heartbeat_handler(void *data) {
 			}
 			JANUS_LOG(LOG_VERB, "Trying to reconnect with RabbitMQ Server\n");
 			int result = janus_rabbitmqevh_connect();
-			if(result < 0){
+			if(result < 0) {
 				g_usleep(5000000);
 			}
-
 		}
 	}
 
