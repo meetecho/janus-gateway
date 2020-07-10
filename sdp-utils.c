@@ -705,16 +705,21 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 		GList *ma = m->attributes;
 		int pt = -1;
 		gboolean check_profile = FALSE;
+		gboolean got_profile = FALSE;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(check_profile && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
+			if(profile != NULL && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
 				if(vp9) {
 					char profile_id[20];
 					g_snprintf(profile_id, sizeof(profile_id), "profile-id=%s", profile);
 					if(strstr(a->value, profile_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 				} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
 					/* We only support packetization-mode=1, no matter the profile */
@@ -725,7 +730,11 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 					/* Not found, try converting the profile to upper case */
 					char *profile_upper = g_ascii_strup(profile, -1);
@@ -734,7 +743,11 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 				}
 			} else if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
@@ -743,7 +756,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 				if(pt < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
 				} else if(strstr(a->value, format) || strstr(a->value, format2)) {
-					if(profile != NULL && (vp9 || h264)) {
+					if(profile != NULL && !got_profile && (vp9 || h264)) {
 						/* Let's check the profile first */
 						check_profile = TRUE;
 					} else {

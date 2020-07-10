@@ -191,7 +191,7 @@ BUILT_SOURCES = cmdline.c cmdline.h version.c
 cmdline.h: cmdline.c
 
 cmdline.c: janus.c
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < janus.ggo
+	gengetopt --set-package="janus" --set-version="$(VERSION)" < $(top_srcdir)/janus.ggo
 
 directory = .git
 dir_target = $(directory)-$(wildcard $(directory))
@@ -603,6 +603,7 @@ janus_pp_rec_SOURCES = \
 
 janus_pp_rec_CFLAGS = \
 	$(AM_CFLAGS) \
+	-I$(top_builddir)/postprocessing \
 	$(LIBCURL_CFLAGS) \
 	$(POST_PROCESSING_CFLAGS) \
 	$(NULL)
@@ -617,7 +618,7 @@ BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
 postprocessing/pp-cmdline.h: postprocessing/pp-cmdline.c
 
 postprocessing/pp-cmdline.c: postprocessing/janus-pp-rec.c
-	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < postprocessing/janus-pp-rec.ggo
+	gengetopt --set-package="janus-pp-rec" --set-version="$(VERSION)" -F postprocessing/pp-cmdline < $(top_srcdir)/postprocessing/janus-pp-rec.ggo
 
 EXTRA_DIST += postprocessing/janus-pp-rec.ggo
 CLEANFILES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h
@@ -651,6 +652,7 @@ pcap2mjr_SOURCES = \
 
 pcap2mjr_CFLAGS = \
 	$(AM_CFLAGS) \
+	-I$(top_builddir)/postprocessing \
 	$(POST_PROCESSING_CFLAGS) \
 	$(PCAP_CFLAGS) \
 	$(NULL)
@@ -666,7 +668,7 @@ BUILT_SOURCES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h
 postprocessing/p2m-cmdline.h: postprocessing/p2m-cmdline.c
 
 postprocessing/p2m-cmdline.c: postprocessing/pcap2mjr.c
-	gengetopt --set-package="pcap2mjr" --set-version="$(VERSION)" -F postprocessing/p2m-cmdline < postprocessing/pcap2mjr.ggo
+	gengetopt --set-package="pcap2mjr" --set-version="$(VERSION)" -F postprocessing/p2m-cmdline < $(top_srcdir)/postprocessing/pcap2mjr.ggo
 
 EXTRA_DIST += postprocessing/pcap2mjr.ggo
 CLEANFILES += postprocessing/p2m-cmdline.c postprocessing/p2m-cmdline.h

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server: Canvas Capture</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="canvas.js"></script>
+<script>
+	$(function() {
+		$(".navbar-static-top").load("navbar.html", function() {
+			$(".navbar-static-top li.dropdown").addClass("active");
+			$(".navbar-static-top a[href='canvas.html']").parent().addClass("active");
+		});
+		$(".footer").load("footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<nav class="navbar navbar-default navbar-static-top">
+</nav>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="page-header">
+				<h1>Plugin Demo: Canvas Capture
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a variant of the Echo Test demo meant to showcase how
+						you can use an HTML5 <code>canvas</code> element as a WebRTC media
+						source: everything is exactly the same in term of available controls,
+						features, and the like, with the substantial difference that we'll
+						play a bit with what we'll send on the video stream.</p>
+						<p>More precisely, the demo captures the webcam feed via a
+						<code>getUserMedia</code> call to use as a background in a
+						<code>canvas</code> element, and then presents some basic controls
+						to add some text dynamically; an image is also statically added
+						to the element as well. The <code>canvas</code> element is then used
+						as the actual source of media for our PeerConnection, which means the
+						video we get back from the EchoTest plugin should reflect the
+						tweaks we've made on the stream.</p>
+						<p>Notice that this is a very naive implementation, with many
+						hardcoded assumptions about video resolution and other things, and may not
+						perform very well either: it's only meant to showcase an interesting
+						approach that can be used for WebRTC, so you're encouraged to dig
+						deeper yourself to see how to make the <code>canvas</code>
+						processing more efficient and cooler. The code for this demo comes from a
+						<a href="https://youtu.be/zwYUojfm0hY?t=2140" target="blank">Dangerous Demo</a>
+						we showed during a past edition of Kamailio World; you can read more details in a
+						<a href="https://www.meetecho.com/blog/firefox-webrtc-youtube-kinda/" target="blank">blog post</a>
+						we wrote on the Meetecho blog after the fact.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="row">
+							<div class="panel panel-default">
+								<div class="panel-heading">
+									<h3 class="panel-title">Local Stream
+										<div class="btn-group btn-group-xs pull-right hide">
+											<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+											<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
+											<div class="btn-group btn-group-xs">
+												<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+													Bandwidth<span class="caret"></span>
+												</button>
+												<ul id="bitrate" class="dropdown-menu" role="menu">
+													<li><a href="#" id="0">No limit</a></li>
+													<li><a href="#" id="128">Cap to 128kbit</a></li>
+													<li><a href="#" id="256">Cap to 256kbit</a></li>
+													<li><a href="#" id="512">Cap to 512kbit</a></li>
+													<li><a href="#" id="1024">Cap to 1mbit</a></li>
+													<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
+													<li><a href="#" id="2000">Cap to 2mbit</a></li>
+												</ul>
+											</div>
+										</div>
+									</h3>
+								</div>
+								<div class="panel-body" id="videoleft">
+									<video class="rounded centered hide" id="myvideo" width="432" height="240" muted="muted"></video>
+									<canvas id="canvas" width="432" height="240" style="display: block; margin: auto; padding: 0"></canvas>
+								</div>
+							</div>
+						</div>
+						<div class="row">
+							<div class="panel panel-default">
+								<div class="panel-heading">
+									<h3 class="panel-title">Tweaks</h3>
+								</div>
+								<div class="panel-body" id="tweaks">
+									<div class="input-group margin-bottom-sm">
+										<span class="input-group-addon"><i class="fa fa-font fa-fw"></i></span>
+										<input class="form-control" type="text" autocomplete="off" id="font" onkeypress="return checkEnter(event);"></input>
+									</div>
+									<div class="input-group margin-bottom-sm">
+										<span class="input-group-addon"><i class="fa fa-eraser fa-fw"></i></span>
+										<input class="form-control" type="text" autocomplete="off" id="color" onkeypress="return checkEnter(event);"></input>
+									</div>
+									<div class="input-group margin-bottom-sm">
+										<span class="input-group-addon"><i class="fa fa-text-width fa-fw"></i></span>
+										<input class="form-control" type="text" autocomplete="off" id="posX" onkeypress="return checkEnter(event);"></input>
+									</div>
+									<div class="input-group margin-bottom-sm">
+										<span class="input-group-addon"><i class="fa fa-text-height fa-fw"></i></span>
+										<input class="form-control" type="text" autocomplete="off" id="posY" onkeypress="return checkEnter(event);"></input>
+									</div>
+									<div class="input-group margin-bottom-sm">
+										<span class="input-group-addon"><i class="fa fa-edit fa-fw"></i></span>
+										<input class="form-control" type="text" autocomplete="off" id="text" onkeypress="return checkEnter(event);"></input>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+							</div>
+							<div class="panel-body" id="videoright"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>
