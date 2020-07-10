@@ -21,7 +21,7 @@
  *
  * For what concerns types 1. and 2., considering the proof of concept
  * nature of the implementation the only pre-recorded media files
- * that the plugins supports right now are raw mu-Law and a-Law files:
+ * that the plugins supports right now are Opus, raw mu-Law and a-Law files:
  * support is of course planned for other additional widespread formats
  * as well.
  *
