@@ -117,7 +117,7 @@ void janus_turnrest_response_destroy(janus_turnrest_response *response) {
 	g_list_free_full(response->servers, janus_turnrest_instance_destroy);
 }
 
-janus_turnrest_response *janus_turnrest_request(void) {
+janus_turnrest_response *janus_turnrest_request(const char *user) {
 	janus_mutex_lock(&api_mutex);
 	if(api_server == NULL) {
 		janus_mutex_unlock(&api_mutex);
@@ -130,11 +130,20 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		/* Note: we've been using 'api' as a query string parameter for
 		 * a while, but the expired draft this implementation follows
 		 * suggested 'key' instead: as such, we send them both
-		 * See https://github.com/meetecho/janus-gateway/issues/1416*/
+		 * See https://github.com/meetecho/janus-gateway/issues/1416 */
 		char buffer[256];
 		g_snprintf(buffer, 256, "&api=%s", api_key);
 		g_strlcat(query_string, buffer, 512);
 		g_snprintf(buffer, 256, "&key=%s", api_key);
+		g_strlcat(query_string, buffer, 512);
+	}
+	if(user != NULL) {
+		/* Note: 'username' is supposedly optional, but a commonly used
+		 * TURN REST API server implementation requires it. As such, we
+		 * now send that too, letting the Janus core tell us what to use
+		 * See https://github.com/meetecho/janus-gateway/issues/2199 */
+		char buffer[256];
+		g_snprintf(buffer, 256, "&username=%s", user);
 		g_strlcat(query_string, buffer, 512);
 	}
 	char request_uri[1024];

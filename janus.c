@@ -1324,6 +1324,7 @@ int janus_process_incoming_request(janus_request *request) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
 			char error_str[512];
+			error_str[0] = '\0';
 			int audio = 0, video = 0, data = 0;
 			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
@@ -1464,6 +1465,24 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 #endif
+				/* Check if renegotiating has added new RTP extensions */
+				if(offer) {
+					/* Check if the mid RTP extension is being negotiated */
+					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					/* Check if the RTP Stream ID extension is being negotiated */
+					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
+					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
+					/* Check if the audio level ID extension is being negotiated */
+					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+					/* Check if the video orientation ID extension is being negotiated */
+					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the frame marking ID extension is being negotiated */
+					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
+					/* Check if transport wide CC is supported */
+					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+				}
 			}
 			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
@@ -3368,6 +3387,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	}
 	/* Is this valid SDP? */
 	char error_str[512];
+	error_str[0] = '\0';
 	int audio = 0, video = 0, data = 0;
 	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
 	if(parsed_sdp == NULL) {

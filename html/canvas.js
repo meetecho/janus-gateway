@@ -49,8 +49,8 @@ else
 	server = "https://" + window.location.hostname + ":8089/janus";
 
 var janus = null;
-var videocall = null;
-var opaqueId = "videocalltest-"+Janus.randomString(12);
+var echotest = null;
+var opaqueId = "canvas-"+Janus.randomString(12);
 
 var bitrateTimer = null;
 var spinner = null;
@@ -58,16 +58,31 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
-var myusername = null;
-var yourusername = null;
-
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+var acodec = (getQueryStringValue("acodec") !== "" ? getQueryStringValue("acodec") : null);
+var vcodec = (getQueryStringValue("vcodec") !== "" ? getQueryStringValue("vcodec") : null);
+var vprofile = (getQueryStringValue("vprofile") !== "" ? getQueryStringValue("vprofile") : null);
 var simulcastStarted = false;
 
+// We'll try to do 15 frames per second: should be relatively fluid, and
+// most important should be doable in JavaScript on lower end machines too
+var fps = 15;
+// Let's add some placeholders for the tweaks we can configure
+var myText = "Hi there!";
+var myColor = "white";
+var myFont = "20pt Calibri";
+var myX = 15, myY = 223;
+// As the "watermark", we'll use a smaller version of the Janus logo
+var logoUrl = "./janus-logo-small.png";
+var logoW = 340, logoH = 110;
+var logoS = 0.4;
+var logoX = 432 - logoW*logoS - 5, logoY = 5;
+
+
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').one('click', function() {
 			$(this).attr('disabled', true).unbind('click');
@@ -80,31 +95,39 @@ $(document).ready(function() {
 			janus = new Janus(
 				{
 					server: server,
+					// No "iceServers" is provided, meaning janus.js will use a default STUN server
+					// Here are some examples of how an iceServers field may look like to support TURN
+					// 		iceServers: [{urls: "turn:yourturnserver.com:3478", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{urls: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{urls: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
+					// Should the Janus API require authentication, you can specify either the API secret or user token here too
+					//		token: "mytoken",
+					//	or
+					//		apisecret: "serversecret",
 					success: function() {
-						// Attach to VideoCall plugin
+						// Attach to EchoTest plugin
 						janus.attach(
 							{
-								plugin: "janus.plugin.videocall",
+								plugin: "janus.plugin.echotest",
 								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
-									videocall = pluginHandle;
-									Janus.log("Plugin attached! (" + videocall.getPlugin() + ", id=" + videocall.getId() + ")");
-									// Prepare the username registration
-									$('#videocall').removeClass('hide').show();
-									$('#login').removeClass('hide').show();
-									$('#registernow').removeClass('hide').show();
-									$('#register').click(registerUsername);
-									$('#username').focus();
+									echotest = pluginHandle;
+									Janus.log("Plugin attached! (" + echotest.getPlugin() + ", id=" + echotest.getId() + ")");
+									// We're connected to the plugin, create and populate the canvas element
+									createCanvas();
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
+											if(bitrateTimer)
+												clearInterval(bitrateTimer);
+											bitrateTimer = null;
 											janus.destroy();
 										});
 								},
 								error: function(error) {
-									Janus.error("  -- Error attaching plugin...", error);
-									bootbox.alert("  -- Error attaching plugin... " + error);
+									console.error("  -- Error attaching plugin...", error);
+									bootbox.alert("Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
@@ -135,189 +158,56 @@ $(document).ready(function() {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
 								},
+								slowLink: function(uplink, lost) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on this PeerConnection (" + lost + " lost packets)");
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::", msg);
+									if(jsep) {
+										Janus.debug("Handling SDP as well...", jsep);
+										echotest.handleRemoteJsep({ jsep: jsep });
+									}
 									var result = msg["result"];
 									if(result) {
-										if(result["list"]) {
-											var list = result["list"];
-											Janus.debug("Got a list of registered peers:", list);
-											for(var mp in list) {
-												Janus.debug("  >> [" + list[mp] + "]");
-											}
-										} else if(result["event"]) {
-											var event = result["event"];
-											if(event === 'registered') {
-												myusername = result["username"];
-												Janus.log("Successfully registered as " + myusername + "!");
-												$('#youok').removeClass('hide').show().html("Registered as '" + myusername + "'");
-												// Get a list of available peers, just for fun
-												videocall.send({ message: { request: "list" }});
-												// Enable buttons to call now
-												$('#phone').removeClass('hide').show();
-												$('#call').unbind('click').click(doCall);
-												$('#peer').focus();
-											} else if(event === 'calling') {
-												Janus.log("Waiting for the peer to answer...");
-												// TODO Any ringtone?
-												bootbox.alert("Waiting for the peer to answer...");
-											} else if(event === 'incomingcall') {
-												Janus.log("Incoming call from " + result["username"] + "!");
-												yourusername = result["username"];
-												// Notify user
-												bootbox.hideAll();
-												incoming = bootbox.dialog({
-													message: "Incoming call from " + yourusername + "!",
-													title: "Incoming call",
-													closeButton: false,
-													buttons: {
-														success: {
-															label: "Answer",
-															className: "btn-success",
-															callback: function() {
-																incoming = null;
-																$('#peer').val(result["username"]).attr('disabled', true);
-																videocall.createAnswer(
-																	{
-																		jsep: jsep,
-																		// No media provided: by default, it's sendrecv for audio and video
-																		media: { data: true },	// Let's negotiate data channels as well
-																		// If you want to test simulcasting (Chrome and Firefox only), then
-																		// pass a ?simulcast=true when opening this demo page: it will turn
-																		// the following 'simulcast' property to pass to janus.js to true
-																		simulcast: doSimulcast,
-																		success: function(jsep) {
-																			Janus.debug("Got SDP!", jsep);
-																			var body = { request: "accept" };
-																			videocall.send({ message: body, jsep: jsep });
-																			$('#peer').attr('disabled', true);
-																			$('#call').removeAttr('disabled').html('Hangup')
-																				.removeClass("btn-success").addClass("btn-danger")
-																				.unbind('click').click(doHangup);
-																		},
-																		error: function(error) {
-																			Janus.error("WebRTC error:", error);
-																			bootbox.alert("WebRTC error... " + error.message);
-																		}
-																	});
-															}
-														},
-														danger: {
-															label: "Decline",
-															className: "btn-danger",
-															callback: function() {
-																doHangup();
-															}
-														}
-													}
-												});
-											} else if(event === 'accepted') {
-												bootbox.hideAll();
-												var peer = result["username"];
-												if(!peer) {
-													Janus.log("Call started!");
-												} else {
-													Janus.log(peer + " accepted the call!");
-													yourusername = peer;
-												}
-												// Video call can start
-												if(jsep)
-													videocall.handleRemoteJsep({ jsep: jsep });
-												$('#call').removeAttr('disabled').html('Hangup')
-													.removeClass("btn-success").addClass("btn-danger")
-													.unbind('click').click(doHangup);
-											} else if(event === 'update') {
-												// An 'update' event may be used to provide renegotiation attempts
-												if(jsep) {
-													if(jsep.type === "answer") {
-														videocall.handleRemoteJsep({ jsep: jsep });
-													} else {
-														videocall.createAnswer(
-															{
-																jsep: jsep,
-																media: { data: true },	// Let's negotiate data channels as well
-																success: function(jsep) {
-																	Janus.debug("Got SDP!", jsep);
-																	var body = { request: "set" };
-																	videocall.send({ message: body, jsep: jsep });
-																},
-																error: function(error) {
-																	Janus.error("WebRTC error:", error);
-																	bootbox.alert("WebRTC error... " + error.message);
-																}
-															});
-													}
-												}
-											} else if(event === 'hangup') {
-												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
-												// Reset status
-												bootbox.hideAll();
-												videocall.hangup();
-												if(spinner)
-													spinner.stop();
-												$('#waitingvideo').remove();
-												$('#videos').hide();
-												$('#peer').removeAttr('disabled').val('');
-												$('#call').removeAttr('disabled').html('Call')
-													.removeClass("btn-danger").addClass("btn-success")
-													.unbind('click').click(doCall);
-												$('#toggleaudio').attr('disabled', true);
-												$('#togglevideo').attr('disabled', true);
-												$('#bitrate').attr('disabled', true);
-												$('#curbitrate').hide();
-												$('#curres').hide();
-											} else if(event === "simulcast") {
-												// Is simulcast in place?
-												var substream = result["substream"];
-												var temporal = result["temporal"];
-												if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
-													if(!simulcastStarted) {
-														simulcastStarted = true;
-														addSimulcastButtons(result["videocodec"] === "vp8" || result["videocodec"] === "h264");
-													}
-													// We just received notice that there's been a switch, update the buttons
-													updateSimulcastButtons(substream, temporal);
-												}
-											}
+										if(result === "done") {
+											// The plugin closed the echo test
+											bootbox.alert("The Echo Test is over");
+											if(spinner)
+												spinner.stop();
+											spinner = null;
+											$('#myvideo').remove();
+											$('#waitingvideo').remove();
+											$('#peervideo').remove();
+											$('#toggleaudio').attr('disabled', true);
+											$('#togglevideo').attr('disabled', true);
+											$('#bitrate').attr('disabled', true);
+											$('#curbitrate').hide();
+											$('#curres').hide();
+											return;
 										}
-									} else {
-										// FIXME Error?
-										var error = msg["error"];
-										bootbox.alert(error);
-										if(error.indexOf("already taken") > 0) {
-											// FIXME Use status codes...
-											$('#username').removeAttr('disabled').val("");
-											$('#register').removeAttr('disabled').unbind('click').click(registerUsername);
+										// Any loss?
+										var status = result["status"];
+										if(status === "slow_link") {
+											toastr.warning("Janus apparently missed many packets we sent, maybe we should reduce the bitrate", "Packet loss?", {timeOut: 2000});
 										}
-										// TODO Reset status
-										videocall.hangup();
-										if(spinner)
-											spinner.stop();
-										$('#waitingvideo').remove();
-										$('#videos').hide();
-										$('#peer').removeAttr('disabled').val('');
-										$('#call').removeAttr('disabled').html('Call')
-											.removeClass("btn-danger").addClass("btn-success")
-											.unbind('click').click(doCall);
-										$('#toggleaudio').attr('disabled', true);
-										$('#togglevideo').attr('disabled', true);
-										$('#bitrate').attr('disabled', true);
-										$('#curbitrate').hide();
-										$('#curres').hide();
-										if(bitrateTimer)
-											clearInterval(bitrateTimer);
-										bitrateTimer = null;
+									}
+									// Is simulcast in place?
+									var substream = msg["substream"];
+									var temporal = msg["temporal"];
+									if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {
+										if(!simulcastStarted) {
+											simulcastStarted = true;
+											addSimulcastButtons(msg["videocodec"] === "vp8" || msg["videocodec"] === "h264");
+										}
+										// We just received notice that there's been a switch, update the buttons
+										updateSimulcastButtons(substream, temporal);
 									}
 								},
 								onlocalstream: function(stream) {
-									Janus.debug(" ::: Got a local stream :::", stream);
-									$('#videos').removeClass('hide').show();
-									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
-									Janus.attachMediaStream($('#myvideo').get(0), stream);
-									$("#myvideo").get(0).muted = "muted";
-									if(videocall.webrtcStuff.pc.iceConnectionState !== "completed" &&
-											videocall.webrtcStuff.pc.iceConnectionState !== "connected") {
+									// We ignore the stream we got here, we're using the canvas to render it
+									if(echotest.webrtcStuff.pc.iceConnectionState !== "completed" &&
+											echotest.webrtcStuff.pc.iceConnectionState !== "connected") {
 										$("#videoleft").parent().block({
 											message: '<b>Publishing...</b>',
 											css: {
@@ -326,42 +216,20 @@ $(document).ready(function() {
 												color: 'white'
 											}
 										});
-										// No remote video yet
-										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-										if(spinner == null) {
-											var target = document.getElementById('videoright');
-											spinner = new Spinner({top:100}).spin(target);
-										} else {
-											spinner.spin();
-										}
-									}
-									var videoTracks = stream.getVideoTracks();
-									if(!videoTracks || videoTracks.length === 0) {
-										// No webcam
-										$('#myvideo').hide();
-										if($('#videoleft .no-video-container').length === 0) {
-											$('#videoleft').append(
-												'<div class="no-video-container">' +
-													'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-													'<span class="no-video-text">No webcam available</span>' +
-												'</div>');
-										}
-									} else {
-										$('#videoleft .no-video-container').remove();
-										$('#myvideo').removeClass('hide').show();
 									}
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::", stream);
 									var addButtons = false;
-									if($('#remotevideo').length === 0) {
+									if($('#peervideo').length === 0) {
 										addButtons = true;
-										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay playsinline/>');
+										$('#videos').removeClass('hide').show();
+										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width="100%" height="100%" autoplay playsinline/>');
 										// Show the video, hide the spinner and show the resolution when we get a playing event
-										$("#remotevideo").bind("playing", function () {
+										$("#peervideo").bind("playing", function () {
 											$('#waitingvideo').remove();
 											if(this.videoWidth)
-												$('#remotevideo').removeClass('hide').show();
+												$('#peervideo').removeClass('hide').show();
 											if(spinner)
 												spinner.stop();
 											spinner = null;
@@ -369,13 +237,12 @@ $(document).ready(function() {
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
 										});
-										$('#callee').removeClass('hide').html(yourusername).show();
 									}
-									Janus.attachMediaStream($('#remotevideo').get(0), stream);
+									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(!videoTracks || videoTracks.length === 0) {
 										// No remote video
-										$('#remotevideo').hide();
+										$('#peervideo').hide();
 										if($('#videoright .no-video-container').length === 0) {
 											$('#videoright').append(
 												'<div class="no-video-container">' +
@@ -385,36 +252,33 @@ $(document).ready(function() {
 										}
 									} else {
 										$('#videoright .no-video-container').remove();
-										$('#remotevideo').removeClass('hide').show();
+										$('#peervideo').removeClass('hide').show();
 									}
 									if(!addButtons)
 										return;
 									// Enable audio/video buttons and bitrate limiter
 									audioenabled = true;
 									videoenabled = true;
-									$('#toggleaudio').html("Disable audio").removeClass("btn-success").addClass("btn-danger")
-											.unbind('click').removeAttr('disabled').click(
+									$('#toggleaudio').click(
 										function() {
 											audioenabled = !audioenabled;
 											if(audioenabled)
 												$('#toggleaudio').html("Disable audio").removeClass("btn-success").addClass("btn-danger");
 											else
 												$('#toggleaudio').html("Enable audio").removeClass("btn-danger").addClass("btn-success");
-											videocall.send({ message: { request: "set", audio: audioenabled }});
+											echotest.send({ message: { audio: audioenabled }});
 										});
-									$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger")
-											.unbind('click').removeAttr('disabled').click(
+									$('#togglevideo').click(
 										function() {
 											videoenabled = !videoenabled;
 											if(videoenabled)
 												$('#togglevideo').html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											else
 												$('#togglevideo').html("Enable video").removeClass("btn-danger").addClass("btn-success");
-											videocall.send({ message: { request: "set", video: videoenabled }});
+											echotest.send({ message: { video: videoenabled }});
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
-									$('#bitrateset').html("Bandwidth");
-									$('#bitrate a').unbind('click').removeAttr('disabled').click(function() {
+									$('#bitrate a').click(function() {
 										var id = $(this).attr("id");
 										var bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
@@ -422,8 +286,8 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html()).parent().removeClass('open');
-										videocall.send({ message: { request: "set", bitrate: bitrate }});
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										echotest.send({ message: { bitrate: bitrate }});
 										return false;
 									});
 									if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
@@ -431,52 +295,35 @@ $(document).ready(function() {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
-											var bitrate = videocall.getBitrate();
+											var bitrate = echotest.getBitrate();
 											$('#curbitrate').text(bitrate);
 											// Check if the resolution changed too
-											var width = $("#remotevideo").get(0).videoWidth;
-											var height = $("#remotevideo").get(0).videoHeight;
+											var width = $("#peervideo").get(0).videoWidth;
+											var height = $("#peervideo").get(0).videoHeight;
 											if(width > 0 && height > 0)
 												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
 									}
 								},
-								ondataopen: function(data) {
-									Janus.log("The DataChannel is available!");
-									$('#videos').removeClass('hide').show();
-									$('#datasend').removeAttr('disabled');
-								},
-								ondata: function(data) {
-									Janus.debug("We got data from the DataChannel!", data);
-									$('#datarecv').val(data);
-								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
+									if(spinner)
+										spinner.stop();
+									spinner = null;
+									if(bitrateTimer)
+										clearInterval(bitrateTimer);
+									bitrateTimer = null;
 									$('#myvideo').remove();
-									$('#remotevideo').remove();
+									$('#waitingvideo').remove();
 									$("#videoleft").parent().unblock();
-									$('.no-video-container').remove();
-									$('#callee').empty().hide();
-									yourusername = null;
-									$('#curbitrate').hide();
-									$('#curres').hide();
-									$('#videos').hide();
+									$('#peervideo').remove();
 									$('#toggleaudio').attr('disabled', true);
 									$('#togglevideo').attr('disabled', true);
 									$('#bitrate').attr('disabled', true);
 									$('#curbitrate').hide();
 									$('#curres').hide();
-									if(bitrateTimer)
-										clearInterval(bitrateTimer);
-									bitrateTimer = null;
-									$('#waitingvideo').remove();
-									$('#videos').hide();
 									simulcastStarted = false;
 									$('#simulcast').remove();
-									$('#peer').removeAttr('disabled').val('');
-									$('#call').removeAttr('disabled').html('Call')
-										.removeClass("btn-danger").addClass("btn-success")
-										.unbind('click').click(doCall);
 								}
 							});
 					},
@@ -494,101 +341,118 @@ $(document).ready(function() {
 	}});
 });
 
-function checkEnter(field, event) {
+function checkEnter(event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
-		if(field.id == 'username')
-			registerUsername();
-		else if(field.id == 'peer')
-			doCall();
-		else if(field.id == 'datasend')
-			sendData();
+		updateCanvas();
 		return false;
 	} else {
 		return true;
 	}
 }
 
-function registerUsername() {
-	// Try a registration
-	$('#username').attr('disabled', true);
-	$('#register').attr('disabled', true).unbind('click');
-	var username = $('#username').val();
-	if(username === "") {
-		bootbox.alert("Insert a username to register (e.g., pippo)");
-		$('#username').removeAttr('disabled');
-		$('#register').removeAttr('disabled').click(registerUsername);
-		return;
-	}
-	if(/[^a-zA-Z0-9]/.test(username)) {
-		bootbox.alert('Input is not alphanumeric');
-		$('#username').removeAttr('disabled').val("");
-		$('#register').removeAttr('disabled').click(registerUsername);
-		return;
-	}
-	var register = { request: "register", username: username };
-	videocall.send({ message: register });
-}
-
-function doCall() {
-	// Call someone
-	$('#peer').attr('disabled', true);
-	$('#call').attr('disabled', true).unbind('click');
-	var username = $('#peer').val();
-	if(username === "") {
-		bootbox.alert("Insert a username to call (e.g., pluto)");
-		$('#peer').removeAttr('disabled');
-		$('#call').removeAttr('disabled').click(doCall);
-		return;
-	}
-	if(/[^a-zA-Z0-9]/.test(username)) {
-		bootbox.alert('Input is not alphanumeric');
-		$('#peer').removeAttr('disabled').val("");
-		$('#call').removeAttr('disabled').click(doCall);
-		return;
-	}
-	// Call this user
-	videocall.createOffer(
+// Helper function to create (and populate) our canvas element
+function createCanvas() {
+	// Predefined tweaks
+	$('#text').val(myText);
+	$('#color').val(myColor);
+	$('#font').val(myFont);
+	$('#posX').val(""+myX);
+	$('#posY').val(""+myY);
+	// Capture the local webcam
+	navigator.mediaDevices.getUserMedia(
 		{
-			// By default, it's sendrecv for audio and video...
-			media: { data: true },	// ... let's negotiate data channels as well
-			// If you want to test simulcasting (Chrome and Firefox only), then
-			// pass a ?simulcast=true when opening this demo page: it will turn
-			// the following 'simulcast' property to pass to janus.js to true
-			simulcast: doSimulcast,
-			success: function(jsep) {
-				Janus.debug("Got SDP!", jsep);
-				var body = { request: "call", username: $('#peer').val() };
-				videocall.send({ message: body, jsep: jsep });
-			},
-			error: function(error) {
-				Janus.error("WebRTC error...", error);
-				bootbox.alert("WebRTC error... " + error.message);
+			audio: true,
+			video: {
+				width: { ideal: 432 },
+				height: { ideal: 240 }
 			}
+		})
+		.then(function(stream) {
+			// We have our video
+			Janus.debug(stream);
+			Janus.attachMediaStream($('#myvideo').get(0), stream);
+			$('#myvideo').get(0).muted = "muted";
+			$('#myvideo').get(0).play();
+			// Let's setup the canvas, now
+			$('#myvideo').get(0).addEventListener('play', function () {
+				var myvideo = this;
+				var canvas = document.getElementById('canvas');
+				var context = canvas.getContext('2d');
+				var logo = new Image();
+				logo.onload = function() {
+					(function loop() {
+						if(!myvideo.paused && !myvideo.ended) {
+							// Copy video to image
+							context.drawImage(myvideo, 0, 0);
+							// Add logo
+							context.drawImage(logo,
+								0, 0, logoW, logoH,
+								logoX, logoY, logoW*logoS, logoH*logoS);
+							// Add some text
+							context.fillStyle = 'rgba(0,0,0,0.5)';
+							context.fillRect(0, 190, 432,240);
+							context.font = myFont;
+							context.fillStyle = myColor;
+							context.fillText(myText, myX, myY);
+							// We're drawing at the specified fps
+							setTimeout(loop, 1000 / fps);
+						}
+					})();
+				};
+				logo.src = logoUrl;
+				// Capture the canvas as a local MediaStream
+				canvasStream = canvas.captureStream();
+				canvasStream.addTrack(stream.getAudioTracks()[0]);
+				// Now that the stream is ready, we can create the PeerConnection
+				var body = { audio: true, video: true };
+				// We can try and force a specific codec, by telling the plugin what we'd prefer
+				// For simplicity, you can set it via a query string (e.g., ?vcodec=vp9)
+				if(acodec)
+					body["audiocodec"] = acodec;
+				if(vcodec)
+					body["videocodec"] = vcodec;
+				// For the codecs that support them (VP9 and H.264) you can specify a codec
+				// profile as well (e.g., ?vprofile=2 for VP9, or ?vprofile=42e01f for H.264)
+				if(vprofile)
+					body["videoprofile"] = vprofile;
+				Janus.debug("Sending message:", body);
+				echotest.send({ message: body });
+				Janus.debug("Trying a createOffer too (audio/video sendrecv)");
+				echotest.createOffer(
+					{
+						stream: canvasStream,	// Let's pass the canvas MediaStream
+						// If you want to test simulcasting (Chrome and Firefox only), then
+						// pass a ?simulcast=true when opening this demo page: it will turn
+						// the following 'simulcast' property to pass to janus.js to true
+						simulcast: doSimulcast,
+						simulcast2: doSimulcast2,
+						success: function(jsep) {
+							Janus.debug("Got SDP!", jsep);
+							echotest.send({ message: body, jsep: jsep });
+						},
+						error: function(error) {
+							Janus.error("WebRTC error:", error);
+							bootbox.alert("WebRTC error... " + error.message);
+						}
+					});
+
+			}, 0);
+		})
+		.catch(function(error) {
+			Janus.error(error);
+			bootbox.alert(error);
 		});
 }
-
-function doHangup() {
-	// Hangup a call
-	$('#call').attr('disabled', true).unbind('click');
-	var hangup = { request: "hangup" };
-	videocall.send({ message: hangup });
-	videocall.hangup();
-	yourusername = null;
+// Helper function to update a canvas when the tweaks are used
+function updateCanvas() {
+	myText = $('#text').val();
+	myColor = $('#color').val();
+	myFont = $('#font').val();
+	myX = parseInt($('#posX').val());
+	myY = parseInt($('#posY').val());
 }
 
-function sendData() {
-	var data = $('#datasend').val();
-	if(data === "") {
-		bootbox.alert('Insert a message to send on the DataChannel to your peer');
-		return;
-	}
-	videocall.data({
-		text: data,
-		error: function(reason) { bootbox.alert(reason); },
-		success: function() { $('#datasend').val(''); },
-	});
-}
 
 // Helper to parse query string
 function getQueryStringValue(name) {
@@ -626,7 +490,7 @@ function addSimulcastButtons(temporal) {
 			if(!$('#sl-1').hasClass('btn-success'))
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			videocall.send({ message: { request: "set", substream: 0 }});
+			echotest.send({ message: { substream: 0 }});
 		});
 	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -636,7 +500,7 @@ function addSimulcastButtons(temporal) {
 			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			videocall.send({ message: { request: "set", substream: 1 }});
+			echotest.send({ message: { substream: 1 }});
 		});
 	$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -646,7 +510,7 @@ function addSimulcastButtons(temporal) {
 				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#sl-0').hasClass('btn-success'))
 				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			videocall.send({ message: { request: "set", substream: 2 }});
+			echotest.send({ message: { substream: 2 }});
 		});
 	if(!temporal)	// No temporal layer support
 		return;
@@ -659,7 +523,7 @@ function addSimulcastButtons(temporal) {
 			if(!$('#tl-1').hasClass('btn-success'))
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			videocall.send({ message: { request: "set", temporal: 0 }});
+			echotest.send({ message: { temporal: 0 }});
 		});
 	$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -669,7 +533,7 @@ function addSimulcastButtons(temporal) {
 			$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			videocall.send({ message: { request: "set", temporal: 1 }});
+			echotest.send({ message: { temporal: 1 }});
 		});
 	$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -679,7 +543,7 @@ function addSimulcastButtons(temporal) {
 				$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 			if(!$('#tl-0').hasClass('btn-success'))
 				$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			videocall.send({ message: { request: "set", temporal: 2 }});
+			echotest.send({ message: { temporal: 2 }});
 		});
 }
 

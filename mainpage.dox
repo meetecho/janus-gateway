@@ -903,7 +903,10 @@ echotest.createOffer({
        // Let's use 'exports-loader' to simulate it uses 'export'.
        {
          test: require.resolve('janus-gateway'),
-         use: 'exports-loader?Janus=Janus'
+         loader: 'exports-loader',
+          options: {
+            exports: 'Janus',
+          },
        }
      ]
    }
