@@ -273,8 +273,14 @@ gchar *janus_get_server_key(void);
 gchar *janus_get_local_ip(void);
 /*! \brief Helper method to return the IP address to use in the SDP (autodetected by default) */
 gchar *janus_get_public_ip(void);
+/*! \brief Helper method to return the number of public IP addresses (if configured for 1-1 NAT) */
+guint janus_get_public_ip_count(void);
+/*! \brief Helper method to return a given public IP address to use in the SDP (if multiple are configured for 1-1 NAT) */
+gchar *janus_get_public_ip_index(guint index);
 /*! \brief Helper method to overwrite the IP address to use in the SDP */
 void janus_set_public_ip(const char *ip);
+/*! \brief Helper method to overwride the IP addresses to use in the SDP (for 1-1 NAT) */
+void janus_set_public_ip_list(GPtrArray *ips);
 /*! \brief Helper method to check whether the server is being shut down */
 gint janus_is_stopping(void);
 

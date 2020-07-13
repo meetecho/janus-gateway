@@ -191,16 +191,42 @@ static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
-static gchar *public_ip = NULL;
-gchar *janus_get_public_ip(void) {
-	/* Fallback to the local IP, if we have no public one */
-	return public_ip ? public_ip : local_ip;
+static GPtrArray *public_ip = NULL;
+guint janus_get_public_ip_count(void) {
+	return public_ip ? public_ip->len : 0;
 }
-void janus_set_public_ip(const char *ip) {
+gchar *janus_get_public_ip_index(guint index) {
+	if (!public_ip || !public_ip->len) {
+		/* Fallback to the local IP, if we have no public one */
+		return local_ip;
+	}
+	if (index >= public_ip->len) {
+		return NULL;
+	}
+	return g_ptr_array_index(public_ip, index);
+}
+gchar *janus_get_public_ip(void) {
+	return janus_get_public_ip_index(0);
+}
+void janus_set_public_ip_list(GPtrArray *ips) {
+	/* once set do not override */
+	if (public_ip != NULL) {
+		return;
+	}
+	public_ip = g_ptr_array_ref(ips);
+}
+static void janus_free_string(gpointer data) {
+	g_free(data);
+}
+void janus_set_public_ip(const gchar *ip) {
 	/* once set do not override */
 	if(ip == NULL || public_ip != NULL)
 		return;
-	public_ip = g_strdup(ip);
+
+	GPtrArray *ips = g_ptr_array_new_with_free_func(janus_free_string);
+	g_ptr_array_add(ips, g_strdup(ip));
+	janus_set_public_ip_list(ips);
+	g_ptr_array_unref(ips);
 }
 static volatile gint stop = 0;
 static gint stop_signal = 0;
@@ -4580,11 +4606,26 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
-		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
-			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
-		} else {
-			nat_1_1_mapping = item->value;
-			janus_set_public_ip(nat_1_1_mapping);
+		char **list = g_strsplit(item->value, ",", -1);
+		char *index = list[0];
+		GPtrArray *ips = g_ptr_array_new_with_free_func(janus_free_string);
+		if(index != NULL) {
+			int i=0;
+			while(index != NULL) {
+				if(strlen(index) > 0) {
+					if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, index)) {
+						JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, skipping...\n", index);
+					} else {
+						g_ptr_array_add(ips, g_strdup(index));
+					}
+				}
+				i++;
+				index = list[i];
+			}
+		}
+		g_strfreev(list);
+		if(ips->len > 0) {
+			janus_set_public_ip_list(ips);
 			/* Check if we should replace the private host, or advertise both candidates */
 			gboolean keep_private_host = FALSE;
 			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
@@ -4594,6 +4635,7 @@ gint main(int argc, char *argv[])
 			}
 			janus_ice_enable_nat_1_1(keep_private_host);
 		}
+		g_ptr_array_unref(ips);
 	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_server");
@@ -5344,6 +5386,9 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 	g_free(local_ip);
+	if (public_ip) {
+		g_ptr_array_unref(public_ip);
+	}
 
 	if(janus_ice_get_static_event_loops() > 0)
 		janus_ice_stop_static_event_loops();
