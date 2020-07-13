@@ -135,7 +135,7 @@ gchar *janus_dtls_get_local_fingerprint(void) {
 }
 
 
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 /*
  * DTLS locking stuff to make OpenSSL thread safe (not needed for 1.1.0)
  *
@@ -373,7 +373,7 @@ const char *janus_get_ssl_version(void) {
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
 		const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned) {
 	const char *crypto_lib = NULL;
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 #if defined(LIBRESSL_VERSION_NUMBER)
 	crypto_lib = "LibreSSL";
 #else
@@ -534,7 +534,7 @@ void janus_dtls_srtp_cleanup(void) {
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 	}
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 	g_free(janus_dtls_locks);
 #endif
 }
