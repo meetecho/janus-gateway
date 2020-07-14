@@ -1504,7 +1504,6 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					char *fmt_str = (char *)fmt->data;
 					if(fmt_str)
 						am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
-					JANUS_LOG(LOG_FATAL, "[answer] %p, %p\n", am, am->fmts);
 				}
 				temp = temp->next;
 				continue;
