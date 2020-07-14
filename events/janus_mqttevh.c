@@ -91,28 +91,28 @@ static GThread *handler_thread;
 static volatile gint initialized = 0, stopping = 0;
 
 /* JSON serialization options */
-#define JANUS_MQTTEVH_DEFAULT_ADDPLUGIN			    1
-#define	JANUS_MQTTEVH_DEFAULT_ADDEVENT			    1
-#define	JANUS_MQTTEVH_DEFAULT_KEEPALIVE			    30
-#define	JANUS_MQTTEVH_DEFAULT_CLEANSESSION		    0	/* Off */
-#define JANUS_MQTTEVH_DEFAULT_TIMEOUT			    30
+#define JANUS_MQTTEVH_DEFAULT_ADDPLUGIN				1
+#define	JANUS_MQTTEVH_DEFAULT_ADDEVENT				1
+#define	JANUS_MQTTEVH_DEFAULT_KEEPALIVE				30
+#define	JANUS_MQTTEVH_DEFAULT_CLEANSESSION			0	/* Off */
+#define JANUS_MQTTEVH_DEFAULT_TIMEOUT				30
 #define JANUS_MQTTEVH_DEFAULT_DISCONNECT_TIMEOUT	100
-#define JANUS_MQTTEVH_DEFAULT_QOS		    	    0
-#define JANUS_MQTTEVH_DEFAULT_RETAIN			    0
+#define JANUS_MQTTEVH_DEFAULT_QOS					0
+#define JANUS_MQTTEVH_DEFAULT_RETAIN				0
 #define JANUS_MQTTEVH_DEFAULT_CONNECT_STATUS		"{\"event\": \"connected\", \"eventhandler\": \""JANUS_MQTTEVH_PACKAGE"\"}"
 #define JANUS_MQTTEVH_DEFAULT_DISCONNECT_STATUS		"{\"event\": \"disconnected\"}"
-#define JANUS_MQTTEVH_DEFAULT_WILL_RETAIN		    1
-#define JANUS_MQTTEVH_DEFAULT_WILL_QOS	 		    0
-#define JANUS_MQTTEVH_DEFAULT_BASETOPIC	 		    "/janus/events"
-#define JANUS_MQTTEVH_DEFAULT_MQTTURL			    "tcp://localhost:1883"
-#define JANUS_MQTTEVH_DEFAULT_JSON_FORMAT		    JSON_INDENT(3) | JSON_PRESERVE_ORDER
-#define JANUS_MQTTEVH_DEFAULT_TLS_ENABLE		    FALSE
+#define JANUS_MQTTEVH_DEFAULT_WILL_RETAIN			1
+#define JANUS_MQTTEVH_DEFAULT_WILL_QOS	 			0
+#define JANUS_MQTTEVH_DEFAULT_BASETOPIC	 			"/janus/events"
+#define JANUS_MQTTEVH_DEFAULT_MQTTURL				"tcp://localhost:1883"
+#define JANUS_MQTTEVH_DEFAULT_JSON_FORMAT			JSON_INDENT(3) | JSON_PRESERVE_ORDER
+#define JANUS_MQTTEVH_DEFAULT_TLS_ENABLE			FALSE
 #define JANUS_MQTTEVH_DEFAULT_TLS_VERIFY_PEER		FALSE
 #define JANUS_MQTTEVH_DEFAULT_TLS_VERIFY_HOST		FALSE
 
-#define JANUS_MQTTEVH_VERSION_3_1     "3.1"
-#define JANUS_MQTTEVH_VERSION_3_1_1   "3.1.1"
-#define JANUS_MQTTEVH_VERSION_5       "5"
+#define JANUS_MQTTEVH_VERSION_3_1		"3.1"
+#define JANUS_MQTTEVH_VERSION_3_1_1		"3.1.1"
+#define JANUS_MQTTEVH_VERSION_5			"5"
 #define JANUS_MQTTEVH_VERSION_DEFAULT JANUS_MQTTEVH_VERSION_3_1_1
 
 static size_t json_format = JANUS_MQTTEVH_DEFAULT_JSON_FORMAT;
@@ -145,7 +145,7 @@ typedef struct janus_mqttevh_context {
 
 	/* Connection data - authentication and url */
 	struct {
-        int mqtt_version;
+		int mqtt_version;
 		int keep_alive_interval;
 		int cleansession;
 		char *client_id;
@@ -165,9 +165,9 @@ typedef struct janus_mqttevh_context {
 		char *disconnect_status;
 		int qos;
 		int retain;
-    #ifdef MQTTVERSION_5
-        GArray *add_user_properties;
-    #endif
+#ifdef MQTTVERSION_5
+		GArray *add_user_properties;
+#endif
 	} publish;
 
 	/* If we loose connection, the will is our last publish */
@@ -541,14 +541,14 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 
 #ifdef MQTTVERSION_5
 static int janus_mqttevh_client_publish_message5(janus_mqttevh_context *ctx, const char *topic, int retain, char *payload, MQTTProperties *properties) {
-    int rc;
+	int rc;
 
 	MQTTAsync_message msg = MQTTAsync_message_initializer;
 	msg.payload = payload;
 	msg.payloadlen = strlen(payload);
 	msg.qos = ctx->publish.qos;
 	msg.retained = retain;
-    msg.properties = MQTTProperties_copy(properties);
+	msg.properties = MQTTProperties_copy(properties);
 
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
@@ -568,12 +568,12 @@ static int janus_mqttevh_client_publish_message5(janus_mqttevh_context *ctx, con
 
 /* Callback for successful MQTT publish */
 static void janus_mqttevh_client_publish_message_success(void *context, MQTTAsync_successData *response) {
-    janus_mqttevh_client_publish_message_success_impl(context);
+	janus_mqttevh_client_publish_message_success_impl(context);
 }
 
 #ifdef MQTTVERSION_5
 static void janus_mqttevh_client_publish_message_success5(void *context, MQTTAsync_successData5 *response) {
-    janus_mqttevh_client_publish_message_success_impl(context);
+	janus_mqttevh_client_publish_message_success_impl(context);
 }
 #endif
 
@@ -586,7 +586,7 @@ static void janus_mqttevh_client_publish_message_success_impl(void *context) {
  * 	Should we bring message into queue? Right now, we just drop it.
  */
 static void janus_mqttevh_client_publish_message_failure(void *context, MQTTAsync_failureData *response) {
-    int rc = janus_mqttevh_client_get_response_code(response);
+	int rc = janus_mqttevh_client_get_response_code(response);
 	janus_mqttevh_client_publish_message_failure_impl(context, rc);
 }
 
@@ -920,30 +920,30 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 
 #ifdef MQTTVERSION_5
-    if (ctx->connect.mqtt_version == MQTTVERSION_5) {
-        /* MQTT 5 specific configuration */    
-        janus_config_array *add_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "add_user_properties");
-        if(add_user_properties_array) {
-            GList *add_user_properties_array_items = janus_config_get_arrays(config, add_user_properties_array);
-            if(add_user_properties_array_items != NULL) {
-                int add_user_properties_array_len = g_list_length(add_user_properties_array_items);
-                if(add_user_properties_array_len > 0) {
-                    ctx->publish.add_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(MQTTProperty), add_user_properties_array_len);
+	if (ctx->connect.mqtt_version == MQTTVERSION_5) {
+		/* MQTT 5 specific configuration */	
+		janus_config_array *add_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "add_user_properties");
+		if(add_user_properties_array) {
+			GList *add_user_properties_array_items = janus_config_get_arrays(config, add_user_properties_array);
+			if(add_user_properties_array_items != NULL) {
+				int add_user_properties_array_len = g_list_length(add_user_properties_array_items);
+				if(add_user_properties_array_len > 0) {
+					ctx->publish.add_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(MQTTProperty), add_user_properties_array_len);
 
-                    janus_mqttevh_set_add_user_property_user_data user_data = {
-                        ctx->publish.add_user_properties,
-                        config
-                    };
+					janus_mqttevh_set_add_user_property_user_data user_data = {
+						ctx->publish.add_user_properties,
+						config
+					};
 
-                    g_list_foreach(
-                        add_user_properties_array_items,
-                        (GFunc)janus_mqttevh_set_add_user_property,
-                        (gpointer)&user_data
-                    );
-                }
-            }
-        }
-    }
+					g_list_foreach(
+						add_user_properties_array_items,
+						(GFunc)janus_mqttevh_set_add_user_property,
+						(gpointer)&user_data
+					);
+				}
+			}
+		}
+	}
 #endif
 
 	if(!janus_mqtt_evh_enabled) {
@@ -1083,9 +1083,8 @@ static void janus_mqttevh_incoming_event(json_t *event) {
 }
 
 json_t *janus_mqttevh_handle_request(json_t *request) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
-		return NULL;
-	}
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) return NULL;
+
 	/* We can use this requests to apply tweaks to the logic */
 	int error_code = 0;
 	char error_cause[512];
@@ -1142,9 +1141,8 @@ static void *janus_mqttevh_handler(void *data) {
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get event from queue */
 		event = g_async_queue_pop(events);
-		if(event == &exit_event) {
-			break;
-		}
+		if(event == &exit_event) break;
+
 		/* Handle event: just for fun, let's see how long it took for us to take care of this */
 		json_t *created = json_object_get(event, "timestamp");
 		if(created && json_is_integer(created)) {
@@ -1192,9 +1190,7 @@ int janus_mqttevh_client_get_response_code5(MQTTAsync_failureData5 *response) {
 }
 
 void janus_mqttevh_add_properties(GArray *user_properties, MQTTProperties *properties) {
-	if(user_properties == NULL || user_properties->len == 0) {
-		return;
-	}
+	if(user_properties == NULL || user_properties->len == 0) return;
 
 	for(uint i = 0; i < user_properties->len; i++) {
 		MQTTProperty *property = &g_array_index(user_properties, MQTTProperty, i);
@@ -1207,9 +1203,7 @@ void janus_mqttevh_add_properties(GArray *user_properties, MQTTProperties *prope
 
 void janus_mqttevh_set_add_user_property(gpointer item_ptr, gpointer user_data_ptr) {
 	janus_config_item *item = (janus_config_item*)item_ptr;
-	if(item->value != NULL) {
-		return;
-	}
+	if(item->value != NULL) return;
 
 	janus_mqttevh_set_add_user_property_user_data *user_data = (janus_mqttevh_set_add_user_property_user_data*)user_data_ptr;
 	GList *key_value = janus_config_get_items(user_data->config, item);
@@ -1221,12 +1215,18 @@ void janus_mqttevh_set_add_user_property(gpointer item_ptr, gpointer user_data_p
 	janus_config_item *key_item = (janus_config_item*)g_list_first(key_value)->data;
 	janus_config_item *value_item = (janus_config_item*)g_list_last(key_value)->data;
 
-	MQTTProperty property;
-	property.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
-	property.value.data.data = g_strdup(key_item->value);
-	property.value.data.len = strlen(key_item->value);
-	property.value.value.data = g_strdup(value_item->value);
-	property.value.value.len = strlen(value_item->value);
-	g_array_append_val(user_data->acc, property);
+	if(key_item->value == NULL) {
+		JANUS_LOG(LOG_ERR, "Expected key item to have a value\n");
+	} else if(value_item->value == NULL) {
+		JANUS_LOG(LOG_ERR, "Expected value item to have a value\n");
+	} else {
+		MQTTProperty property;
+		property.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
+		property.value.data.data = g_strdup(key_item->value);
+		property.value.data.len = strlen(key_item->value);
+		property.value.value.data = g_strdup(value_item->value);
+		property.value.value.len = strlen(value_item->value);
+		g_array_append_val(user_data->acc, property);
+	}
 }
 #endif

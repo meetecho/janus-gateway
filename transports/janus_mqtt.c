@@ -35,12 +35,12 @@
 #include "../utils.h"
 
 /* Transport plugin information */
-#define JANUS_MQTT_VERSION        1
+#define JANUS_MQTT_VERSION		1
 #define JANUS_MQTT_VERSION_STRING "0.0.1"
-#define JANUS_MQTT_DESCRIPTION    "This transport plugin adds MQTT support to the Janus API via Paho client library."
-#define JANUS_MQTT_NAME           "JANUS MQTT transport plugin"
-#define JANUS_MQTT_AUTHOR         "Andrei Nesterov <ae.nesterov@gmail.com>"
-#define JANUS_MQTT_PACKAGE        "janus.transport.mqtt"
+#define JANUS_MQTT_DESCRIPTION	"This transport plugin adds MQTT support to the Janus API via Paho client library."
+#define JANUS_MQTT_NAME		   "JANUS MQTT transport plugin"
+#define JANUS_MQTT_AUTHOR		 "Andrei Nesterov <ae.nesterov@gmail.com>"
+#define JANUS_MQTT_PACKAGE		"janus.transport.mqtt"
 
 /* Transport methods */
 janus_transport *create(void);
@@ -60,10 +60,10 @@ void janus_mqtt_session_created(janus_transport_session *transport, guint64 sess
 void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id);
 
-#define JANUS_MQTT_VERSION_3_1          "3.1"
-#define JANUS_MQTT_VERSION_3_1_1        "3.1.1"
-#define JANUS_MQTT_VERSION_5            "5"
-#define JANUS_MQTT_VERSION_DEFAULT      JANUS_MQTT_VERSION_3_1_1
+#define JANUS_MQTT_VERSION_3_1		  "3.1"
+#define JANUS_MQTT_VERSION_3_1_1		"3.1.1"
+#define JANUS_MQTT_VERSION_5			"5"
+#define JANUS_MQTT_VERSION_DEFAULT	  JANUS_MQTT_VERSION_3_1_1
 #define JANUS_MQTT_DEFAULT_STATUS_TOPIC	"status"
 #define JANUS_MQTT_DEFAULT_STATUS_QOS   1
 
@@ -137,10 +137,10 @@ typedef struct janus_mqtt_context {
 		char *topic;
 		int qos;
 		gboolean retain;
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		GArray *proxy_transaction_user_properties;
 		GArray *add_transaction_user_properties;
-	#endif
+#endif
 	} publish;
 	struct {
 		struct {
@@ -159,7 +159,7 @@ typedef struct janus_mqtt_context {
 	char *key_file;
 	gboolean verify_peer;
 #ifdef MQTTVERSION_5
-	int vacuum_interval;
+	gint64 vacuum_interval;
 #endif
 } janus_mqtt_context;
 
@@ -167,7 +167,7 @@ typedef struct janus_mqtt_context {
 /* MQTT 5 specific types */
 typedef struct janus_mqtt_transaction_state {
 	MQTTProperties *properties;
-	time_t created_at;
+	gint64 created_at;
 } janus_mqtt_transaction_state;
 
 typedef struct janus_mqtt_set_add_transaction_user_property_user_data {
@@ -466,7 +466,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 				ctx->publish.qos = 1;
 			}
 
-		#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 			if (ctx->connect.mqtt_version == MQTTVERSION_5) {
 				/* MQTT 5 specific configuration */
 				janus_config_array *proxy_transaction_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "proxy_transaction_user_properties");
@@ -476,7 +476,6 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 						int proxy_transaction_user_properties_array_len = g_list_length(proxy_transaction_user_properties_array_items);
 						if(proxy_transaction_user_properties_array_len > 0) {
 							ctx->publish.proxy_transaction_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(char*), proxy_transaction_user_properties_array_len);
-
 							g_list_foreach(
 								proxy_transaction_user_properties_array_items,
 								(GFunc)janus_mqtt_set_proxy_transaction_user_property,
@@ -493,12 +492,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 						int add_transaction_user_properties_array_len = g_list_length(add_transaction_user_properties_array_items);
 						if(add_transaction_user_properties_array_len > 0) {
 							ctx->publish.add_transaction_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(MQTTProperty), add_transaction_user_properties_array_len);
-
 							janus_mqtt_set_add_transaction_user_property_user_data user_data = {
 								ctx->publish.add_transaction_user_properties,
 								config
 							};
-
 							g_list_foreach(
 								add_transaction_user_properties_array_items,
 								(GFunc)janus_mqtt_set_add_transaction_user_property,
@@ -508,7 +505,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 					}
 				}
 			}
-		#endif
+#endif
 		}
 	} else {
 		janus_mqtt_api_enabled_ = FALSE;
@@ -626,7 +623,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 		/* Getting vacuum interval from config */
 		janus_config_item *vacuum_interval_item = janus_config_get(config, config_general, janus_config_type_item, "vacuum_interval");
-		ctx->vacuum_interval = (vacuum_interval_item && vacuum_interval_item->value) ? atoi(vacuum_interval_item->value) : 60;
+		ctx->vacuum_interval = (vacuum_interval_item && vacuum_interval_item->value) ? (gint64)atoi(vacuum_interval_item->value) : 60;
 		if(ctx->vacuum_interval <= 0) {
 			JANUS_LOG(LOG_ERR, "Invalid vacuum interval value: %s (falling back to default)\n", vacuum_interval_item->value);
 			ctx->vacuum_interval = 60;
@@ -741,9 +738,7 @@ void janus_mqtt_destroy(void) {
 #ifdef MQTTVERSION_5
 void janus_mqtt_set_proxy_transaction_user_property(gpointer item_ptr, gpointer acc_ptr) {
 	janus_config_item *item = (janus_config_item*)item_ptr;
-	if(item->value == NULL) {
-		return;
-	}
+	if(item->value == NULL) return;
 
 	gchar* name = g_strdup(item->value);
 	g_array_append_val((GArray *)acc_ptr, name);
@@ -751,9 +746,7 @@ void janus_mqtt_set_proxy_transaction_user_property(gpointer item_ptr, gpointer 
 
 void janus_mqtt_set_add_transaction_user_property(gpointer item_ptr, gpointer user_data_ptr) {
 	janus_config_item *item = (janus_config_item*)item_ptr;
-	if(item->value != NULL) {
-		return;
-	}
+	if(item->value != NULL) return;
 
 	janus_mqtt_set_add_transaction_user_property_user_data *user_data = (janus_mqtt_set_add_transaction_user_property_user_data*)user_data_ptr;
 	GList *key_value = janus_config_get_items(user_data->config, item);
@@ -812,9 +805,8 @@ gboolean janus_mqtt_is_admin_api_enabled(void) {
 }
 
 int janus_mqtt_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
-	if(message == NULL || transport == NULL) {
-		return -1;
-	}
+	if(message == NULL || transport == NULL) return -1;
+
 	/* Not really needed as we always only have a single context, but that's fine */
 	janus_mqtt_context *ctx = (janus_mqtt_context *)transport->transport_p;
 	if(ctx == NULL) {
@@ -833,7 +825,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 		char *transaction = g_strdup(json_string_value(json_object_get(message, "transaction")));
 		janus_mqtt_transaction_state *state = NULL;
 
-		if (transaction != NULL) {
+		if(transaction != NULL) {
 			g_rw_lock_reader_lock(&janus_mqtt_transaction_states_lock);
 			state = g_hash_table_lookup(janus_mqtt_transaction_states, transaction);
 
@@ -847,7 +839,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 		}
 
 		rc = janus_mqtt_client_publish_message5(ctx, payload, admin, &properties, response_topic);
-		if (response_topic != NULL) g_free(response_topic);
+		if(response_topic != NULL) g_free(response_topic);
 		MQTTProperties_free(&properties);
 	} else {
 		rc = janus_mqtt_client_publish_message(ctx, payload, admin);
@@ -888,15 +880,11 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 	}
 
 	/* Proxy additional user properties from config */
-	if(user_property_names == NULL || user_property_names->len == 0) {
-		return;
-	}
+	if(user_property_names == NULL || user_property_names->len == 0) return;
 
 	for(int i = 0; i < state->properties->count; i++) {
 		MQTTProperty request_prop = state->properties->array[i];
-		if(request_prop.identifier != MQTTPROPERTY_CODE_USER_PROPERTY) {
-			continue; 
-		}
+		if(request_prop.identifier != MQTTPROPERTY_CODE_USER_PROPERTY) continue;
 
 		for(uint j = 0; j < user_property_names->len; j++) {
 			char *key = (char*)g_array_index(user_property_names, char*, j);
@@ -922,9 +910,7 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 }
 
 void janus_mqtt_add_properties(janus_mqtt_transaction_state *state, GArray *user_properties, MQTTProperties *properties) {
-	if(user_properties == NULL || user_properties->len == 0) {
-		return;
-	}
+	if(user_properties == NULL || user_properties->len == 0) return;
 
 	for(uint i = 0; i < user_properties->len; i++) {
 		MQTTProperty *property = &g_array_index(user_properties, MQTTProperty, i);
@@ -1026,7 +1012,7 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 		json_error_t error;
 		json_t *root = json_loadb(message->payload, message->payloadlen, 0, &error);
 
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5 && !admin) {
 			/* Save MQTT 5 properties copy to the state */
 			const gchar *transaction = g_strdup(json_string_value(json_object_get(root, "transaction")));
@@ -1040,13 +1026,13 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 
 			janus_mqtt_transaction_state *state = g_malloc(sizeof(janus_mqtt_transaction_state));
 			state->properties = properties;
-			state->created_at = time(0);
+			state->created_at = janus_get_monotonic_time();
 
 			g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
 			g_hash_table_insert(janus_mqtt_transaction_states, (gpointer) transaction, (gpointer) state);
 			g_rw_lock_writer_unlock(&janus_mqtt_transaction_states_lock);
 		}
-	#endif
+#endif
 
 		ctx->gateway->incoming_request(&janus_mqtt_transport_, mqtt_session, NULL, admin, root, &error);
 	}
@@ -1254,7 +1240,7 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
 	if(admin) {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_admin_subscribe_success5;
 			options.onFailure5 = janus_mqtt_client_admin_subscribe_failure5;
@@ -1262,13 +1248,13 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 			options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 			options.onFailure = janus_mqtt_client_admin_subscribe_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_admin_subscribe_success;
 		options.onFailure = janus_mqtt_client_admin_subscribe_failure;
-	#endif
+#endif
 		return MQTTAsync_subscribe(ctx->client, ctx->admin.subscribe.topic, ctx->admin.subscribe.qos, &options);
 	} else {
-	#ifdef MQTTVERSION_5
+#ifdef MQTTVERSION_5
 		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
 			options.onSuccess5 = janus_mqtt_client_subscribe_success5;
 			options.onFailure5 = janus_mqtt_client_subscribe_failure5;
@@ -1276,10 +1262,10 @@ int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
 			options.onSuccess = janus_mqtt_client_subscribe_success;
 			options.onFailure = janus_mqtt_client_subscribe_failure;
 		}
-	#else
+#else
 		options.onSuccess = janus_mqtt_client_subscribe_success;
 		options.onFailure = janus_mqtt_client_subscribe_failure;
-	#endif
+#endif
 		return MQTTAsync_subscribe(ctx->client, ctx->subscribe.topic, ctx->subscribe.qos, &options);
 	}
 }
@@ -1600,7 +1586,7 @@ static gboolean janus_mqtt_vacuum(gpointer context) {
 
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_mqtt_transaction_state* state = value;
-		if(time(0) - state->created_at > ctx->vacuum_interval) {
+		if(janus_get_monotonic_time() - state->created_at > ctx->vacuum_interval) {
 			g_hash_table_iter_remove(&iter);
 		}
 	}
