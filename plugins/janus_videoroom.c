@@ -1661,6 +1661,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	gboolean svc;
 	janus_vp9_svc_info svc_info;
 	/* The following is only relevant for datachannels */
+	char *label;
 	gboolean textdata;
 } janus_videoroom_rtp_relay_packet;
 
@@ -5240,6 +5241,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_da
 	pkt.data = (struct rtp_header *)buf;
 	pkt.length = len;
 	pkt.is_rtp = FALSE;
+	pkt.label = packet->label;
 	pkt.textdata = !packet->binary;
 	janus_mutex_lock_nodebug(&participant->subscribers_mutex);
 	g_slist_foreach(participant->subscribers, janus_videoroom_relay_data_packet, &pkt);
@@ -7702,7 +7704,7 @@ static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data)
 		JANUS_LOG(LOG_VERB, "Forwarding %s DataChannel message (%d bytes) to viewer\n",
 			packet->textdata ? "text" : "binary", packet->length);
 		janus_plugin_data data = {
-			.label = NULL,
+			.label = packet->label,
 			.protocol = NULL,
 			.binary = !packet->textdata,
 			.buffer = (char *)packet->data,
