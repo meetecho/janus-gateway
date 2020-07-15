@@ -430,7 +430,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						m->proto = g_strdup(proto);
 						m->direction = JANUS_SDP_SENDRECV;
 						m->c_ipv4 = TRUE;
-						if(m->port > 0) {
+						if(m->port > 0 || m->type == JANUS_SDP_APPLICATION) {
 							/* Now let's check the payload types/formats */
 							gchar **mline_parts = g_strsplit(line+2, " ", -1);
 							if(!mline_parts) {
@@ -934,7 +934,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		g_snprintf(buffer, sizeof(buffer), "m=%s %d %s", m->type_str, m->port, m->proto);
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
-		if(m->port == 0) {
+		if(m->port == 0 && m->type != JANUS_SDP_APPLICATION) {
 			/* Remove all payload types/formats if we're rejecting the media */
 			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
 			m->fmts = NULL;
@@ -1498,6 +1498,13 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			if(!do_data || data > 1) {
 				/* Reject */
 				am->port = 0;
+				/* Add the format anyway, to keep Firefox happy */
+				GList *fmt = m->fmts;
+				if(fmt) {
+					char *fmt_str = (char *)fmt->data;
+					if(fmt_str)
+						am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
+				}
 				temp = temp->next;
 				continue;
 			}
