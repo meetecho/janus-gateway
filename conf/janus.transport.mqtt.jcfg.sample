@@ -28,6 +28,10 @@ general: {
 	#certfile = /path/to/cert.pem
 	#keyfile = /path/to/key.pem
 
+	# These options work with MQTT 5 only.
+	#vacuum_interval = 60					# Interval for removing old transaction states in seconds.
+	#proxy_transaction_user_properties = []	# Array of user property names to copy from the incoming message.
+	#add_transaction_user_properties = ()	# List of user property ["key", "value"] pairs to add.
 }
 
 admin: {
