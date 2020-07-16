@@ -1055,7 +1055,9 @@ void janus_dtls_sctp_data_ready(janus_dtls_srtp *dtls) {
 void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
+	janus_refcount_increase(&dtls->sctp->ref);
 	janus_sctp_send_data(dtls->sctp, label, protocol, textdata, buf, len);
+	janus_refcount_decrease(&dtls->sctp->ref);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
