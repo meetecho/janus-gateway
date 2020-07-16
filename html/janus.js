@@ -1108,7 +1108,12 @@ function Janus(gatewayCallbacks) {
 			ws.addEventListener('message', onUnbindMessage);
 			ws.addEventListener('error', onUnbindError);
 
-			ws.send(JSON.stringify(request));
+			if (ws.readyState === 1) {
+				ws.send(JSON.stringify(request));
+			} else {
+				onUnbindError();
+			}
+
 			return;
 		}
 		Janus.httpAPICall(server + "/" + sessionId, {
