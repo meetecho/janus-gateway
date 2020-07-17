@@ -48,6 +48,7 @@ var sessions = {};
 var tasks = [];
 var publishers = [];
 var rooms ={};
+var managerSessions = {};
 
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
@@ -81,7 +82,7 @@ function init(config) {
 	// notice how the first argument is 0, meaning this event is not tied to any session
 	var event = { event: "loaded", script: name };
 	notifyEvent(0, JSON.stringify(event));
-	
+
  	console.log('making get ...');
 	console.log('get response ==>', get('http://httpbin.org/get?roomID=1234'));
 	console.log('making http_post');
@@ -125,7 +126,7 @@ function destroySession(id) {
 	} catch (e) {
 		console.log("cannot hangupMedia fro session (" + id + " )", e);
 	}
-	
+
 	return 0;
 }
 
@@ -500,7 +501,7 @@ function getRoom(roomId) {
 		room=rooms[roomId];
 	}else {
 		// new room template
-		var newRoomTemplate =  {roomId :0 , roomName : "" , publishers : [], sessions:[] };
+		var newRoomTemplate =  {roomId :0 , roomName : "" , managerSessionID: 0, publishers : [], sessions:[] };
 
 		//var httpResponse = testExtraFunction('http://httpbin.org/get?roomID='+roomId);
 		//console.log("httpResponse",httpResponse);
