@@ -119,8 +119,13 @@ function destroySession(id) {
 	}else {
 		setRoom(room);
 	}
-	hangupMedia(id);
 	delete sessions[id];
+	try {
+		hangupMedia(id);
+	} catch (e) {
+		console.log("cannot hangupMedia fro session (" + id + " )", e);
+	}
+	
 	return 0;
 }
 
