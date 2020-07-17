@@ -1063,7 +1063,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	}
 	const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
 	JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-	janus_set_public_ip(public_ip);
+	janus_add_public_ip(public_ip);
 	return 0;
 }
 
@@ -3046,7 +3046,7 @@ static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate
 	char *host_ip = NULL;
 	if(nat_1_1_enabled && !force_private) {
 		/* A 1:1 NAT mapping was specified, either overwrite all the host addresses with the public IP, or add new candidates */
-		host_ip = janus_get_public_ip_index(public_ip_index);
+		host_ip = janus_get_public_ip(public_ip_index);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
 	}
 	/* Encode the candidate to a string */

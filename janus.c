@@ -191,42 +191,33 @@ static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
-static GPtrArray *public_ip = NULL;
+static GHashTable *public_ips_table = NULL;
+static GList *public_ips = NULL;
 guint janus_get_public_ip_count(void) {
-	return public_ip ? public_ip->len : 0;
+	return public_ips_table ? g_hash_table_size(public_ips_table) : 0;
 }
-gchar *janus_get_public_ip_index(guint index) {
-	if (!public_ip || !public_ip->len) {
+gchar *janus_get_public_ip(guint index) {
+	if (!janus_get_public_ip_count()) {
 		/* Fallback to the local IP, if we have no public one */
 		return local_ip;
 	}
-	if (index >= public_ip->len) {
+	if (index >= g_hash_table_size(public_ips_table)) {
 		return NULL;
 	}
-	return g_ptr_array_index(public_ip, index);
+	return (char *)g_list_nth(public_ips, index)->data;
 }
-gchar *janus_get_public_ip(void) {
-	return janus_get_public_ip_index(0);
-}
-void janus_set_public_ip_list(GPtrArray *ips) {
-	/* once set do not override */
-	if (public_ip != NULL) {
+void janus_add_public_ip(const gchar *ip) {
+	if(ip == NULL) {
 		return;
 	}
-	public_ip = g_ptr_array_ref(ips);
-}
-static void janus_free_string(gpointer data) {
-	g_free(data);
-}
-void janus_set_public_ip(const gchar *ip) {
-	/* once set do not override */
-	if(ip == NULL || public_ip != NULL)
-		return;
 
-	GPtrArray *ips = g_ptr_array_new_with_free_func(janus_free_string);
-	g_ptr_array_add(ips, g_strdup(ip));
-	janus_set_public_ip_list(ips);
-	g_ptr_array_unref(ips);
+	if(!public_ips_table) {
+		public_ips_table = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	}
+	if (g_hash_table_insert(public_ips_table, g_strdup(ip), NULL)) {
+		g_list_free(public_ips);
+		public_ips = g_hash_table_get_keys(public_ips_table);
+	}
 }
 static volatile gint stop = 0;
 static gint stop_signal = 0;
@@ -318,8 +309,9 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
-	if(public_ip != NULL)
-		json_object_set_new(info, "public-ip", json_string(public_ip));
+	if(janus_get_public_ip_count() > 0) {
+		json_object_set_new(info, "public-ip", json_string(janus_get_public_ip(0)));
+	}
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
@@ -4608,7 +4600,6 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
 		char **list = g_strsplit(item->value, ",", -1);
 		char *index = list[0];
-		GPtrArray *ips = g_ptr_array_new_with_free_func(janus_free_string);
 		if(index != NULL) {
 			int i=0;
 			while(index != NULL) {
@@ -4616,7 +4607,7 @@ gint main(int argc, char *argv[])
 					if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, index)) {
 						JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, skipping...\n", index);
 					} else {
-						g_ptr_array_add(ips, g_strdup(index));
+						janus_add_public_ip(index);
 					}
 				}
 				i++;
@@ -4624,8 +4615,7 @@ gint main(int argc, char *argv[])
 			}
 		}
 		g_strfreev(list);
-		if(ips->len > 0) {
-			janus_set_public_ip_list(ips);
+		if(janus_get_public_ip_count() > 0) {
 			/* Check if we should replace the private host, or advertise both candidates */
 			gboolean keep_private_host = FALSE;
 			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
@@ -4635,7 +4625,6 @@ gint main(int argc, char *argv[])
 			}
 			janus_ice_enable_nat_1_1(keep_private_host);
 		}
-		g_ptr_array_unref(ips);
 	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get(config, config_nat, janus_config_type_item, "turn_server");
@@ -5386,8 +5375,11 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 	g_free(local_ip);
-	if (public_ip) {
-		g_ptr_array_unref(public_ip);
+	if (public_ips) {
+		g_list_free(public_ips);
+	}
+	if (public_ips_table) {
+		g_hash_table_destroy(public_ips_table);
 	}
 
 	if(janus_ice_get_static_event_loops() > 0)
