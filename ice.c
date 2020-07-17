@@ -3643,8 +3643,10 @@ void janus_ice_resend_trickles(janus_ice_handle *handle) {
 		handle->handle_id, g_slist_length(candidates), stream->stream_id, component->component_id);
 	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
-		if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE)
+		if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
+			nice_candidate_free(c);
 			continue;
+		}
 		if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), FALSE, FALSE) == 0) {
 			/* Candidate encoded, send a "trickle" event to the browser */
 			janus_ice_notify_trickle(handle, buffer);
