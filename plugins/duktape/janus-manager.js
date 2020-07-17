@@ -1,5 +1,24 @@
 /**
- * @param {{room_id: number, server: string, publisher_list: any[]}} roomInfo
+ * @typedef {{
+  audioCodec: string,
+  display: string,
+  id: number,
+  isConnected: boolean,
+  janusServer: string,
+  private_Id: number,
+  publishers: Array<any>,
+  room: number,
+  subscribers: Array<any>,
+  videoCodec: string,
+  }} PublisherItem
+ * */
+
+/**
+ * @typedef {{room_id: number, server: string, publisher_list: Array<PublisherItem>}} RoomInfo
+ * */
+
+/**
+ * @param {RoomInfo} roomInfo
  * */
 function connectToManager(roomInfo) {
 
@@ -33,7 +52,7 @@ function handleSyncManager(id, tr, msg) {
 }
 
 /**
- * @param {{room_id: number, server: string, publisher_list: any[]}} roomInfo
+ * @param {RoomInfo} roomInfo
  * */
 function syncRoomToManager(roomInfo) {
 
