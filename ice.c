@@ -2039,12 +2039,12 @@ static void janus_ice_cb_new_local_candidate (NiceAgent *agent, NiceCandidate *c
 	while(tmp) {
 		NiceCandidate *c = (NiceCandidate *)tmp->data;
 		/* Check if this is what we're looking for */
-		if(!strcasecmp(c->foundation, foundation)) {
+		if(!candidate && !strcasecmp(c->foundation, foundation)) {
 			/* It is! */
 			candidate = c;
-			break;
+		} else {
+			nice_candidate_free(c);
 		}
-		nice_candidate_free(c);
 		tmp = tmp->next;
 	}
 	g_slist_free(candidates);
