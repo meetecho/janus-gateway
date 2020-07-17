@@ -81,7 +81,7 @@
  *
  * The following are the functions the C code exposes:
  *
- * - \c pushEvent(): push an event to the user via Janus API;
+ * - \c pushEvent(id:number,tr:string,event:string,jsepanswer:string): push an event to the user via Janus API;
  * - \c eventsIsEnabled(): check if Event Handlers are enabled in the core;
  * - \c notifyEvent(): send an event to Event Handlers;
  * - \c closePc(): force the closure of a PeerConnection;
