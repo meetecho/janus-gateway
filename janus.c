@@ -202,7 +202,7 @@ gchar *janus_get_public_ip(guint index) {
 		return local_ip;
 	}
 	if (index >= g_hash_table_size(public_ips_table)) {
-		return NULL;
+		index = g_hash_table_size(public_ips_table) - 1;
 	}
 	return (char *)g_list_nth(public_ips, index)->data;
 }
