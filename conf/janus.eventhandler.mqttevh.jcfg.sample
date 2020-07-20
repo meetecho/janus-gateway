@@ -22,6 +22,8 @@ general: {
 	#cleansession = 0				# Clean session flag (default: off)
 	#retain = 0						# Default MQTT retain flag for published events
 	#qos = 1						# Default MQTT QoS for published events
+	#max_inflight = 10				# Maximum number of inflight messages
+	#max_buffered = 100				# Maximum number of buffered messages
 	#disconnect_timeout = 100		# Seconds to wait before destroying client
 	#username = "guest"				# Username for authentication (default: no authentication)
 	#password = "guest"				# Password for authentication (default: no authentication)

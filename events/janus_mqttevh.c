@@ -95,6 +95,8 @@ static volatile gint initialized = 0, stopping = 0;
 #define	JANUS_MQTTEVH_DEFAULT_ADDEVENT				1
 #define	JANUS_MQTTEVH_DEFAULT_KEEPALIVE				30
 #define	JANUS_MQTTEVH_DEFAULT_CLEANSESSION			0	/* Off */
+#define JANUS_MQTTEVH_DEFAULT_MAX_INFLIGHT			10
+#define JANUS_MQTTEVH_DEFAULT_MAX_BUFFERED			100
 #define JANUS_MQTTEVH_DEFAULT_TIMEOUT				30
 #define JANUS_MQTTEVH_DEFAULT_DISCONNECT_TIMEOUT	100
 #define JANUS_MQTTEVH_DEFAULT_QOS					0
@@ -148,6 +150,8 @@ typedef struct janus_mqttevh_context {
 		int mqtt_version;
 		int keep_alive_interval;
 		int cleansession;
+		int max_inflight;
+		int max_buffered;
 		char *client_id;
 		char *username;
 		char *password;
@@ -373,6 +377,7 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.password = ctx->connect.password;
 	options.automaticReconnect = TRUE;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
+	options.maxInflight = ctx->connect.max_inflight;
 
 	MQTTAsync_willOptions willOptions = MQTTAsync_willOptions_initializer;
 	if(ctx->will.enabled) {
@@ -653,7 +658,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	int res = 0;
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
-	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item, *connect_status_item, *disconnect_status_item;
+	janus_config_item *keep_alive_interval_item, *cleansession_item, *max_inflight_item, *max_buffered_item, *disconnect_timeout_item, *qos_item, *retain_item, *connect_status_item, *disconnect_status_item;
 	janus_config_item *will_retain_item, *will_qos_item, *will_enabled_item;
 
 	if(g_atomic_int_get(&stopping)) {
@@ -794,6 +799,22 @@ static int janus_mqttevh_init(const char *config_path) {
 	if(ctx->connect.cleansession < 0) {
 		JANUS_LOG(LOG_ERR, "Invalid clean-session value: %s (falling back to default)\n", cleansession_item->value);
 		ctx->connect.cleansession = JANUS_MQTTEVH_DEFAULT_CLEANSESSION;
+	}
+
+	max_inflight_item = janus_config_get(config, config_general, janus_config_type_item, "max_inflight");
+	ctx->connect.max_inflight = (max_inflight_item && max_inflight_item->value) ?
+		atoi(max_inflight_item->value) : JANUS_MQTTEVH_DEFAULT_MAX_INFLIGHT;
+	if(ctx->connect.max_inflight < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-inflight value: %s (falling back to default)\n", max_inflight_item->value);
+		ctx->connect.max_inflight = JANUS_MQTTEVH_DEFAULT_MAX_INFLIGHT;
+	}
+
+	max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	ctx->connect.max_buffered = (max_buffered_item && max_buffered_item->value) ?
+		atoi(max_buffered_item->value) : JANUS_MQTTEVH_DEFAULT_MAX_BUFFERED;
+	if(ctx->connect.max_buffered < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-buffered value: %s (falling back to default)\n", max_buffered_item->value);
+		ctx->connect.max_buffered = JANUS_MQTTEVH_DEFAULT_MAX_BUFFERED;
 	}
 
 	/* Disconnect configuration */
@@ -959,6 +980,8 @@ static int janus_mqttevh_init(const char *config_path) {
 		create_options.MQTTVersion = MQTTVERSION_5;
 	}
 #endif
+
+	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
 	res = MQTTAsync_createWithOptions(
 		&ctx->client,

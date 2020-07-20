@@ -116,6 +116,8 @@ typedef struct janus_mqtt_context {
 		int cleansession;
 		char *username;
 		char *password;
+		int max_inflight;
+		int max_buffered;
 	} connect;
 	struct {
 		int timeout;
@@ -422,6 +424,24 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		ctx->connect.cleansession = 0;
 	}
 
+	janus_config_item *max_inflight_item = janus_config_get(config, config_general, janus_config_type_item, "max_inflight");
+	max_inflight_item = janus_config_get(config, config_general, janus_config_type_item, "max_inflight");
+	ctx->connect.max_inflight = (max_inflight_item && max_inflight_item->value) ?
+		atoi(max_inflight_item->value) : 10;
+	if(ctx->connect.max_inflight < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-inflight value: %s (falling back to default)\n", max_inflight_item->value);
+		ctx->connect.max_inflight = 10;
+	}
+
+	janus_config_item *max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	ctx->connect.max_buffered = (max_buffered_item && max_buffered_item->value) ?
+		atoi(max_buffered_item->value) : 100;
+	if(ctx->connect.max_buffered < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-buffered value: %s (falling back to default)\n", max_buffered_item->value);
+		ctx->connect.max_buffered = 100;
+	}
+
 	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 	if(enabled_item == NULL) {
 		/* Try legacy property */
@@ -649,6 +669,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		create_options.MQTTVersion = MQTTVERSION_5;
 	}
 #endif
+
+	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
 	if(MQTTAsync_createWithOptions(
 			&ctx->client,
@@ -1068,6 +1090,7 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	options.password = ctx->connect.password;
 	options.automaticReconnect = TRUE;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
+	options.maxInflight = ctx->connect.max_inflight;
 
 	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
 	if(ctx->ssl_enabled) {
