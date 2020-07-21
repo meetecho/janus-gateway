@@ -44,28 +44,44 @@ Duktape.modSearch = function (id) {
 var sdpUtils = require("janus-sdp");
 
 // State and properties
-var sessions = {};
-var tasks = [];
-var publishers = [];
-var rooms = {};
-var managerSessions = {};
+
+var state = require("./state");
+var util = require("./util");
+
+var sessions = state.sessions // {};
+var tasks = state.tasks // [];
+var publishers = state.publishers // [];
+var rooms = state.rooms // {};
+var managerSessions = state.managerSessions // {};
+
+var getRoom = state.getRoom;
+var getSession = state.getSession;
+var setSession = state.setSession;
+var setRoom = state.setRoom;
+
+var serialize = util.serialize;
 
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
 	return 12;
 }
+
 function getVersionString() {
 	return "0.0.12";
 }
+
 function getDescription() {
 	return "This is videoroom.js, a JavaScript/Duktape based clone of janus.plugin.videoroomjs";
 }
+
 function getName() {
 	return "JavaScript based videoroom";
 }
+
 function getAuthor() {
 	return "Shlomi Gutman";
 }
+
 function getPackage() {
 	return "janus.plugin.videoroomjs";
 }
@@ -83,10 +99,6 @@ function init(config) {
 	var event = { event: "loaded", script: name };
 	notifyEvent(0, JSON.stringify(event));
 
-	console.log('making get ...');
-	console.log('get response ==>', get('http://httpbin.org/get?roomID=1234'));
-	console.log('making http_post');
-	console.log('post response ==>', post('https://reqres.in/api/register', { email: 'eve.holt@reqres.in', password: 'pistol' }));
 }
 
 function destroy() {
@@ -484,6 +496,7 @@ function getRoomPublishers(roomId, filterPublisher) {
 	})
 	return roomObj
 }
+
 function getRoomPublishersArray(roomId, filterPublisher) {
 	var pulisherArray = [];
 	var room = getRoom(roomId);
@@ -493,64 +506,6 @@ function getRoomPublishersArray(roomId, filterPublisher) {
 		})
 	}
 	return pulisherArray
-}
-
-function getRoom(roomId) {
-	var room = null;
-	if (rooms[roomId]) {
-		room = rooms[roomId];
-	} else {
-		// new room template
-		var newRoomTemplate = { roomId: 0, roomName: "", managerSessionID: 0, publishers: [], sessions: [] };
-
-		//var httpResponse = testExtraFunction('http://httpbin.org/get?roomID='+roomId);
-		//console.log("httpResponse",httpResponse);
-		//	var roomConfig=JSON.parse(httpResponse)
-		//console.log("httpResponse",httpResponse);
-		//if(roomConfig)newRoomTemplate.roomConfig=roomConfig;
-
-		room = newRoomTemplate;
-		room.roomId = roomId
-		rooms[roomId] = room;
-	}
-	return room
-}
-function getSession(sessionID) {
-	var session = null;
-	if (sessions[sessionID]) {
-		session = sessions[sessionID];
-	} else {
-		// Objects Templates
-		var newSessionTemplate = { id: 0, janusServer: janusServer, room: 0, subscribers: [], publishers: [], isConnected: false };
-		// new session template
-		session = newSessionTemplate;
-		session.id = sessionID;
-		sessions[sessionID] = session;
-		console.log("New session was burn !!!! ", sessionID, session)
-	}
-	return session
-}
-function setSession(session) {
-	sessions[session.id] = session;
-	console.log("session was update  !!!! ", session.id, session)
-}
-function setRoom(room) {
-	rooms[room.roomId] = room;
-}
-
-function serialize(obj, prefix) {
-	var str = [],
-		p;
-	for (p in obj) {
-		if (obj.hasOwnProperty(p)) {
-			var k = prefix ? prefix + "[" + p + "]" : p,
-				v = obj[p];
-			str.push((v !== null && typeof v === "object") ?
-				serialize(v, k) :
-				encodeURIComponent(k) + "=" + encodeURIComponent(v));
-		}
-	}
-	return str.join("&");
 }
 
 function get(url) {
