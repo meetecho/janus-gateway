@@ -11,28 +11,34 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {string} msg
+   * @param {Body} body
    * */
-  function handleManagerMessage(id, tr, msg) {
-
+  function handleManagerMessage(id, tr, body) {
+    switch (body.request) {
+      case "join":
+        return handleJoinManager(id, tr, body);
+      case "sync":
+        return handleSyncManager(id, tr, body);
+    }
+    return 1;
   }
 
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {string} msg
+   * @param {Body} body
    * */
-  function handleJoinManager(id, tr, msg) {
-
+  function handleJoinManager(id, tr, body) {
+    return 1;
   }
 
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {string} msg
+   * @param {Body} body
    * */
-  function handleSyncManager(id, tr, msg) {
-
+  function handleSyncManager(id, tr, body) {
+    return 1;
   }
 
   /** @param {RoomInfo} roomInfo */
@@ -78,4 +84,14 @@ module.exports = function (global, state) {
     setSession: (session: any) => void;
     setRoom: (room: any) => void;
 }} State
+ */
+
+/**
+ * @typedef {{
+       meetingID: number;
+       sessionID: number;
+       handleID: number;
+       request: string;
+       ptype: string;
+     }} Body
  */

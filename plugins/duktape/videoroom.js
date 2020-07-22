@@ -174,7 +174,9 @@ function handleMessage(id, tr, msg, jsep) {
 	// Decode the message JSON string
 	var msgT = JSON.parse(msg);
 	// Let's return a synchronous response if there's no jsep, asynchronous otherwise
-	if (!jsep) {
+	/* if (msgT.ptype === "manager") {
+		return handleManagerMessage(id, tr, msgT);
+	} else */ if (!jsep) {
 		var response = {
 			videoroom: "response",
 			result: "ok"
@@ -254,8 +256,7 @@ function handleMessage(id, tr, msg, jsep) {
 
 
 		return JSON.stringify(response);
-	}
-	else {
+	} else {
 		if (msgT.request === "start") {
 			var responseStart = {
 				videoroom: "response",
