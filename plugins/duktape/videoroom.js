@@ -49,13 +49,13 @@ var sdpUtils = require("janus-sdp");
 
 var state = require("./state")(global);
 var util = require("./util")(global);
-var janusManager = require("./janus-manager")(global);
+var janusManager = require("./janus-manager")(global, state);
 
-var sessions = state.sessions // {};
-var tasks = state.tasks // [];
-var publishers = state.publishers // [];
-var rooms = state.rooms // {};
-var managerSessions = state.managerSessions // {};
+var sessions = state.sessions;
+var tasks = state.tasks;
+var publishers = state.publishers;
+var rooms = state.rooms;
+var managerSessions = state.managerSessions;
 
 var getRoom = state.getRoom;
 var getSession = state.getSession;

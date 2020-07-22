@@ -1,5 +1,7 @@
+/** @param {State} state */
+module.exports = function (global, state) {
 
-module.exports = function (global) {
+  var util = require("./util")(global);
 
   /** @param {RoomInfo} roomInfo */
   function connectToManager(roomInfo) {
@@ -63,3 +65,17 @@ module.exports = function (global) {
  * */
 
 /** @typedef {{room_id: number, server: string, publisher_list: Array<PublisherItem>}} RoomInfo */
+
+/**
+ * @typedef {{
+    sessions: {};
+    tasks: any[];
+    publishers: any[];
+    rooms: {};
+    managerSessions: {};
+    getRoom: (roomId: any) => any;
+    getSession: (sessionID: any) => any;
+    setSession: (session: any) => void;
+    setRoom: (room: any) => void;
+}} State
+ */
