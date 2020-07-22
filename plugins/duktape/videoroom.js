@@ -3,6 +3,8 @@
 // Obviously, it must NOT be confused with the videoroomjs.js in the html
 // folder, which contains the JavaScript code for the web demo instead...
 
+var global = this;
+
 // Example details
 var name = "duktape-videoroomjs";
 var janusServer = "webconf.yourcompany.net";
@@ -45,8 +47,9 @@ var sdpUtils = require("janus-sdp");
 
 // State and properties
 
-var state = require("./state");
-var util = require("./util");
+var state = require("./state")(global);
+var util = require("./util")(global);
+var janusManager = require("./janus-manager")(global);
 
 var sessions = state.sessions // {};
 var tasks = state.tasks // [];
@@ -59,7 +62,14 @@ var getSession = state.getSession;
 var setSession = state.setSession;
 var setRoom = state.setRoom;
 
-var serialize = util.serialize;
+var get = util.get;
+var post = util.post;
+
+var connectToManager = janusManager.connectToManager;
+var handleJoinManager = janusManager.handleJoinManager;
+var handleManagerMessage = janusManager.handleManagerMessage;
+var handleSyncManager = janusManager.handleSyncManager;
+var syncRoomToManager = janusManager.syncRoomToManager;
 
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
@@ -89,7 +99,7 @@ function getPackage() {
 // Methods
 function init(config) {
 	// This is where we initialize the plugin, for static properties
-	console.log("Initializing...")
+	console.log("Initializing...");
 	if (config) {
 		console.log("Configuration file provided (" + config + "), but we don't need it");
 	}
@@ -506,12 +516,4 @@ function getRoomPublishersArray(roomId, filterPublisher) {
 		})
 	}
 	return pulisherArray
-}
-
-function get(url) {
-	return http_get(url);
-}
-
-function post(url, body) {
-	return http_post(url, serialize(body));
 }
