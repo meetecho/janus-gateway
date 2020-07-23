@@ -30,6 +30,9 @@
 #include "refcount.h"
 #include "plugins/plugin.h"
 
+/*! \brief The maximum number of packets we'll ever send in a single call */
+#define JANUS_MAX_PENDING_MESSAGES	10
+
 
 /*! \brief ICE stuff initialization
  * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
@@ -510,6 +513,12 @@ struct janus_ice_component {
 	gboolean do_audio_nacks;
 	/*! \brief Whether we should do NACKs (in or out) for video */
 	gboolean do_video_nacks;
+	/*! \brief Number of pending messages ready to deliver */
+	uint8_t pending_messages_num;
+	/*! \brief Array of libnice NiceOutputMessage messages, to be sent together */
+	NiceOutputMessage pending_messages[JANUS_MAX_PENDING_MESSAGES];
+	/*! \brief Array of opaque pointers to the actual data to be sent */
+	void *pending_messages_data[JANUS_MAX_PENDING_MESSAGES];
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GQueue *audio_retransmit_buffer, *video_retransmit_buffer;
 	/*! \brief HashTable of retransmittable sequence numbers, in case we receive NACKs */
