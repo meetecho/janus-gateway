@@ -29,7 +29,7 @@ module.exports = function (global) {
       } else {
         // new room template
         var newRoomTemplate = { roomId: 0, roomName: "", managerSessionID: 0, publishers: [], sessions: [] };
-        
+
         //
         /* util.startRoomHttpRequest({ server: "localhost", room_id: roomId, publisher_state: [] }); */
         //
@@ -40,6 +40,10 @@ module.exports = function (global) {
       }
       return room;
     },
+    /**
+     * @param {number} sessionID
+     * @returns {ISession}
+     */
     getSession: function (sessionID) {
       var session = null;
       if (state.sessions[sessionID]) {
@@ -55,10 +59,18 @@ module.exports = function (global) {
       }
       return session
     },
+    /**
+     * @param {ISession} session
+     * @returns {void}
+     */
     setSession: function (session) {
       state.sessions[session.id] = session;
       console.log("session (" + session.id + ") was updated!!!! ", session);
     },
+    /**
+     * @param {IRoom} room
+     * @returns {void}
+     */
     setRoom: function (room) {
       state.rooms[room.roomId] = room;
     },
