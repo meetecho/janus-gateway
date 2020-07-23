@@ -7,7 +7,6 @@ var global = this;
 
 // Example details
 var name = "duktape-videoroomjs";
-var janusServer = "webconf.yourcompany.net";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
@@ -47,10 +46,11 @@ var sdpUtils = require("janus-sdp");
 
 // State and properties
 
-var state = require("./state")(global);
-var util = require("./util")(global);
-var janusManager = require("./janus-manager")(global, state);
+var state = require("./helpers/state")(global);
+var util = require("./helpers/util")(global);
+var janusManager = require("./helpers/janus-manager")(global, state);
 
+var janusServer = state.janusServer; //"webconf.yourcompany.net";
 var sessions = state.sessions;
 var tasks = state.tasks;
 var publishers = state.publishers;
@@ -70,6 +70,7 @@ var handleJoinManager = janusManager.handleJoinManager;
 var handleManagerMessage = janusManager.handleManagerMessage;
 var handleSyncManager = janusManager.handleSyncManager;
 var syncRoomToManager = janusManager.syncRoomToManager;
+
 
 // Just for fun, let's override the plugin info with our own
 function getVersion() {
