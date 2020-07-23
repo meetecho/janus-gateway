@@ -15,13 +15,13 @@ var name = "duktape-videoroomjs";
 // Let's add more info to errors
 Error.prototype.toString = function () {
 	// @ts-ignore
-	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
+	return this.name + ": " + this.message + " (at line " + this.lineNumber + ")";
 };
 // Let's add a prefix to all console.log lines
 var originalConsoleLog = console.log;
 console.log = function () {
 	var args = [];
-	args.push('[\x1b[36m' + name + '\x1b[0m] JSlog');
+	args.push("[\x1b[36m" + name + "\x1b[0m] JSlog");
 	for (var i = 0; i < arguments.length; i++) {
 		args.push(arguments[i]);
 	}
@@ -31,19 +31,19 @@ console.log("Loading script...");
 
 // We'll import our own hacky SDP parser, so we'll need the folder from the core
 var folder = global.getModulesFolder();
-console.log('Modules folder:', folder);
+console.log("Modules folder:", folder);
 
 // To require external modules with Duktape, we need a modSearch function:
 // https://github.com/svaarala/duktape-wiki/blob/master/HowtoModules.md
 Duktape.modSearch = function (id) {
-	console.log('Loading module:', id);
+	console.log("Loading module:", id);
 	// We read the file from the folder the core returned
-	var res = global.readFile(folder + '/' + id + '.js');
-	if (typeof res === 'string') {
-		console.log('Module loaded');
+	var res = global.readFile(folder + "/" + id + ".js");
+	if (typeof res === "string") {
+		console.log("Module loaded");
 		return res;
 	}
-	throw new Error('Module not found: ' + id);
+	throw new Error("Module not found: " + id);
 };
 
 // Let's import our ugly SDP parser now
