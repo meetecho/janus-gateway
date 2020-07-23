@@ -56,8 +56,8 @@ DTLS certificate key passphrase (if needed)
 .BR \-S ", " \-\-stun-server=\fIip:port\fR
 STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)
 .TP
-.BR \-1 ", " \-\-nat-1-1=\fIip\fR
-Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)
+.BR \-1 ", " \-\-nat-1-1=\fIips\fR
+Comma-separated list of public IPs to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)
 .TP
 .BR \-2 ", " \-\-keep-private-host
 When nat-1-1 is used (e.g., Amazon EC2 instances), don't remove the private host, but keep both to simulate STUN (default=off)

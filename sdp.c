@@ -1199,7 +1199,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"UDP/TLS/RTP/SAVPF";
 	if(!janus_is_webrtc_encryption_enabled())
 		rtp_profile = (char *)"RTP/AVPF";
-	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
+	gboolean ipv4 = !strstr(janus_get_public_ip(0), ":");
 	/* Origin o= */
 	gint64 sessid = janus_get_real_time();
 	if(anon->o_name == NULL)
@@ -1210,7 +1210,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	}
 	anon->o_ipv4 = ipv4;
 	g_free(anon->o_addr);
-	anon->o_addr = g_strdup(janus_get_public_ip());
+	anon->o_addr = g_strdup(janus_get_public_ip(0));
 	/* Session name s= */
 	if(anon->s_name == NULL)
 		anon->s_name = g_strdup("Meetecho Janus");
@@ -1289,7 +1289,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* Media connection c= */
 		g_free(m->c_addr);
 		m->c_ipv4 = ipv4;
-		m->c_addr = g_strdup(janus_get_public_ip());
+		m->c_addr = g_strdup(janus_get_public_ip(0));
 		/* Check if we need to refuse the media or not */
 		if(m->type == JANUS_SDP_AUDIO) {
 			audio++;
