@@ -2,7 +2,7 @@
 
 /** 
  * @param {IGlobal} global
- * @param {State} state 
+ * @param {IState} state 
  * */
 module.exports = function (global, state) {
 

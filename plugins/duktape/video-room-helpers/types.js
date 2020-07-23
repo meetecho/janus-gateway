@@ -58,18 +58,18 @@
 
 
 /**
-* @typedef {{\
+* @typedef {{
  janusServer: string;
- sessions: {};
- tasks: any[];
- [publishers]: any[];
- rooms: {};
- managerSessions: {};
- getRoom: (roomId: any) => any;
- getSession: (sessionID: any) => any;
- setSession: (session: any) => void;
- setRoom: (room: any) => void;
-}} State
+ sessions: ISessions;
+ tasks: ITasks;
+ publishers?: number[];
+ rooms: IRooms;
+ managerSessions: IManagerSessions;
+ getRoom: (roomID: number) => IRoom;
+ getSession: (sessionID: number) => ISession;
+ setSession: (session: ISession) => void;
+ setRoom: (room: IRoom) => void;
+}} IState
 */
 
 /** @typedef {{room_id: number, server: string, publisher_list: Array<IPublisherStateItem>}} IRoomInfo */
@@ -86,11 +86,16 @@
 
 /**@typedef {{
  *  id: number;
+ *  display:string;
  *  janusServer: string;
  *  room: number;
  *  subscribers: Array<number>;
  *  publishers: Array<number>;
  *  isConnected: boolean;
+ *  state: any;
+ *  audioCodec?: string;
+ *  videoCodec?: string;
+ *  private_Id?: number
  * }} ISession */
 
 /**

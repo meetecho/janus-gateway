@@ -1,27 +1,20 @@
 // @ts-check
 
 /**@param {IGlobal} global
- * @returns {State}
+ * @returns {IState}
 */
 module.exports = function (global) {
 
   var util = require("./util")(global);
 
+  /**@type {IState} */
   var state = {
     janusServer: "webconf.yourcompany.net",
-    /**@type {ISessions} */
     sessions: {},
-    /** @type {ITasks} */
     tasks: [],
     // publishers: [],
-    /**@type {IRooms} */
     rooms: {},
-    /**@type {IManagerSessions} */
     managerSessions: {},
-    /**
-     * @param {number} roomId
-     * @returns {IRoom}
-     */
     getRoom: function (roomId) {
       var room = null;
       if (state.rooms[roomId]) {
@@ -40,17 +33,14 @@ module.exports = function (global) {
       }
       return room;
     },
-    /**
-     * @param {number} sessionID
-     * @returns {ISession}
-     */
     getSession: function (sessionID) {
       var session = null;
       if (state.sessions[sessionID]) {
         session = state.sessions[sessionID];
       } else {
         // Objects Templates
-        var newSessionTemplate = { id: 0, janusServer: state.janusServer, room: 0, subscribers: [], publishers: [], isConnected: false };
+        /**@type {ISession} */
+        var newSessionTemplate = { id: 0, janusServer: state.janusServer, room: 0, subscribers: [], publishers: [], isConnected: false, display: "", state: {} };
         // new session template
         session = newSessionTemplate;
         session.id = sessionID;
@@ -59,18 +49,10 @@ module.exports = function (global) {
       }
       return session
     },
-    /**
-     * @param {ISession} session
-     * @returns {void}
-     */
     setSession: function (session) {
       state.sessions[session.id] = session;
       console.log("session (" + session.id + ") was updated!!!! ", session);
     },
-    /**
-     * @param {IRoom} room
-     * @returns {void}
-     */
     setRoom: function (room) {
       state.rooms[room.roomId] = room;
     },

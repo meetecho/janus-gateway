@@ -145,9 +145,9 @@ function destroySession(id) {
 
 	var room = getRoom(session.room);
 	room.publishers = room.publishers.filter(function (publisher) { return publisher !== id });
-	room.sessions = room.sessions.filter(function (session) { return session !== id });
+	// room.sessions = room.sessions.filter(function (session) { return session !== id });
 	if (room.publishers.length === 0) {
-		delete rooms[session.room]
+		delete rooms[session.room];
 	} else {
 		setRoom(room);
 	}
@@ -245,7 +245,7 @@ function handleMessage(id, tr, msg, jsep) {
 					description: "Demo Room",
 					id: msgT.feed
 				};
-				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsepOffer: sdpOffer });
+				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsep: sdpOffer });
 				global.pokeScheduler();
 				return 1;
 			}
