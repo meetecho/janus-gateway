@@ -228,7 +228,7 @@ function handleMessage(id, tr, msg, jsep) {
 				console.log("subscriber addRecipient", msgT.feed, id);
 				console.log("Join request ......", msgT);
 				var room = getRoom(msgT.room);
-				room.publishers.push(id);
+				room.sessions.push(id);
 				setRoom(room);
 				var session = getSession(id);
 				var sessionFeed = getSession(msgT.feed);
@@ -256,11 +256,13 @@ function handleMessage(id, tr, msg, jsep) {
 			setSession(session)
 			var room = getRoom(session.room)
 			room.publishers.forEach(function (publisher) {
-				var publishersArray = [session];
-				var event = { videoroom: "event", event: "PublisherStateUpdate", publisher_state: publishersArray, newStatePublisher: id };
-				console.log("sending", publisher, event);
-				//pushEvent(publisher, null, JSON.stringify(event));
-				tasks.push({ id: publisher, tr: null, msg: event, jsep: null });
+				if (publisher !== id) {
+					var publishersArray = [session];
+					var event = { videoroom: "event", event: "PublisherStateUpdate", publisher_state: publishersArray, newStatePublisher: id };
+					console.log("sending", publisher, event);
+					global.pushEvent(publisher, null, JSON.stringify(event), null);
+					tasks.push({ id: publisher, tr: null, msg: event, jsep: null });
+				}
 			});
 			global.pokeScheduler();
 			return 1;
@@ -314,11 +316,11 @@ function setupMedia(id) {
 	//console.log("sessions",sessions);
 	var session = getSession(id);
 	var publishersArray = getRoomPublishersArray(session.room, id);
-	/*	var event = { event: "media", publishers:publishersArray, newPublisher:id };
-		publishersArray.forEach(function (publisher) {
-			tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
-		})
-		pokeScheduler();*/
+	var event = { event: "media", publishers: publishersArray, newPublisher: id };
+	publishersArray.forEach(function (publisher) {
+		tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
+	})
+	global.pokeScheduler();
 	session.isConnected = true;
 	setSession(session);
 	global.notifyEvent(id, JSON.stringify(event));
@@ -463,7 +465,7 @@ function processAsync(task) {
 		console.log("  -- on answer sdp ...", event);
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
-
+		console.log("EVENT==>", event, task)
 		global.pushEvent(id, tr, JSON.stringify(event), JSON.stringify(jsepanswer));
 		// Just for fun (and to showcase the feature), let's send an event to handlers;
 		// notice how we pass the id now, meaning this event is tied to a specific session

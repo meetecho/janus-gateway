@@ -45,7 +45,7 @@ module.exports = function (global) {
         session = newSessionTemplate;
         session.id = sessionID;
         state.sessions[sessionID] = session;
-        console.log("New session (" + sessionID + ") was burn !!!! ", session);
+        console.log("New session (" + sessionID + ") was burn !!!! ", session, state.sessions);
       }
       return session
     },
