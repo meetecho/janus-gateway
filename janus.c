@@ -314,8 +314,9 @@ static json_t *janus_info(const char *transaction) {
 		json_object_set_new(info, "public-ip", json_string(janus_get_public_ip(0)));
 	}
 	if(public_ip_count > 1) {
+		guint i;
 		json_t *ips = json_array();
-		for (guint i = 0; i < public_ip_count; i++) {
+		for (i = 0; i < public_ip_count; i++) {
 			json_array_append_new(ips, json_string(janus_get_public_ip(i)));
 		}
 		json_object_set_new(info, "public-ips", ips);
