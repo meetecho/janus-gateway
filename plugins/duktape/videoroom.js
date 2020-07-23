@@ -1,3 +1,5 @@
+// @ts-check
+
 // This is a simple example of an videoroom test application built in JavaScript,
 // and conceived to be used in conjunction with the janus_duktape.c plugin.
 // Obviously, it must NOT be confused with the videoroomjs.js in the html
@@ -28,7 +30,7 @@ console.log = function () {
 console.log("Loading script...");
 
 // We'll import our own hacky SDP parser, so we'll need the folder from the core
-var folder = getModulesFolder();
+var folder = global.getModulesFolder();
 console.log('Modules folder:', folder);
 
 // To require external modules with Duktape, we need a modSearch function:
@@ -36,7 +38,7 @@ console.log('Modules folder:', folder);
 Duktape.modSearch = function (id) {
 	console.log('Loading module:', id);
 	// We read the file from the folder the core returned
-	var res = readFile(folder + '/' + id + '.js');
+	var res = global.readFile(folder + '/' + id + '.js');
 	if (typeof res === 'string') {
 		console.log('Module loaded');
 		return res;
@@ -110,7 +112,7 @@ function init(config) {
 	// Just for fun (and to showcase the feature), let's send an event to handlers:
 	// notice how the first argument is 0, meaning this event is not tied to any session
 	var event = { event: "loaded", script: name };
-	notifyEvent(0, JSON.stringify(event));
+	global.notifyEvent(0, JSON.stringify(event));
 
 }
 
@@ -124,15 +126,18 @@ function createSession(id) {
 	console.log("Created new session:", id);
 	var session = getSession(id);
 	// By default, we accept and relay all streams
-	configureMedium(id, "audio", "in", true);
-	configureMedium(id, "audio", "out", true);
-	configureMedium(id, "video", "in", true);
-	configureMedium(id, "video", "out", true);
-	configureMedium(id, "data", "in", true);
-	configureMedium(id, "data", "out", true);
-	console.log("sessions", sessions)
+	global.configureMedium(id, "audio", "in", true);
+	global.configureMedium(id, "audio", "out", true);
+	global.configureMedium(id, "video", "in", true);
+	global.configureMedium(id, "video", "out", true);
+	global.configureMedium(id, "data", "in", true);
+	global.configureMedium(id, "data", "out", true);
+	console.log("sessions", sessions);
 }
-
+/**
+ * to do: split to destroy session by type (publisher, subscriber, manager)
+ * @param {number} id 
+ */
 function destroySession(id) {
 	// A Janus plugin session has gone
 	var session = getSession(id);
@@ -140,6 +145,7 @@ function destroySession(id) {
 
 	var room = getRoom(session.room);
 	room.publishers = room.publishers.filter(function (publisher) { return publisher !== id });
+	room.sessions = room.sessions.filter(function (session) { return session !== id });
 	if (room.publishers.length === 0) {
 		delete rooms[session.room]
 	} else {
@@ -149,7 +155,7 @@ function destroySession(id) {
 	try {
 		hangupMedia(id);
 	} catch (e) {
-		console.log("cannot hangupMedia fro session (" + id + " )", e);
+		console.log("cannot hangupMedia for session (" + id + " )", e);
 	}
 
 	return 0;
@@ -192,17 +198,17 @@ function handleMessage(id, tr, msg, jsep) {
 				var session = getSession(id)
 				session.display = msgT.display;
 				session.room = msgT.room;
-				var responseJoined = {
+				var responseJoinedSubscriber = {
 					videoroom: "joined",
 					room: room.roomId,
 					description: room.roomName,
 					publishers: getRoomPublishersArray(msgT.room, id),
 					id: id
 				};
-				tasks.push({ id: id, tr: tr, msg: responseJoined, jsep: null });
+				tasks.push({ id: id, tr: tr, msg: responseJoinedSubscriber, jsep: null });
 				room.publishers.forEach(function (publisher) {
 					var publishersArray = [session];
-					event = { videoroom: "event", event: "newPublisher", publishers: publishersArray, newPublisher: id };
+					var event = { videoroom: "event", event: "newPublisher", publishers: publishersArray, newPublisher: id };
 					//event = { videoroom:"attached", event: "newPublisher", publishers:publishersArray, id:id };
 
 					console.log("sending", publisher, event);
@@ -212,7 +218,7 @@ function handleMessage(id, tr, msg, jsep) {
 				room.publishers.push(id);
 				setRoom(room);
 				setSession(session)
-				pokeScheduler();
+				global.pokeScheduler();
 				console.log("rooms !!!!!!!!!!!", rooms);
 				console.log("sessions !!!!!!!!!!!", sessions);
 				//	pushEvent(id, tr, JSON.stringify(response), null);
@@ -221,23 +227,26 @@ function handleMessage(id, tr, msg, jsep) {
 			else if (msgT.ptype === "subscriber") {
 				console.log("subscriber addRecipient", msgT.feed, id);
 				console.log("Join request ......", msgT);
+				var room = getRoom(msgT.room);
+				room.publishers.push(id);
+				setRoom(room);
 				var session = getSession(id);
 				var sessionFeed = getSession(msgT.feed);
 				sessionFeed.subscribers.push(id);
 				session.publishers.push(msgT.feed);
 				setSession(session);
 				setSession(sessionFeed);
-				addRecipient(msgT.feed, id);
-				sendPli(msgT.feed);
+				global.addRecipient(msgT.feed, id);
+				global.sendPli(msgT.feed);
 				var sdpOffer = sdpUtils.generateOffer({ audio: true, video: true });
-				var responseJoined = {
+				var responseJoinedPublisher = {
 					videoroom: "attached",
 					room: 1234,
 					description: "Demo Room",
 					id: msgT.feed
 				};
-				tasks.push({ id: id, tr: tr, msg: responseJoined, jsepOffer: sdpOffer });
-				pokeScheduler();
+				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsepOffer: sdpOffer });
+				global.pokeScheduler();
 				return 1;
 			}
 		} else if (msgT.request === "state") {
@@ -248,12 +257,12 @@ function handleMessage(id, tr, msg, jsep) {
 			var room = getRoom(session.room)
 			room.publishers.forEach(function (publisher) {
 				var publishersArray = [session];
-				event = { videoroom: "event", event: "PublisherStateUpdate", publisher_state: publishersArray, newStatePublisher: id };
+				var event = { videoroom: "event", event: "PublisherStateUpdate", publisher_state: publishersArray, newStatePublisher: id };
 				console.log("sending", publisher, event);
 				//pushEvent(publisher, null, JSON.stringify(event));
 				tasks.push({ id: publisher, tr: null, msg: event, jsep: null });
 			});
-			pokeScheduler();
+			global.pokeScheduler();
 			return 1;
 		}
 
@@ -276,7 +285,7 @@ function handleMessage(id, tr, msg, jsep) {
 			publishersArray.forEach(function (publisher) {
 				tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
 			})
-			pokeScheduler();
+			global.pokeScheduler();
 
 		}
 		// Decode the JSEP JSON string too
@@ -284,7 +293,7 @@ function handleMessage(id, tr, msg, jsep) {
 		// We'll need a coroutine here: the scheduler will resume it later
 		tasks.push({ id: id, tr: tr, msg: msgT, jsep: jsepT });
 		// Return explaining that this is will be handled asynchronously
-		pokeScheduler();
+		global.pokeScheduler();
 		// Asynchronous response: return value is a positive integer
 		return 1;
 	}
@@ -312,7 +321,7 @@ function setupMedia(id) {
 		pokeScheduler();*/
 	session.isConnected = true;
 	setSession(session);
-	notifyEvent(id, JSON.stringify(event));
+	global.notifyEvent(id, JSON.stringify(event));
 
 }
 
@@ -320,18 +329,18 @@ function hangupMedia(id) {
 	// WebRTC not available anymore
 	console.log("WebRTC PeerConnection is down for session:", id);
 
-	unpublishedEvent = { videoroom: "event", room: 1234, unpublished: id, janusServer: janusServer };
-	notifyEvent(id, JSON.stringify(unpublishedEvent));
+	var unpublishedEvent = { videoroom: "event", room: 1234, unpublished: id, janusServer: janusServer };
+	global.notifyEvent(id, JSON.stringify(unpublishedEvent));
 	var session = getSession(id);
 	// Detach the stream from all subscribers
 	session.subscribers.forEach(function (subcriber) {
 		console.log("Removing subscriber ", subcriber, " from ", id);
 		var sessionSubcriber = getSession(subcriber);
 		sessionSubcriber.publishers = sessionSubcriber.publishers.filter(function (publisher) { return publisher !== id });
-		removeRecipient(id, subcriber);
+		global.removeRecipient(id, subcriber);
 		setSession(sessionSubcriber);
 		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
-		pokeScheduler();
+		global.pokeScheduler();
 
 	});
 	// Clear some flags
@@ -347,12 +356,12 @@ function incomingTextData(id, buf, len) {
 	// Relaying RTP/RTCP in JavaScript makes no sense, but just for fun
 	// we handle data channel messages ourselves to manipulate them
 	var edit = "[" + name + "]incomingTextData --> " + buf;
-	relayTextData(id, edit, edit.length);
+	global.relayTextData(id, edit, edit.length);
 }
 
 function incomingBinaryData(id, buf, len) {
 	// If the data we're getting is binary, send it back as it is
-	relayBinaryData(id, buf, len);
+	global.relayBinaryData(id, buf, len);
 }
 
 function resumeScheduler() {
@@ -384,47 +393,47 @@ function processRequest(id, msg) {
 
 	// We implement most of the existing EchoTest API messages, here
 	if (msg["audio"] === true) {
-		configureMedium(id, "audio", "in", true);
-		configureMedium(id, "audio", "out", true);
+		global.configureMedium(id, "audio", "in", true);
+		global.configureMedium(id, "audio", "out", true);
 	} else if (msg["audio"] === false) {
-		configureMedium(id, "audio", "in", false);
-		configureMedium(id, "audio", "out", false);
+		global.configureMedium(id, "audio", "in", false);
+		global.configureMedium(id, "audio", "out", false);
 	}
 	if (msg["video"] === true) {
-		configureMedium(id, "video", "in", true);
-		configureMedium(id, "video", "out", true);
-		sendPli(id);
+		global.configureMedium(id, "video", "in", true);
+		global.configureMedium(id, "video", "out", true);
+		global.sendPli(id);
 	} else if (msg["video"] === false) {
-		configureMedium(id, "video", "in", false);
-		configureMedium(id, "video", "out", false);
+		global.configureMedium(id, "video", "in", false);
+		global.configureMedium(id, "video", "out", false);
 	}
 	if (msg["data"] === true) {
-		configureMedium(id, "data", "in", true);
-		configureMedium(id, "data", "out", true);
+		global.configureMedium(id, "data", "in", true);
+		global.configureMedium(id, "data", "out", true);
 	} else if (msg["data"] === false) {
-		configureMedium(id, "data", "in", false);
-		configureMedium(id, "data", "out", false);
+		global.configureMedium(id, "data", "in", false);
+		global.configureMedium(id, "data", "out", false);
 	}
 	if (msg["bitrate"] !== null && msg["bitrate"] !== undefined) {
-		setBitrate(id, msg["bitrate"]);
+		global.setBitrate(id, msg["bitrate"]);
 	}
 	if (msg["record"] === true) {
 		var fnbase = msg["filename"];
 		if (!fnbase) {
 			fnbase = "duktape-videoroom-" + id + "-" + new Date().getTime();
 		}
-		startRecording(id,
+		global.startRecording(id,
 			"audio", "opus", "/tmp", fnbase + "-audio",
 			"video", "vp8", "/tmp", fnbase + "-video",
 			"data", "text", "/tmp", fnbase + "-data"
 		);
 	} else if (msg["record"] === false) {
-		stopRecording(id, "audio", "video", "data");
+		global.stopRecording(id, "audio", "video", "data");
 	}
 	setSession(session)
 	tasks.push({ id: id, tr: null, msg: null, jsep: null });
 	// Return explaining that this is will be handled asynchronously
-	pokeScheduler();
+	global.pokeScheduler();
 	return 1;
 }
 
@@ -455,17 +464,18 @@ function processAsync(task) {
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
 
-		pushEvent(id, tr, JSON.stringify(event), JSON.stringify(jsepanswer));
+		global.pushEvent(id, tr, JSON.stringify(event), JSON.stringify(jsepanswer));
 		// Just for fun (and to showcase the feature), let's send an event to handlers;
 		// notice how we pass the id now, meaning this event is tied to a specific session
+		// @ts-ignore
 		event = { event: "processed", request: msg };
-		notifyEvent(id, JSON.stringify(event));
+		global.notifyEvent(id, JSON.stringify(event));
 		setSession(session)
 
 	} else if (jsepOffer) {
 
 		var jsepOfferReplay = { type: "offer", sdp: sdpUtils.render(jsepOffer) };
-		pushEvent(id, tr, JSON.stringify(msg), JSON.stringify(jsepOfferReplay));
+		global.pushEvent(id, tr, JSON.stringify(msg), JSON.stringify(jsepOfferReplay));
 	}
 	else {
 		if (!msg) msg = { videoroom: "event", result: "ok", publishers: getRoomPublishersArray(session.room, id) };
@@ -476,7 +486,7 @@ function processAsync(task) {
 		msg.private_Id = session.private_Id;
 		console.log("Pushing Evente to ", id);
 		console.log("Event ", msg);
-		pushEvent(id, tr, JSON.stringify(msg), null);
+		global.pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
 /*

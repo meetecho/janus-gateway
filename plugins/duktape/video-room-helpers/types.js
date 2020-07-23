@@ -2,7 +2,34 @@
  * @typedef {{
  *  http_get: (url:string) => string;
  *  http_post: (url: string, body: string) => string;
- *  pushEvent: (id: number, tr: string, event: string, jsep: string | null)
+ *  pushEvent: (id: number, tr: string, event: string, jsep: string | null);
+ *  getModulesFolder: () => string;
+ *  readFile: (path: string) => string | undefined;
+ *  notifyEvent: (eventType: number, eventBodyJSON: string) => void;
+ *  configureMedium: (id: number, mediaType: string, direction: string, bool: boolean) => void;
+ *  addRecipient: (publisherSessionID: number, subscriberSessionID: number) => void;
+ *  sendPli: (publisherSessionID: number) => void;
+ *  pokeScheduler: () => void;
+ *  removeRecipient: (publisherID: number, subscriberID: number) => void;
+ *  relayTextData: (sessionID: number, data: string, lenght: number) => void;
+ *  relayBinaryData: (sessionID: number, buffer: string, lenght: number) => void;
+ *  setBitrate: (sessionID: number, bitrate: number) => void;
+ *  stopRecording: (sessionID: number, audio: "audio" | null, video: "video" | null, data: "data" | null) => void;
+ *  startRecording: (
+ *    sessionID: number,
+ *    audio: "audio" | null,
+ *    audioCodec: string,
+ *    audioFolderPath: string,
+ *    audioFilePath: string,
+ *    video: "video" | null,
+ *    videoCodec: string,
+ *    videoFolderPath: string,
+ *    videoFilePath: string,
+ *    data: "data" | null,
+ *    dataText: string,
+ *    dataFolderPath: string,
+ *    dataFilePath: string
+ * ) => void;
  * }} IGlobal
  */
 
@@ -31,10 +58,11 @@
 
 
 /**
-* @typedef {{
+* @typedef {{\
+ janusServer: string;
  sessions: {};
  tasks: any[];
- publishers: any[];
+ [publishers]: any[];
  rooms: {};
  managerSessions: {};
  getRoom: (roomId: any) => any;
@@ -79,8 +107,22 @@
 
 /**@typedef {Array<ITask>} ITasks */
 
-/**@typedef {{
- *  
- * }} IRoom */
+/**@typedef {{[room_id:number]: IRoom }} IRooms */
 
-/**@typedef {[room_id:number]: IRoom } IRooms */
+/**@typedef {{
+ *  roomId: number;
+ *  roomName: string;
+ *  managerSessionID: number;
+ *  publishers: Array<number>;
+ *  sessions: Array<number>;
+ * }} IRoom
+ * */
+
+/**
+ * @typedef {{
+ *  managerID: number;
+ *  domain: string;
+ * }} IManagerSession
+ */
+
+/**@typedef {{[id:number]: IManagerSession}} IManagerSessions */

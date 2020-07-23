@@ -1,6 +1,8 @@
 // @ts-check
 
-/**@param {IGlobal} global */
+/**@param {IGlobal} global
+ * @returns {State}
+*/
 module.exports = function (global) {
 
   var util = require("./util")(global);
@@ -12,8 +14,14 @@ module.exports = function (global) {
     /** @type {ITasks} */
     tasks: [],
     // publishers: [],
+    /**@type {IRooms} */
     rooms: {},
+    /**@type {IManagerSessions} */
     managerSessions: {},
+    /**
+     * @param {number} roomId
+     * @returns {IRoom}
+     */
     getRoom: function (roomId) {
       var room = null;
       if (state.rooms[roomId]) {
