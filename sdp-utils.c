@@ -1599,6 +1599,7 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 				}
 				iter = iter->next;
 			}
+			g_list_free(ids);
 		}
 		/* Check if there's a custom fmtp line to add */
 		if(type == JANUS_SDP_AUDIO && fmtp != NULL) {
