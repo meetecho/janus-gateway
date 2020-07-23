@@ -1,6 +1,6 @@
 // @ts-check
 
-/** @param {Global} global */
+/** @param {IGlobal} global */
 module.exports = function (global) {
   var util = {
     serialize: function (obj, prefix) {

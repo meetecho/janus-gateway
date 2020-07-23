@@ -3,6 +3,8 @@
 // Obviously, it must NOT be confused with the videoroomjs.js in the html
 // folder, which contains the JavaScript code for the web demo instead...
 
+/**@type {IGlobal} */
+// @ts-ignore
 var global = this;
 
 // Example details
@@ -10,12 +12,13 @@ var name = "duktape-videoroomjs";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
+	// @ts-ignore
 	return this.name + ': ' + this.message + ' (at line ' + this.lineNumber + ')';
 };
 // Let's add a prefix to all console.log lines
 var originalConsoleLog = console.log;
 console.log = function () {
-	args = [];
+	var args = [];
 	args.push('[\x1b[36m' + name + '\x1b[0m] JSlog');
 	for (var i = 0; i < arguments.length; i++) {
 		args.push(arguments[i]);
@@ -42,18 +45,17 @@ Duktape.modSearch = function (id) {
 };
 
 // Let's import our ugly SDP parser now
-var sdpUtils = require("janus-sdp");
+var sdpUtils = require("./janus-sdp");
 
 // State and properties
 
-var state = require("./helpers/state")(global);
-var util = require("./helpers/util")(global);
-var janusManager = require("./helpers/janus-manager")(global, state);
+var state = require("./video-room-helpers/state")(global);
+var util = require("./video-room-helpers/util")(global);
+var janusManager = require("./video-room-helpers/janus-manager")(global, state);
 
 var janusServer = state.janusServer; //"webconf.yourcompany.net";
 var sessions = state.sessions;
 var tasks = state.tasks;
-var publishers = state.publishers;
 var rooms = state.rooms;
 var managerSessions = state.managerSessions;
 

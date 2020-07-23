@@ -1,14 +1,14 @@
 // @ts-check
 
 /** 
- * @param {Global} global
+ * @param {IGlobal} global
  * @param {State} state 
  * */
 module.exports = function (global, state) {
 
   var util = require("./util")(global);
 
-  /** @param {RoomInfo} roomInfo */
+  /** @param {IRoomInfo} roomInfo */
   function connectToManager(roomInfo) {
 
   }
@@ -46,7 +46,7 @@ module.exports = function (global, state) {
     return 1;
   }
 
-  /** @param {RoomInfo} roomInfo */
+  /** @param {IRoomInfo} roomInfo */
   function syncRoomToManager(roomInfo) {
 
   }

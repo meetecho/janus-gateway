@@ -1,15 +1,17 @@
 // @ts-check
 
-/**@param {Global} global */
+/**@param {IGlobal} global */
 module.exports = function (global) {
 
   var util = require("./util")(global);
 
   var state = {
     janusServer: "webconf.yourcompany.net",
+    /**@type {ISessions} */
     sessions: {},
+    /** @type {ITasks} */
     tasks: [],
-    publishers: [],
+    // publishers: [],
     rooms: {},
     managerSessions: {},
     getRoom: function (roomId) {
