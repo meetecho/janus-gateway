@@ -309,8 +309,16 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
-	if(janus_get_public_ip_count() > 0) {
+	guint public_ip_count = janus_get_public_ip_count();
+	if(public_ip_count > 0) {
 		json_object_set_new(info, "public-ip", json_string(janus_get_public_ip(0)));
+	}
+	if(public_ip_count > 1) {
+		json_t *ips = json_array();
+		for (guint i = 0; i < public_ip_count; i++) {
+			json_array_append_new(ips, json_string(janus_get_public_ip(i)));
+		}
+		json_object_set_new(info, "public-ips", ips);
 	}
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
