@@ -65,9 +65,12 @@ var getRoom = state.getRoom;
 var getSession = state.getSession;
 var setSession = state.setSession;
 var setRoom = state.setRoom;
+var getRoomPublishers = state.getRoomPublishers;
+var getRoomPublishersArray = state.getRoomPublishersArray;
 
 var get = util.get;
 var post = util.post;
+var getRndInteger = util.getRndInteger;
 
 var connectToManager = janusManager.connectToManager;
 var handleJoinManager = janusManager.handleJoinManager;
@@ -522,56 +525,6 @@ function processAsync(task) {
 		global.pushEvent(id, tr, JSON.stringify(msg), null);
 	}
 }
-/*
-function getObjectValues(obj){
-	arr=[];
-	Object.keys(obj).forEach(function (key) {
-		arr.push(obj[key]);
-	});
-	return arr;
-}*/
+
 // Done
 console.log("Script loaded");
-function getRndInteger(min, max) {
-	return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-/*
-function getOtherPublishers(id) {
-	var publishersData = [];
-	var publishersRealevent  = publishers.filter(function(publisher) {return publisher !== id});
-	publishersRealevent.forEach(function (pubId) {
-		publishersData.push(sessions[pubId])
-	});
-	return publishersData;
-}*/
-
-/**
- * @param {number} roomId 
- * @param {number} filterPublisher
- * @returns {ISessions}
- */
-function getRoomPublishers(roomId, filterPublisher) {
-	/**@type {ISessions} */
-	var roomPublishersObj = {};
-	var room = getRoom(roomId);
-	room.publishers.forEach(function (publisher) {
-		if (publisher !== filterPublisher) roomPublishersObj[publisher] = sessions[publisher];
-	})
-	return roomPublishersObj
-}
-
-/**
- * @param {number} roomId 
- * @param {number} [filterPublisher]
- * @returns {Array<ISession>}
- */
-function getRoomPublishersArray(roomId, filterPublisher) {
-	var pulisherArray = [];
-	var room = getRoom(roomId);
-	if (room.publishers) {
-		room.publishers.forEach(function (publisher) {
-			if (publisher !== filterPublisher) pulisherArray.push(sessions[publisher]);
-		});
-	}
-	return pulisherArray;
-}

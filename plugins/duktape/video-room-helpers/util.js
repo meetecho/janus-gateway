@@ -3,13 +3,18 @@
 /** @param {IGlobal} global */
 module.exports = function (global) {
   var util = {
+    /**
+     * @param {number} min 
+     * @param {number} max 
+     */
+    getRndInteger: function(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    },
     serialize: function (obj, prefix) {
-      var str = [],
-        p;
+      var str = [], p;
       for (p in obj) {
         if (obj.hasOwnProperty(p)) {
-          var k = prefix ? prefix + "[" + p + "]" : p,
-            v = obj[p];
+          var k = prefix ? prefix + "[" + p + "]" : p, v = obj[p];
           str.push((v !== null && typeof v === "object") ?
             util.serialize(v, k) :
             encodeURIComponent(k) + "=" + encodeURIComponent(v));

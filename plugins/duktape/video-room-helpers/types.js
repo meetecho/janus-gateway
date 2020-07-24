@@ -69,6 +69,8 @@
  getSession: (sessionID: number) => ISession;
  setSession: (session: ISession) => void;
  setRoom: (room: IRoom) => void;
+ getRoomPublishers: (roomId: number, filterPublisher: number) => ISessions;
+ getRoomPublishersArray: (roomId: number, filterPublisher? : number) => Array<ISession>;
 }} IState
 */
 
@@ -139,9 +141,9 @@
  *  value?: string;
  * }} IJSEP */
 
- /**@typedef {Array<{
- * 	type: string;
- * 	name: string;
- * 	value?: string;
- * }>} IJSDP 
- * */
+/**@typedef {Array<{
+* 	type: string;
+* 	name: string;
+* 	value?: string;
+* }>} IJSDP
+* */

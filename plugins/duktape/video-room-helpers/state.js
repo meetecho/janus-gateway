@@ -56,6 +56,26 @@ module.exports = function (global) {
     setRoom: function (room) {
       state.rooms[room.roomId] = room;
     },
+    getRoomPublishers: function (roomId, filterPublisher) {
+      /**@type {ISessions} */
+      var roomPublishersObj = {};
+      var room = state.getRoom(roomId);
+      room.publishers.forEach(function (publisher) {
+        if (publisher !== filterPublisher) roomPublishersObj[publisher] = state.sessions[publisher];
+      });
+      return roomPublishersObj;
+    },
+    getRoomPublishersArray(roomId, filterPublisher) {
+      /**@type {Array<ISession>}*/
+      var pulisherArray = [];
+      var room = state.getRoom(roomId);
+      if (room.publishers) {
+        room.publishers.forEach(function (publisher) {
+          if (publisher !== filterPublisher) pulisherArray.push(state.sessions[publisher]);
+        });
+      }
+      return pulisherArray;
+    }
   }
 
   return state;
