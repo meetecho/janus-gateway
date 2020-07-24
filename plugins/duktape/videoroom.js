@@ -1,9 +1,9 @@
-// @ts-check
-
 // This is a simple example of an videoroom test application built in JavaScript,
 // and conceived to be used in conjunction with the janus_duktape.c plugin.
 // Obviously, it must NOT be confused with the videoroomjs.js in the html
 // folder, which contains the JavaScript code for the web demo instead...
+
+// @ts-check
 
 /**@type {IGlobal} */
 // @ts-ignore
@@ -101,7 +101,10 @@ function getPackage() {
 	return "janus.plugin.videoroomjs";
 }
 
-// Methods
+/**
+ * Methods
+ * @param {{[key: string]: any}} config 
+ */
 function init(config) {
 	// This is where we initialize the plugin, for static properties
 	console.log("Initializing...");
@@ -121,6 +124,9 @@ function destroy() {
 	console.log("Deinitialized");
 }
 
+/**
+ * @param {number} id 
+ */
 function createSession(id) {
 	// Keep track of a new session
 	console.log("Created new session:", id);
@@ -161,6 +167,9 @@ function destroySession(id) {
 	return 0;
 }
 
+/**
+ * @param {number} id
+ */
 function querySession(id) {
 	// Return info on a session
 	console.log("Queried session:", id);
@@ -168,6 +177,12 @@ function querySession(id) {
 	return JSON.stringify(s);
 }
 
+/**
+ * @param {number} id 
+ * @param {string} tr 
+ * @param {string} msg 
+ * @param {string} jsep 
+ */
 function handleMessage(id, tr, msg, jsep) {
 	// Handle a message, synchronously or asynchronously, and return
 	// something accordingly: if it's the latter, we'll do a coroutine
@@ -245,7 +260,7 @@ function handleMessage(id, tr, msg, jsep) {
 					description: "Demo Room",
 					id: msgT.feed
 				};
-				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsep: sdpOffer });
+				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsepOffer: sdpOffer });
 				global.pokeScheduler();
 				return 1;
 			}
@@ -260,7 +275,6 @@ function handleMessage(id, tr, msg, jsep) {
 					var publishersArray = [session];
 					var event = { videoroom: "event", event: "PublisherStateUpdate", publisher_state: publishersArray, newStatePublisher: id };
 					console.log("sending", publisher, event);
-					global.pushEvent(publisher, null, JSON.stringify(event), null);
 					tasks.push({ id: publisher, tr: null, msg: event, jsep: null });
 				}
 			});
@@ -308,6 +322,9 @@ function handleAdminMessage(message) {
 	return message;
 }
 
+/**
+ * @param {number} id 
+ */
 function setupMedia(id) {
 	// WebRTC is now available
 	console.log("WebRTC PeerConnection is up for session:", id);
@@ -316,17 +333,15 @@ function setupMedia(id) {
 	//console.log("sessions",sessions);
 	var session = getSession(id);
 	var publishersArray = getRoomPublishersArray(session.room, id);
-	var event = { event: "media", publishers: publishersArray, newPublisher: id };
-	publishersArray.forEach(function (publisher) {
-		tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
-	})
-	global.pokeScheduler();
 	session.isConnected = true;
 	setSession(session);
 	global.notifyEvent(id, JSON.stringify(event));
 
 }
 
+/**
+ * @param {number} id 
+ */
 function hangupMedia(id) {
 	// WebRTC not available anymore
 	console.log("WebRTC PeerConnection is down for session:", id);
@@ -354,6 +369,11 @@ function hangupMedia(id) {
 	setSession(session);
 }
 
+/**
+ * @param {number} id 
+ * @param {string} buf 
+ * @param {number} len 
+ */
 function incomingTextData(id, buf, len) {
 	// Relaying RTP/RTCP in JavaScript makes no sense, but just for fun
 	// we handle data channel messages ourselves to manipulate them
@@ -361,6 +381,11 @@ function incomingTextData(id, buf, len) {
 	global.relayTextData(id, edit, edit.length);
 }
 
+/**
+ * @param {number} id 
+ * @param {string} buf 
+ * @param {number} len 
+ */
 function incomingBinaryData(id, buf, len) {
 	// If the data we're getting is binary, send it back as it is
 	global.relayBinaryData(id, buf, len);
@@ -381,7 +406,11 @@ function resumeScheduler() {
 	tasks = [];
 }
 
-// We use this internal method to process an API request
+/**
+ * We use this internal method to process an API request
+ * @param {number} id 
+ * @param {*} msg 
+ */
 function processRequest(id, msg) {
 	if (!msg) {
 		console.log("Invalid request");
@@ -439,7 +468,10 @@ function processRequest(id, msg) {
 	return 1;
 }
 
-// We use this other function to process asynchronous requests
+/**
+ * We use this other function to process asynchronous requests
+ * @param {ITask} task 
+ */
 function processAsync(task) {
 	// We'll only execute this when the scheduler resumes a task
 	var id = task.id;
@@ -465,7 +497,6 @@ function processAsync(task) {
 		console.log("  -- on answer sdp ...", event);
 		var jsepanswer = { type: "answer", sdp: sdpUtils.render(answer) };
 		console.log("  --", jsepanswer);
-		console.log("EVENT==>", event, task)
 		global.pushEvent(id, tr, JSON.stringify(event), JSON.stringify(jsepanswer));
 		// Just for fun (and to showcase the feature), let's send an event to handlers;
 		// notice how we pass the id now, meaning this event is tied to a specific session
@@ -514,6 +545,10 @@ function getOtherPublishers(id) {
 	return publishersData;
 }*/
 
+/**
+ * @param {number} roomId 
+ * @param {*} filterPublisher 
+ */
 function getRoomPublishers(roomId, filterPublisher) {
 	var roomObj = {};
 	var room = getRoom(roomId);
@@ -522,7 +557,10 @@ function getRoomPublishers(roomId, filterPublisher) {
 	})
 	return roomObj
 }
-
+/**
+ * @param {number} roomId 
+ * @param {*} [filterPublisher]
+ */
 function getRoomPublishersArray(roomId, filterPublisher) {
 	var pulisherArray = [];
 	var room = getRoom(roomId);

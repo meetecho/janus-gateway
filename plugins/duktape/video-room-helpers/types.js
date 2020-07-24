@@ -105,8 +105,9 @@
 /**@typedef {{
  *  id: number;
  *  tr: string;
- *  msg: object;
- *  jsep: object;
+ *  msg: {[key:string]: any};
+ *  jsep?: IJSEP;
+ *  jsepOffer?: IJSDP;
  * }} ITask
  * */
 
@@ -131,3 +132,16 @@
  */
 
 /**@typedef {{[id:number]: IManagerSession}} IManagerSessions */
+
+/**@typedef {{
+ *  sdp: string;
+ *  type: "answer" | "offer";
+ *  value?: string;
+ * }} IJSEP */
+
+ /**@typedef {Array<{
+ * 	type: string;
+ * 	name: string;
+ * 	value?: string;
+ * }>} IJSDP 
+ * */

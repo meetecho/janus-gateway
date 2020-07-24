@@ -124,6 +124,9 @@ JANUSSDP.removePayloadType = function(sdp, pt) {
 	}
 }
 
+/**
+ * @returns {IJSDP}
+ */
 JANUSSDP.generateOffer = function(options) {
 	// Let's set some defaults for the options, in case none were given
 	options = options || {};
