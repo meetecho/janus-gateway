@@ -25,6 +25,7 @@ module.exports = function (global) {
 
       return output;
     },
+    /**@returns {string} */
     serialize: function (obj, prefix) {
       var str = [], p;
       for (p in obj) {

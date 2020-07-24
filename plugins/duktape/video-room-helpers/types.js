@@ -81,8 +81,6 @@
 }} IBody
 */
 
-
-
 /**
  * @typedef {{[id: number]: ISession}} ISessions
  */
@@ -137,5 +135,46 @@
  *  publishers: Array<ISession>;
  *  newPublisher?: number;
  *  publisher_id?: number;
- * }} IJanusMessage 
+ * }} IJanusMessage
  */
+
+/**@typedef {{
+ *   request: string;
+ *   reason: string;
+ *   reason_member: number | null;
+ *   ptype: "manager";
+ *   room: number;
+ *   members: IMembers;
+ *   disconnected_members: IMembers;
+ * }} IJanusResyncEventBody
+ *  */
+
+/**@typedef {{[memberID: number]: IMember}} IMembers */
+
+/**@typedef {{
+ *    MemberID: number;
+ *    MeetingID: number;
+ *    Data: {[key:string]: any};
+ *    State: {[key:string: any]};
+ *    AudioState: {[key: string]: IAudioStateItem};
+ *    VideoState: {[key: string]: IVideoStateItem};
+ * }} IMember */
+
+/**@typedef {{
+ *   "Hear": boolean;
+ *   "Speak": boolean;
+ *   "Talking": boolean;
+ *   "Mute-Detect": boolean;
+ *   "Current-Energy": number;
+ * }} IAudioStateItem
+ * */
+
+/**@typedef {{
+ * domain: string;
+ * session_id: number;
+ * created?: string;
+ * updated?: string;
+ * codecs?: { videoCodec?: string; };
+ * data?: ISession;
+}} IVideoStateItem
+*/

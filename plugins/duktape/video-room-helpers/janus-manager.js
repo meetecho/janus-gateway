@@ -32,7 +32,7 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {IBody} body
+   * @param {IJanusResyncEventBody} body
    * */
   function handleManagerMessage(id, tr, body) {
     switch (body.request) {
@@ -47,7 +47,7 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {IBody} body
+   * @param {IJanusResyncEventBody} body
    * */
   function handleJoinManager(id, tr, body) {
     return 1;
@@ -56,7 +56,7 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {IBody} body
+   * @param {IJanusResyncEventBody} body
    * */
   function handleSyncManager(id, tr, body) {
     return 1;
