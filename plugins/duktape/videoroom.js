@@ -76,7 +76,7 @@ var connectToManager = janusManager.connectToManager;
 var handleJoinManager = janusManager.handleJoinManager;
 var handleManagerMessage = janusManager.handleManagerMessage;
 var handleSyncManager = janusManager.handleSyncManager;
-var syncRoomToManager = janusManager.syncRoomToManager;
+var syncSessionToManager = janusManager.syncSessionToManager;
 
 
 // Just for fun, let's override the plugin info with our own

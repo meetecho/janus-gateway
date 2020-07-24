@@ -7,8 +7,23 @@ module.exports = function (global) {
      * @param {number} min 
      * @param {number} max 
      */
-    getRndInteger: function(min, max) {
+    getRndInteger: function (min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
+    },
+    /**@param {number} [len] */
+    genRandString: function (len) {
+      if (!len) {
+        len = 10;
+      }
+
+      var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+      var output = "";
+
+      for (var i = 0; i < len; i++) {
+        output += chars[util.getRndInteger(0, chars.length - 1)];
+      }
+
+      return output;
     },
     serialize: function (obj, prefix) {
       var str = [], p;
@@ -33,9 +48,10 @@ module.exports = function (global) {
     post: function (url, body) {
       return global.http_post(url, util.serialize(body));
     },
-    /**@param {IJanusHTTPBody} body  */
-    startRoomHttpRequest: function(body) {
-      return util.post("http://localhost:3000/start-room", body);
+    /** @param {IRoomInfo} body */
+    startRoomHttpRequest: function (body) {
+      var domain = "localhost:3000";
+      return util.post("http://" + domain + "/start-room", body);
     }
   }
 

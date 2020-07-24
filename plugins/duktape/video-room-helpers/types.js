@@ -33,29 +33,26 @@
  * }} IGlobal
  */
 
-/**
- * @typedef {{
-  *  audioCodec: string;
-  *  display: string;
-  *  id: number;
-  *  isConnected: boolean;
-  *  janusServer: string;
-  *  private_Id: number;
-  *  publishers: Array<number>;
-  *  room: number;
-  *  subscribers: Array<number>;
-  *  videoCodec: string;
-  * }} IPublisherStateItem
-  */
+/**@typedef {{
+ *  id: number;
+ *  display:string;
+ *  room: number;
+ *  janusServer: string;
+ *  subscribers: Array<number>;
+ *  publishers: Array<number>;
+ *  isConnected: boolean;
+ *  audioCodec?: string;
+ *  videoCodec?: string;
+ *  private_Id?: number
+ *  state?: any;
+ * }} ISession
+ * */
 
-/**
- * @typedef {{
- *  room_id: number;
- *  server: string;
- *  publisher_state: Array<IPublisherStateItem>;
- * }} IJanusHTTPBody
- */
-
+/** @typedef {{
+ * room_id: number;
+ * server: string;
+ * publisher_list: Array<ISession>
+ * }} IRoomInfo */
 
 /**
 * @typedef {{
@@ -74,8 +71,6 @@
 }} IState
 */
 
-/** @typedef {{room_id: number, server: string, publisher_list: Array<IPublisherStateItem>}} IRoomInfo */
-
 /**
  * @typedef {{
   meetingID: number;
@@ -86,19 +81,7 @@
 }} IBody
 */
 
-/**@typedef {{
- *  id: number;
- *  display:string;
- *  janusServer: string;
- *  room: number;
- *  subscribers: Array<number>;
- *  publishers: Array<number>;
- *  isConnected: boolean;
- *  state: any;
- *  audioCodec?: string;
- *  videoCodec?: string;
- *  private_Id?: number
- * }} ISession */
+
 
 /**
  * @typedef {{[id: number]: ISession}} ISessions
@@ -106,7 +89,7 @@
 
 /**@typedef {{
  *  id: number;
- *  tr: string;
+ *  tr?: string;
  *  msg: {[key:string]: any};
  *  jsep?: IJSEP;
  *  jsepOffer?: IJSDP;
@@ -147,3 +130,12 @@
 * 	value?: string;
 * }>} IJSDP
 * */
+
+/**@typedef {{
+ *  videoroom: string;
+ *  event: string;
+ *  publishers: Array<ISession>;
+ *  newPublisher?: number;
+ *  publisher_id?: number;
+ * }} IJanusMessage 
+ */
