@@ -409,7 +409,7 @@ function resumeScheduler() {
 /**
  * We use this internal method to process an API request
  * @param {number} id 
- * @param {*} msg 
+ * @param {{[key:string]: any}} msg 
  */
 function processRequest(id, msg) {
 	if (!msg) {
@@ -547,19 +547,23 @@ function getOtherPublishers(id) {
 
 /**
  * @param {number} roomId 
- * @param {*} filterPublisher 
+ * @param {number} filterPublisher
+ * @returns {ISessions}
  */
 function getRoomPublishers(roomId, filterPublisher) {
-	var roomObj = {};
+	/**@type {ISessions} */
+	var roomPublishersObj = {};
 	var room = getRoom(roomId);
 	room.publishers.forEach(function (publisher) {
-		if (publisher !== filterPublisher) roomObj[publisher] = sessions[publisher];
+		if (publisher !== filterPublisher) roomPublishersObj[publisher] = sessions[publisher];
 	})
-	return roomObj
+	return roomPublishersObj
 }
+
 /**
  * @param {number} roomId 
- * @param {*} [filterPublisher]
+ * @param {number} [filterPublisher]
+ * @returns {Array<ISession>}
  */
 function getRoomPublishersArray(roomId, filterPublisher) {
 	var pulisherArray = [];
@@ -567,7 +571,7 @@ function getRoomPublishersArray(roomId, filterPublisher) {
 	if (room.publishers) {
 		room.publishers.forEach(function (publisher) {
 			if (publisher !== filterPublisher) pulisherArray.push(sessions[publisher]);
-		})
+		});
 	}
-	return pulisherArray
+	return pulisherArray;
 }
