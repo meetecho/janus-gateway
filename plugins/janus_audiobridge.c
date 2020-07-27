@@ -1320,7 +1320,7 @@ static void janus_audiobridge_participant_free(const janus_refcount *participant
 	while(participant->inbuf) {
 		GList *first = g_list_first(participant->inbuf);
 		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-		participant->inbuf = g_list_remove_link(participant->inbuf, first);
+		participant->inbuf = g_list_delete_link(participant->inbuf, first);
 		if(pkt)
 			g_free(pkt->data);
 		g_free(pkt);
@@ -2955,7 +2955,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 				while(p->inbuf) {
 					GList *first = g_list_first(p->inbuf);
 					janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-					p->inbuf = g_list_remove_link(p->inbuf, first);
+					p->inbuf = g_list_delete_link(p->inbuf, first);
 					first = NULL;
 					if(pkt == NULL)
 						continue;
@@ -3295,7 +3295,7 @@ static json_t *janus_audiobridge_process_synchronous_request(janus_audiobridge_s
 			while(participant->inbuf) {
 				GList *first = g_list_first(participant->inbuf);
 				janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-				participant->inbuf = g_list_remove_link(participant->inbuf, first);
+				participant->inbuf = g_list_delete_link(participant->inbuf, first);
 				first = NULL;
 				if(pkt == NULL)
 					continue;
@@ -4866,7 +4866,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_r
 					janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
 					JANUS_LOG(LOG_WARN, "list length = %d, Remove sequence = %d\n",
 						g_list_length(participant->inbuf), pkt->seq_number);
-					participant->inbuf = g_list_remove_link(participant->inbuf, first);
+					participant->inbuf = g_list_delete_link(participant->inbuf, first);
 					first = NULL;
 					if(pkt == NULL)
 						continue;
@@ -4991,7 +4991,7 @@ static void janus_audiobridge_hangup_media_internal(janus_plugin_session *handle
 	while(participant->inbuf) {
 		GList *first = g_list_first(participant->inbuf);
 		janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-		participant->inbuf = g_list_remove_link(participant->inbuf, first);
+		participant->inbuf = g_list_delete_link(participant->inbuf, first);
 		first = NULL;
 		if(pkt == NULL)
 			continue;
@@ -5474,7 +5474,7 @@ static void *janus_audiobridge_handler(void *data) {
 						while(g_list_length(participant->inbuf) > prebuffer_count) {
 							GList *first = g_list_first(participant->inbuf);
 							janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-							participant->inbuf = g_list_remove_link(participant->inbuf, first);
+							participant->inbuf = g_list_delete_link(participant->inbuf, first);
 							if(pkt == NULL)
 								continue;
 							g_free(pkt->data);
@@ -5510,7 +5510,7 @@ static void *janus_audiobridge_handler(void *data) {
 						while(participant->inbuf) {
 							GList *first = g_list_first(participant->inbuf);
 							janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-							participant->inbuf = g_list_remove_link(participant->inbuf, first);
+							participant->inbuf = g_list_delete_link(participant->inbuf, first);
 							first = NULL;
 							if(pkt == NULL)
 								continue;
@@ -6044,7 +6044,7 @@ static void *janus_audiobridge_handler(void *data) {
 			while(participant->inbuf) {
 				GList *first = g_list_first(participant->inbuf);
 				janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-				participant->inbuf = g_list_remove_link(participant->inbuf, first);
+				participant->inbuf = g_list_delete_link(participant->inbuf, first);
 				first = NULL;
 				if(pkt == NULL)
 					continue;
