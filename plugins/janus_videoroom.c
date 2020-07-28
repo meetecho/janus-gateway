@@ -1670,7 +1670,6 @@ static struct janus_json_parameter subscriber_parameters[] = {
 	{"temporal_layer", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 };
 static struct janus_json_parameter subscriber_stream_parameters[] = {
-	{"feed", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"mid", JANUS_JSON_STRING, 0},
 	/* For VP8 (or H.264) simulcast */
 	{"substream", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
