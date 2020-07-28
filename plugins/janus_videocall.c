@@ -996,8 +996,9 @@ static void janus_videocall_hangup_media_internal(janus_plugin_session *handle) 
 	janus_mutex_unlock(&session->rec_mutex);
 	janus_videocall_session *peer = session->peer;
 	session->peer = NULL;
-	if(peer) {
+	if(peer && !g_atomic_int_get(&peer->destroyed)) {
 		/* Send event to our peer too */
+		janus_refcount_increase(&peer->ref);
 		json_t *call = json_object();
 		json_object_set_new(call, "videocall", json_string("event"));
 		json_t *calling = json_object();
@@ -1016,6 +1017,7 @@ static void janus_videocall_hangup_media_internal(janus_plugin_session *handle) 
 			json_object_set_new(info, "reason", json_string("Remote WebRTC hangup"));
 			gateway->notify_event(&janus_videocall_plugin, peer->handle, info);
 		}
+		janus_refcount_decrease(&peer->ref);
 	}
 	/* Reset controls */
 	session->has_audio = FALSE;
