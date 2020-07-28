@@ -7233,6 +7233,13 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					if(error_code != 0) {
 						janus_mutex_unlock(&videoroom->mutex);
+						/* Unref publishers we may have taken note of so far */
+						while(publishers) {
+							janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)publishers->data;
+							janus_refcount_decrease(&publisher->ref);
+							janus_refcount_decrease(&publisher->session->ref);
+							publishers = g_list_remove(publishers, publisher);
+						}
 						janus_refcount_decrease(&videoroom->ref);
 						goto error;
 					}
