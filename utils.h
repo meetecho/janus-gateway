@@ -383,4 +383,9 @@ void janus_set4(guint8 *data, size_t i, guint32 val);
  */
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen);
 
+/* BB - Added */
+/* Transforms a Base64 encoded string into a Base64URL string ('+' replaced with '-', '/'
+ * replaced with '_' and any trailing '=' removed) */
+void base64ToBase64UrlNoPadding(char *str);
+
 #endif

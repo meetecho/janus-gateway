@@ -1,3 +1,8 @@
+.autotools
+.cproject
+.project
+.settings/
+
 cmdline.c
 cmdline.h
 version.c
