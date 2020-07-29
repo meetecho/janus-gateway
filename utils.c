@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <ctype.h> //BB
 
 #include <zlib.h>
 
@@ -1195,3 +1196,19 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 	return zs.total_out;
 }
 #endif
+
+/* BB - start */
+void base64ToBase64UrlNoPadding(char *str) {
+	for(; *str != 0; str++ ) {
+		if(*str == '+') {
+			*str = '-';
+		} else if (*str == '/') {
+			*str = '_';
+		} else if(*str == '=') {
+			*str = 0;
+			break;
+		}
+	}
+}
+/* BB - ends */
+
