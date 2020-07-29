@@ -1282,7 +1282,7 @@ static void *janus_videocall_handler(void *data) {
 				janus_mutex_unlock(&session->mutex);
 				janus_mutex_lock(&peer->mutex);
 				peer->peer = session;
-				janus_mutex_unlock(&session->mutex);
+				janus_mutex_unlock(&peer->mutex);
 				session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
 				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 				session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
