@@ -108,6 +108,8 @@ gboolean janus_auth_check_signature(const char *token, const char *realm) {
 	unsigned int len;
 	HMAC(EVP_sha1(), auth_secret, strlen(auth_secret), (const unsigned char*)parts[0], strlen(parts[0]), signature, &len);
 	gchar *base64 = g_base64_encode(signature, len);
+	/* BB - Added conversion to base64URL removing any padding */
+	base64ToBase64UrlNoPadding(base64);
 	gboolean result = janus_strcmp_const_time(parts[1], base64);
 	g_strfreev(data);
 	g_strfreev(parts);
