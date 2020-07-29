@@ -99,6 +99,8 @@ typedef struct janus_sctp_channel {
 } janus_sctp_channel;
 
 typedef struct janus_sctp_association {
+	/*! \brief Unique (local) ID of this association (needed for an internal map) */
+	uint32_t map_id;
 	/*! \brief Pointer to the DTLS instance related to this SCTP association */
 	struct janus_dtls_srtp *dtls;
 	/*! \brief Pointer to the ICE handle related to this SCTP association */
