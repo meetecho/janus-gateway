@@ -119,6 +119,13 @@ void janus_sctp_handle_remote_error_event(struct sctp_remote_error *sre);
 void janus_sctp_handle_send_failed_event(struct sctp_send_failed_event *ssfe);
 void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_notification *notif, size_t n);
 
+/* We need to keep a map of associations with random IDs, as usrsctp will
+ * use the pointer to our structures in the actual messages instead */
+static janus_mutex sctp_mutex;
+static GHashTable *sctp_ids = NULL;
+static void janus_sctp_association_unref(janus_sctp_association *sctp);
+
+/* SCTP management code */
 static gboolean sctp_running;
 int janus_sctp_init(void) {
 	/* Initialize the SCTP stack */
@@ -131,12 +138,25 @@ int janus_sctp_init(void) {
 		JANUS_LOG(LOG_ERR, "Error creating folder %s, expect problems...\n", debug_folder);
 	}
 #endif
+
+	/* Create a map of local IDs too, to map them to our SCTP associations */
+	janus_mutex_init(&sctp_mutex);
+	sctp_ids = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sctp_association_unref);
+
 	return 0;
 }
 
 void janus_sctp_deinit(void) {
 	usrsctp_finish();
 	sctp_running = FALSE;
+	janus_mutex_lock(&sctp_mutex);
+	g_hash_table_unref(sctp_ids);
+	janus_mutex_unlock(&sctp_mutex);
+}
+
+static void janus_sctp_association_unref(janus_sctp_association *sctp) {
+	if(sctp)
+		janus_refcount_decrease(&sctp->ref);
 }
 
 static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
@@ -205,9 +225,25 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	}
 	sctp->stream_buffer_counter = 0;
 
-	usrsctp_register_address((void *)sctp);
+	/* Create a unique ID to map locally: this is what we'll pass to
+	 * usrsctp_socket, which means that's what we'll get in callbacks
+	 * too: we can then use the map to retrieve the actual struct */
+	janus_mutex_lock(&sctp_mutex);
+	while(sctp->map_id == 0) {
+		sctp->map_id = janus_random_uint32();
+		if(g_hash_table_lookup(sctp_ids, GUINT_TO_POINTER(sctp->map_id)) != NULL) {
+			/* ID already taken, try another one */
+			sctp->map_id = 0;
+		}
+	}
+	janus_refcount_increase(&sctp->ref);
+	g_hash_table_insert(sctp_ids, GUINT_TO_POINTER(sctp->map_id), sctp);
+	janus_mutex_unlock(&sctp_mutex);
+
+	usrsctp_register_address(GUINT_TO_POINTER(sctp->map_id));
 	usrsctp_sysctl_set_sctp_ecn_enable(0);
-	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0, (void *)sctp)) == NULL) {
+	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0,
+			GUINT_TO_POINTER(sctp->map_id))) == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket... (%d)\n", sctp->handle_id, errno);
 		janus_sctp_association_destroy(sctp);
 		return NULL;
@@ -274,7 +310,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	memset(&sconn, 0, sizeof(struct sockaddr_conn));
 	sconn.sconn_family = AF_CONN;
 	sconn.sconn_port = htons(sctp->local_port);
-	sconn.sconn_addr = (void *)sctp;
+	sconn.sconn_addr = GUINT_TO_POINTER(sctp->map_id);
 	if(usrsctp_bind(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16" (%d)\n", sctp->handle_id, sctp->local_port, errno);
 		janus_sctp_association_destroy(sctp);
@@ -293,7 +329,7 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 	memset(&rconn, 0, sizeof(struct sockaddr_conn));
 	rconn.sconn_family = AF_CONN;
 	rconn.sconn_port = htons(sctp->remote_port);
-	rconn.sconn_addr = (void *)sctp;
+	rconn.sconn_addr = GUINT_TO_POINTER(sctp->map_id);
 #ifdef HAVE_SCONN_LEN
 	rconn.sconn_len = sizeof(struct sockaddr_conn);
 #endif
@@ -311,8 +347,13 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	if(sctp == NULL || !g_atomic_int_compare_and_exchange(&sctp->destroyed, 0, 1))
 		return;
 
-	usrsctp_deregister_address(sctp);
-	if (sctp->sock != NULL) {
+	if(sctp->map_id != 0) {
+		usrsctp_deregister_address(GUINT_TO_POINTER(sctp->map_id));
+		janus_mutex_lock(&sctp_mutex);
+		g_hash_table_remove(sctp_ids, GUINT_TO_POINTER(sctp->map_id));
+		janus_mutex_unlock(&sctp_mutex);
+	}
+	if(sctp->sock != NULL) {
 		usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 		usrsctp_close(sctp->sock);
 	}
@@ -334,11 +375,13 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 		}
 	}
 #endif
-	usrsctp_conninput((void *)sctp, buf, len, 0);
+	usrsctp_conninput(GUINT_TO_POINTER(sctp->map_id), buf, len, 0);
 }
 
 int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t tos, uint8_t set_df) {
-	janus_sctp_association *sctp = (janus_sctp_association *)instance;
+	janus_mutex_lock(&sctp_mutex);
+	janus_sctp_association *sctp = (janus_sctp_association *)g_hash_table_lookup(sctp_ids, instance);
+	janus_mutex_unlock(&sctp_mutex);
 	if(sctp == NULL || sctp->handle == NULL)
 		return -1;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
@@ -358,7 +401,9 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 }
 
 static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore addr, void *data, size_t datalen, struct sctp_rcvinfo rcv, int flags, void *ulp_info) {
-	janus_sctp_association *sctp = (janus_sctp_association *)ulp_info;
+	janus_mutex_lock(&sctp_mutex);
+	janus_sctp_association *sctp = (janus_sctp_association *)g_hash_table_lookup(sctp_ids, ulp_info);
+	janus_mutex_unlock(&sctp_mutex);
 	if(sctp == NULL || sctp->dtls == NULL) {
 		free(data);
 		return 0;
