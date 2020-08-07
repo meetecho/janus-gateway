@@ -7386,8 +7386,17 @@ static void *janus_videoroom_handler(void *data) {
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *s = json_array_get(feeds, i);
 					json_t *feed = json_object_get(s, "feed");
-					guint64 feed_id = json_integer_value(feed);
-					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, &feed_id);
+					guint64 feed_id = 0;
+					char *feed_id_str = NULL;
+					if(!string_ids) {
+						feed_id = json_integer_value(feed);
+						g_snprintf(feed_id_num, sizeof(feed_id_num), "%"SCNu64, feed_id);
+						feed_id_str = feed_id_num;
+					} else {
+						feed_id_str = (char *)json_string_value(feed);
+					}
+					janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants,
+						string_ids ? (gpointer)feed_id_str : (gpointer)&feed_id);
 					if(publisher == NULL) {
 						/* TODO We shouldn't let this happen... */
 						JANUS_LOG(LOG_WARN, "Skipping feed %s...\n", feed_id_str);
