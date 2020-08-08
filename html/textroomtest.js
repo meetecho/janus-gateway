@@ -375,8 +375,20 @@ function sendData() {
 	// server and forwarded to the recipients. If you do not want this to happen,
 	// just add an ack:false property to the message above, and server won't send
 	// you a response (meaning you just have to hope it succeeded).
+
+	let seen = [];
+	let textMessage = JSON.stringify(message, function (key, val) {
+		if (val !== null && typeof val === 'object') {
+			if (seen.indexOf(val) >= 0) {
+				return;
+			}
+			seen.push(val);
+		}
+		return val;
+	});
+
 	textroom.data({
-		text: JSON.stringify(message),
+		text: textMessage,
 		error: function(reason) { bootbox.alert(reason); },
 		success: function() { $('#datasend').val(''); }
 	});
