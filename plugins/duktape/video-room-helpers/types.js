@@ -15,6 +15,7 @@
  *  relayBinaryData: (sessionID: number, buffer: string, lenght: number) => void;
  *  setBitrate: (sessionID: number, bitrate: number) => void;
  *  stopRecording: (sessionID: number, audio: "audio" | null, video: "video" | null, data: "data" | null) => void;
+ *  jwt_validate: (jwt: string, secret: string) => object;
  *  startRecording: (
  *    sessionID: number,
  *    audio: "audio" | null,
@@ -43,7 +44,7 @@
  *  isConnected: boolean;
  *  audioCodec?: string;
  *  videoCodec?: string;
- *  private_Id?: number
+ *  private_Id?: number;
  *  state?: any;
  * }} ISession
  * */

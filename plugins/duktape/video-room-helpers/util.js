@@ -25,6 +25,20 @@ module.exports = function (global) {
 
       return output;
     },
+    /**
+     * @param {string} jwt
+     * @param {string} sectet
+     * @returns {object | false}
+     */
+    jwtVerify: function (jwt, sectet) {
+      var result;
+      try {
+        result = global.jwt_validate(jwt, sectet);
+      } catch (e) {
+        result = false;
+      }
+      return result;
+    },
     /**@returns {string} */
     serialize: function (obj, prefix) {
       var str = [], p;
