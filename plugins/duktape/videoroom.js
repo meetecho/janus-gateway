@@ -241,8 +241,7 @@ function handleMessage(id, tr, msg, jsep) {
 				console.log("sessions !!!!!!!!!!!", sessions);
 				//	pushEvent(id, tr, JSON.stringify(response), null);
 				return 1;
-			}
-			else if (msgT.ptype === "subscriber") {
+			} else if (msgT.ptype === "subscriber") {
 				console.log("subscriber addRecipient", msgT.feed, id);
 				console.log("Join request ......", msgT);
 				var room = getRoom(msgT.room);
@@ -266,6 +265,8 @@ function handleMessage(id, tr, msg, jsep) {
 				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsepOffer: sdpOffer });
 				global.pokeScheduler();
 				return 1;
+			} else if (msgT.ptype === "manager") {
+				return janusManager.handleJoinManager(id, tr, msgT);
 			}
 		} else if (msgT.request === "state") {
 			console.log("state Request !!!!", msgT);

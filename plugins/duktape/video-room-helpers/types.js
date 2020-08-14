@@ -45,6 +45,7 @@
  *  audioCodec?: string;
  *  videoCodec?: string;
  *  private_Id?: number;
+ *  type?: "publisher" | "subscriber" | "manager";
  *  state?: any;
  * }} ISession
  * */
@@ -110,7 +111,7 @@
 
 /**
  * @typedef {{
- *  managerID: number;
+ *  managerID?: number;
  *  domain: string;
  * }} IManagerSession
  */
@@ -148,6 +149,16 @@
  *   members: IMembers;
  *   disconnected_members: IMembers;
  * }} IJanusResyncEventBody
+ *  */
+
+/**@typedef {{
+ *   request: string;
+ *   room: number;
+ *   ptype: "publisher" | "subscriber" | "manager";
+ *   display?: string;
+ *   opaque_id?: string;
+ *   server?: string;
+ * }} IJanusJoinEventBody
  *  */
 
 /**@typedef {{[memberID: number]: IMember}} IMembers */

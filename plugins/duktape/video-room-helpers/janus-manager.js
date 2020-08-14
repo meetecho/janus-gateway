@@ -32,7 +32,7 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {IJanusResyncEventBody} body
+   * @param {object} body
    * */
   function handleManagerMessage(id, tr, body) {
     switch (body.request) {
@@ -47,9 +47,17 @@ module.exports = function (global, state) {
   /**
    * @param {number} id
    * @param {string} tr
-   * @param {IJanusResyncEventBody} body
+   * @param {IJanusJoinEventBody} body
    * */
   function handleJoinManager(id, tr, body) {
+    var session = state.getSession(id);
+    session.type = "manager";
+    state.setSession(session);
+    var msg = {
+      test: "manager join success"
+    }
+    state.tasks.push({ id, tr, msg })
+    global.pokeScheduler();
     return 1;
   }
 

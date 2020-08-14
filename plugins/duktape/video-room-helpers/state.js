@@ -65,7 +65,7 @@ module.exports = function (global) {
       });
       return roomPublishersObj;
     },
-    getRoomPublishersArray(roomId, filterPublisher) {
+    getRoomPublishersArray: function (roomId, filterPublisher) {
       /**@type {Array<ISession>}*/
       var pulisherArray = [];
       var room = state.getRoom(roomId);
