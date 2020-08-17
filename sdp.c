@@ -1240,9 +1240,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(m->index));
 		if(!medium) {
 			/* TODO We don't have it, which should never happen! */
+		} else if(medium->send || medium->recv) {
+			/* Firefox does not like inactive mlines in BUNDLE */
+			g_snprintf(buffer_part, sizeof(buffer_part), " %s", medium->mid);
+			g_strlcat(buffer, buffer_part, sizeof(buffer));
 		}
-		g_snprintf(buffer_part, sizeof(buffer_part), " %s", medium->mid);
-		g_strlcat(buffer, buffer_part, sizeof(buffer));
 		temp = temp->next;
 	}
 	/* Global attributes: start with group */
