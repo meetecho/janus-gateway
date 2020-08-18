@@ -677,7 +677,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 			context->a_base_seq = seq;
 			/* How much time since the last audio RTP packet? We compute an offset accordingly */
 			if(context->a_last_time > 0) {
-				gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_ts);
+				gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_time);
 				context->a_base_ts_prev += (guint32)time_diff;
 				context->a_prev_ts += (guint32)time_diff;
 				context->a_last_ts += (guint32)time_diff;
@@ -697,7 +697,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		if(timestamp >= context->a_base_ts) {
 			context->a_last_ts = (timestamp - context->a_base_ts) + context->a_base_ts_prev;
 		} else {
-			gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_ts);
+			gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_time);
 			context->a_last_ts += time_diff;
 		}
 		context->a_prev_seq = context->a_last_seq;
