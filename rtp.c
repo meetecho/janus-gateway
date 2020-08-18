@@ -605,6 +605,17 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	return exit_status;
 }
 
+gint64 janus_get_audio_time_diff(uint16_t codec_type, gint64 a_last_time) {
+	gint64 time_diff = janus_get_monotonic_time() - a_last_time;
+	int akhz = 48;
+	if(codec_type == 0 || codec_type == 8 || codec_type == 9)
+		akhz = 8;	/* We're assuming 48khz here (Opus), unless it's G.711/G.722 (8khz) */
+	time_diff = (time_diff*akhz)/1000;
+	if(time_diff == 0)
+		time_diff = 1;
+	return time_diff;
+}
+
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
 	if(header == NULL || context == NULL)
 		return;
@@ -666,13 +677,7 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 			context->a_base_seq = seq;
 			/* How much time since the last audio RTP packet? We compute an offset accordingly */
 			if(context->a_last_time > 0) {
-				gint64 time_diff = janus_get_monotonic_time() - context->a_last_time;
-				int akhz = 48;
-				if(header->type == 0 || header->type == 8 || header->type == 9)
-					akhz = 8;	/* We're assuming 48khz here (Opus), unless it's G.711/G.722 (8khz) */
-				time_diff = (time_diff*akhz)/1000;
-				if(time_diff == 0)
-					time_diff = 1;
+				gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_ts);
 				context->a_base_ts_prev += (guint32)time_diff;
 				context->a_prev_ts += (guint32)time_diff;
 				context->a_last_ts += (guint32)time_diff;
@@ -689,7 +694,12 @@ void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_conte
 		}
 		/* Compute a coherent timestamp and sequence number */
 		context->a_prev_ts = context->a_last_ts;
-		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev;
+		if(timestamp >= context->a_base_ts) {
+			context->a_last_ts = (timestamp - context->a_base_ts) + context->a_base_ts_prev;
+		} else {
+			gint64 time_diff = janus_get_audio_time_diff(header->type, context->a_last_ts);
+			context->a_last_ts += time_diff;
+		}
 		context->a_prev_seq = context->a_last_seq;
 		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
 		/* Update the timestamp and sequence number in the RTP packet */
