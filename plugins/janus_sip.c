@@ -6378,8 +6378,16 @@ static void *janus_sip_relay_thread(void *data) {
 						}
 						bytes = buflen;
 					}
+					if(header->markerbit) {
+						JANUS_LOG(LOG_ERR, "[SIP-%s] 0 RTP packet (seq=%"SCNu16", ssrc=%"SCNu32" ts=%"SCNu32")\n",
+							  session->account.username, ntohs(header->seq_number), ntohl(header->ssrc), ntohl(header->timestamp));
+					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
 					janus_rtp_header_update(header, &session->media.context, FALSE, 0);
+					if(header->markerbit) {
+						JANUS_LOG(LOG_ERR, "[SIP-%s] 1 RTP packet (seq=%"SCNu16", ssrc=%"SCNu32" ts=%"SCNu32")\n",
+							  session->account.username, ntohs(header->seq_number), ntohl(header->ssrc), ntohl(header->timestamp));
+					}
 					/* Save the frame if we're recording */
 					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to application */
