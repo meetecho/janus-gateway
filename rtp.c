@@ -605,7 +605,7 @@ int janus_rtp_skew_compensate_video(janus_rtp_header *header, janus_rtp_switchin
 	return exit_status;
 }
 
-gint64 janus_get_audio_time_diff(uint16_t codec_type, gint64 a_last_time) {
+static gint64 janus_get_audio_time_diff(uint16_t codec_type, gint64 a_last_time) {
 	gint64 time_diff = janus_get_monotonic_time() - a_last_time;
 	int akhz = 48;
 	if(codec_type == 0 || codec_type == 8 || codec_type == 9)
