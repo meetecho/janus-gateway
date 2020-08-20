@@ -68,6 +68,8 @@ module.exports = function (global, state) {
    * @param {IJanusResyncEventBody} body
    * */
   function handleSyncManager(id, tr, body) {
+    state.tasks.push({ id, tr, msg: body });
+    global.pokeScheduler();
     return 1;
   }
 
