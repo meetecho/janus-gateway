@@ -56,8 +56,9 @@ module.exports = function (global, state) {
     var msg = {
       test: "manager join success"
     }
-    state.tasks.push({ id, tr, msg })
+    state.tasks.push({ id, tr, msg });
     global.pokeScheduler();
+    console.log("(" + id + ") joined as a manager");
     return 1;
   }
 

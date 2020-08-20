@@ -106,7 +106,7 @@ function getPackage() {
 
 /**
  * Methods
- * @param {{[key: string]: any}} config 
+ * @param {{[key: string]: any}} config
  */
 function init(config) {
 	// This is where we initialize the plugin, for static properties
@@ -128,7 +128,7 @@ function destroy() {
 }
 
 /**
- * @param {number} id 
+ * @param {number} id
  */
 function createSession(id) {
 	// Keep track of a new session
@@ -145,7 +145,7 @@ function createSession(id) {
 }
 /**
  * to do: split to destroy session by type (publisher, subscriber, manager)
- * @param {number} id 
+ * @param {number} id
  */
 function destroySession(id) {
 	// A Janus plugin session has gone
@@ -181,10 +181,10 @@ function querySession(id) {
 }
 
 /**
- * @param {number} id 
- * @param {string} tr 
- * @param {string} msg 
- * @param {string} jsep 
+ * @param {number} id
+ * @param {string} tr
+ * @param {string} msg
+ * @param {string} jsep
  */
 function handleMessage(id, tr, msg, jsep) {
 	// Handle a message, synchronously or asynchronously, and return
@@ -327,7 +327,7 @@ function handleAdminMessage(message) {
 }
 
 /**
- * @param {number} id 
+ * @param {number} id
  */
 function setupMedia(id) {
 	// WebRTC is now available
@@ -344,7 +344,7 @@ function setupMedia(id) {
 }
 
 /**
- * @param {number} id 
+ * @param {number} id
  */
 function hangupMedia(id) {
 	// WebRTC not available anymore
@@ -374,9 +374,9 @@ function hangupMedia(id) {
 }
 
 /**
- * @param {number} id 
- * @param {string} buf 
- * @param {number} len 
+ * @param {number} id
+ * @param {string} buf
+ * @param {number} len
  */
 function incomingTextData(id, buf, len) {
 	// Relaying RTP/RTCP in JavaScript makes no sense, but just for fun
@@ -386,9 +386,9 @@ function incomingTextData(id, buf, len) {
 }
 
 /**
- * @param {number} id 
- * @param {string} buf 
- * @param {number} len 
+ * @param {number} id
+ * @param {string} buf
+ * @param {number} len
  */
 function incomingBinaryData(id, buf, len) {
 	// If the data we're getting is binary, send it back as it is
@@ -412,8 +412,8 @@ function resumeScheduler() {
 
 /**
  * We use this internal method to process an API request
- * @param {number} id 
- * @param {{[key:string]: any}} msg 
+ * @param {number} id
+ * @param {{[key:string]: any}} msg
  */
 function processRequest(id, msg) {
 	if (!msg) {
@@ -474,7 +474,7 @@ function processRequest(id, msg) {
 
 /**
  * We use this other function to process asynchronous requests
- * @param {ITask} task 
+ * @param {ITask} task
  */
 function processAsync(task) {
 	// We'll only execute this when the scheduler resumes a task
