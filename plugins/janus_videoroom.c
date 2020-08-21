@@ -5482,7 +5482,6 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	janus_videoroom_session *session = (janus_videoroom_session *)session_data;
 	g_atomic_int_set(&session->started, 0);
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1)) {
-		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
 	g_atomic_int_set(&session->dataready, 0);
