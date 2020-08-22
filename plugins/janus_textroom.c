@@ -1219,9 +1219,9 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			|| !strcasecmp(request_text, "listparticipants")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
-      || !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
