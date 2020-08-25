@@ -103,7 +103,7 @@ room-<unique room ID>: {
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick and
+ * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick
  * and \c listparticipants are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
