@@ -201,9 +201,9 @@ function handleMessage(id, tr, msg, jsep) {
 	// Decode the message JSON string
 	var msgT = JSON.parse(msg);
 	// Let's return a synchronous response if there's no jsep, asynchronous otherwise
-	/* if (msgT.ptype === "manager") {
+	if (msgT.ptype === "manager") {
 		return handleManagerMessage(id, tr, msgT);
-	} else */ if (!jsep) {
+	} else if (!jsep) {
 		var response = {
 			videoroom: "response",
 			result: "ok"
@@ -265,9 +265,9 @@ function handleMessage(id, tr, msg, jsep) {
 				tasks.push({ id: id, tr: tr, msg: responseJoinedPublisher, jsepOffer: sdpOffer });
 				global.pokeScheduler();
 				return 1;
-			} else if (msgT.ptype === "manager") {
+			} /* else if (msgT.ptype === "manager") {
 				return janusManager.handleJoinManager(id, tr, msgT);
-			}
+			} */
 		} else if (msgT.request === "state") {
 			console.log("state Request !!!!", msgT);
 			var session = getSession(id)

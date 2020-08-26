@@ -40,6 +40,8 @@ module.exports = function (global, state) {
         return handleJoinManager(id, tr, body);
       case "sync":
         return handleSyncManager(id, tr, body);
+      default:
+        console.log("|ERROR| " + "not supported event name!");
     }
     return 1;
   }
@@ -68,7 +70,11 @@ module.exports = function (global, state) {
    * @param {IJanusResyncEventBody} body
    * */
   function handleSyncManager(id, tr, body) {
-    state.tasks.push({ id, tr, msg: body });
+    var room = state.getRoom(body.room);
+    room.publishers.forEach(function (el) {
+      // state.tasks.push({ id: el, tr, msg: body });
+      global.pushEvent(el, null, JSON.stringify(body), null);
+    });
     global.pokeScheduler();
     return 1;
   }
