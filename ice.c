@@ -4169,7 +4169,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		if(janus_events_is_enabled())
 			janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, JANUS_EVENT_SUBTYPE_NONE,
 				session->session_id, handle->handle_id, "detached",
-				plugin ? plugin->get_package() : NULL, handle->opaque_id);
+				plugin ? plugin->get_package() : NULL, handle->opaque_id, handle->token);
 		return G_SOURCE_REMOVE;
 	} else if(pkt == &janus_ice_data_ready) {
 		/* Data is writable on this PeerConnection, notify the plugin */
