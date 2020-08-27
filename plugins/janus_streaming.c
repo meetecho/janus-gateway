@@ -5278,6 +5278,8 @@ done:
 				janus_mutex_unlock(&helper->mutex);
 			}
 			session->mountpoint = mp;
+			/* Send a PLI too, in case the mountpoint supports video and RTCP */
+			janus_streaming_rtcp_pli_send(mp->source);
 			g_atomic_int_set(&session->paused, 0);
 			janus_mutex_unlock(&session->mutex);
 			janus_mutex_unlock(&mp->mutex);
