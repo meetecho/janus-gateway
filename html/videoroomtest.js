@@ -166,8 +166,7 @@ $(document).ready(function() {
 											if(subscriber_mode) {
                                                 						$('#videojoin').hide();
                                                 						$('#videos').removeClass('hide').show();
-                                            						}
-                                            						else {
+                                            						} else {
                                                 						publishOwnFeed(true);
 											}
 
