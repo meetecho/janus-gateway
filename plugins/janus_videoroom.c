@@ -5515,6 +5515,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		participant->fir_seq = 0;
 		g_free(participant->vfmtp);
 		participant->vfmtp = NULL;
+		participant->acodec = JANUS_AUDIOCODEC_NONE;
+		participant->vcodec = JANUS_VIDEOCODEC_NONE;
 		int i=0;
 		for(i=0; i<3; i++) {
 			participant->ssrc[i] = 0;
