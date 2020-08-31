@@ -1221,6 +1221,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
@@ -1301,6 +1302,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		if(json_object_get(message, "textroom") == NULL)
 			json_object_set_new(message, "textroom", json_string(request_text));
