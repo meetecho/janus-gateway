@@ -64,7 +64,7 @@ var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
-var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes")
+var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes")  || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -163,12 +163,13 @@ $(document).ready(function() {
 											myid = msg["id"];
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											if (subscriber_mode) {
+											if(subscriber_mode) {
                                                 						$('#videojoin').hide();
                                                 						$('#videos').removeClass('hide').show();
                                             						}
-                                            						else
+                                            						else {
                                                 						publishOwnFeed(true);
+											}
 
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
