@@ -64,7 +64,7 @@ var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
-var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes")  || getQueryStringValue("subscriber-mode") === "true");
+var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
