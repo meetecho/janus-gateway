@@ -54,8 +54,6 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
   -H, --header                  Only parse .mjr header  (default=off)
   -p, --parse                   Only parse and re-order packets  (default=off)
   -m, --metadata=metadata       Save this metadata string in the target file
-  -r, --postreset-trigger=count Number of packets needed to detect a timestamp
-                                  reset (default=200)
   -i, --ignore-first=count      Number of first packets to ignore when
                                   processing, e.g., in case they're cause of
                                   issues (default=0)
@@ -193,11 +191,6 @@ int main(int argc, char *argv[])
 	if(args_info.metadata_given || (g_getenv("JANUS_PPREC_METADATA") != NULL)) {
 		metadata = g_strdup(args_info.metadata_given ? args_info.metadata_arg : g_getenv("JANUS_PPREC_METADATA"));
 	}
-	if(args_info.postreset_trigger_given || (g_getenv("JANUS_PPREC_POSTRESETTRIGGER") != NULL)) {
-		int val = args_info.postreset_trigger_given ? args_info.postreset_trigger_arg : atoi(g_getenv("JANUS_PPREC_POSTRESETTRIGGER"));
-		if(val >= 0)
-			post_reset_trigger = val;
-	}
 	if(args_info.ignore_first_given || (g_getenv("JANUS_PPREC_IGNOREFIRST") != NULL)) {
 		int val = args_info.ignore_first_given ? args_info.ignore_first_arg : atoi(g_getenv("JANUS_PPREC_IGNOREFIRST"));
 		if(val >= 0)
@@ -240,7 +233,6 @@ int main(int argc, char *argv[])
 		}
 		if(setting == NULL || (
 				(strcmp(setting, "-m")) && (strcmp(setting, "--metadata")) &&
-				(strcmp(setting, "-r")) && (strcmp(setting, "--postreset-trigger")) &&
 				(strcmp(setting, "-i")) && (strcmp(setting, "--ignore-first")) &&
 				(strcmp(setting, "-a")) && (strcmp(setting, "--audiolevel-ext")) &&
 				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
@@ -619,19 +611,15 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 	/* Now let's parse the frames and order them */
-	uint32_t pkt_ts = 0, last_ts = 0, reset = 0;
-	int times_resetted = 0;
-	int post_reset_pkts = 0;
+	uint32_t pkt_ts = 0, highest_rtp_ts = 0;
+	/* Start from 1 to take into account late packets */
+	int times_resetted = 1;
+	uint64_t max32 = UINT32_MAX;
 	int ignored = 0;
 	offset = 0;
+	gboolean started = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
-	/* Timestamp reset related stuff */
-	last_ts = 0;
-	reset = 0;
-	times_resetted = 0;
-	post_reset_pkts = 0;
-	uint64_t max32 = UINT32_MAX;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -753,42 +741,41 @@ int main(int argc, char *argv[])
 		p->p_ts = pkt_ts;
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
+		uint32_t rtp_ts = ntohl(rtp->timestamp);
 		/* Due to resets, we need to mess a bit with the original timestamps */
-		if(last_ts == 0) {
+		if(!started) {
 			/* Simple enough... */
-			p->ts = ntohl(rtp->timestamp);
+			started = TRUE;
+			highest_rtp_ts = rtp_ts;
+			p->ts = (times_resetted*max32)+rtp_ts;
 		} else {
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
-			gboolean late_pkt = FALSE;
-			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				if(post_reset_pkts > post_reset_trigger) {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+			gboolean pre_reset_pkt = FALSE;
+
+			/* In-order packet */
+			if((int32_t)(rtp_ts-highest_rtp_ts) > 0) {
+				if(rtp_ts < highest_rtp_ts) {
+					/* Received TS is lower than highest --> reset */
+					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", rtp_ts);
 					times_resetted++;
-					post_reset_pkts = 0;
 				}
-			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
-					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
-				if(post_reset_pkts < post_reset_trigger) {
-					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
-					late_pkt = TRUE;
-					times_resetted--;
-				}
-			} else if(ntohl(rtp->timestamp) < reset) {
-				if(post_reset_pkts < post_reset_trigger) {
-					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
-					reset = ntohl(rtp->timestamp);
-				} else {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-					times_resetted++;
-					post_reset_pkts = 0;
+				highest_rtp_ts = rtp_ts;
+			}
+
+			/* Out-of-order packet */
+			if((int32_t)(rtp_ts-highest_rtp_ts) < 0) {
+				if(rtp_ts > highest_rtp_ts) {
+					/* Received TS is higher than highest --> late pre-reset packet */
+					JANUS_LOG(LOG_WARN, "Late pre-reset packet: %"SCNu32"\n", rtp_ts);
+					pre_reset_pkt = TRUE;
 				}
 			}
+
 			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
-			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
-			if(late_pkt)
-				times_resetted++;
+			if(!pre_reset_pkt)
+				p->ts = (times_resetted*max32)+rtp_ts;
+			else
+				p->ts = ((times_resetted-1)*max32)+rtp_ts;
 		}
 		p->len = len;
 		p->drop = 0;
@@ -811,8 +798,6 @@ int main(int argc, char *argv[])
 			p->drop = 1;
 			JANUS_LOG(LOG_VERB, "  -- Only RTP header, marking packet as dropped\n");
 		}
-		last_ts = ntohl(rtp->timestamp);
-		post_reset_pkts++;
 		/* Fill in the rest of the details */
 		p->offset = offset;
 		p->skip = skip;
