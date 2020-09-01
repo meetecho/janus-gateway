@@ -71,6 +71,10 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   format from the destination)  (possible
                                   values="opus", "wav", "webm", "mp4",
                                   "srt")
+  -t, --faststart               For mp4 files write the MOOV atom at the head
+                                  of the file  (default=off)
+  -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
+                                  compensation, disabled if 0 (default=0)
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
