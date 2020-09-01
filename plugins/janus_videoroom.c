@@ -54,8 +54,8 @@ room-<unique room ID>: {
 	is_private = true|false (private rooms don't appear when you do a 'list' request, default=false)
 	secret = <optional password needed for manipulating (e.g. destroying) the room>
 	pin = <optional password needed for joining the room>
-	require_pvtid = true|false (whether subscriptions are required to provide a valid
-				 a valid private_id to associate with a publisher, default=false)
+	require_pvtid = true|false (whether subscriptions are required to provide a valid private_id 
+				 to associate with a publisher, default=false)
 	publishers = <max number of concurrent senders> (e.g., 6 for a video
 				 conference or 1 for a webinar, default=3)
 	bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -87,7 +87,7 @@ room-<unique room ID>: {
 	notify_joining = true|false (optional, whether to notify all participants when a new
 				participant joins the room. The Videoroom plugin by design only notifies
 				new feeds (publishers), and enabling this may result extra notification
-				traffic. This flag is particularly useful when enabled with \c require_pvtid
+				traffic. This flag is particularly useful when enabled with require_pvtid
 				for admin to manage listening only participants. default=false)
 	require_e2ee = true|false (whether all participants are required to publish and subscribe
 				using end-to-end media encryption, e.g., via Insertable Streams; default=false)
@@ -103,7 +103,7 @@ room-<unique room ID>: {
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick and
+ * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick
  * and \c listparticipants are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
@@ -112,7 +112,7 @@ room-<unique room ID>: {
  * video room and destroys it, kicking all the users out as part of the
  * process; \c exists allows you to check whether a specific video room
  * exists; finally, \c list lists all the available rooms, while \c
- * listparticipants lists all the active (as in currentòy publishing
+ * listparticipants lists all the active (as in currently publishing
  * something) participants of a specific room and their details.
  *
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
@@ -131,7 +131,7 @@ room-<unique room ID>: {
  * the \c switch request can be used to change the source of the media
  * flowing over a specific PeerConnection (e.g., I was watching Alice,
  * I want to watch Bob now) without having to create a new handle for
- * that; \c finally, \c leave allows you to leave a video room for good
+ * that; finally, \c leave allows you to leave a video room for good
  * (or, in the case of viewers, definitely closes a subscription).
  *
  * \c create can be used to create a new video room, and has to be
@@ -342,7 +342,7 @@ room-<unique room ID>: {
 \verbatim
 {
 	"videoroom" : "success",
-	"rooms" : [		// Array of room objects
+	"list" : [		// Array of room objects
 		{	// Room #1
 			"room" : <unique numeric ID>,
 			"description" : "<Name of the room>",
@@ -408,7 +408,7 @@ room-<unique room ID>: {
  * (although may choose not to, more on this later) publish media in the
  * room, and as such become feeds that you can subscribe to.
  *
- * To specify a handle will be associated with a publisher, you must use
+ * To specify that a handle will be associated with a publisher, you must use
  * the \c join request with \c ptype set to \c publisher (note that, as it
  * will be explained later, you can also use \c joinandconfigure for the
  * purpose). The exact syntax of the request is the following:
@@ -500,7 +500,7 @@ room-<unique room ID>: {
  * to the room configuration (e.g., to make sure the codecs you negotiated
  * are allowed in the room), and will reply with a JSEP SDP answer to
  * close the circle and complete the setup of the PeerConnection. As soon
- * as the PeerConnection has been establisher, the publisher will become
+ * as the PeerConnection has been established, the publisher will become
  * active, and a new active feed other participants can subscribe to.
  *
  * The syntax of a \c publish request is the following:
@@ -895,7 +895,7 @@ room-<unique room ID>: {
  * right info out of band (which is impossible in rooms configured with
  * \c require_pvtid).
  *
- * To specify a handle will be associated with a subscriber, you must use
+ * To specify that a handle will be associated with a subscriber, you must use
  * the \c join request with \c ptype set to \c subscriber and specify which
  * feed to subscribe to. The exact syntax of the request is the following:
  *
@@ -5482,7 +5482,6 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	janus_videoroom_session *session = (janus_videoroom_session *)session_data;
 	g_atomic_int_set(&session->started, 0);
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1)) {
-		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
 	g_atomic_int_set(&session->dataready, 0);
@@ -5516,6 +5515,8 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 		participant->fir_seq = 0;
 		g_free(participant->vfmtp);
 		participant->vfmtp = NULL;
+		participant->acodec = JANUS_AUDIOCODEC_NONE;
+		participant->vcodec = JANUS_VIDEOCODEC_NONE;
 		int i=0;
 		for(i=0; i<3; i++) {
 			participant->ssrc[i] = 0;

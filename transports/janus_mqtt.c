@@ -838,7 +838,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 
 	char *payload = json_dumps(message, json_format_);
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
-	
+
 	int rc;
 #ifdef MQTTVERSION_5
 	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
@@ -869,7 +869,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 #else
 	rc = janus_mqtt_client_publish_message(ctx, payload, admin);
 #endif
-	
+
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", admin ? ctx->admin.publish.topic : ctx->publish.topic, rc);
 	}
@@ -904,11 +904,13 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 	/* Proxy additional user properties from config */
 	if(user_property_names == NULL || user_property_names->len == 0) return;
 
-	for(int i = 0; i < state->properties->count; i++) {
+	int i = 0;
+	for(i = 0; i < state->properties->count; i++) {
 		MQTTProperty request_prop = state->properties->array[i];
 		if(request_prop.identifier != MQTTPROPERTY_CODE_USER_PROPERTY) continue;
 
-		for(uint j = 0; j < user_property_names->len; j++) {
+		uint j = 0;
+		for(j = 0; j < user_property_names->len; j++) {
 			char *key = (char*)g_array_index(user_property_names, char*, j);
 			int key_len = strlen(key);
 
@@ -934,7 +936,8 @@ void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *us
 void janus_mqtt_add_properties(janus_mqtt_transaction_state *state, GArray *user_properties, MQTTProperties *properties) {
 	if(user_properties == NULL || user_properties->len == 0) return;
 
-	for(uint i = 0; i < user_properties->len; i++) {
+	uint i = 0;
+	for(i = 0; i < user_properties->len; i++) {
 		MQTTProperty *property = &g_array_index(user_properties, MQTTProperty, i);
 		int rc = MQTTProperties_add(properties, property);
 		if(rc != 0) {

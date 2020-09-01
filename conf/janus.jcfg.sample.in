@@ -261,6 +261,9 @@ nat: {
 	# If you'd rather keep the private IP address in place, rather than
 	# replacing it (and so have both of them as advertised candidates),
 	# then set the 'keep_private_host' property to true.
+	# Multiple public IP addresses can be specified as a comma separated list
+	# if the Janus is deployed in a DMZ between two 1-1 NAT for internal and
+	# external users.
 	#nat_1_1_mapping = "1.2.3.4"
 	#keep_private_host = true
 

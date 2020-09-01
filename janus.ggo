@@ -1,4 +1,4 @@
-#Janus 0.10.4 gengetopt file
+#Janus 0.10.5 gengetopt file
 option "daemon" b "Launch Janus in background as a daemon" flag off
 option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
@@ -12,7 +12,7 @@ option "cert-pem" c "DTLS certificate" string typestr="filename" optional
 option "cert-key" k "DTLS certificate key" string typestr="filename" optional
 option "cert-pwd" K "DTLS certificate key passphrase (if needed)" string typestr="text" optional
 option "stun-server" S "STUN server(:port) to use, if needed (e.g., Janus behind NAT, default=none)" string typestr="ip:port" optional
-option "nat-1-1" 1 "Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)" string typestr="ip" optional
+option "nat-1-1" 1 "Comma-separated list of public IPs to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)" string typestr="ips" optional
 option "keep-private-host" 2 "When nat-1-1 is used (e.g., Amazon EC2 instances), don't remove the private host, but keep both to simulate STUN" flag off
 option "ice-enforce-list" E "Comma-separated list of the only interfaces to use for ICE gathering; partial strings are supported (e.g., eth0 or eno1,wlan0, default=none)" string typestr="list" optional
 option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)" string typestr="list" optional

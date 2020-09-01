@@ -559,7 +559,7 @@ static int janus_mqttevh_client_publish_message5(janus_mqttevh_context *ctx, con
 	options.context = ctx;
 	options.onSuccess5 = janus_mqttevh_client_publish_message_success5;
 	options.onFailure5 = janus_mqttevh_client_publish_message_failure5;
-	
+
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
 	if(rc == MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_HUGE, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
@@ -942,7 +942,7 @@ static int janus_mqttevh_init(const char *config_path) {
 
 #ifdef MQTTVERSION_5
 	if (ctx->connect.mqtt_version == MQTTVERSION_5) {
-		/* MQTT 5 specific configuration */	
+		/* MQTT 5 specific configuration */
 		janus_config_array *add_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "add_user_properties");
 		if(add_user_properties_array) {
 			GList *add_user_properties_array_items = janus_config_get_arrays(config, add_user_properties_array);
@@ -1215,7 +1215,8 @@ int janus_mqttevh_client_get_response_code5(MQTTAsync_failureData5 *response) {
 void janus_mqttevh_add_properties(GArray *user_properties, MQTTProperties *properties) {
 	if(user_properties == NULL || user_properties->len == 0) return;
 
-	for(uint i = 0; i < user_properties->len; i++) {
+	uint i = 0;
+	for(i = 0; i < user_properties->len; i++) {
 		MQTTProperty *property = &g_array_index(user_properties, MQTTProperty, i);
 		int rc = MQTTProperties_add(properties, property);
 		if(rc != 0) {
