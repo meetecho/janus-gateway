@@ -406,7 +406,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 			if(strstr(line, rtpmap)) {
 				/* Gotcha! */
 				char name[100];
-				if(sscanf(line, "a=rtpmap:%d %s", &pt, name) == 2) {
+				if(sscanf(line, "a=rtpmap:%d %99s", &pt, name) == 2) {
 					*next = '\n';
 					if(strstr(name, "vp8") || strstr(name, "VP8"))
 						return "vp8";
@@ -676,31 +676,31 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 			buffer++;
 			vp8pd = *buffer;
 		}
-		buffer++;	/* Now we're in the payload */
-		if(sbit) {
-			JANUS_LOG(LOG_HUGE, "  -- S bit is set!\n");
-			unsigned long int vp8ph = 0;
-			memcpy(&vp8ph, buffer, 4);
-			vp8ph = ntohl(vp8ph);
-			uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
-			if(!pbit) {
-				JANUS_LOG(LOG_HUGE, "  -- P bit is NOT set!\n");
-				/* It is a key frame! Get resolution for debugging */
-				unsigned char *c = (unsigned char *)buffer+3;
-				/* vet via sync code */
-				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
-				} else {
-					unsigned short val3, val5;
-					memcpy(&val3,c+3,sizeof(short));
-					int vp8w = swap2(val3)&0x3fff;
-					int vp8ws = swap2(val3)>>14;
-					memcpy(&val5,c+5,sizeof(short));
-					int vp8h = swap2(val5)&0x3fff;
-					int vp8hs = swap2(val5)>>14;
-					JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
-					return TRUE;
-				}
+	}
+	buffer++;	/* Now we're in the payload */
+	if(sbit) {
+		JANUS_LOG(LOG_HUGE, "  -- S bit is set!\n");
+		unsigned long int vp8ph = 0;
+		memcpy(&vp8ph, buffer, 4);
+		vp8ph = ntohl(vp8ph);
+		uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+		if(!pbit) {
+			JANUS_LOG(LOG_HUGE, "  -- P bit is NOT set!\n");
+			/* It is a key frame! Get resolution for debugging */
+			unsigned char *c = (unsigned char *)buffer+3;
+			/* vet via sync code */
+			if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+				JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
+			} else {
+				unsigned short val3, val5;
+				memcpy(&val3,c+3,sizeof(short));
+				int vp8w = swap2(val3)&0x3fff;
+				int vp8ws = swap2(val3)>>14;
+				memcpy(&val5,c+5,sizeof(short));
+				int vp8h = swap2(val5)&0x3fff;
+				int vp8hs = swap2(val5)>>14;
+				JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
+				return TRUE;
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 Janus WebRTC Server
 ===================
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](COPYING)
-[![Build Status](https://travis-ci.org/meetecho/janus-gateway.svg?branch=master)](https://travis-ci.org/meetecho/janus-gateway)
+[![Build Status](https://travis-ci.com/meetecho/janus-gateway.svg?branch=master)](https://travis-ci.com/meetecho/janus-gateway)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13265/badge.svg)](https://scan.coverity.com/projects/meetecho-janus-gateway)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/janus-gateway.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:janus-gateway)
 
@@ -17,7 +17,7 @@ To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
 * [libconfig](https://hyperrealm.github.io/libconfig/)
-* [libnice](http://nice.freedesktop.org/wiki/) (at least v0.1.16 suggested, master recommended)
+* [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)

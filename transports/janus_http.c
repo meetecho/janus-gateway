@@ -475,6 +475,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				admin ? &janus_http_admin_handler : &janus_http_handler,
 				path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_CONNECTION_TIMEOUT, 120,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -490,6 +491,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				path,
 				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
+				MHD_OPTION_CONNECTION_TIMEOUT, 120,
 				MHD_OPTION_END);
 		}
 	} else {
@@ -514,6 +516,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
+				MHD_OPTION_CONNECTION_TIMEOUT, 120,
 				MHD_OPTION_END);
 		} else {
 			/* Bind to the interface that was specified */
@@ -533,6 +536,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 				MHD_OPTION_HTTPS_KEY_PASSWORD, password,
 				MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
+				MHD_OPTION_CONNECTION_TIMEOUT, 120,
 				MHD_OPTION_END);
 		}
 	}

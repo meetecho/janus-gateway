@@ -191,16 +191,33 @@ static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
-static gchar *public_ip = NULL;
-gchar *janus_get_public_ip(void) {
-	/* Fallback to the local IP, if we have no public one */
-	return public_ip ? public_ip : local_ip;
+static GHashTable *public_ips_table = NULL;
+static GList *public_ips = NULL;
+guint janus_get_public_ip_count(void) {
+	return public_ips_table ? g_hash_table_size(public_ips_table) : 0;
 }
-void janus_set_public_ip(const char *ip) {
-	/* once set do not override */
-	if(ip == NULL || public_ip != NULL)
+gchar *janus_get_public_ip(guint index) {
+	if (!janus_get_public_ip_count()) {
+		/* Fallback to the local IP, if we have no public one */
+		return local_ip;
+	}
+	if (index >= g_hash_table_size(public_ips_table)) {
+		index = g_hash_table_size(public_ips_table) - 1;
+	}
+	return (char *)g_list_nth(public_ips, index)->data;
+}
+void janus_add_public_ip(const gchar *ip) {
+	if(ip == NULL) {
 		return;
-	public_ip = g_strdup(ip);
+	}
+
+	if(!public_ips_table) {
+		public_ips_table = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	}
+	if (g_hash_table_insert(public_ips_table, g_strdup(ip), NULL)) {
+		g_list_free(public_ips);
+		public_ips = g_hash_table_get_keys(public_ips_table);
+	}
 }
 static volatile gint stop = 0;
 static gint stop_signal = 0;
@@ -292,8 +309,18 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "candidates-timeout", json_integer(candidates_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
-	if(public_ip != NULL)
-		json_object_set_new(info, "public-ip", json_string(public_ip));
+	guint public_ip_count = janus_get_public_ip_count();
+	if(public_ip_count > 0) {
+		json_object_set_new(info, "public-ip", json_string(janus_get_public_ip(0)));
+	}
+	if(public_ip_count > 1) {
+		guint i;
+		json_t *ips = json_array();
+		for (i = 0; i < public_ip_count; i++) {
+			json_array_append_new(ips, json_string(janus_get_public_ip(i)));
+		}
+		json_object_set_new(info, "public-ips", ips);
+	}
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
@@ -1324,6 +1351,7 @@ int janus_process_incoming_request(janus_request *request) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
 			char error_str[512];
+			error_str[0] = '\0';
 			int audio = 0, video = 0, data = 0;
 			janus_sdp *parsed_sdp = janus_sdp_preparse(handle, jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data);
 			if(parsed_sdp == NULL) {
@@ -1464,6 +1492,24 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 #endif
+				/* Check if renegotiating has added new RTP extensions */
+				if(offer) {
+					/* Check if the mid RTP extension is being negotiated */
+					handle->stream->mid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_MID);
+					/* Check if the RTP Stream ID extension is being negotiated */
+					handle->stream->rid_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_RID);
+					handle->stream->ridrtx_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_REPAIRED_RID);
+					/* Check if the audio level ID extension is being negotiated */
+					handle->stream->audiolevel_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+					/* Check if the video orientation ID extension is being negotiated */
+					handle->stream->videoorientation_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+					/* Check if the frame marking ID extension is being negotiated */
+					handle->stream->framemarking_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_FRAME_MARKING);
+					/* Check if transport wide CC is supported */
+					int transport_wide_cc_ext_id = janus_rtp_header_extension_get_id(jsep_sdp, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC);
+					handle->stream->do_transport_wide_cc = transport_wide_cc_ext_id > 0 ? TRUE : FALSE;
+					handle->stream->transport_wide_cc_ext_id = transport_wide_cc_ext_id;
+				}
 			}
 			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
@@ -3368,6 +3414,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	}
 	/* Is this valid SDP? */
 	char error_str[512];
+	error_str[0] = '\0';
 	int audio = 0, video = 0, data = 0;
 	janus_sdp *parsed_sdp = janus_sdp_preparse(ice_handle, sdp, error_str, sizeof(error_str), &audio, &video, &data);
 	if(parsed_sdp == NULL) {
@@ -4560,11 +4607,24 @@ gint main(int argc, char *argv[])
 	item = janus_config_get(config, config_nat, janus_config_type_item, "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_INFO, "Using nat_1_1_mapping for public IP: %s\n", item->value);
-		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
-			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
-		} else {
-			nat_1_1_mapping = item->value;
-			janus_set_public_ip(nat_1_1_mapping);
+		char **list = g_strsplit(item->value, ",", -1);
+		char *index = list[0];
+		if(index != NULL) {
+			int i=0;
+			while(index != NULL) {
+				if(strlen(index) > 0) {
+					if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, index)) {
+						JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, skipping...\n", index);
+					} else {
+						janus_add_public_ip(index);
+					}
+				}
+				i++;
+				index = list[i];
+			}
+		}
+		g_strfreev(list);
+		if(janus_get_public_ip_count() > 0) {
 			/* Check if we should replace the private host, or advertise both candidates */
 			gboolean keep_private_host = FALSE;
 			item = janus_config_get(config, config_nat, janus_config_type_item, "keep_private_host");
@@ -5324,6 +5384,12 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 	g_free(local_ip);
+	if (public_ips) {
+		g_list_free(public_ips);
+	}
+	if (public_ips_table) {
+		g_hash_table_destroy(public_ips_table);
+	}
 
 	if(janus_ice_get_static_event_loops() > 0)
 		janus_ice_stop_static_event_loops();

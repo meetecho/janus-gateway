@@ -436,7 +436,7 @@ function unpublishOwnFeed() {
 	sfutest.send({ message: unpublish });
 }
 
-function newRemoteFeed(id, display) {
+function newRemoteFeed(id, display, audio, video) {
 	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
 	var remoteFeed = null;
 	janus.attach(
@@ -617,7 +617,7 @@ function newRemoteFeed(id, display) {
 				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
+				if(bitrateTimer[remoteFeed.rfindex])
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 				$('#sl'+remoteFeed.rfindex+'-1').unbind('click');

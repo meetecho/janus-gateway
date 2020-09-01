@@ -62,6 +62,10 @@ int fps = 0;
 int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 	if(destination == NULL)
 		return -1;
+#if !LIBAVCODEC_VER_AT_LEAST(57, 25)
+	JANUS_LOG(LOG_ERR, "This version of libavcodec doesn't support AV1...\n");
+	return -1;
+#endif
 	/* Setup FFmpeg */
 #if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
 	av_register_all();
@@ -90,7 +94,9 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
     char filename[1024];
 	snprintf(filename, sizeof(filename), "%s", destination);
 #ifdef USE_CODECPAR
+#if LIBAVCODEC_VER_AT_LEAST(57, 25)
 	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_AV1);
+#endif
 	if(!codec) {
 		/* Error opening video codec */
 		JANUS_LOG(LOG_ERR, "Encoder not available\n");
@@ -124,10 +130,8 @@ int janus_pp_av1_create(char *destination, char *metadata, gboolean faststart) {
 #else
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
 #endif
-#if LIBAVCODEC_VER_AT_LEAST(54, 25)
+#if LIBAVCODEC_VER_AT_LEAST(57, 25)
 	vStream->codec->codec_id = AV_CODEC_ID_AV1;
-#else
-	vStream->codec->codec_id = CODEC_ID_AV1;
 #endif
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
 	vStream->codec->time_base = (AVRational){1, fps};

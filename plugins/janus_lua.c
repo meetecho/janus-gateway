@@ -1044,6 +1044,7 @@ static int janus_lua_method_startrecording(lua_State *s) {
 	janus_mutex_lock(&session->rec_mutex);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Iterate on all arguments, to see what we're being asked to record */
+	int recordings = 0;
 	n--;
 	int i = 1;
 	janus_recorder *arc = NULL, *vrc = NULL, *drc = NULL;
@@ -1056,6 +1057,10 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		const char *folder = lua_tostring(s, i);
 		i++; n--;
 		const char *filename = lua_tostring(s, i);
+		if(type == NULL || codec == NULL) {
+			/* No type or codec provided, skip this */
+			continue;
+		}
 		/* Check if the codec contains some fmtp stuff too */
 		const char *c = codec, *f = NULL;
 		gchar **parts = NULL;
@@ -1075,8 +1080,8 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		if(!strcasecmp(type, "audio")) {
 			if(arc != NULL || session->arc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate audio recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate audio recording, skipping\n");
+				continue;
 			}
 			/* If media is encrypted, mark it in the recording */
 			if(session->e2ee)
@@ -1085,8 +1090,8 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		} else if(!strcasecmp(type, "video")) {
 			if(vrc != NULL || session->vrc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate video recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate video recording, skipping\n");
+				continue;
 			}
 			/* If media is encrypted, mark it in the recording */
 			if(session->e2ee)
@@ -1095,12 +1100,15 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		} else if(!strcasecmp(type, "data")) {
 			if(drc != NULL || session->drc != NULL) {
 				janus_recorder_destroy(rc);
-				JANUS_LOG(LOG_ERR, "Duplicate data recording\n");
-				goto error;
+				JANUS_LOG(LOG_WARN, "Duplicate data recording\n");
+				continue;
 			}
 			drc = rc;
 		}
+		recordings++;
 	}
+	if(recordings == 0)
+		goto error;
 	if(arc) {
 		session->arc = arc;
 	}

@@ -1,9 +1,9 @@
-> If you want to open an issue, please make sure that:
+> **IMPORTANT! READ OR WE WILL JUST CLOSE YOUR ISSUE!**
 >
-> 1. you actually found a bug: for generic questions, use the [meetecho-janus](http://groups.google.com/d/forum/meetecho-janus) group instead;
-> 2. nobody opened the same bug already (do a search);
-> 3. the issue wasn't already solved in master;
-> 4. you don't paste a huge amount of text in the issue or comments: use a service like [pastebin](http://pastebin.com/) or similar;
-> 5. you provide a GDB stacktrace if Janus crashed on you, and/or output from AddressSanitizer or Valgrind (more details available [here](http://janus.conf.meetecho.com/docs/debug.html)).
+> 1. We only use GitHub for code issues, **NOT** for connectivity/negotiation/WebRTC issues or questions: for those, use the [meetecho-janus](http://groups.google.com/d/forum/meetecho-janus) group instead.
+> 2. If you think you really found a bug, make sure nobody reported it already (do a search first, and check open issues);
+> 3. Make sure the issue wasn't already solved in master: we will ignore the issue otherwise.
+> 4. Do **NOT** paste large amounts of text inline in the issue or comments: it makes the exchanges much harder to follow. If you need to provide logs or code snippets, either use a service like [pastebin](http://pastebin.com/) and [gist](https://gist.github.com/), or use the `details` and code block Markdown features to collapse them.
+> 5. If you're encountering crashes, make sure you provide a useful trace of what happened: depending on the issue, we may need output from AddressSanitizer or GDB stacktraces (more details available [here](http://janus.conf.meetecho.com/docs/debug)).
 >
-> If so, just remove this text and share your findings!
+> If you understood the guidelines, please do remove this text and share your findings. Notice that if you remove this text without reading the guidelines, or you just ignore them, we'll close the issue without further explanation.

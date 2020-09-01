@@ -17,7 +17,7 @@ env:
 
 git:
   quiet: true
-  depth: 1
+  depth: 10
 
 addons:
   apt:

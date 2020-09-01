@@ -434,7 +434,7 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						m->proto = g_strdup(proto);
 						m->direction = JANUS_SDP_SENDRECV;
 						m->c_ipv4 = TRUE;
-						if(m->port > 0) {
+						if(m->port > 0 || m->type == JANUS_SDP_APPLICATION) {
 							/* Now let's check the payload types/formats */
 							gchar **mline_parts = g_strsplit(line+2, " ", -1);
 							if(!mline_parts) {
@@ -719,16 +719,21 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 		GList *ma = m->attributes;
 		int pt = -1;
 		gboolean check_profile = FALSE;
+		gboolean got_profile = FALSE;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(check_profile && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
+			if(profile != NULL && a->name != NULL && a->value != NULL && !strcasecmp(a->name, "fmtp")) {
 				if(vp9) {
 					char profile_id[20];
 					g_snprintf(profile_id, sizeof(profile_id), "profile-id=%s", profile);
 					if(strstr(a->value, profile_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 				} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
 					/* We only support packetization-mode=1, no matter the profile */
@@ -739,7 +744,11 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 					/* Not found, try converting the profile to upper case */
 					char *profile_upper = g_ascii_strup(profile, -1);
@@ -748,7 +757,11 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 					if(strstr(a->value, profile_level_id) != NULL) {
 						/* Found */
 						JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
-						return pt;
+						if(check_profile) {
+							return pt;
+						} else {
+							got_profile = TRUE;
+						}
 					}
 				}
 			} else if(a->name != NULL && a->value != NULL && !strcasecmp(a->name, "rtpmap")) {
@@ -757,7 +770,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *p
 				if(pt < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid payload type (%s)\n", a->value);
 				} else if(strstr(a->value, format) || strstr(a->value, format2)) {
-					if(profile != NULL && (vp9 || h264)) {
+					if(profile != NULL && !got_profile && (vp9 || h264)) {
 						/* Let's check the profile first */
 						check_profile = TRUE;
 					} else {
@@ -943,7 +956,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		g_snprintf(buffer, sizeof(buffer), "m=%s %d %s", m->type_str, m->port, m->proto);
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
-		if(m->port == 0) {
+		if(m->port == 0 && m->type != JANUS_SDP_APPLICATION) {
 			/* Remove all payload types/formats if we're rejecting the media */
 			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
 			m->fmts = NULL;
@@ -1507,6 +1520,13 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 			if(!do_data || data > 1) {
 				/* Reject */
 				am->port = 0;
+				/* Add the format anyway, to keep Firefox happy */
+				GList *fmt = m->fmts;
+				if(fmt) {
+					char *fmt_str = (char *)fmt->data;
+					if(fmt_str)
+						am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
+				}
 				temp = temp->next;
 				continue;
 			}

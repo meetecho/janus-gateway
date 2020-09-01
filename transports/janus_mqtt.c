@@ -35,12 +35,12 @@
 #include "../utils.h"
 
 /* Transport plugin information */
-#define JANUS_MQTT_VERSION        1
+#define JANUS_MQTT_VERSION		1
 #define JANUS_MQTT_VERSION_STRING "0.0.1"
-#define JANUS_MQTT_DESCRIPTION    "This transport plugin adds MQTT support to the Janus API via Paho client library."
-#define JANUS_MQTT_NAME           "JANUS MQTT transport plugin"
-#define JANUS_MQTT_AUTHOR         "Andrei Nesterov <ae.nesterov@gmail.com>"
-#define JANUS_MQTT_PACKAGE        "janus.transport.mqtt"
+#define JANUS_MQTT_DESCRIPTION	"This transport plugin adds MQTT support to the Janus API via Paho client library."
+#define JANUS_MQTT_NAME		   "JANUS MQTT transport plugin"
+#define JANUS_MQTT_AUTHOR		 "Andrei Nesterov <ae.nesterov@gmail.com>"
+#define JANUS_MQTT_PACKAGE		"janus.transport.mqtt"
 
 /* Transport methods */
 janus_transport *create(void);
@@ -60,10 +60,10 @@ void janus_mqtt_session_created(janus_transport_session *transport, guint64 sess
 void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id);
 
-#define JANUS_MQTT_VERSION_3_1          "3.1"
-#define JANUS_MQTT_VERSION_3_1_1        "3.1.1"
-#define JANUS_MQTT_VERSION_5            "5"
-#define JANUS_MQTT_VERSION_DEFAULT      JANUS_MQTT_VERSION_3_1_1
+#define JANUS_MQTT_VERSION_3_1		  "3.1"
+#define JANUS_MQTT_VERSION_3_1_1		"3.1.1"
+#define JANUS_MQTT_VERSION_5			"5"
+#define JANUS_MQTT_VERSION_DEFAULT	  JANUS_MQTT_VERSION_3_1_1
 #define JANUS_MQTT_DEFAULT_STATUS_TOPIC	"status"
 #define JANUS_MQTT_DEFAULT_STATUS_QOS   1
 
@@ -116,6 +116,8 @@ typedef struct janus_mqtt_context {
 		int cleansession;
 		char *username;
 		char *password;
+		int max_inflight;
+		int max_buffered;
 	} connect;
 	struct {
 		int timeout;
@@ -137,6 +139,10 @@ typedef struct janus_mqtt_context {
 		char *topic;
 		int qos;
 		gboolean retain;
+#ifdef MQTTVERSION_5
+		GArray *proxy_transaction_user_properties;
+		GArray *add_transaction_user_properties;
+#endif
 	} publish;
 	struct {
 		struct {
@@ -154,18 +160,32 @@ typedef struct janus_mqtt_context {
 	char *cert_file;
 	char *key_file;
 	gboolean verify_peer;
+#ifdef MQTTVERSION_5
+	gint64 vacuum_interval;
+#endif
 } janus_mqtt_context;
+
+#ifdef MQTTVERSION_5
+/* MQTT 5 specific types */
+typedef struct janus_mqtt_transaction_state {
+	MQTTProperties *properties;
+	gint64 created_at;
+} janus_mqtt_transaction_state;
+
+typedef struct janus_mqtt_set_add_transaction_user_property_user_data {
+	GArray *acc;
+	janus_config *config;
+} janus_mqtt_set_add_transaction_user_property_user_data;
+#endif
 
 /* Transport client methods */
 void janus_mqtt_client_connected(void *context, char *cause);
-void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode);
 void janus_mqtt_client_connection_lost(void *context, char *cause);
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message);
 int janus_mqtt_client_connect(janus_mqtt_context *ctx);
 int janus_mqtt_client_reconnect(janus_mqtt_context *ctx);
 int janus_mqtt_client_disconnect(janus_mqtt_context *ctx);
 int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin);
-int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin);
 int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payload);
 void janus_mqtt_client_destroy_context(janus_mqtt_context **ctx);
 /* MQTT v3.x interface callbacks */
@@ -184,9 +204,11 @@ void janus_mqtt_client_publish_admin_success(void *context, MQTTAsync_successDat
 void janus_mqtt_client_publish_admin_failure(void *context, MQTTAsync_failureData *response);
 void janus_mqtt_client_publish_status_success(void *context, MQTTAsync_successData *response);
 void janus_mqtt_client_publish_status_failure(void *context, MQTTAsync_failureData *response);
+int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gboolean admin);
 int janus_mqtt_client_get_response_code(MQTTAsync_failureData *response);
 #ifdef MQTTVERSION_5
 /* MQTT v5 interface callbacks */
+void janus_mqtt_client_disconnected5(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode);
 void janus_mqtt_client_connect_failure5(void *context, MQTTAsync_failureData5 *response);
 void janus_mqtt_client_reconnect_success5(void *context, MQTTAsync_successData5 *response);
 void janus_mqtt_client_reconnect_failure5(void *context, MQTTAsync_failureData5 *response);
@@ -202,6 +224,7 @@ void janus_mqtt_client_publish_admin_success5(void *context, MQTTAsync_successDa
 void janus_mqtt_client_publish_admin_failure5(void *context, MQTTAsync_failureData5 *response);
 void janus_mqtt_client_publish_status_success5(void *context, MQTTAsync_successData5 *response);
 void janus_mqtt_client_publish_status_failure5(void *context, MQTTAsync_failureData5 *response);
+int janus_mqtt_client_publish_message5(janus_mqtt_context *ctx, char *payload, gboolean admin, MQTTProperties *properties, char *custom_topic);
 int janus_mqtt_client_get_response_code5(MQTTAsync_failureData5 *response);
 #endif
 /* MQTT version independent callback implementations */
@@ -214,16 +237,33 @@ void janus_mqtt_client_subscribe_success_impl(void *context);
 void janus_mqtt_client_subscribe_failure_impl(void *context, int rc);
 void janus_mqtt_client_admin_subscribe_success_impl(void *context);
 void janus_mqtt_client_admin_subscribe_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_janus_success_impl(void *context);
-void janus_mqtt_client_publish_janus_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_admin_success_impl(void *context);
-void janus_mqtt_client_publish_admin_failure_impl(void *context, int rc);
-void janus_mqtt_client_publish_status_success_impl(void *context);
-void janus_mqtt_client_publish_status_failure_impl(void *context, int rc);
+void janus_mqtt_client_publish_janus_success_impl(char *topic);
+void janus_mqtt_client_publish_janus_failure_impl(int rc);
+void janus_mqtt_client_publish_admin_success_impl(char *topic);
+void janus_mqtt_client_publish_admin_failure_impl(int rc);
+void janus_mqtt_client_publish_status_success_impl(char *topic);
+void janus_mqtt_client_publish_status_failure_impl(int rc);
 
 /* We only handle a single client */
 static janus_mqtt_context *context_ = NULL;
 static janus_transport_session *mqtt_session = NULL;
+
+#ifdef MQTTVERSION_5
+/* MQTT 5 specific statics and functions */
+static GHashTable *janus_mqtt_transaction_states;
+static GRWLock janus_mqtt_transaction_states_lock;
+static GMainContext *vacuum_context = NULL;
+static GMainLoop *vacuum_loop = NULL;
+static GThread *vacuum_thread = NULL;
+static gpointer janus_mqtt_vacuum_thread(gpointer context);
+static gboolean janus_mqtt_vacuum(gpointer context);
+void janus_mqtt_transaction_state_free(gpointer ptr);
+char *janus_mqtt_get_response_topic(janus_mqtt_transaction_state *state);
+void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *user_property_names, MQTTProperties *properties);
+void janus_mqtt_add_properties(janus_mqtt_transaction_state *state, GArray *user_properties, MQTTProperties *properties);
+void janus_mqtt_set_proxy_transaction_user_property(gpointer item_ptr, gpointer acc_ptr);
+void janus_mqtt_set_add_transaction_user_property(gpointer item_ptr, gpointer user_data_ptr);
+#endif
 
 int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path) {
 	if(callback == NULL || config_path == NULL) {
@@ -384,6 +424,24 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		ctx->connect.cleansession = 0;
 	}
 
+	janus_config_item *max_inflight_item = janus_config_get(config, config_general, janus_config_type_item, "max_inflight");
+	max_inflight_item = janus_config_get(config, config_general, janus_config_type_item, "max_inflight");
+	ctx->connect.max_inflight = (max_inflight_item && max_inflight_item->value) ?
+		atoi(max_inflight_item->value) : 10;
+	if(ctx->connect.max_inflight < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-inflight value: %s (falling back to default)\n", max_inflight_item->value);
+		ctx->connect.max_inflight = 10;
+	}
+
+	janus_config_item *max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	max_buffered_item = janus_config_get(config, config_general, janus_config_type_item, "max_buffered");
+	ctx->connect.max_buffered = (max_buffered_item && max_buffered_item->value) ?
+		atoi(max_buffered_item->value) : 100;
+	if(ctx->connect.max_buffered < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid max-buffered value: %s (falling back to default)\n", max_buffered_item->value);
+		ctx->connect.max_buffered = 100;
+	}
+
 	janus_config_item *enabled_item = janus_config_get(config, config_general, janus_config_type_item, "enabled");
 	if(enabled_item == NULL) {
 		/* Try legacy property */
@@ -427,6 +485,47 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_ERR, "Invalid publish-qos value: %s (falling back to default)\n", qos_item->value);
 				ctx->publish.qos = 1;
 			}
+
+#ifdef MQTTVERSION_5
+			if (ctx->connect.mqtt_version == MQTTVERSION_5) {
+				/* MQTT 5 specific configuration */
+				janus_config_array *proxy_transaction_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "proxy_transaction_user_properties");
+				if(proxy_transaction_user_properties_array) {
+					GList *proxy_transaction_user_properties_array_items = janus_config_get_items(config, proxy_transaction_user_properties_array);
+					if(proxy_transaction_user_properties_array_items != NULL) {
+						int proxy_transaction_user_properties_array_len = g_list_length(proxy_transaction_user_properties_array_items);
+						if(proxy_transaction_user_properties_array_len > 0) {
+							ctx->publish.proxy_transaction_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(char*), proxy_transaction_user_properties_array_len);
+							g_list_foreach(
+								proxy_transaction_user_properties_array_items,
+								(GFunc)janus_mqtt_set_proxy_transaction_user_property,
+								(gpointer)ctx->publish.proxy_transaction_user_properties
+							);
+						}
+					}
+				}
+
+				janus_config_array *add_transaction_user_properties_array = janus_config_get(config, config_general, janus_config_type_array, "add_transaction_user_properties");
+				if(add_transaction_user_properties_array) {
+					GList *add_transaction_user_properties_array_items = janus_config_get_arrays(config, add_transaction_user_properties_array);
+					if(add_transaction_user_properties_array_items != NULL) {
+						int add_transaction_user_properties_array_len = g_list_length(add_transaction_user_properties_array_items);
+						if(add_transaction_user_properties_array_len > 0) {
+							ctx->publish.add_transaction_user_properties = g_array_sized_new(FALSE, FALSE, sizeof(MQTTProperty), add_transaction_user_properties_array_len);
+							janus_mqtt_set_add_transaction_user_property_user_data user_data = {
+								ctx->publish.add_transaction_user_properties,
+								config
+							};
+							g_list_foreach(
+								add_transaction_user_properties_array_items,
+								(GFunc)janus_mqtt_set_add_transaction_user_property,
+								(gpointer)&user_data
+							);
+						}
+					}
+				}
+			}
+#endif
 		}
 	} else {
 		janus_mqtt_api_enabled_ = FALSE;
@@ -536,6 +635,32 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		goto error;
 	}
 
+#ifdef MQTTVERSION_5
+	if (ctx->connect.mqtt_version == MQTTVERSION_5) {
+		/* Initialize transaction states hash table and its lock */
+		janus_mqtt_transaction_states = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, janus_mqtt_transaction_state_free);
+		g_rw_lock_init(&janus_mqtt_transaction_states_lock);
+
+		/* Getting vacuum interval from config */
+		janus_config_item *vacuum_interval_item = janus_config_get(config, config_general, janus_config_type_item, "vacuum_interval");
+		ctx->vacuum_interval = (vacuum_interval_item && vacuum_interval_item->value) ? (gint64)atoi(vacuum_interval_item->value) : 60;
+		if(ctx->vacuum_interval <= 0) {
+			JANUS_LOG(LOG_ERR, "Invalid vacuum interval value: %s (falling back to default)\n", vacuum_interval_item->value);
+			ctx->vacuum_interval = 60;
+		}
+
+		/* Start vacuum thread */
+		vacuum_context = g_main_context_new();
+		vacuum_loop = g_main_loop_new(vacuum_context, FALSE);
+		GError *terror = NULL;
+		vacuum_thread = g_thread_try_new("mqtt vacuum", &janus_mqtt_vacuum_thread, ctx, &terror);
+		if(terror != NULL) {
+			JANUS_LOG(LOG_ERR, "Failed to spawn MQTT transport vacuum thread (%d): %s\n", terror->code, terror->message ? terror->message : "??");
+			goto error;
+		}
+	}
+#endif
+
 	/* Creating a client */
 	MQTTAsync_createOptions create_options = MQTTAsync_createOptions_initializer;
 
@@ -544,6 +669,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		create_options.MQTTVersion = MQTTVERSION_5;
 	}
 #endif
+
+	create_options.maxBufferedMessages = ctx->connect.max_buffered;
 
 	if(MQTTAsync_createWithOptions(
 			&ctx->client,
@@ -561,7 +688,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		goto error;
 	}
 
-	if(MQTTAsync_setDisconnected(ctx->client, ctx, janus_mqtt_client_disconnected) != MQTTASYNC_SUCCESS) {
+#ifdef MQTTVERSION_5
+	if(MQTTAsync_setDisconnected(ctx->client, ctx, janus_mqtt_client_disconnected5) != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error setting up disconnected callback...\n");
 		goto error;
 	}
@@ -575,6 +703,12 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error setting up message arrived callback...\n");
 		goto error;
 	}
+#else
+	if(MQTTAsync_setCallbacks(ctx->client, ctx, janus_mqtt_client_connection_lost, janus_mqtt_client_message_arrived, NULL) != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker: error callbacks...\n");
+		goto error;
+	}
+#endif
 
 	/* Connecting to the broker */
 	int rc = janus_mqtt_client_connect(ctx);
@@ -590,6 +724,12 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 error:
 	/* If we got here, something went wrong */
+#ifdef MQTTVERSION_5
+	if(vacuum_loop != NULL)
+		g_main_loop_unref(vacuum_loop);
+	if(vacuum_context != NULL)
+		g_main_context_unref(vacuum_context);
+#endif
 	janus_transport_session_destroy(mqtt_session);
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
@@ -604,7 +744,51 @@ void janus_mqtt_destroy(void) {
 
 	janus_transport_session_destroy(mqtt_session);
 	janus_mqtt_client_disconnect(context_);
+
+#ifdef MQTTVERSION_5
+	if(vacuum_thread != NULL) {
+		if(g_main_loop_is_running(vacuum_loop)) {
+			g_main_loop_quit(vacuum_loop);
+			g_main_context_wakeup(vacuum_context);
+		}
+		g_thread_join(vacuum_thread);
+		vacuum_thread = NULL;
+	}
+#endif
 }
+
+#ifdef MQTTVERSION_5
+void janus_mqtt_set_proxy_transaction_user_property(gpointer item_ptr, gpointer acc_ptr) {
+	janus_config_item *item = (janus_config_item*)item_ptr;
+	if(item->value == NULL) return;
+
+	gchar* name = g_strdup(item->value);
+	g_array_append_val((GArray *)acc_ptr, name);
+}
+
+void janus_mqtt_set_add_transaction_user_property(gpointer item_ptr, gpointer user_data_ptr) {
+	janus_config_item *item = (janus_config_item*)item_ptr;
+	if(item->value != NULL) return;
+
+	janus_mqtt_set_add_transaction_user_property_user_data *user_data = (janus_mqtt_set_add_transaction_user_property_user_data*)user_data_ptr;
+	GList *key_value = janus_config_get_items(user_data->config, item);
+	if(key_value == NULL || g_list_length(key_value) != 2) {
+		JANUS_LOG(LOG_ERR, "Expected a key-value pair\n");
+		return;
+	}
+
+	janus_config_item *key_item = (janus_config_item*)g_list_first(key_value)->data;
+	janus_config_item *value_item = (janus_config_item*)g_list_last(key_value)->data;
+
+	MQTTProperty property;
+	property.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
+	property.value.data.data = g_strdup(key_item->value);
+	property.value.data.len = strlen(key_item->value);
+	property.value.value.data = g_strdup(value_item->value);
+	property.value.value.len = strlen(value_item->value);
+	g_array_append_val(user_data->acc, property);
+}
+#endif
 
 int janus_mqtt_get_api_compatibility(void) {
 	return JANUS_TRANSPORT_API_VERSION;
@@ -643,9 +827,8 @@ gboolean janus_mqtt_is_admin_api_enabled(void) {
 }
 
 int janus_mqtt_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
-	if(message == NULL || transport == NULL) {
-		return -1;
-	}
+	if(message == NULL || transport == NULL) return -1;
+
 	/* Not really needed as we always only have a single context, but that's fine */
 	janus_mqtt_context *ctx = (janus_mqtt_context *)transport->transport_p;
 	if(ctx == NULL) {
@@ -654,17 +837,115 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 	}
 
 	char *payload = json_dumps(message, json_format_);
-	json_decref(message);
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
 
-	int rc = janus_mqtt_client_publish_message(ctx, payload, admin);
+	int rc;
+#ifdef MQTTVERSION_5
+	if(ctx->connect.mqtt_version == MQTTVERSION_5) {
+		char *response_topic = NULL;
+		MQTTProperties properties = MQTTProperties_initializer;
+		char *transaction = g_strdup(json_string_value(json_object_get(message, "transaction")));
+		janus_mqtt_transaction_state *state = NULL;
+
+		if(transaction != NULL) {
+			g_rw_lock_reader_lock(&janus_mqtt_transaction_states_lock);
+			state = g_hash_table_lookup(janus_mqtt_transaction_states, transaction);
+
+			if(state != NULL) {
+				response_topic = janus_mqtt_get_response_topic(state);
+				janus_mqtt_proxy_properties(state, ctx->publish.proxy_transaction_user_properties, &properties);
+				janus_mqtt_add_properties(state, ctx->publish.add_transaction_user_properties, &properties);
+			}
+
+			g_rw_lock_reader_unlock(&janus_mqtt_transaction_states_lock);
+		}
+
+		rc = janus_mqtt_client_publish_message5(ctx, payload, admin, &properties, response_topic);
+		if(response_topic != NULL) g_free(response_topic);
+		MQTTProperties_free(&properties);
+	} else {
+		rc = janus_mqtt_client_publish_message(ctx, payload, admin);
+	}
+#else
+	rc = janus_mqtt_client_publish_message(ctx, payload, admin);
+#endif
+
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", admin ? ctx->admin.publish.topic : ctx->publish.topic, rc);
 	}
-	free(payload);
 
+	json_decref(message);
+	free(payload);
 	return 0;
 }
+
+#ifdef MQTTVERSION_5
+char *janus_mqtt_get_response_topic(janus_mqtt_transaction_state *state) {
+	MQTTProperty *property = MQTTProperties_getProperty(state->properties, MQTTPROPERTY_CODE_RESPONSE_TOPIC);
+	if(property == NULL) return NULL;
+	return g_strndup(property->value.data.data, property->value.data.len);
+}
+
+void janus_mqtt_proxy_properties(janus_mqtt_transaction_state *state, GArray *user_property_names, MQTTProperties *properties) {
+	/* Proxy correlation data standard property unconditionally */
+	MQTTProperty *corr_data_req_prop = MQTTProperties_getProperty(state->properties, MQTTPROPERTY_CODE_CORRELATION_DATA);
+	if(corr_data_req_prop != NULL) {
+		MQTTProperty corr_data_resp_prop;
+		corr_data_resp_prop.identifier = MQTTPROPERTY_CODE_CORRELATION_DATA;
+		corr_data_resp_prop.value.data.data = g_strndup(corr_data_req_prop->value.data.data, corr_data_req_prop->value.data.len);
+		corr_data_resp_prop.value.data.len = corr_data_req_prop->value.data.len;
+
+		int rc = MQTTProperties_add(properties, &corr_data_resp_prop);
+		if(rc != 0) {
+			JANUS_LOG(LOG_ERR, "Failed to add correlation_data property to MQTT response\n");
+		}
+	}
+
+	/* Proxy additional user properties from config */
+	if(user_property_names == NULL || user_property_names->len == 0) return;
+
+	int i = 0;
+	for(i = 0; i < state->properties->count; i++) {
+		MQTTProperty request_prop = state->properties->array[i];
+		if(request_prop.identifier != MQTTPROPERTY_CODE_USER_PROPERTY) continue;
+
+		uint j = 0;
+		for(j = 0; j < user_property_names->len; j++) {
+			char *key = (char*)g_array_index(user_property_names, char*, j);
+			int key_len = strlen(key);
+
+			if(strncmp(request_prop.value.data.data, key, key_len) == 0) {
+				MQTTProperty response_prop;
+				response_prop.identifier = MQTTPROPERTY_CODE_USER_PROPERTY;
+				response_prop.value.data.data = key;
+				response_prop.value.data.len = key_len;
+				response_prop.value.value.data = g_strndup(request_prop.value.value.data, request_prop.value.value.len);
+				response_prop.value.value.len = request_prop.value.value.len;
+
+				int rc = MQTTProperties_add(properties, &response_prop);
+				if(rc == -1) {
+					JANUS_LOG(LOG_ERR, "Failed to proxy `%s` user property to MQTT response\n", key);
+				}
+
+				break;
+			}
+		}
+	}
+}
+
+void janus_mqtt_add_properties(janus_mqtt_transaction_state *state, GArray *user_properties, MQTTProperties *properties) {
+	if(user_properties == NULL || user_properties->len == 0) return;
+
+	uint i = 0;
+	for(i = 0; i < user_properties->len; i++) {
+		MQTTProperty *property = &g_array_index(user_properties, MQTTProperty, i);
+		int rc = MQTTProperties_add(properties, property);
+		if(rc != 0) {
+			JANUS_LOG(LOG_ERR, "Failed to user properties to MQTT response\n");
+		}
+	}
+}
+#endif
 
 void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care */
@@ -714,7 +995,8 @@ void janus_mqtt_client_connected(void *context, char *cause) {
 	}
 }
 
-void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode) {
+#ifdef MQTTVERSION_5
+void janus_mqtt_client_disconnected5(void *context, MQTTProperties *properties, enum MQTTReasonCodes reasonCode) {
 	const char *reasonCodeStr = MQTTReasonCode_toString(reasonCode);
 	JANUS_LOG(LOG_INFO, "Disconnected from MQTT broker: %s\n", reasonCodeStr);
 
@@ -726,6 +1008,7 @@ void janus_mqtt_client_disconnected(void *context, MQTTProperties *properties, e
 		ctx->gateway->notify_event(&janus_mqtt_transport_, mqtt_session, info);
 	}
 }
+#endif
 
 void janus_mqtt_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT connection lost cause of %s. Reconnecting...\n", cause);
@@ -741,6 +1024,7 @@ void janus_mqtt_client_connection_lost(void *context, char *cause) {
 }
 
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
+	int ret = FALSE;
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	gchar *topic = g_strndup(topicName, topicLen);
 	const gboolean janus = janus_mqtt_api_enabled_ && !strcasecmp(topic, ctx->subscribe.topic);
@@ -748,16 +1032,42 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 	g_free(topic);
 
 	if((janus || admin) && message->payloadlen) {
-		JANUS_LOG(LOG_HUGE, "Receiving %s API message over MQTT: %s\n", admin ? "admin" : "Janus", (char *)message->payload);
+		JANUS_LOG(LOG_HUGE, "Receiving %s API message over MQTT: %.*s\n", admin ? "admin" : "Janus", message->payloadlen, (char*)message->payload);
 
 		json_error_t error;
 		json_t *root = json_loadb(message->payload, message->payloadlen, 0, &error);
+
+#ifdef MQTTVERSION_5
+		if(ctx->connect.mqtt_version == MQTTVERSION_5 && !admin) {
+			/* Save MQTT 5 properties copy to the state */
+			const gchar *transaction = g_strdup(json_string_value(json_object_get(root, "transaction")));
+			if(transaction == NULL) {
+				JANUS_LOG(LOG_WARN, "`transaction` is missing or not a string\n");
+				goto done;
+			}
+
+			MQTTProperties *properties = g_malloc(sizeof(MQTTProperties));
+			*properties = MQTTProperties_copy(&message->properties);
+
+			janus_mqtt_transaction_state *state = g_malloc(sizeof(janus_mqtt_transaction_state));
+			state->properties = properties;
+			state->created_at = janus_get_monotonic_time();
+
+			g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
+			g_hash_table_insert(janus_mqtt_transaction_states, (gpointer) transaction, (gpointer) state);
+			g_rw_lock_writer_unlock(&janus_mqtt_transaction_states_lock);
+		}
+#endif
+
 		ctx->gateway->incoming_request(&janus_mqtt_transport_, mqtt_session, NULL, admin, root, &error);
 	}
 
+	ret = TRUE;
+
+done:
 	MQTTAsync_freeMessage(&message);
 	MQTTAsync_free(topicName);
-	return TRUE;
+	return ret;
 }
 
 int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
@@ -775,7 +1085,6 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	}
 #else
 	options.cleansession = ctx->connect.cleansession;
-	options.onSuccess = janus_mqtt_client_connect_success;
 	options.onFailure = janus_mqtt_client_connect_failure;
 #endif
 
@@ -784,6 +1093,7 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	options.password = ctx->connect.password;
 	options.automaticReconnect = TRUE;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
+	options.maxInflight = ctx->connect.max_inflight;
 
 	MQTTAsync_SSLOptions ssl_opts = MQTTAsync_SSLOptions_initializer;
 	if(ctx->ssl_enabled) {
@@ -1081,102 +1391,113 @@ int janus_mqtt_client_publish_message(janus_mqtt_context *ctx, char *payload, gb
 	msg.qos = ctx->publish.qos;
 	msg.retained = FALSE;
 
+	char *topic = admin ? ctx->admin.publish.topic : ctx->publish.topic;
+
 	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
 	options.context = ctx;
 
 	if(admin) {
-#ifdef MQTTVERSION_5
-		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
-			options.onSuccess5 = janus_mqtt_client_publish_admin_success5;
-			options.onFailure5 = janus_mqtt_client_publish_admin_failure5;
-		} else {
-			options.onSuccess = janus_mqtt_client_publish_admin_success;
-			options.onFailure = janus_mqtt_client_publish_admin_failure;
-		}
-#else
 		options.onSuccess = janus_mqtt_client_publish_admin_success;
 		options.onFailure = janus_mqtt_client_publish_admin_failure;
-#endif
-		return MQTTAsync_sendMessage(ctx->client, ctx->admin.publish.topic, &msg, &options);
 	} else {
-#ifdef MQTTVERSION_5
-		if(ctx->connect.mqtt_version == MQTTVERSION_5) {
-			options.onSuccess5 = janus_mqtt_client_publish_janus_success5;
-			options.onFailure5 = janus_mqtt_client_publish_janus_failure5;
-		} else {
-			options.onSuccess = janus_mqtt_client_publish_janus_success;
-			options.onFailure = janus_mqtt_client_publish_janus_failure;
-		}
-#else
 		options.onSuccess = janus_mqtt_client_publish_janus_success;
 		options.onFailure = janus_mqtt_client_publish_janus_failure;
-#endif
-		return MQTTAsync_sendMessage(ctx->client, ctx->publish.topic, &msg, &options);
 	}
+
+	return MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
 }
 
+#ifdef MQTTVERSION_5
+int janus_mqtt_client_publish_message5(janus_mqtt_context *ctx, char *payload, gboolean admin, MQTTProperties *properties, char *custom_topic) {
+	MQTTAsync_message msg = MQTTAsync_message_initializer;
+	msg.payload = payload;
+	msg.payloadlen = strlen(payload);
+	msg.qos = ctx->publish.qos;
+	msg.retained = FALSE;
+	msg.properties = MQTTProperties_copy(properties);
+
+	char *topic;
+	if(custom_topic) {
+		topic = custom_topic;
+	} else if(admin) {
+		topic = ctx->admin.publish.topic;
+	} else {
+		topic = ctx->publish.topic;
+	}
+
+	MQTTAsync_responseOptions options = MQTTAsync_responseOptions_initializer;
+	options.context = ctx;
+
+	if(admin) {
+		options.onSuccess5 = janus_mqtt_client_publish_admin_success5;
+		options.onFailure5 = janus_mqtt_client_publish_admin_failure5;
+	} else {
+		options.onSuccess5 = janus_mqtt_client_publish_janus_success5;
+		options.onFailure5 = janus_mqtt_client_publish_janus_failure5;
+	}
+
+	return MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
+}
+#endif
+
 void janus_mqtt_client_publish_janus_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_janus_success_impl(context);
+	janus_mqtt_client_publish_janus_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_janus_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_janus_success_impl(context);
+	janus_mqtt_client_publish_janus_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_janus_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", ctx->publish.topic);
+void janus_mqtt_client_publish_janus_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_janus_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_janus_failure_impl(context, rc);
+	janus_mqtt_client_publish_janus_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_janus_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_janus_failure_impl(context, rc);
+	janus_mqtt_client_publish_janus_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_janus_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+void janus_mqtt_client_publish_janus_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing, return code: %d\n", rc);
 }
 
 void janus_mqtt_client_publish_admin_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_admin_success_impl(context);
+	janus_mqtt_client_publish_admin_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_admin_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_admin_success_impl(context);
+	janus_mqtt_client_publish_admin_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_admin_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", ctx->admin.publish.topic);
+void janus_mqtt_client_publish_admin_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_admin_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_admin_failure_impl(context, rc);
+	janus_mqtt_client_publish_admin_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_admin_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_admin_failure_impl(context, rc);
+	janus_mqtt_client_publish_admin_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_admin_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->admin.publish.topic, rc);
+void janus_mqtt_client_publish_admin_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to admin topic, return code: %d\n", rc);
 }
 
 int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payload) {
@@ -1206,35 +1527,33 @@ int janus_mqtt_client_publish_status_message(janus_mqtt_context *ctx, char *payl
 }
 
 void janus_mqtt_client_publish_status_success(void *context, MQTTAsync_successData *response) {
-	janus_mqtt_client_publish_status_success_impl(context);
+	janus_mqtt_client_publish_status_success_impl(response->alt.pub.destinationName);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_status_success5(void *context, MQTTAsync_successData5 *response) {
-	janus_mqtt_client_publish_status_success_impl(context);
+	janus_mqtt_client_publish_status_success_impl(response->alt.pub.destinationName);
 }
 #endif
 
-void janus_mqtt_client_publish_status_success_impl(void *context) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to status MQTT topic: %s\n", ctx->status.topic);
+void janus_mqtt_client_publish_status_success_impl(char *topic) {
+	JANUS_LOG(LOG_HUGE, "MQTT client has been successfully published to status MQTT topic: %s\n", topic);
 }
 
 void janus_mqtt_client_publish_status_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = janus_mqtt_client_get_response_code(response);
-	janus_mqtt_client_publish_status_failure_impl(context, rc);
+	janus_mqtt_client_publish_status_failure_impl(rc);
 }
 
 #ifdef MQTTVERSION_5
 void janus_mqtt_client_publish_status_failure5(void *context, MQTTAsync_failureData5 *response) {
 	int rc = janus_mqtt_client_get_response_code5(response);
-	janus_mqtt_client_publish_status_failure_impl(context, rc);
+	janus_mqtt_client_publish_status_failure_impl(rc);
 }
 #endif
 
-void janus_mqtt_client_publish_status_failure_impl(void *context, int rc) {
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to status MQTT topic: %s, return code: %d\n", ctx->status.topic, rc);
+void janus_mqtt_client_publish_status_failure_impl(int rc) {
+	JANUS_LOG(LOG_ERR, "MQTT client has failed publishing to status topic, return code: %d\n", rc);
 }
 
 void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
@@ -1247,6 +1566,9 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		g_free(ctx->connect.password);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
+	#ifdef MQTTVERSION_5
+		g_rw_lock_clear(&janus_mqtt_transaction_states_lock);
+	#endif
 		g_free(ctx);
 		*ptr = NULL;
 	}
@@ -1261,5 +1583,48 @@ int janus_mqtt_client_get_response_code(MQTTAsync_failureData *response) {
 #ifdef MQTTVERSION_5
 int janus_mqtt_client_get_response_code5(MQTTAsync_failureData5 *response) {
 	return response ? response->code : 0;
+}
+#endif
+
+#ifdef MQTTVERSION_5
+static gpointer janus_mqtt_vacuum_thread(gpointer context) {
+	janus_mqtt_context *ctx = (janus_mqtt_context*)context;
+
+	GSource *timeout_source;
+	timeout_source = g_timeout_source_new_seconds(ctx->vacuum_interval);
+	g_source_set_callback(timeout_source, janus_mqtt_vacuum, context, NULL);
+	g_source_attach(timeout_source, vacuum_context);
+	g_source_unref(timeout_source);
+
+	JANUS_LOG(LOG_VERB, "Starting MQTT transport vacuum thread\n");
+	g_main_loop_run(vacuum_loop);
+	JANUS_LOG(LOG_VERB, "MQTT transport vacuum thread finished\n");
+	return NULL;
+}
+
+static gboolean janus_mqtt_vacuum(gpointer context) {
+	janus_mqtt_context *ctx = (janus_mqtt_context*)context;
+	GHashTableIter iter;
+	gpointer value;
+
+	g_rw_lock_writer_lock(&janus_mqtt_transaction_states_lock);
+	g_hash_table_iter_init(&iter, janus_mqtt_transaction_states);
+
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_mqtt_transaction_state* state = value;
+		if(janus_get_monotonic_time() - state->created_at > ctx->vacuum_interval) {
+			g_hash_table_iter_remove(&iter);
+		}
+	}
+
+	g_rw_lock_writer_unlock(&janus_mqtt_transaction_states_lock);
+	return G_SOURCE_CONTINUE;
+}
+
+void janus_mqtt_transaction_state_free(gpointer state_ptr) {
+	janus_mqtt_transaction_state *state = (janus_mqtt_transaction_state*)state_ptr;
+	MQTTProperties_free(state->properties);
+	g_free(state->properties);
+	g_free(state);
 }
 #endif

@@ -20,6 +20,7 @@ general: {
 	#exchange = "janus-exchange"
 	route_key = "janus-events"		# Name of the queue for event messages
 	#exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
+	#heartbeat = 60 				# Defines the seconds without communication that should pass before considering the TCP connection has unreachable.
 
 	#ssl_enable = false				# Whether ssl support must be enabled
 	#ssl_verify_peer = true			# Whether peer verification must be enabled

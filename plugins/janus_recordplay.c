@@ -28,7 +28,7 @@
  * the available recordings that can be replayed.
  *
  * \note The application creates a special file in INI format with
- * \c .nfo extension for each recording that is saved. This is necessary
+ * <tt>.nfo</tt> extension for each recording that is saved. This is necessary
  * to map a specific audio .mjr file to a different video .mjr one, as
  * they always get saved in different files. If you want to replay
  * recordings you took in a different application (e.g., the streaming

@@ -59,10 +59,16 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 			if(a->name) {
 				if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
+					if(a->value == NULL) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid mid attribute (no value)\n", handle->handle_id);
+						janus_sdp_destroy(parsed_sdp);
+						return NULL;
+					}
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->value);
 						if(strlen(a->value) > 16) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Audio mid too large: (%zu > 16)\n", handle->handle_id, strlen(a->value));
+							janus_sdp_destroy(parsed_sdp);
 							return NULL;
 						}
 						if(handle->audio_mid == NULL)
@@ -73,6 +79,7 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->value);
 						if(strlen(a->value) > 16) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Video mid too large: (%zu > 16)\n", handle->handle_id, strlen(a->value));
+							janus_sdp_destroy(parsed_sdp);
 							return NULL;
 						}
 						if(handle->video_mid == NULL)
@@ -114,7 +121,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 	GList *temp = remote_sdp->attributes;
 	while(temp) {
 		janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
-		if(a && a->name) {
+		if(a && a->name && a->value) {
 			if(!strcasecmp(a->name, "fingerprint")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (global) : %s\n", handle->handle_id, a->value);
 				if(strcasestr(a->value, "sha-256 ") == a->value) {
@@ -1192,7 +1199,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"UDP/TLS/RTP/SAVPF";
 	if(!janus_is_webrtc_encryption_enabled())
 		rtp_profile = (char *)"RTP/AVPF";
-	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
+	gboolean ipv4 = !strstr(janus_get_public_ip(0), ":");
 	/* Origin o= */
 	gint64 sessid = janus_get_real_time();
 	if(anon->o_name == NULL)
@@ -1203,7 +1210,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 	}
 	anon->o_ipv4 = ipv4;
 	g_free(anon->o_addr);
-	anon->o_addr = g_strdup(janus_get_public_ip());
+	anon->o_addr = g_strdup(janus_get_public_ip(0));
 	/* Session name s= */
 	if(anon->s_name == NULL)
 		anon->s_name = g_strdup("Meetecho Janus");
@@ -1229,14 +1236,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			if(audio == 1) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->audio_mid ? handle->audio_mid : "audio");
-				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+				g_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			video++;
 			if(video == 1) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->video_mid ? handle->video_mid : "video");
-				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+				g_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
@@ -1245,7 +1252,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			if(data == 1) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->data_mid ? handle->data_mid : "data");
-				g_strlcat(buffer, buffer_part, JANUS_BUFSIZE);
+				g_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 #endif
 		}
@@ -1282,7 +1289,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		/* Media connection c= */
 		g_free(m->c_addr);
 		m->c_ipv4 = ipv4;
-		m->c_addr = g_strdup(janus_get_public_ip());
+		m->c_addr = g_strdup(janus_get_public_ip(0));
 		/* Check if we need to refuse the media or not */
 		if(m->type == JANUS_SDP_AUDIO) {
 			audio++;

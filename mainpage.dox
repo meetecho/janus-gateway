@@ -89,7 +89,7 @@
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
+ * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
@@ -256,7 +256,7 @@ Janus.init({
  * These properties and callbacks are passed to the method as properties
  * of a single parameter object: that is, the \c Janus constructor takes a
  * single parameter, which although acts as a container for all the available
- * options. The \c success callback is where you tipically start your application
+ * options. The \c success callback is where you typically start your application
  * logic, e.g., attaching the peer to a plugin and start a media session.
  *
  * Here's an example:
@@ -309,7 +309,7 @@ var janus = new Janus(
  * - \c isConnected(): returns \c true if the Janus instance is connected
  * to the server, \c false otherwise;
  * - \c getSessionId(): returns the unique Janus session identifier;
- * - \c attach(parameters): attaches the session to a plugin, creating an handle;
+ * - \c attach(parameters): attaches the session to a plugin, creating a handle;
  * more handles to the same or different plugins can be created at the same time;
  * - \c destroy(parameters): destroys the session with the server, and closes
  * all the handles (and related PeerConnections) the session may have with any plugin as well.
@@ -903,7 +903,10 @@ echotest.createOffer({
        // Let's use 'exports-loader' to simulate it uses 'export'.
        {
          test: require.resolve('janus-gateway'),
-         use: 'exports-loader?Janus=Janus'
+         loader: 'exports-loader',
+          options: {
+            exports: 'Janus',
+          },
        }
      ]
    }
@@ -2700,7 +2703,7 @@ python -m SimpleHTTPServer 9000
  *
  * \section deplyws Using Janus with WebSockets
  *
- * Configuring the usae of WebSockets rather than the REST API in the JavaScript
+ * Configuring the use of WebSockets rather than the REST API in the JavaScript
  * library is quite trivial, as it's a matter of passing a \c ws:// address
  * instead of an \c http:// one to the constructor. That said, most of the same
  * considerations provided for the REST API apply here as well, e.g.,
@@ -3696,7 +3699,7 @@ ldd janus | grep asan
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
- * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
+ * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
@@ -3875,7 +3878,9 @@ ldd janus | grep asan
  *    - Presentation on Multistream support in Janus (Unified Plan) at <a href="https://www.youtube.com/watch?v=xbsHYvBjsdY">CommCon 2019</a>;
  *    - Presentation on Janus at <a href="https://www.youtube.com/watch?v=2LHto3iufzU">ClueCon 2019</a>;
  *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
- *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>. \n\n
+ *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>;
+ *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
+ *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.

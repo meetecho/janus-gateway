@@ -66,8 +66,9 @@ void janus_turnrest_response_destroy(janus_turnrest_response *response);
 
 /*! \brief Retrieve address and credentials for one or more TURN servers
  * @note Use janus_turnrest_response_destroy to get rid of the response, once done
+ * @param[in] user Username to provide in the TURN REST API request
  * @returns A valid janus_turnrest_response instance, if successful, NULL otherwise */
-janus_turnrest_response *janus_turnrest_request(void);
+janus_turnrest_response *janus_turnrest_request(const char *user);
 
 #endif
 
