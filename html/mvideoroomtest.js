@@ -60,7 +60,7 @@ var mystream = null;
 var mypvtid = null;
 
 var remoteFeed = null;
-var feeds = {}, feedStreams = {}, subStreams = {}, slots = {}, mids = {};
+var feeds = {}, feedStreams = {}, subStreams = {}, slots = {}, mids = {}, subscriptions = {};
 var localTracks = {}, localVideos = 0, remoteTracks = {};
 var bitrateTimer = [], simulcastStarted = {};
 
@@ -189,7 +189,7 @@ $(document).ready(function() {
 														streams: streams
 													}
 													Janus.debug("  >> [" + id + "] " + display + ":", streams);
-													if(sources === null)
+													if(!sources)
 														sources = [];
 													sources.push(streams);
 												}
@@ -235,7 +235,7 @@ $(document).ready(function() {
 														streams: streams
 													}
 													Janus.debug("  >> [" + id + "] " + display + ":", streams);
-													if(sources === null)
+													if(!sources)
 														sources = [];
 													sources.push(streams);
 												}
@@ -535,11 +535,20 @@ function subscribeTo(sources) {
 						", but Safari doesn't support it: disabling video stream #" + stream.mindex);
 					continue;
 				}
+				if(stream.disabled) {
+					Janus.log("Disabled stream:", stream);
+					// TODO Skipping for now, we should unsubscribe
+					continue;
+				}
+				if(subscriptions[stream.id] && subscriptions[stream.id][stream.mid]) {
+					Janus.log("Already subscribed to stream, skipping:", stream);
+					continue;
+				}
 				// Find an empty slot in the UI for each new source
 				if(!feedStreams[stream.id].slot) {
 					var slot;
 					for(var i=1;i<6;i++) {
-						if(feeds[i] === undefined || feeds[i] === null) {
+						if(!feeds[i]) {
 							slot = i;
 							feeds[slot] = stream.id;
 							feedStreams[stream.id].slot = slot;
@@ -553,7 +562,14 @@ function subscribeTo(sources) {
 					feed: stream.id,	// This is mandatory
 					mid: stream.mid		// This is optional (all streams, if missing)
 				});
+				if(!subscriptions[stream.id])
+					subscriptions[stream.id] = {};
+				subscriptions[stream.id][stream.mid] = true;
 			}
+		}
+		if(subscription.length === 0) {
+			// Nothing to do
+			return;
 		}
 		remoteFeed.send({ message: {
 			request: "subscribe",
@@ -593,11 +609,21 @@ function subscribeTo(sources) {
 								", but Safari doesn't support it: disabling video stream #" + stream.mindex);
 							continue;
 						}
+						if(stream.disabled) {
+							Janus.log("Disabled stream:", stream);
+							// TODO Skipping for now, we should unsubscribe
+							continue;
+						}
+						Janus.log("Subscribed to " + stream.id + "/" + stream.mid + "?", subscriptions);
+						if(subscriptions[stream.id] && subscriptions[stream.id][stream.mid]) {
+							Janus.log("Already subscribed to stream, skipping:", stream);
+							continue;
+						}
 						// Find an empty slot in the UI for each new source
 						if(!feedStreams[stream.id].slot) {
 							var slot;
 							for(var i=1;i<6;i++) {
-								if(feeds[i] === undefined || feeds[i] === null) {
+								if(!feeds[i]) {
 									slot = i;
 									feeds[slot] = stream.id;
 									feedStreams[stream.id].slot = slot;
@@ -611,6 +637,9 @@ function subscribeTo(sources) {
 							feed: stream.id,	// This is mandatory
 							mid: stream.mid		// This is optional (all streams, if missing)
 						});
+						if(!subscriptions[stream.id])
+							subscriptions[stream.id] = {};
+						subscriptions[stream.id][stream.mid] = true;
 					}
 				}
 				// We wait for the plugin to send us an offer
@@ -681,7 +710,7 @@ function subscribeTo(sources) {
 						}
 					}
 				}
-				if(jsep !== undefined && jsep !== null) {
+				if(jsep) {
 					Janus.debug("Handling SDP as well...", jsep);
 					// Answer and attach
 					remoteFeed.createAnswer(
@@ -850,6 +879,7 @@ function unsubscribeFrom(id) {
 	};
 	if(remoteFeed != null)
 		remoteFeed.send({ message: unsubscribe });
+	delete subscriptions[id];
 }
 
 // Helper to parse query string
