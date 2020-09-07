@@ -97,7 +97,7 @@ janus_transport *create(void) {
 
 
 /*! \brief Version of the API, to match the one transport plugins were compiled against */
-#define JANUS_TRANSPORT_API_VERSION		7
+#define JANUS_TRANSPORT_API_VERSION		8
 
 /*! \brief Initialization of all transport plugin properties to NULL
  *
@@ -128,7 +128,8 @@ static janus_transport janus_http_transport_plugin =
 		.send_message = NULL,			\
 		.session_created = NULL,		\
 		.session_over = NULL,			\
-		.session_claimed = NULL,			\
+		.session_claimed = NULL,		\
+		.query_transport = NULL,		\
 		## __VA_ARGS__ }
 
 
@@ -229,6 +230,19 @@ struct janus_transport {
 	 * @param[in] transport Pointer to the new transport session instance that has claimed the session
 	 * @param[in] session_id The session ID that was claimed (if the transport cares) */
 	void (* const session_claimed)(janus_transport_session *transport, guint64 session_id);
+
+	/*! \brief Method to send a management request to this specific transport plugin
+	 * \details The method takes a Jansson json_t, that contains all the info related
+	 * to the request. This object will come from an Admin API request, and is
+	 * meant to represent a synchronous request. Since each transport plugin can have
+	 * its own bells and whistles, there's no constraint on what this object should
+	 * contain, which is entirely handler specific. A json_t object needs to be
+	 * returned as a response, which will be sent in response to the Admin API call.
+	 * This can be useful to tweak settings in real-time, or to probe the internals
+	 * of the transport plugin for monitoring purposes.
+	 * @param[in] request Jansson object containing the request
+	 * @returns A Jansson object containing the response for the client */
+	json_t *(* const query_transport)(json_t *request);
 
 };
 

@@ -2316,6 +2316,13 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * - \c detach_handle: detached a specific handle; this behaves exactly
  * as the \c detach request does in the Janus API.
  *
+ * \subsection adminreqt Transport-related requests
+ * - \c query_transport: send a synchronous request to a transport plugin and
+ * return a response; whether this is implemented, and what functionality is
+ * provided, can vary from transport to transport, but in general this feature
+ * is available to tweak some setting dynamically and/or query some internal
+ * transport-specific information (e.g., the number of served connections).
+ *
  * \subsection adminreqe Event handlers-related requests
  * - \c query_eventhandler: send a synchronous request to an event handler and
  * return a response; implemented by most event handlers to dynamically
