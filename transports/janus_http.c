@@ -250,17 +250,17 @@ static GSource *janus_http_request_timeout_create(janus_transport_session *ts, j
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
-static enum MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the admin/monitor webserver */
-static enum MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /* Callback (libmicrohttpd) invoked when an HTTP message (GET, POST, OPTIONS, etc.) is available */
-static enum MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
+static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when an admin/monitor HTTP message (GET, POST, OPTIONS, etc.) is available */
-static enum MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 	const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /* Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
-static enum MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
+static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /* Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
 static void janus_http_request_completed(void *cls, struct MHD_Connection *connection,
 	void **con_cls, enum MHD_RequestTerminationCode toe);
@@ -1265,7 +1265,7 @@ plugin_response:
 }
 
 /* Connection notifiers */
-static enum MHD_Result janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1284,7 +1284,7 @@ static enum MHD_Result janus_http_client_connect(void *cls, const struct sockadd
 	return MHD_YES;
 }
 
-static enum MHD_Result janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
+static int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	janus_network_address naddr;
 	janus_network_address_string_buffer naddr_buf;
 	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
@@ -1305,7 +1305,7 @@ static enum MHD_Result janus_http_admin_client_connect(void *cls, const struct s
 
 
 /* WebServer requests handler */
-static enum MHD_Result janus_http_handler(void *cls, struct MHD_Connection *connection,
+static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -1693,7 +1693,7 @@ done:
 }
 
 /* Admin/monitor WebServer requests handler */
-static enum MHD_Result janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
+static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection,
 		const char *url, const char *method, const char *version,
 		const char *upload_data, size_t *upload_data_size, void **ptr) {
 	if(!g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping))
@@ -1934,7 +1934,7 @@ done:
 	return ret;
 }
 
-static enum MHD_Result janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
+static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = (janus_http_msg *)cls;
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!request)
