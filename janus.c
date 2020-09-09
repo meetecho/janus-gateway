@@ -1051,7 +1051,10 @@ int janus_process_incoming_request(janus_request *request) {
 			json_object_set_new(transport, "transport", json_string(session->source->transport->get_package()));
 			char id[32];
 			memset(id, 0, sizeof(id));
-			g_snprintf(id, sizeof(id), "%p", session->source->instance);
+			/* To avoid sending a stringified version of the transport pointer
+			 * around, we convert it to a number and hash it instead */
+			uint64_t p = janus_uint64_hash(GPOINTER_TO_UINT(session->source->instance));
+			g_snprintf(id, sizeof(id), "%"SCNu64, p);
 			json_object_set_new(transport, "id", json_string(id));
 			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, JANUS_EVENT_SUBTYPE_NONE,
 				session_id, "created", transport);
