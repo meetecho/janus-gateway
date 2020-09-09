@@ -3307,23 +3307,25 @@ ldd janus | grep asan
  * dump of the RTP packets exactly as they arrived: after a short header
  * that describes the data contained in the recording (i.e., type of
  * media, the codec, when it was created, when the first packet was written),
- * each RTP packet is saved together with info on its length.
+ * each RTP packet is saved together with info on its length. A partial
+ * timestamp of when the packet was received is also stored, as this
+ * allows for more realistic conversions to \c pcap format when needed.
  *
  *\verbatim
 +-----------------------------------------------+
-|               MJR00001 (8 bytes)              |
+|               MJR00002 (8 bytes)              |
 +-----------------------------------------------+
 | LEN (2 bytes) | JSON header (variable length) |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
