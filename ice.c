@@ -2280,7 +2280,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							} else {
 								if(janus_rtp_header_extension_parse_rid(buf, len, pc->rid_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
 									/* Try the RTP stream ID */
-									if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
+									if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer[0] = packet_ssrc;
 										found = TRUE;
@@ -2288,7 +2288,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer[1] = packet_ssrc;
 										found = TRUE;
-									} else if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
+									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer[2] = packet_ssrc;
 										found = TRUE;
@@ -2298,7 +2298,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								} else if(pc->ridrtx_ext_id > 0 &&
 										janus_rtp_header_extension_parse_rid(buf, len, pc->ridrtx_ext_id, sdes_item, sizeof(sdes_item)) == 0) {
 									/* Try the repaired RTP stream ID */
-									if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
+									if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting: rid=%s (rtx)\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer_rtx[0] = packet_ssrc;
 										found = TRUE;
@@ -2306,7 +2306,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #1: rid=%s (rtx)\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer_rtx[1] = packet_ssrc;
 										found = TRUE;
-									} else if(medium->rid[0] != NULL && !strcmp(medium->rid[0], sdes_item)) {
+									} else if(medium->rid[2] != NULL && !strcmp(medium->rid[2], sdes_item)) {
 										JANUS_LOG(LOG_VERB, "[%"SCNu64"]  -- Simulcasting #2: rid=%s (rtx)\n", handle->handle_id, sdes_item);
 										medium->ssrc_peer_rtx[2] = packet_ssrc;
 										found = TRUE;

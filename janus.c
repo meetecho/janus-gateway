@@ -1545,11 +1545,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* If we have rids, pass those, otherwise pass the SSRCs */
 					if(medium->rid[0]) {
 						json_t *rids = json_array();
-						json_array_append_new(rids, json_string(medium->rid[0]));
-						if(medium->rid[1])
-							json_array_append_new(rids, json_string(medium->rid[1]));
 						if(medium->rid[2])
 							json_array_append_new(rids, json_string(medium->rid[2]));
+						if(medium->rid[1])
+							json_array_append_new(rids, json_string(medium->rid[1]));
+						json_array_append_new(rids, json_string(medium->rid[0]));
 						json_object_set_new(msc, "rids", rids);
 						if(medium->pc && medium->pc->rid_ext_id > 0)
 							json_object_set_new(msc, "rid-ext", json_integer(medium->pc->rid_ext_id));
@@ -2975,11 +2975,11 @@ json_t *janus_admin_peerconnection_medium_summary(janus_ice_peerconnection_mediu
 		if(medium->rid[0] && medium->pc->rid_ext_id > 0) {
 			json_t *mr = json_object();
 			json_t *rid = json_array();
-			json_array_append_new(rid, json_string(medium->rid[0]));
-			if(medium->rid[1])
-				json_array_append_new(rid, json_string(medium->rid[1]));
 			if(medium->rid[2])
 				json_array_append_new(rid, json_string(medium->rid[2]));
+			if(medium->rid[1])
+				json_array_append_new(rid, json_string(medium->rid[1]));
+			json_array_append_new(rid, json_string(medium->rid[0]));
 			json_object_set_new(mr, "rid", rid);
 			json_object_set_new(mr, "rid-ext-id", json_integer(medium->pc->rid_ext_id));
 			if(medium->pc->ridrtx_ext_id > 0)

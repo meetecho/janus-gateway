@@ -350,12 +350,12 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
-					if(medium->rid[0] == NULL) {
-						medium->rid[0] = g_strdup(rid);
+					if(medium->rid[2] == NULL) {
+						medium->rid[2] = g_strdup(rid);
 					} else if(medium->rid[1] == NULL) {
 						medium->rid[1] = g_strdup(rid);
-					} else if(medium->rid[2] == NULL) {
-						medium->rid[2] = g_strdup(rid);
+					} else if(medium->rid[0] == NULL) {
+						medium->rid[0] = g_strdup(rid);
 					} else {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
 					}
@@ -365,6 +365,16 @@ int janus_sdp_process_remote(void *ice_handle, janus_sdp *remote_sdp, gboolean u
 				medium->legacy_rid = strstr(a->value, "rid=") ? TRUE : FALSE;
 			}
 			tempA = tempA->next;
+		}
+		/* If rid is involved, check how many of them we have (it may be less than 3) */
+		if(medium->rid[0] == NULL && medium->rid[2] != NULL) {
+			medium->rid[0] = medium->rid[1];
+			medium->rid[1] = medium->rid[2];
+			medium->rid[2] = NULL;
+		}
+		if(medium->rid[0] == NULL && medium->rid[1] != NULL) {
+			medium->rid[0] = medium->rid[1];
+			medium->rid[1] = NULL;
 		}
 		/* Let's start figuring out the SSRCs, and any grouping that may be there */
 		medium->ssrc_peer_new[0] = 0;
@@ -1432,7 +1442,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 			char rids[50];
 			rids[0] = '\0';
 			int i=0;
-			for(i=0; i<3; i++) {
+			for(i=2; i>=0; i--) {
 				if(medium->rid[i] == NULL)
 					continue;
 				a = janus_sdp_attribute_create("rid", "%s recv", medium->rid[i]);
