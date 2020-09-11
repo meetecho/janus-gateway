@@ -1591,8 +1591,9 @@ int janus_process_incoming_request(janus_request *request) {
 						if(medium->rid[1])
 							json_array_append_new(rids, json_string(medium->rid[1]));
 						json_array_append_new(rids, json_string(medium->rid[0]));
-						json_object_set_new(simulcast, "rids", rids);
-						json_object_set_new(simulcast, "rid-ext", json_integer(medium->pc->rid_ext_id));
+						json_object_set_new(msc, "rids", rids);
+						if(medium->pc && medium->pc->rid_ext_id > 0)
+							json_object_set_new(msc, "rid-ext", json_integer(medium->pc->rid_ext_id));
 					} else {
 						json_t *ssrcs = json_array();
 						json_array_append_new(ssrcs, json_integer(medium->ssrc_peer[0]));
