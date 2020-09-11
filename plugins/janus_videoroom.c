@@ -9267,7 +9267,7 @@ static void *janus_videoroom_handler(void *data) {
 									int mindex = json_integer_value(json_object_get(s, "mindex"));
 									if(mindex != ps->mindex)
 										continue;
-									JANUS_LOG(LOG_WARN, "Publisher stream is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
+									JANUS_LOG(LOG_VERB, "Publisher stream is going to do simulcasting (#%d, %s)\n", ps->mindex, ps->mid);
 									ps->simulcast = TRUE;
 									janus_rtp_simulcasting_prepare(s,
 										&ps->rid_extmap_id,
