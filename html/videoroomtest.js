@@ -64,6 +64,7 @@ var bitrateTimer = [];
 
 var doSimulcast = (getQueryStringValue("simulcast") === "yes" || getQueryStringValue("simulcast") === "true");
 var doSimulcast2 = (getQueryStringValue("simulcast2") === "yes" || getQueryStringValue("simulcast2") === "true");
+var subscriber_mode = (getQueryStringValue("subscriber-mode") === "yes" || getQueryStringValue("subscriber-mode") === "true");
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
@@ -162,7 +163,13 @@ $(document).ready(function() {
 											myid = msg["id"];
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											publishOwnFeed(true);
+											if(subscriber_mode) {
+                                                						$('#videojoin').hide();
+                                                						$('#videos').removeClass('hide').show();
+                                            						} else {
+                                                						publishOwnFeed(true);
+											}
+
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
 												var list = msg["publishers"];
@@ -517,7 +524,7 @@ function newRemoteFeed(id, display, audio, video) {
 						Janus.log("Successfully attached to feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
 					} else if(event === "event") {
-						// Check if we got an event on a simulcast-related event from this publisher
+						// Check if we got a simulcast-related event from this publisher
 						var substream = msg["substream"];
 						var temporal = msg["temporal"];
 						if((substream !== null && substream !== undefined) || (temporal !== null && temporal !== undefined)) {

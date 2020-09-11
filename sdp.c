@@ -926,8 +926,8 @@ int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int vid
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	if(!video)
-		return -3;
+	if(!video)	/* We only do rtx for video, return */
+		return 0;
 	if(stream->rid[0] != NULL) {
 		/* Simulcasting is rid-based, don't parse SSRCs for now */
 		return 0;

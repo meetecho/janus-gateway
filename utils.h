@@ -82,6 +82,12 @@ char *janus_random_uuid(void);
  * @returns A pointer to a guint64 number, if successful, NULL otherwise */
 guint64 *janus_uint64_dup(guint64 num);
 
+/*! \brief Helper to hash a guint64 number to another guint64 number
+ * @note We currently only use for event handlers
+ * @param
+ * @returns The hashed number */
+guint64 janus_uint64_hash(guint64 num);
+
 /*! \brief Helper method to convert a string to a uint8_t
  * @note The value of \c num should be ignored, if the method returned an error
  * @param[in] str The string to convert

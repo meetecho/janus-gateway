@@ -1222,21 +1222,21 @@ static int janus_websockets_common_callback(
 				char *response = g_async_queue_try_pop(ws_client->messages);
 				if(response && !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
+					int buflen = LWS_PRE + strlen(response);
 					if (buflen > ws_client->buflen) {
 						/* We need a larger shared buffer */
 						JANUS_LOG(LOG_HUGE, "[%s-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
-					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+					memcpy(ws_client->buffer + LWS_PRE, response, strlen(response));
 					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
-					int sent = lws_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+					int sent = lws_write(wsi, ws_client->buffer + LWS_PRE, strlen(response), LWS_WRITE_TEXT);
 					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%zu bytes\n", log_prefix, wsi, sent, strlen(response));
 					if(sent > -1 && sent < (int)strlen(response)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
 						ws_client->bufpending = strlen(response) - sent;
-						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						ws_client->bufoffset = LWS_PRE + sent;
 						JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
 							log_prefix, wsi, ws_client->bufpending, ws_client->bufoffset);
 					}

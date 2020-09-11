@@ -41,7 +41,7 @@ Janus.isExtensionEnabled = function() {
 		}
 		return Janus.extension.isInstalled();
 	} else {
-		// Firefox of others, no need for the extension (but this doesn't mean it will work)
+		// Firefox and others, no need for the extension (but this doesn't mean it will work)
 		return true;
 	}
 };
