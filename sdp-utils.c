@@ -1218,7 +1218,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	}
 	if(audio_codec == NULL)
 		audio_codec = "opus";
-	const char *audio_rtpmap = janus_sdp_get_codec_rtpmap(audio_codec);
+	const char *audio_rtpmap = do_audio ? janus_sdp_get_codec_rtpmap(audio_codec) : NULL;
 	if(do_audio && audio_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported audio codec '%s', can't prepare an offer\n", audio_codec);
 		va_end(args);
@@ -1234,7 +1234,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 	}
 	if(video_codec == NULL)
 		video_codec = "vp8";
-	const char *video_rtpmap = janus_sdp_get_codec_rtpmap(video_codec);
+	const char *video_rtpmap = do_video ? janus_sdp_get_codec_rtpmap(video_codec) : NULL;
 	if(do_video && video_rtpmap == NULL) {
 		JANUS_LOG(LOG_ERR, "Unsupported video codec '%s', can't prepare an offer\n", video_codec);
 		va_end(args);
