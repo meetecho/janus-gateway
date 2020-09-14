@@ -4983,47 +4983,21 @@ static gboolean janus_ice_send_or_store(janus_ice_handle *handle,
 			handle->handle_id, sent, component->pending_messages_num);
 		int i=0;
 		for(i=0; i<component->pending_messages_num; i++) {
-			if(sent == component->pending_messages_num) {
-				/* Easy enough, reset the message */
-				if(component->pending_messages[i].buffers != NULL) {
-					component->pending_messages[i].buffers->buffer = NULL;
-					component->pending_messages[i].buffers->size = 0;
-				}
+			if (i < sent) {
+				/* We sent these packets, free them */
 				pkt = (janus_ice_queued_packet *)component->pending_messages_data[i];
 				if(pkt != NULL) {
 					janus_refcount_decrease(&pkt->ref);
 				}
-				component->pending_messages_data[i] = NULL;
 			} else {
 				/* We didn't send all messages, shift the arrays */
-				if(i < sent) {
-					/* We sent this packet, free it */
-					pkt = (janus_ice_queued_packet *)component->pending_messages_data[i];
-					if(pkt != NULL) {
-						janus_refcount_decrease(&pkt->ref);
-					}
-					component->pending_messages_data[i] = NULL;
-				}
-				if((i+sent) < component->pending_messages_num) {
-					/* Move this element */
-					if(component->pending_messages[i].buffers != NULL) {
-						component->pending_messages[i].buffers->buffer =
-							(component->pending_messages[i+sent].buffers ? component->pending_messages[i+sent].buffers->buffer : NULL);
-						component->pending_messages[i].buffers->size =
-							(component->pending_messages[i+sent].buffers ? component->pending_messages[i+sent].buffers->size : 0);
-					}
-					component->pending_messages_data[i] = component->pending_messages_data[i+sent];
-				} else {
-					/* Reset this element */
-					if(component->pending_messages[i].buffers != NULL) {
-						component->pending_messages[i].buffers->buffer = NULL;
-						component->pending_messages[i].buffers->size = 0;
-					}
-					component->pending_messages_data[i] = NULL;
-				}
+				component->pending_messages[i-sent].buffers->buffer = component->pending_messages[i].buffers->buffer;
+				component->pending_messages[i-sent].buffers->size = component->pending_messages[i].buffers->size;
+				component->pending_messages_data[i-sent] = component->pending_messages_data[i];
 			}
 		}
 		component->pending_messages_num -= sent;
+
 	}
 	return sent > 0;
 }
