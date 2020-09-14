@@ -3477,6 +3477,12 @@ ldd janus | grep asan
  * 		<td>Javascript (node and browser side) API for Janus WebRTC server</td>
  * </tr>
  * <tr>
+ * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/uwejan">uwejan</a></td>
+ * 		<td><a href="https://github.com/uwejan/janus-api-mqtt">janus-api-mqtt</a></td>
+ * 		<td>Javascript (node and browser side) API for Janus WebRTC Gateway, Using MQTT</td>
+ * </tr>
+ * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
