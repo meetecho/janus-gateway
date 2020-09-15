@@ -1612,7 +1612,8 @@ static gboolean janus_mqtt_vacuum(gpointer context) {
 
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_mqtt_transaction_state* state = value;
-		if(janus_get_monotonic_time() - state->created_at > ctx->vacuum_interval) {
+		gint64 diff = (janus_get_monotonic_time() - state->created_at) / G_USEC_PER_SEC;
+		if(diff > ctx->vacuum_interval) {
 			g_hash_table_iter_remove(&iter);
 		}
 	}

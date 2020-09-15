@@ -616,6 +616,7 @@ int main(int argc, char *argv[])
 	gboolean started = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
+  uint16_t rtp_header_len;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -663,6 +664,10 @@ int main(int argc, char *argv[])
 			/* Things are simpler for data, no reordering is needed: start by the data time */
 			gint64 when = 0;
 			bytes = fread(&when, sizeof(gint64), 1, file);
+			if(bytes < (int)sizeof(gint64)) {
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				break;
+			}
 			when = ntohll(when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
@@ -693,7 +698,12 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), len > 24 ? 24: len, file);
+		rtp_header_len = len > 24 ? 24 : len;
+		bytes = fread(prebuffer, sizeof(char), rtp_header_len, file);
+		if(bytes < rtp_header_len) {
+			JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", bytes, rtp_header_len);
+			break;
+		}
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
