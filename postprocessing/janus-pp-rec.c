@@ -126,8 +126,6 @@ static janus_pp_frame_packet *list = NULL, *last = NULL;
 static char *metadata = NULL;
 static int working = 0;
 
-#define DEFAULT_POST_RESET_TRIGGER	200
-static int post_reset_trigger = DEFAULT_POST_RESET_TRIGGER;
 static int ignore_first_packets = 0;
 
 #define SKEW_DETECTION_WAIT_TIME_SECS 10
@@ -260,8 +258,6 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 		if(metadata)
 			JANUS_LOG(LOG_INFO, "Metadata: %s\n", metadata);
-		if(post_reset_trigger != DEFAULT_POST_RESET_TRIGGER)
-			JANUS_LOG(LOG_INFO, "Post reset trigger: %d\n", post_reset_trigger);
 		if(audioskew_th != DEFAULT_AUDIO_SKEW_TH)
 			JANUS_LOG(LOG_INFO, "Audio skew threshold: %d\n", audioskew_th);
 		if(ignore_first_packets > 0)
