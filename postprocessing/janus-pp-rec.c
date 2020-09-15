@@ -616,7 +616,7 @@ int main(int argc, char *argv[])
 	gboolean started = FALSE;
 	/* Extensions, if any */
 	int audiolevel = 0, rotation = 0, last_rotation = -1, rotated = -1;
-  uint16_t rtp_header_len;
+	uint16_t rtp_header_len;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
