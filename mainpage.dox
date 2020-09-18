@@ -3606,6 +3606,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Docker image for the Janus WebRTC Server</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/bartbalaz">Bartosz Balazinski</a></td>
+ * 		<td><a href="https://github.com/bartbalaz/janus-container">janus-container</a></td>
+ *		<td>Janus container</td>
+ * </tr>
  * </table>
  * <br/>
  *
