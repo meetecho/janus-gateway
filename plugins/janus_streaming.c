@@ -992,6 +992,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 	janus_rtp_header *data;
 	gint length;
 	gboolean is_rtp;	/* This may be a data packet and not RTP */
+	gboolean is_data;
 	gboolean is_video;
 	gboolean is_keyframe;
 	gboolean simulcast;
@@ -7999,6 +8000,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					packet.data = (janus_rtp_header *)data;
 					packet.length = bytes;
 					packet.is_rtp = FALSE;
+					packet.is_data = TRUE;
 					packet.textdata = source->textdata;
 					/* Is there a recorder? */
 					janus_recorder_save_frame(source->drc, data, bytes);
@@ -8010,6 +8012,8 @@ static void *janus_streaming_relay_thread(void *data) {
 							pkt->data = g_malloc(bytes);
 							memcpy(pkt->data, data, bytes);
 							packet.is_rtp = FALSE;
+							packet.is_data = TRUE;
+							packet.textdata = source->textdata;
 							pkt->length = bytes;
 							janus_mutex_unlock(&source->buffermsg_mutex);
 						}
@@ -8451,6 +8455,8 @@ static void janus_streaming_helper_rtprtcp_packet(gpointer data, gpointer user_d
 	memcpy(copy->data, packet->data, packet->length);
 	copy->length = packet->length;
 	copy->is_rtp = packet->is_rtp;
+	copy->is_data = packet->is_data;
+	copy->textdata = packet->textdata;
 	copy->is_video = packet->is_video;
 	copy->is_keyframe = packet->is_keyframe;
 	copy->simulcast = packet->simulcast;
@@ -8475,7 +8481,7 @@ static void *janus_streaming_helper_thread(void *data) {
 			break;
 		janus_mutex_lock(&helper->mutex);
 		g_list_foreach(helper->viewers,
-			pkt->is_rtp ? janus_streaming_relay_rtp_packet : janus_streaming_relay_rtcp_packet,
+			pkt->is_rtp || pkt->is_data ? janus_streaming_relay_rtp_packet : janus_streaming_relay_rtcp_packet,
 			pkt);
 		janus_mutex_unlock(&helper->mutex);
 		janus_streaming_rtp_relay_packet_free(pkt);
