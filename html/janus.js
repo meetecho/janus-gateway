@@ -1545,6 +1545,10 @@ function Janus(gatewayCallbacks) {
 			// TODO
 		};
 		if(!incoming) {
+			if(!config.pc) {
+				Janus.warn("Invalid PeerConnection");
+				return true;
+			}
 			// FIXME Add options (ordered, maxRetransmits, etc.)
 			var dcoptions = { ordered: true };
 			if(dcprotocol)
