@@ -3544,6 +3544,12 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>OS</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
+ * 		<td><a href="https://github.com/meetecho/janus-mobile-sdk">janus-mobile-sdk</a></td>
+ *		<td>Janus Client SDK</td>
+ * </tr>
+ * <tr>
  * 		<td>Android</td>
  * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
  * 		<td><a href="https://github.com/Computician/janus-gateway-android">janus-gateway-android</a></td>
