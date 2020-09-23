@@ -3686,6 +3686,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	if(pc == NULL)
 		return G_SOURCE_CONTINUE;
 	/* Iterate on all media */
+	handle->last_event_stats++;
 	janus_ice_peerconnection_medium *medium = NULL;
 	uint mi=0;
 	for(mi=0; mi<g_hash_table_size(pc->media); mi++) {
@@ -3718,9 +3719,7 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			}
 		}
 		/* We also send live stats to event handlers every tot-seconds (configurable) */
-		handle->last_event_stats++;
 		if(janus_ice_event_stats_period > 0 && handle->last_event_stats >= janus_ice_event_stats_period) {
-			handle->last_event_stats = 0;
 			if(janus_events_is_enabled()) {
 				int vindex=0;
 				for(vindex=0; vindex<3; vindex++) {
@@ -3761,6 +3760,9 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 			}
 		}
 	}
+	/* Reset stats event counter */
+	if(handle->last_event_stats >= janus_ice_event_stats_period)
+		handle->last_event_stats = 0;
 	/* Should we clean up old NACK buffers for any of the streams? */
 	janus_cleanup_nack_buffer(now, handle->pc, TRUE, TRUE);
 	/* Check if we should also print a summary of SRTP-related errors */
