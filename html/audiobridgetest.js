@@ -55,6 +55,8 @@ var opaqueId = "audiobridgetest-"+Janus.randomString(12);
 var spinner = null;
 
 var myroom = 1234;	// Demo room
+if(getQueryStringValue("room") !== "")
+	myroom = parseInt(getQueryStringValue("room"));
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
@@ -370,4 +372,12 @@ function registerUsername() {
 		myusername = username;
 		mixertest.send({ message: register});
 	}
+}
+
+// Helper to parse query string
+function getQueryStringValue(name) {
+	name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+	var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+		results = regex.exec(location.search);
+	return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 }
