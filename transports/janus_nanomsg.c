@@ -144,7 +144,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 		/* Handle configuration */
 		janus_config_print(config);
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
-        janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
 
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
