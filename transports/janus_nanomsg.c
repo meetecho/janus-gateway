@@ -144,6 +144,7 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 		/* Handle configuration */
 		janus_config_print(config);
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
 
 		janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "json");
 		if(item && item->value) {
@@ -225,13 +226,13 @@ int janus_nanomsg_init(janus_transport_callbacks *callback, const char *config_p
 			}
 		}
 		/* Do the same for the Admin API, if enabled */
-		item = janus_config_get(config, config_general, janus_config_type_item, "admin_enabled");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Nanomsg server disabled (Admin API)\n");
 		} else {
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_address");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_address");
 			const char *address = item && item->value ? item->value : NULL;
-			item = janus_config_get(config, config_general, janus_config_type_item, "admin_mode");
+			item = janus_config_get(config, config_admin, janus_config_type_item, "admin_mode");
 			const char *mode = item && item->value ? item->value : NULL;
 			if(mode == NULL)
 				mode = "bind";
