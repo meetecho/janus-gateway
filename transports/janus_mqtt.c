@@ -121,6 +121,8 @@ typedef struct janus_mqtt_context {
 	} connect;
 	struct {
 		int timeout;
+		janus_mutex mutex;
+		janus_condition cond;
 	} disconnect;
 	/* If we loose connection, the will is our last publish */
 	struct {
@@ -541,6 +543,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_ERR, "Invalid disconnect-timeout value: %s (falling back to default)\n", disconnect_timeout_item->value);
 		ctx->disconnect.timeout = 100;
 	}
+	janus_mutex_init(&ctx->disconnect.mutex);
+	janus_condition_init(&ctx->disconnect.cond);
 
 	/* Admin configuration */
 	janus_config_item *admin_enabled_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
@@ -1224,7 +1228,16 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 
 	options.context = ctx;
 	options.timeout = ctx->disconnect.timeout;
-	return MQTTAsync_disconnect(ctx->client, &options);
+	int rc = MQTTAsync_disconnect(ctx->client, &options);
+	if (rc == MQTTASYNC_SUCCESS) {
+		janus_mutex_lock(&ctx->disconnect.mutex);
+		/* Block the thread awaiting asynchronous graceful disconnect to finish. */
+		gint64 deadline = janus_get_monotonic_time() + ctx->disconnect.timeout * G_TIME_SPAN_MILLISECOND;
+		janus_condition_wait_until(&ctx->disconnect.cond, &ctx->disconnect.mutex, deadline);
+		janus_mutex_unlock(&ctx->disconnect.mutex);
+		janus_mqtt_client_destroy_context(&ctx);
+	}
+	return rc;
 }
 
 void janus_mqtt_client_disconnect_success(void *context, MQTTAsync_successData *response) {
@@ -1240,7 +1253,9 @@ void janus_mqtt_client_disconnect_success5(void *context, MQTTAsync_successData5
 void janus_mqtt_client_disconnect_success_impl(void *context) {
 	JANUS_LOG(LOG_INFO, "MQTT client has been successfully disconnected.\n");
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	janus_mqtt_client_destroy_context(&ctx);
+	janus_mutex_lock(&ctx->disconnect.mutex);
+	janus_condition_signal(&ctx->disconnect.cond);
+	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 
 void janus_mqtt_client_disconnect_failure(void *context, MQTTAsync_failureData *response) {
@@ -1257,9 +1272,10 @@ void janus_mqtt_client_disconnect_failure5(void *context, MQTTAsync_failureData5
 
 void janus_mqtt_client_disconnect_failure_impl(void *context, int rc) {
 	JANUS_LOG(LOG_ERR, "Can't disconnect from MQTT broker, return code: %d\n", rc);
-
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	janus_mqtt_client_destroy_context(&ctx);
+	janus_mutex_lock(&ctx->disconnect.mutex);
+	g_cond_signal(&ctx->disconnect.cond);
+	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 
 int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
@@ -1564,6 +1580,8 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		g_free(ctx->publish.topic);
 		g_free(ctx->connect.username);
 		g_free(ctx->connect.password);
+		janus_mutex_destroy(&ctx->disconnect.mutex);
+		janus_condition_destroy(&ctx->disconnect.cond);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
 	#ifdef MQTTVERSION_5
