@@ -1514,6 +1514,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
+		if(!config.pc) {
+			Janus.warn("Invalid PeerConnection");
+			return;
+		}
 		var onDataChannelMessage = function(event) {
 			Janus.log('Received message on data channel:', event);
 			var label = event.target.label;
@@ -1545,10 +1549,6 @@ function Janus(gatewayCallbacks) {
 			// TODO
 		};
 		if(!incoming) {
-			if(!config.pc) {
-				Janus.warn("Invalid PeerConnection");
-				return true;
-			}
 			// FIXME Add options (ordered, maxRetransmits, etc.)
 			var dcoptions = { ordered: true };
 			if(dcprotocol)
