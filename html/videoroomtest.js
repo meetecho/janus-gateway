@@ -53,7 +53,7 @@ var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
 
 //BB - Using string type video room identifidation (instead of default numeric type)
-var myroom = 1234;	// Demo room
+var myroom = "1234";	// Demo room
 if(getQueryStringValue("room") !== "")
 	myroom = getQueryStringValue("room");
 var myusername = null;
