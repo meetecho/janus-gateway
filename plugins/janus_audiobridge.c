@@ -6635,6 +6635,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							rtph = (janus_rtp_header *)rtpulaw;
 						}
 						rtph->version = 2;
+						length = 160;
 					}
 					/* Update header */
 					rtph->type = forwarder->payload_type;
@@ -6645,7 +6646,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 					rtph->timestamp = htonl(forwarder->timestamp);
 					/* Check if this packet needs to be encrypted */
 					char *payload = (char *)rtph;
-					int plen = (JANUS_AUDIOCODEC_OPUS ? (length+12) : 172);
+					int plen = length+12;
 					if(forwarder->is_srtp) {
 						memcpy(sbuf, payload, plen);
 						int protected = plen;
