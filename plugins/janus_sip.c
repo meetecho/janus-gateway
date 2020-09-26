@@ -3101,6 +3101,7 @@ static void *janus_sip_handler(void *data) {
 			nua_handle_t *nh = NULL;
 			if(session->stack->subscriptions != NULL)
 				nh = g_hash_table_lookup(session->stack->subscriptions, (char *)event_type);
+			janus_mutex_unlock(&session->stack->smutex);
 			if(nh == NULL) {
 				/* We don't, create one now */
 				if(!session->helper) {
@@ -3139,7 +3140,6 @@ static void *janus_sip_handler(void *data) {
 				}
 				g_hash_table_insert(session->stack->subscriptions, g_strdup(event_type), nh);
 			}
-			janus_mutex_unlock(&session->stack->smutex);
 			/* Send the SUBSCRIBE */
 			nua_subscribe(nh,
 				SIPTAG_TO_STR(to),
