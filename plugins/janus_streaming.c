@@ -8368,6 +8368,13 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &session->context);
+				if(!relay) {
+					/* Did a lot of time pass before we could relay a packet? */
+					gint64 now = janus_get_monotonic_time();
+					if((now - session->sim_context.last_relayed) >= G_USEC_PER_SEC) {
+						g_atomic_int_set(&session->sim_context.need_pli, 1);
+					}
+				}
 				if(session->sim_context.need_pli) {
 					/* Schedule a PLI */
 					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");
