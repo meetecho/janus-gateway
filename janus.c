@@ -104,6 +104,7 @@ static struct janus_json_parameter jsep_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
+	{"rid_order", JSON_STRING, 0},
 	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter add_token_parameters[] = {
@@ -1310,6 +1311,21 @@ int janus_process_incoming_request(janus_request *request) {
 			type = NULL;
 			json_t *jsep_trickle = json_object_get(jsep, "trickle");
 			gboolean do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
+			json_t *jsep_rids = json_object_get(jsep, "rid_order");
+			gboolean rids_hml = TRUE;
+			if(jsep_rids != NULL) {
+				const char *jsep_rids_value = json_string_value(jsep_rids);
+				if(jsep_rids_value != NULL) {
+					if(!strcasecmp(jsep_rids_value, "hml")) {
+						rids_hml = TRUE;
+					} else if(!strcasecmp(jsep_rids_value, "lmh")) {
+						rids_hml = FALSE;
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Invalid 'rid_order' value, falling back to 'hml'\n", handle->handle_id);
+					}
+				}
+				json_object_del(jsep, "rid_order");
+			}
 			json_t *jsep_e2ee = json_object_get(jsep, "e2ee");
 			gboolean e2ee = jsep_e2ee ? json_is_true(jsep_e2ee) : FALSE;
 			/* Are we still cleaning up from a previous media session? */
@@ -1416,7 +1432,7 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				if(janus_sdp_process(handle, parsed_sdp, FALSE) < 0) {
+				if(janus_sdp_process(handle, parsed_sdp, rids_hml, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
@@ -1454,7 +1470,7 @@ int janus_process_incoming_request(janus_request *request) {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
 				 * direction and ICE restarts: anything more complex than that will result in an error */
 				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
-				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
+				if(janus_sdp_process(handle, parsed_sdp, rids_hml, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
@@ -2877,6 +2893,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
 		if(stream->ridrtx_ext_id > 0)
 			json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
+		json_object_set_new(sr, "rid-order", json_string(stream->rids_hml ? "hml" : "lmh"));
 		if(stream->legacy_rid)
 			json_object_set_new(sr, "rid-syntax", json_string("legacy"));
 		json_object_set_new(s, "rid-simulcast", sr);

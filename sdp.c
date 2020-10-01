@@ -104,7 +104,7 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 }
 
 /* Parse SDP */
-int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) {
+int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean rids_hml, gboolean update) {
 	if(!ice_handle || !remote_sdp)
 		return -1;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
@@ -418,6 +418,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 		}
 		/* Is simulcasting enabled, using rid? (we need to check this before parsing SSRCs) */
 		tempA = m->attributes;
+		stream->rids_hml = rids_hml;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name && !strcasecmp(a->name, "rid") && a->value) {
@@ -427,12 +428,12 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp, gboolean update) 
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
 				} else {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
-					if(stream->rid[0] == NULL) {
-						stream->rid[0] = g_strdup(rid);
+					if(stream->rid[rids_hml ? 0 : 2] == NULL) {
+						stream->rid[rids_hml ? 0 : 2] = g_strdup(rid);
 					} else if(stream->rid[1] == NULL) {
 						stream->rid[1] = g_strdup(rid);
-					} else if(stream->rid[2] == NULL) {
-						stream->rid[2] = g_strdup(rid);
+					} else if(stream->rid[rids_hml ? 2 : 0] == NULL) {
+						stream->rid[rids_hml ? 2 : 0] = g_strdup(rid);
 					} else {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
 					}
@@ -1494,17 +1495,18 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		if(m->type == JANUS_SDP_VIDEO && stream->rid[0] != NULL) {
 			char rids[50];
 			rids[0] = '\0';
-			int i=0;
+			int i=0, index=0;
 			for(i=0; i<3; i++) {
-				if(stream->rid[i] == NULL)
+				index = (stream->rids_hml ? i : (2-i));
+				if(stream->rid[index] == NULL)
 					continue;
-				a = janus_sdp_attribute_create("rid", "%s recv", stream->rid[i]);
+				a = janus_sdp_attribute_create("rid", "%s recv", stream->rid[index]);
 				m->attributes = g_list_append(m->attributes, a);
 				if(strlen(rids) == 0) {
-					g_strlcat(rids, stream->rid[i], sizeof(rids));
+					g_strlcat(rids, stream->rid[index], sizeof(rids));
 				} else {
 					g_strlcat(rids, ";", sizeof(rids));
-					g_strlcat(rids, stream->rid[i], sizeof(rids));
+					g_strlcat(rids, stream->rid[index], sizeof(rids));
 				}
 			}
 			if(stream->legacy_rid) {
