@@ -148,29 +148,36 @@ static gboolean janus_sctp_timer(gpointer user_data) {
 	usrsctp_handle_timers(elapsed);
 	return TRUE;
 }
-int janus_sctp_init(void) {
-	/* Create a loop that we'll use for SCTP timers */
-	sctp_mainctx = g_main_context_new();
-	sctp_mainloop = g_main_loop_new(sctp_mainctx, FALSE);
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "sctp timers");
-	sctp_thread = g_thread_try_new(tname, &janus_sctp_thread, NULL, &error);
-	if(error != NULL) {
-		g_main_loop_unref(sctp_mainloop);
-		g_main_context_unref(sctp_mainctx);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the SCTP timer thread...\n",
-			error->code, error->message ? error->message : "??");
-		g_error_free(error);
-		return -1;
+int janus_sctp_init(gboolean single_thread) {
+	JANUS_LOG(LOG_INFO, "Using %s for the usrsctp stack\n",
+		single_thread ? "a single thread" : "multiple treads");
+	if(!single_thread) {
+		/* Initialize the SCTP stack */
+		usrsctp_init(0, janus_sctp_data_to_dtls, NULL);
+	} else {
+		/* Create a loop that we'll use for SCTP timers */
+		sctp_mainctx = g_main_context_new();
+		sctp_mainloop = g_main_loop_new(sctp_mainctx, FALSE);
+		GError *error = NULL;
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "sctp timers");
+		sctp_thread = g_thread_try_new(tname, &janus_sctp_thread, NULL, &error);
+		if(error != NULL) {
+			g_main_loop_unref(sctp_mainloop);
+			g_main_context_unref(sctp_mainctx);
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the SCTP timer thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
+			return -1;
+		}
+		/* Initialize the SCTP stack */
+		usrsctp_init_nothreads(0, janus_sctp_data_to_dtls, NULL);
+		/* Add a timer source (every 10ms) */
+		sctp_timer = g_timeout_source_new(10);
+		g_source_set_callback(sctp_timer, janus_sctp_timer, sctp_mainctx, NULL);
+		g_source_attach(sctp_timer, sctp_mainctx);
+		g_source_unref(sctp_timer);
 	}
-	/* Initialize the SCTP stack */
-	usrsctp_init_nothreads(0, janus_sctp_data_to_dtls, NULL);
-	/* Add a timer source (every 10ms) */
-	sctp_timer = g_timeout_source_new(10);
-	g_source_set_callback(sctp_timer, janus_sctp_timer, sctp_mainctx, NULL);
-	g_source_attach(sctp_timer, sctp_mainctx);
-	g_source_unref(sctp_timer);
 	sctp_running = TRUE;
 
 #ifdef DEBUG_SCTP
@@ -195,7 +202,8 @@ void janus_sctp_deinit(void) {
 	janus_mutex_unlock(&sctp_mutex);
 	if(sctp_mainloop != NULL && g_main_loop_is_running(sctp_mainloop))
 		g_main_loop_quit(sctp_mainloop);
-	g_thread_join(sctp_thread);
+	if(sctp_thread != NULL)
+		g_thread_join(sctp_thread);
 }
 
 static void janus_sctp_association_unref(janus_sctp_association *sctp) {

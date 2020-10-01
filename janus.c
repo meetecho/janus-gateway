@@ -4846,7 +4846,9 @@ gint main(int argc, char *argv[])
 
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
-	if(janus_sctp_init() < 0) {
+	item = janus_config_get(config, config_general, janus_config_type_item, "usrsctp_singlethread");
+	gboolean st = (item && item->value && janus_is_true(item->value));
+	if(janus_sctp_init(st) < 0) {
 		exit(1);
 	}
 #else

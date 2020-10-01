@@ -105,6 +105,9 @@ general: {
 									# As such, if you want to use this you should
 									# provision the correct value according to the
 									# available resources (e.g., CPUs available).
+	#usrsctp_singlethread = true	# You can also choose whether to use a single thread
+									# for the usrsctp stack, or use their internal
+									# threads instead (default=multiple threads).
 	#opaqueid_in_api = true			# Opaque IDs set by applications are typically
 									# only passed to event handlers for correlation
 									# purposes, but not sent back to the user or
@@ -205,6 +208,7 @@ media: {
 	#slowlink_threshold = 4
 	#twcc_period = 100
 	#dtls_timeout = 500
+	#usrsctp_single_thread = true
 
 	# If you need DSCP packet marking and prioritization, you can configure
 	# the 'dscp' property to a specific values, and Janus will try to

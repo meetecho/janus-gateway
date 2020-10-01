@@ -49,7 +49,7 @@
 
 /*! \brief SCTP stuff initialization
  * \returns 0 on success, a negative integer otherwise */
-int janus_sctp_init(void);
+int janus_sctp_init(gboolean single_thread);
 
 /*! \brief SCTP stuff de-initialization */
 void janus_sctp_deinit(void);
