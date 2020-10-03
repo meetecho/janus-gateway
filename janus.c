@@ -4553,7 +4553,6 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
 #endif
-	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
 		ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
@@ -4707,32 +4706,37 @@ gint main(int argc, char *argv[])
 	}
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
-		gboolean private_address = FALSE;
-		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
-		janus_network_address addr;
-		if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
-			JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
-		} else {
-			if(addr.family == AF_INET) {
-				unsigned short int ip[4];
-				sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
-				if(ip[0] == 10) {
-					/* Class A private address */
-					private_address = TRUE;
-				} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
-					/* Class B private address */
-					private_address = TRUE;
-				} else if(ip[0] == 192 && ip[1] == 168) {
-					/* Class C private address */
-					private_address = TRUE;
-				}
+		int num_ips = janus_get_public_ip_count();
+		if(num_ips == 0) num_ips++;	/* if nat_1_1_mapping is off, the first (and only) public IP is the local_ip */
+		/* check each public IP */
+		for (int i = 0; i < num_ips; i++) {
+			gboolean private_address = FALSE;
+			const gchar* test_ip = janus_get_public_ip(i);
+			janus_network_address addr;
+			if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
+				JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
 			} else {
-				/* TODO Similar check for IPv6... */
+				if(addr.family == AF_INET) {
+					unsigned short int ip[4];
+					sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+					if(ip[0] == 10) {
+						/* Class A private address */
+						private_address = TRUE;
+					} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+						/* Class B private address */
+						private_address = TRUE;
+					} else if(ip[0] == 192 && ip[1] == 168) {
+						/* Class C private address */
+						private_address = TRUE;
+					}
+				} else {
+					/* TODO Similar check for IPv6... */
+				}
 			}
-		}
-		if(private_address) {
-			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server!"
+			if(private_address) {
+				JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server!"
 			                    " Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", test_ip);
+			}
 		}
 	}
 
