@@ -4712,7 +4712,7 @@ gint main(int argc, char *argv[])
 			num_ips++;
 		}
 		/* Check each public IP */
-		int i=0;
+		int i = 0;
 		for(i = 0; i < num_ips; i++) {
 			gboolean private_address = FALSE;
 			const gchar *test_ip = janus_get_public_ip(i);
