@@ -45,12 +45,12 @@
 
 
 /* Transport plugin information */
-#define JANUS_REST_VERSION			2
-#define JANUS_REST_VERSION_STRING	"0.0.2"
-#define JANUS_REST_DESCRIPTION		"This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd."
-#define JANUS_REST_NAME				"JANUS REST (HTTP/HTTPS) transport plugin"
-#define JANUS_REST_AUTHOR			"Meetecho s.r.l."
-#define JANUS_REST_PACKAGE			"janus.transport.http"
+#define JANUS_HTTP_VERSION			2
+#define JANUS_HTTP_VERSION_STRING	"0.0.2"
+#define JANUS_HTTP_DESCRIPTION		"This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd."
+#define JANUS_HTTP_NAME				"JANUS REST (HTTP/HTTPS) transport plugin"
+#define JANUS_HTTP_AUTHOR			"Meetecho s.r.l."
+#define JANUS_HTTP_PACKAGE			"janus.transport.http"
 
 /* Transport methods */
 janus_transport *create(void);
@@ -69,6 +69,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 void janus_http_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_http_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_http_session_claimed(janus_transport_session *transport, guint64 session_id);
+json_t *janus_http_query_transport(json_t *request);
 
 
 /* Transport setup */
@@ -92,11 +93,13 @@ static janus_transport janus_http_transport =
 		.session_created = janus_http_session_created,
 		.session_over = janus_http_session_over,
 		.session_claimed = janus_http_session_claimed,
+
+		.query_transport = janus_http_query_transport,
 	);
 
 /* Transport creator */
 janus_transport *create(void) {
-	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_REST_NAME);
+	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_HTTP_NAME);
 	return &janus_http_transport;
 }
 
@@ -110,6 +113,20 @@ static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
+/* Parameter validation (for tweaking and queries via Admin API) */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"events", JANUS_JSON_BOOL, 0},
+	{"json", JSON_STRING, 0},
+};
+/* Error codes (for the tweaking and queries via Admin API) */
+#define JANUS_HTTP_ERROR_INVALID_REQUEST		411
+#define JANUS_HTTP_ERROR_MISSING_ELEMENT		412
+#define JANUS_HTTP_ERROR_INVALID_ELEMENT		413
+#define JANUS_HTTP_ERROR_UNKNOWN_ERROR			499
 
 
 /* Incoming HTTP message */
@@ -565,7 +582,7 @@ static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response
 /* Static callback that we register to */
 static void janus_http_mhd_panic(void *cls, const char *file, unsigned int line, const char *reason) {
 	JANUS_LOG(LOG_WARN, "[%s]: Error in GNU libmicrohttpd %s:%u: %s\n",
-		JANUS_REST_PACKAGE, file, line, reason);
+		JANUS_HTTP_PACKAGE, file, line, reason);
 }
 
 /* Transport implementation */
@@ -599,12 +616,12 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Read configuration */
 	char filename[255];
-	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_REST_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_HTTP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config == NULL) {
-		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_REST_PACKAGE);
-		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_REST_PACKAGE);
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_HTTP_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_HTTP_PACKAGE);
 		JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 		config = janus_config_parse(filename);
 	}
@@ -639,7 +656,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(events != NULL && events->value != NULL)
 			notify_events = janus_is_true(events->value);
 		if(!notify_events && callback->events_is_enabled()) {
-			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_REST_NAME);
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_HTTP_NAME);
 		}
 
 		/* Check the base paths */
@@ -868,7 +885,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Done */
 	g_atomic_int_set(&initialized, 1);
-	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_REST_NAME);
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_HTTP_NAME);
 	return 0;
 }
 
@@ -926,7 +943,7 @@ void janus_http_destroy(void) {
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
-	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_REST_NAME);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_HTTP_NAME);
 }
 
 int janus_http_get_api_compatibility(void) {
@@ -935,27 +952,27 @@ int janus_http_get_api_compatibility(void) {
 }
 
 int janus_http_get_version(void) {
-	return JANUS_REST_VERSION;
+	return JANUS_HTTP_VERSION;
 }
 
 const char *janus_http_get_version_string(void) {
-	return JANUS_REST_VERSION_STRING;
+	return JANUS_HTTP_VERSION_STRING;
 }
 
 const char *janus_http_get_description(void) {
-	return JANUS_REST_DESCRIPTION;
+	return JANUS_HTTP_DESCRIPTION;
 }
 
 const char *janus_http_get_name(void) {
-	return JANUS_REST_NAME;
+	return JANUS_HTTP_NAME;
 }
 
 const char *janus_http_get_author(void) {
-	return JANUS_REST_AUTHOR;
+	return JANUS_HTTP_AUTHOR;
 }
 
 const char *janus_http_get_package(void) {
-	return JANUS_REST_PACKAGE;
+	return JANUS_HTTP_PACKAGE;
 }
 
 gboolean janus_http_is_janus_api_enabled(void) {
@@ -1134,6 +1151,117 @@ void janus_http_session_claimed(janus_transport_session *transport, guint64 sess
 	}
 	janus_mutex_unlock(&old_session->mutex);
 	janus_refcount_decrease(&old_session->ref);
+}
+
+json_t *janus_http_query_transport(json_t *request) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}
+	/* We can use this request to dynamically change the behaviour of
+	 * the transport plugin, and/or query for some specific information */
+	json_t *response = json_object();
+	int error_code = 0;
+	char error_cause[512];
+	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_HTTP_ERROR_MISSING_ELEMENT, JANUS_HTTP_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	/* Get the request */
+	const char *request_text = json_string_value(json_object_get(request, "request"));
+	if(!strcasecmp(request_text, "configure")) {
+		/* We only allow for the configuration of some basic properties:
+		 * changing more complex things (e.g., port to bind to, etc.)
+		 * would likely require restarting backends, so just too much */
+		JANUS_VALIDATE_JSON_OBJECT(request, configure_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_HTTP_ERROR_MISSING_ELEMENT, JANUS_HTTP_ERROR_INVALID_ELEMENT);
+		/* Check if we now need to send events to handlers */
+		json_object_set_new(response, "result", json_integer(200));
+		json_t *notes = NULL;
+		gboolean events = json_is_true(json_object_get(request, "events"));
+		if(events && !gateway->events_is_enabled()) {
+			/* Notify that this will be ignored */
+			notes = json_array();
+			json_array_append_new(notes, json_string("Event handlers disabled at the core level"));
+			json_object_set_new(response, "notes", notes);
+		}
+		if(events != notify_events) {
+			notify_events = events;
+			if(!notify_events && gateway->events_is_enabled()) {
+				JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_HTTP_NAME);
+			}
+		}
+		const char *indentation = json_string_value(json_object_get(request, "json"));
+		if(indentation != NULL) {
+			if(!strcasecmp(indentation, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', ignoring tweak\n", indentation);
+				/* Notify that this will be ignored */
+				if(notes == NULL) {
+					notes = json_array();
+					json_object_set_new(response, "notes", notes);
+				}
+				json_array_append_new(notes, json_string("Ignored unsupported indentation format"));
+			}
+		}
+	} else if(!strcasecmp(request_text, "connections")) {
+		/* Return the number of active connections currently handled by the plugin */
+		json_object_set_new(response, "result", json_integer(200));
+		json_t *connections = json_object();
+		json_object_set_new(response, "connections", connections);
+		if(ws != NULL) {
+			const union MHD_DaemonInfo *info = MHD_get_daemon_info(ws,
+				MHD_DAEMON_INFO_CURRENT_CONNECTIONS, NULL);
+			if(info != NULL)
+				json_object_set_new(connections, "http", json_integer(info->num_connections));
+		}
+		if(sws != NULL) {
+			const union MHD_DaemonInfo *info = MHD_get_daemon_info(sws,
+				MHD_DAEMON_INFO_CURRENT_CONNECTIONS, NULL);
+			if(info != NULL)
+				json_object_set_new(connections, "https", json_integer(info->num_connections));
+		}
+		if(admin_ws != NULL) {
+			const union MHD_DaemonInfo *info = MHD_get_daemon_info(admin_ws,
+				MHD_DAEMON_INFO_CURRENT_CONNECTIONS, NULL);
+			if(info != NULL)
+				json_object_set_new(connections, "admin_http", json_integer(info->num_connections));
+		}
+		if(admin_sws != NULL) {
+			const union MHD_DaemonInfo *info = MHD_get_daemon_info(admin_sws,
+				MHD_DAEMON_INFO_CURRENT_CONNECTIONS, NULL);
+			if(info != NULL)
+				json_object_set_new(connections, "admin_https", json_integer(info->num_connections));
+		}
+		/* Also add the global number of messages we're serving */
+		janus_mutex_lock(&messages_mutex);
+		guint count = g_hash_table_size(messages);
+		janus_mutex_unlock(&messages_mutex);
+		json_object_set_new(response, "messages", json_integer(count));
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_HTTP_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+plugin_response:
+		{
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
 }
 
 /* Connection notifiers */

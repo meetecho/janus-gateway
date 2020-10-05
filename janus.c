@@ -144,6 +144,10 @@ static struct janus_json_parameter st_parameters[] = {
 static struct janus_json_parameter ans_parameters[] = {
 	{"accept", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter querytransport_parameters[] = {
+	{"transport", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request", JSON_OBJECT, 0}
+};
 static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"request", JSON_OBJECT, 0}
@@ -2192,6 +2196,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			json_t *query = json_object_get(root, "request");
 			json_t *response = p->handle_admin_message(query);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "response", response ? response : json_object());
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "query_transport")) {
+			/* Contact a transport and expect a response */
+			JANUS_VALIDATE_JSON_OBJECT(root, querytransport_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *transport = json_object_get(root, "transport");
+			const char *transport_value = json_string_value(transport);
+			janus_transport *t = g_hash_table_lookup(transports, transport_value);
+			if(t == NULL) {
+				/* No such transport... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Invalid transport");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, error_cause);
+				goto jsondone;
+			}
+			if(t->query_transport == NULL) {
+				/* Transport doesn't implement the hook... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Transport plugin doesn't support queries");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, error_cause);
+				goto jsondone;
+			}
+			json_t *query = json_object_get(root, "request");
+			json_t *response = t->query_transport(query);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));

@@ -16,6 +16,7 @@ var session = null;		// Selected session
 var handle = null;		// Selected handle
 
 var plugins = [], pluginsIndex = [];
+var transports = [], transportsIndex = [];
 var settings = {};
 
 var currentHandle = null;
@@ -81,6 +82,8 @@ function randomString(len) {
 function updateServerInfo() {
 	plugins = [];
 	pluginsIndex = [];
+	transports = [];
+	transportsIndex = [];
 	$.ajax({
 		type: 'GET',
 		url: server + "/info",
@@ -176,6 +179,7 @@ function updateServerInfo() {
 				'</tr>'
 			);
 			for(var t in transportsJson) {
+				transports.push(t);
 				var v = transportsJson[t];
 				$('#server-transports').append(
 					'<tr>' +
@@ -184,6 +188,19 @@ function updateServerInfo() {
 					'	<td>' + v.description + '</td>' +
 					'	<td>' + v.version_string + '</td>' +
 					'</tr>');
+				transportsIndex.push(t);
+				$('#transports-list').append(
+					'<a id="transport-'+(transportsIndex.length-1)+'" href="#" class="list-group-item">'+t+'</a>'
+				);
+				$('#transport-'+(transportsIndex.length-1)).click(function(event) {
+					event.preventDefault();
+					var ti = parseInt($(this).attr('id').split('transport-')[1]);
+					var transport = transportsIndex[ti];
+					console.log("Selected transport:", transport);
+					$('#transports-list a').removeClass('active');
+					$('#transport-'+ti).addClass('active');
+					resetTransportRequest();
+				});
 			}
 			$('#server-handlers').html(
 				'<tr>' +
@@ -673,6 +690,129 @@ function sendPluginMessage(plugin, message) {
 				}
 			}
 			$('#plugin-response').text(JSON.stringify(json, null, 4));
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown) {
+			console.log(textStatus + ": " + errorThrown);	// FIXME
+			if(!prompting && !alerted) {
+				alerted = true;
+				bootbox.alert("Couldn't contact the backend: is Janus down, or is the Admin/Monitor interface disabled?", function() {
+					promptAccessDetails();
+					alerted = false;
+				});
+			}
+		},
+		dataType: "json"
+	});
+}
+
+// Transports
+function resetTransportRequest() {
+	$('#transport-request').empty().append(
+		'<tr style="background: #f9f9f9;">' +
+		'	<th width="25%">Name</th>' +
+		'	<th width="25%">Value</th>' +
+		'	<th width="25%">Type</th>' +
+		'	<th></th>' +
+		'</tr>' +
+		'<tr>' +
+		'	<td><i id="addattr" class="fa fa-plus-circle" style="cursor: pointer;"></i></td>' +
+		'	<td></td>' +
+		'	<td></td>' +
+		'	<td><button id="sendmsg" type="button" class="btn btn-xs btn-success pull-right">Send message</button></td>' +
+		'</tr>');
+	$('#addattr').click(addTransportMessageAttribute).click();
+	$('#sendmsg').click(function() {
+		var message = {};
+		var num = $('.pm-property').length;
+		for(var i=0; i<num; i++) {
+			var name = $('#attrname'+i).val();
+			if(name === '') {
+				bootbox.alert("Missing name in attribute #" + (i+1));
+				return;
+			}
+			if(message[name] !== null && message[name] !== undefined) {
+				bootbox.alert("Duplicate attribute '" + name + "'");
+				return;
+			}
+			var value = $('#attrvalue'+i).val();
+			if(value === '') {
+				bootbox.alert("Missing value in attribute #" + (i+1));
+				return;
+			}
+			var type = $('#attrtype'+i).val();
+			if(type === "number") {
+				value = parseInt(value);
+				if(isNaN(value)) {
+					bootbox.alert("Invalid value in attribute #" + (i+1) + " (expecting a number)");
+					return;
+				}
+			} else if(type === "boolean") {
+				if(value.toLowerCase() === "true") {
+					value = true;
+				} else if(value.toLowerCase() === "false") {
+					value = false;
+				} else {
+					bootbox.alert("Invalid value in attribute #" + (i+1) + " (expecting a boolean)");
+					return;
+				}
+			}
+			console.log("Type:", type);
+			message[name] = value;
+		}
+		sendTransportMessage($('#transports-list .active').text(), message);
+	});
+	$('#transport-message').removeClass('hide');
+}
+
+function addTransportMessageAttribute() {
+	var num = $('.pm-property').length;
+	$('#addattr').parent().parent().before(
+		'<tr>' +
+		'	<td><input type="text" id="attrname' + num + '" placeholder="Attribute name" onkeypress="return checkEnter(this, event);" style="width: 100%;" class="pm-property form-control input-sm"></td>' +
+		'	<td><input type="text" id="attrvalue' + num + '" placeholder="Attribute value" onkeypress="return checkEnter(this, event);" style="width: 100%;" class="form-control input-sm"></td>' +
+		'	<td>' +
+		'		<select id="attrtype' + num + '" class="form-control input-sm">' +
+		'			<option>string</option>' +
+		'			<option>number</option>' +
+		'			<option>boolean</option>' +
+		'		</select>' +
+		'	</td>' +
+		'	<td></td>' +
+		'</tr>'
+	);
+}
+
+function sendTransportMessage(transport, message) {
+	console.log("Sending message to " + transport + ":", message);
+	var request = {
+		janus: "query_transport",
+		transaction: randomString(12),
+		admin_secret: secret,
+		transport: transport,
+		request: message
+	};
+	$.ajax({
+		type: 'POST',
+		url: server,
+		cache: false,
+		contentType: "application/json",
+		data: JSON.stringify(request),
+		success: function(json) {
+			if(json["janus"] !== "success") {
+				console.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+				var authenticate = (json["error"].code === 403);
+				if(!authenticate || (authenticate && !prompting && !alerted)) {
+					if(authenticate)
+						alerted = true;
+					bootbox.alert(json["error"].reason, function() {
+						if(authenticate) {
+							promptAccessDetails();
+							alerted = false;
+						}
+					});
+				}
+			}
+			$('#transport-response').text(JSON.stringify(json, null, 4));
 		},
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
