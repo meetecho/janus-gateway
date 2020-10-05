@@ -4707,11 +4707,15 @@ gint main(int argc, char *argv[])
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		int num_ips = janus_get_public_ip_count();
-		if(num_ips == 0) num_ips++;	/* if nat_1_1_mapping is off, the first (and only) public IP is the local_ip */
-		/* check each public IP */
-		for (int i = 0; i < num_ips; i++) {
+		if(num_ips == 0) {
+			/* If nat_1_1_mapping is off, the first (and only) public IP is the local_ip */
+			num_ips++;
+		}
+		/* Check each public IP */
+		int i=0;
+		for(i = 0; i < num_ips; i++) {
 			gboolean private_address = FALSE;
-			const gchar* test_ip = janus_get_public_ip(i);
+			const gchar *test_ip = janus_get_public_ip(i);
 			janus_network_address addr;
 			if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
 				JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
