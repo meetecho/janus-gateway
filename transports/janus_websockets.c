@@ -1126,10 +1126,12 @@ json_t *janus_websockets_query_transport(json_t *request) {
 	} else if(!strcasecmp(request_text, "connections")) {
 		/* Return the number of active connections currently handled by the plugin */
 		json_object_set_new(response, "result", json_integer(200));
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
 		janus_mutex_lock(&writable_mutex);
 		guint connections = g_hash_table_size(clients);
 		janus_mutex_unlock(&writable_mutex);
 		json_object_set_new(response, "connections", json_integer(connections));
+#endif
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_WEBSOCKETS_ERROR_INVALID_REQUEST;
