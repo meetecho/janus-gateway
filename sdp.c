@@ -1510,9 +1510,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 				}
 			}
 			if(stream->legacy_rid) {
-				a = janus_sdp_attribute_create("simulcast", " recv rid=%s", rids);
+				a = janus_sdp_attribute_create("simulcast", "recv rid=%s", rids);
 			} else {
-				a = janus_sdp_attribute_create("simulcast", " recv %s", rids);
+				a = janus_sdp_attribute_create("simulcast", "recv %s", rids);
 			}
 			m->attributes = g_list_append(m->attributes, a);
 		}
