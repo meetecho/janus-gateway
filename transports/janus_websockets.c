@@ -1278,6 +1278,10 @@ static int janus_websockets_common_callback(
 			}
 			if(g_atomic_int_get(&ws_client->destroyed))
 				return 0;
+#if (LWS_LIBRARY_VERSION_MAJOR >= 4)
+			/* Refresh the lws connection validity (avoid sending a ping) */
+			lws_validity_confirmed(ws_client->wsi);
+#endif
 			/* Is this a new message, or part of a fragmented one? */
 			const size_t remaining = lws_remaining_packet_payload(wsi);
 			if(ws_client->incoming == NULL) {
