@@ -3104,7 +3104,6 @@ static void *janus_sip_handler(void *data) {
 			if(nh == NULL) {
 				/* We don't, create one now */
 				if(!session->helper) {
-					janus_mutex_lock(&session->stack->smutex);
 					if(session->stack->s_nua == NULL) {
 						janus_mutex_unlock(&session->stack->smutex);
 						JANUS_LOG(LOG_ERR, "NUA destroyed while subscribing?\n");
@@ -3113,7 +3112,6 @@ static void *janus_sip_handler(void *data) {
 						goto error;
 					}
 					nh = nua_handle(session->stack->s_nua, session, TAG_END());
-					janus_mutex_unlock(&session->stack->smutex);
 				} else {
 					/* This is a helper, we need to use the master's SIP stack */
 					if(session->master == NULL || session->master->stack == NULL) {
