@@ -135,6 +135,13 @@ guint64 *janus_uint64_dup(guint64 num) {
 	return numdup;
 }
 
+guint64 janus_uint64_hash(guint64 num) {
+	num = (num ^ (num >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+	num = (num ^ (num >> 27)) * UINT64_C(0x94d049bb133111eb);
+	num = num ^ (num >> 31);
+	return num;
+}
+
 int janus_string_to_uint8(const char *str, uint8_t *num) {
 	if(str == NULL || num == NULL)
 		return -EINVAL;

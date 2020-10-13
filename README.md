@@ -19,7 +19,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [libconfig](https://hyperrealm.github.io/libconfig/)
 * [libnice](https://libnice.freedesktop.org/) (at least v0.1.16 suggested, master recommended)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
-* [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
+* [libsrtp](https://github.com/cisco/libsrtp) (at least v2.x suggested)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you are interested in Data Channels)
 * [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (at least v0.9.59; only needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (only needed if you are interested in WebSockets support for the Janus API)
@@ -73,15 +73,7 @@ To build libnice, you need Python 3, Meson and Ninja:
 
 In case you're interested in compiling the sample Event Handler plugin, you'll need to install the development version of libcurl as well (usually `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
 
-If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that version and [install 1.5.x, 1.6.x or 2.x manually](https://github.com/cisco/libsrtp/releases). In fact, 1.4.x is known to cause several issues with WebRTC. Installation of version 1.5.4 is quite straightforward:
-
-	wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
-	tar xfv v1.5.4.tar.gz
-	cd libsrtp-1.5.4
-	./configure --prefix=/usr --enable-openssl
-	make shared_library && sudo make install
-
-The instructions for version 2.x are practically the same. Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
+If your distro ships a pre-1.5 version of libsrtp, you'll have to uninstall that version and [install 1.5.x, 1.6.x or 2.x manually](https://github.com/cisco/libsrtp/releases). In fact, 1.4.x is known to cause several issues with WebRTC. While 1.5.x is supported, we recommend installing 2.x instead Notice that the following steps are for version 2.2.0, but there may be more recent versions available:
 
 	wget https://github.com/cisco/libsrtp/archive/v2.2.0.tar.gz
 	tar xfv v2.2.0.tar.gz
@@ -121,7 +113,8 @@ For what concerns usrsctp, which is needed for Data Channels support, it is usua
 	git clone https://github.com/sctplab/usrsctp
 	cd usrsctp
 	./bootstrap
-	./configure --prefix=/usr && make && sudo make install
+	./configure --prefix=/usr --disable-programs --disable-inet --disable-inet6
+	make && sudo make install
 
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure script if you're installing on a x86_64 distribution.
 

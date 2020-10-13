@@ -632,6 +632,7 @@ int main(int argc, char *argv[])
 	times_resetted = 0;
 	post_reset_pkts = 0;
 	uint64_t max32 = UINT32_MAX;
+	uint16_t rtp_header_len;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -679,6 +680,10 @@ int main(int argc, char *argv[])
 			/* Things are simpler for data, no reordering is needed: start by the data time */
 			gint64 when = 0;
 			bytes = fread(&when, sizeof(gint64), 1, file);
+			if(bytes < (int)sizeof(gint64)) {
+				JANUS_LOG(LOG_WARN, "Missing data timestamp header");
+				break;
+			}
 			when = ntohll(when);
 			offset += sizeof(gint64);
 			len -= sizeof(gint64);
@@ -709,7 +714,12 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		/* Only read RTP header */
-		bytes = fread(prebuffer, sizeof(char), len > 24 ? 24: len, file);
+		rtp_header_len = len > 24 ? 24: len;
+		bytes = fread(prebuffer, sizeof(char), rtp_header_len, file);
+		if(bytes < rtp_header_len) {
+			JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", bytes, rtp_header_len);
+			break;
+		}
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
@@ -1159,18 +1169,18 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 				uint8_t extid = 0, idlen;
 				int i = 0;
 				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
+					extid = (uint8_t)buf[hlen+i] >> 4;
 					if(extid == reserved) {
 						break;
 					} else if(extid == padding) {
 						i++;
 						continue;
 					}
-					idlen = (buf[hlen+i] & 0xF)+1;
+					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
 					if(extid == id) {
 						/* Found! */
 						if(byte)
-							*byte = buf[hlen+i+1];
+							*byte = (uint8_t)buf[hlen+i+1];
 						if(word)
 							*word = ntohl(*(uint32_t *)(buf+hlen+i));
 						if(ref)

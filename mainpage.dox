@@ -91,7 +91,7 @@
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
+ * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
@@ -2316,6 +2316,13 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * - \c detach_handle: detached a specific handle; this behaves exactly
  * as the \c detach request does in the Janus API.
  *
+ * \subsection adminreqt Transport-related requests
+ * - \c query_transport: send a synchronous request to a transport plugin and
+ * return a response; whether this is implemented, and what functionality is
+ * provided, can vary from transport to transport, but in general this feature
+ * is available to tweak some setting dynamically and/or query some internal
+ * transport-specific information (e.g., the number of served connections).
+ *
  * \subsection adminreqe Event handlers-related requests
  * - \c query_eventhandler: send a synchronous request to an event handler and
  * return a response; implemented by most event handlers to dynamically
@@ -3307,23 +3314,25 @@ ldd janus | grep asan
  * dump of the RTP packets exactly as they arrived: after a short header
  * that describes the data contained in the recording (i.e., type of
  * media, the codec, when it was created, when the first packet was written),
- * each RTP packet is saved together with info on its length.
+ * each RTP packet is saved together with info on its length. A partial
+ * timestamp of when the packet was received is also stored, as this
+ * allows for more realistic conversions to \c pcap format when needed.
  *
  *\verbatim
 +-----------------------------------------------+
-|               MJR00001 (8 bytes)              |
+|               MJR00002 (8 bytes)              |
 +-----------------------------------------------+
 | LEN (2 bytes) | JSON header (variable length) |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
-|               MEETECHO (8 bytes)              |
+|    MEET (4 bytes)     |  Recvd Time (4 bytes) |
 +-----------------------------------------------+
 | LEN (2 bytes) | RTP packet (variable length)  |
 +-----------------------------------------------+
@@ -3475,6 +3484,12 @@ ldd janus | grep asan
  * 		<td>Javascript (node and browser side) API for Janus WebRTC server</td>
  * </tr>
  * <tr>
+ * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/uwejan">Saddam Uwejan</a></td>
+ * 		<td><a href="https://github.com/uwejan/janus-api-mqtt">janus-api-mqtt</a></td>
+ * 		<td>Javascript (node and browser side) API for Janus WebRTC Gateway, Using MQTT</td>
+ * </tr>
+ * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
@@ -3535,6 +3550,12 @@ ldd janus | grep asan
  *
  * <table class="table table-striped">
  * <tr><th>OS</th><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
+ * 		<td><a href="https://github.com/meetecho/janus-mobile-sdk">janus-mobile-sdk</a></td>
+ *		<td>Janus Client SDK</td>
+ * </tr>
  * <tr>
  * 		<td>Android</td>
  * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
@@ -3597,6 +3618,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
  * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Docker image for the Janus WebRTC Server</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/bartbalaz">Bartosz Balazinski</a></td>
+ * 		<td><a href="https://github.com/bartbalaz/janus-container">janus-container</a></td>
+ *		<td>Janus container</td>
  * </tr>
  * </table>
  * <br/>
@@ -3701,7 +3727,7 @@ ldd janus | grep asan
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
+ * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
@@ -3880,7 +3906,8 @@ ldd janus | grep asan
  *    - Presentation on Simulcast and SVC at <a href="https://www.youtube.com/watch?v=6COV44AORlo">IIT RTC 2019</a>;
  *    - Presentation on RTP forwarders at <a href="https://fosdem.org/2020/schedule/event/janus/">FOSDEM 2020</a>;
  *    - Presentation on using Janus for Virtual Events at <a href="https://www.youtube.com/watch?v=oSZw90guaUw">CommCon 2020</a>;
- *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>. \n\n
+ *    - Workshop on Janus (lesson/tutorial) at <a href="https://www.youtube.com/watch?v=Ga_7lukslxw">ClueCon 2020</a>;
+ *    - Presentation on E2EE (end-to-end encryption) and Insertable Streams at <a href="https://youtu.be/SmN8-6ZFuOo?t=2004">ClueCon 2020</a>. \n\n
  *    Apart from these presentations, make sure you also check the slides
  *    and presentations from <a href="https://januscon.it/2019">JanusCon</a>,
  *    the Janus conference we hosted here in Napoli.

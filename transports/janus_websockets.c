@@ -66,6 +66,7 @@ int janus_websockets_send_message(janus_transport_session *transport, void *requ
 void janus_websockets_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_websockets_session_claimed(janus_transport_session *transport, guint64 session_id);
+json_t *janus_websockets_query_transport(json_t *request);
 
 
 /* Transport setup */
@@ -89,6 +90,8 @@ static janus_transport janus_websockets_transport =
 		.session_created = janus_websockets_session_created,
 		.session_over = janus_websockets_session_over,
 		.session_claimed = janus_websockets_session_claimed,
+
+		.query_transport = janus_websockets_query_transport,
 	);
 
 /* Transport creator */
@@ -113,6 +116,21 @@ static janus_mutex writable_mutex;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
+/* Parameter validation (for tweaking and queries via Admin API) */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"events", JANUS_JSON_BOOL, 0},
+	{"json", JSON_STRING, 0},
+	{"logging", JSON_STRING, 0},
+};
+/* Error codes (for the tweaking and queries via Admin API) */
+#define JANUS_WEBSOCKETS_ERROR_INVALID_REQUEST		411
+#define JANUS_WEBSOCKETS_ERROR_MISSING_ELEMENT		412
+#define JANUS_WEBSOCKETS_ERROR_INVALID_ELEMENT		413
+#define JANUS_WEBSOCKETS_ERROR_UNKNOWN_ERROR		499
 
 
 /* Logging */
@@ -165,9 +183,9 @@ typedef struct janus_websockets_client {
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
 	char *incoming;							/* Buffer containing the incoming message to process (in case there are fragments) */
 	unsigned char *buffer;					/* Buffer containing the message to send */
-	int buflen;								/* Length of the buffer (may be resized after re-allocations) */
-	int bufpending;							/* Data an interrupted previous write couldn't send */
-	int bufoffset;							/* Offset from where the interrupted previous write should resume */
+	size_t buflen;								/* Length of the buffer (may be resized after re-allocations) */
+	size_t bufpending;							/* Data an interrupted previous write couldn't send */
+	size_t bufoffset;							/* Offset from where the interrupted previous write should resume */
 	volatile gint destroyed;				/* Whether this libwebsockets client instance has been closed */
 	janus_transport_session *ts;			/* Janus core-transport session */
 } janus_websockets_client;
@@ -997,6 +1015,140 @@ void janus_websockets_session_claimed(janus_transport_session *transport, guint6
 	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
 }
 
+json_t *janus_websockets_query_transport(json_t *request) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}
+	/* We can use this request to dynamically change the behaviour of
+	 * the transport plugin, and/or query for some specific information */
+	json_t *response = json_object();
+	int error_code = 0;
+	char error_cause[512];
+	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_WEBSOCKETS_ERROR_MISSING_ELEMENT, JANUS_WEBSOCKETS_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	/* Get the request */
+	const char *request_text = json_string_value(json_object_get(request, "request"));
+	if(!strcasecmp(request_text, "configure")) {
+		/* We only allow for the configuration of some basic properties:
+		 * changing more complex things (e.g., port to bind to, etc.)
+		 * would likely require restarting backends, so just too much */
+		JANUS_VALIDATE_JSON_OBJECT(request, configure_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_WEBSOCKETS_ERROR_MISSING_ELEMENT, JANUS_WEBSOCKETS_ERROR_INVALID_ELEMENT);
+		/* Check if we now need to send events to handlers */
+		json_object_set_new(response, "result", json_integer(200));
+		json_t *notes = NULL;
+		gboolean events = json_is_true(json_object_get(request, "events"));
+		if(events && !gateway->events_is_enabled()) {
+			/* Notify that this will be ignored */
+			notes = json_array();
+			json_array_append_new(notes, json_string("Event handlers disabled at the core level"));
+			json_object_set_new(response, "notes", notes);
+		}
+		if(events != notify_events) {
+			notify_events = events;
+			if(!notify_events && gateway->events_is_enabled()) {
+				JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_WEBSOCKETS_NAME);
+			}
+		}
+		const char *indentation = json_string_value(json_object_get(request, "json"));
+		if(indentation != NULL) {
+			if(!strcasecmp(indentation, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', ignoring tweak\n", indentation);
+				/* Notify that this will be ignored */
+				if(notes == NULL) {
+					notes = json_array();
+					json_object_set_new(response, "notes", notes);
+				}
+				json_array_append_new(notes, json_string("Ignored unsupported indentation format"));
+			}
+		}
+		const char *logging = json_string_value(json_object_get(request, "logging"));
+		if(logging != NULL) {
+			/* libwebsockets uses a mask to set log levels, as documented here:
+			 * https://libwebsockets.org/lws-api-doc-master/html/group__log.html */
+			if(strstr(logging, "none")) {
+				/* Disable libwebsockets logging completely (the default) */
+			} else if(strstr(logging, "all")) {
+				/* Enable all libwebsockets logging */
+				ws_log_level = LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO |
+					LLL_DEBUG | LLL_PARSER | LLL_HEADER | LLL_EXT |
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+					LLL_CLIENT | LLL_LATENCY | LLL_USER | LLL_COUNT;
+#else
+					LLL_CLIENT | LLL_LATENCY | LLL_COUNT;
+#endif
+			} else {
+				/* Only enable some of the properties */
+				ws_log_level = 0;
+				if(strstr(logging, "err"))
+					ws_log_level |= LLL_ERR;
+				if(strstr(logging, "warn"))
+					ws_log_level |= LLL_WARN;
+				if(strstr(logging, "notice"))
+					ws_log_level |= LLL_NOTICE;
+				if(strstr(logging, "info"))
+					ws_log_level |= LLL_INFO;
+				if(strstr(logging, "debug"))
+					ws_log_level |= LLL_DEBUG;
+				if(strstr(logging, "parser"))
+					ws_log_level |= LLL_PARSER;
+				if(strstr(logging, "header"))
+					ws_log_level |= LLL_HEADER;
+				if(strstr(logging, "ext"))
+					ws_log_level |= LLL_EXT;
+				if(strstr(logging, "client"))
+					ws_log_level |= LLL_CLIENT;
+				if(strstr(logging, "latency"))
+					ws_log_level |= LLL_LATENCY;
+#if (LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 3)
+				if(strstr(logging, "user"))
+					ws_log_level |= LLL_USER;
+#endif
+				if(strstr(logging, "count"))
+					ws_log_level |= LLL_COUNT;
+			}
+			JANUS_LOG(LOG_INFO, "libwebsockets logging: %d\n", ws_log_level);
+			lws_set_log_level(ws_log_level, janus_websockets_log_emit_function);
+		}
+	} else if(!strcasecmp(request_text, "connections")) {
+		/* Return the number of active connections currently handled by the plugin */
+		json_object_set_new(response, "result", json_integer(200));
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3)
+		janus_mutex_lock(&writable_mutex);
+		guint connections = g_hash_table_size(clients);
+		janus_mutex_unlock(&writable_mutex);
+		json_object_set_new(response, "connections", json_integer(connections));
+#endif
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_WEBSOCKETS_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+plugin_response:
+		{
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
+}
+
 
 /* Thread */
 void *janus_websockets_thread(void *data) {
@@ -1056,6 +1208,9 @@ static int janus_websockets_callback_https(
 	/* We just forward the event to the HTTP handler */
 	return janus_websockets_callback_http(wsi, reason, user, in, len);
 }
+
+/* Use ~ 2xMTU as chunk size */
+#define MESSAGE_CHUNK_SIZE 2800
 
 /* This callback handles Janus API requests */
 static int janus_websockets_common_callback(
@@ -1184,7 +1339,7 @@ static int janus_websockets_common_callback(
 				/* Check if Websockets send pipe is choked */
 				if(lws_send_pipe_choked(wsi)) {
 					if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0) {
-						JANUS_LOG(LOG_WARN, "Websockets choked with buffer: %d, trying again\n", ws_client->bufpending);
+						JANUS_LOG(LOG_WARN, "Websockets choked with buffer: %zu, trying again\n", ws_client->bufpending);
 						lws_callback_on_writable(wsi);
 					} else {
 						gint qlen = g_async_queue_length(ws_client->messages);
@@ -1198,56 +1353,70 @@ static int janus_websockets_common_callback(
 				}
 
 				/* Check if we have a pending/partial write to complete first */
-				if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0
-						&& !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
-					JANUS_LOG(LOG_HUGE, "[%s-%p] Completing pending WebSocket write (still need to write last %d bytes)...\n",
+				if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0) {
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Completing pending WebSocket write (still need to write last %zu bytes)...\n",
 						log_prefix, wsi, ws_client->bufpending);
-					int sent = lws_write(wsi, ws_client->buffer + ws_client->bufoffset, ws_client->bufpending, LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%d bytes\n", log_prefix, wsi, sent, ws_client->bufpending);
-					if(sent > -1 && sent < ws_client->bufpending) {
-						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
-						ws_client->bufpending -= sent;
-						ws_client->bufoffset += sent;
-					} else {
-						/* Clear the pending/partial write queue */
-						ws_client->bufpending = 0;
-						ws_client->bufoffset = 0;
+				} else {
+					/* Shoot all the pending messages */
+					char *response = g_async_queue_try_pop(ws_client->messages);
+					if (!response) {
+						/* No messages found */
+						janus_mutex_unlock(&ws_client->ts->mutex);
+						return 0;
 					}
-					/* Done for this round, check the next response/notification later */
-					lws_callback_on_writable(wsi);
-					janus_mutex_unlock(&ws_client->ts->mutex);
-					return 0;
-				}
-				/* Shoot all the pending messages */
-				char *response = g_async_queue_try_pop(ws_client->messages);
-				if(response && !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
+					if (g_atomic_int_get(&ws_client->destroyed) || g_atomic_int_get(&stopping)) {
+						free(response);
+						janus_mutex_unlock(&ws_client->ts->mutex);
+						return 0;
+					}
 					/* Gotcha! */
-					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
+					size_t buflen = LWS_PRE + strlen(response);
 					if (buflen > ws_client->buflen) {
 						/* We need a larger shared buffer */
-						JANUS_LOG(LOG_HUGE, "[%s-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
+						JANUS_LOG(LOG_HUGE, "[%s-%p] Re-allocating to %zu bytes (was %zu, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
-					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
-					int sent = lws_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%zu bytes\n", log_prefix, wsi, sent, strlen(response));
-					if(sent > -1 && sent < (int)strlen(response)) {
-						/* We couldn't send everything in a single write, we'll complete this in the next round */
-						ws_client->bufpending = strlen(response) - sent;
-						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
-						JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
-							log_prefix, wsi, ws_client->bufpending, ws_client->bufoffset);
-					}
+					memcpy(ws_client->buffer + LWS_PRE, response, strlen(response));
+					/* Initialize pending bytes count and buffer offset */
+					ws_client->bufpending = strlen(response);
+					ws_client->bufoffset = LWS_PRE;
 					/* We can get rid of the message */
 					free(response);
-					/* Done for this round, check the next response/notification later */
-					lws_callback_on_writable(wsi);
+				}
+
+				if (g_atomic_int_get(&ws_client->destroyed) || g_atomic_int_get(&stopping)) {
 					janus_mutex_unlock(&ws_client->ts->mutex);
 					return 0;
 				}
+
+				/* Evaluate amount of data to send according to MESSAGE_CHUNK_SIZE */
+				int amount = ws_client->bufpending <= MESSAGE_CHUNK_SIZE ? ws_client->bufpending : MESSAGE_CHUNK_SIZE;
+				/* Set fragment flags */
+				int flags = lws_write_ws_flags(LWS_WRITE_TEXT, ws_client->bufoffset == LWS_PRE, ws_client->bufpending <= (size_t)amount);
+				/* Send the fragment with proper flags */
+				int sent = lws_write(wsi, ws_client->buffer + ws_client->bufoffset, (size_t)amount, flags);
+				JANUS_LOG(LOG_HUGE, "[%s-%p]   -- First=%d, Last=%d, Requested=%d bytes, Sent=%d bytes, Missing=%zu bytes\n", log_prefix, wsi, ws_client->bufoffset <= LWS_PRE, ws_client->bufpending <= (size_t)amount, amount, sent, ws_client->bufpending - amount);
+				if(sent < amount) {
+					/* Error on sending, abort operation */
+					JANUS_LOG(LOG_ERR, "Websocket sent only %d bytes (expected %d)\n", sent, amount);
+					ws_client->bufpending = 0;
+					ws_client->bufoffset = 0;
+				} else {
+					/* Fragment successfully sent, update status */
+					ws_client->bufpending -= amount;
+					ws_client->bufoffset += amount;
+					if(ws_client->bufpending > 0) {
+						/* We couldn't send everything in a single write, we'll complete this in the next round */
+						JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Couldn't write all bytes (%zu missing), setting offset %zu\n",
+							log_prefix, wsi, ws_client->bufpending, ws_client->bufoffset);
+					}
+				}
+				/* Done for this round, check the next response/notification later */
+				lws_callback_on_writable(wsi);
 				janus_mutex_unlock(&ws_client->ts->mutex);
+				return 0;
 			}
 			return 0;
 		}

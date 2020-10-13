@@ -235,7 +235,10 @@ void janus_events_notify_handlers(int type, int subtype, guint64 session_id, ...
 			char *instance = va_arg(args, void *);
 			char id[32];
 			memset(id, 0, sizeof(id));
-			g_snprintf(id, sizeof(id), "%p", instance);
+			/* To avoid sending a stringified version of the transport pointer
+			 * around, we convert it to a number and hash it instead */
+			uint64_t p = janus_uint64_hash(GPOINTER_TO_UINT(instance));
+			g_snprintf(id, sizeof(id), "%"SCNu64, p);
 			json_object_set_new(body, "id", json_string(id));
 			json_t *data = va_arg(args, json_t *);
 			json_object_set_new(body, "data", data);

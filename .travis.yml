@@ -63,7 +63,7 @@ before_script:
   - travis_retry git clone -b v2.3.0 https://github.com/cisco/libsrtp.git libsrtp
   - pushd libsrtp && ./configure --prefix=/usr --enable-openssl && make -j$(nproc) shared_library && sudo make install && popd
   - if [ $DATACHANNELS = YES ]; then git clone -b master https://github.com/sctplab/usrsctp usrsctp; fi
-  - if [ $DATACHANNELS = YES ]; then pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs && make -j$(nproc) && sudo make install && popd; fi
+  - if [ $DATACHANNELS = YES ]; then pushd usrsctp && ./bootstrap && ./configure --prefix=/usr --disable-static --disable-debug --disable-programs --disable-inet --disable-inet6 && make -j$(nproc) && sudo make install && popd; fi
   - travis_retry git clone -b v3.2.2 https://github.com/warmcat/libwebsockets.git libwebsockets
   - pushd libwebsockets && mkdir -p build && pushd build && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DLWS_WITH_STATIC=OFF -DLWS_WITHOUT_CLIENT=ON -DLWS_WITHOUT_TESTAPPS=ON -DLWS_WITHOUT_TEST_SERVER=ON -DLWS_WITH_HTTP2=OFF .. && make -j$(nproc) && sudo make install && popd && popd
   - travis_retry git clone -b v0.10.0 https://github.com/alanxz/rabbitmq-c rabbitmq-c
