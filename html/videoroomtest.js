@@ -166,12 +166,11 @@ $(document).ready(function() {
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
-                                                						$('#videojoin').hide();
-                                                						$('#videos').removeClass('hide').show();
-                                            						} else {
-                                                						publishOwnFeed(true);
+												$('#videojoin').hide();
+												$('#videos').removeClass('hide').show();
+											} else {
+												publishOwnFeed(true);
 											}
-
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
 												var list = msg["publishers"];
