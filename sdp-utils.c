@@ -430,16 +430,15 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						m->proto = g_strdup(proto);
 						m->direction = JANUS_SDP_SENDRECV;
 						m->c_ipv4 = TRUE;
-						if(m->port > 0 || m->type == JANUS_SDP_APPLICATION) {
-							/* Now let's check the payload types/formats */
-							gchar **mline_parts = g_strsplit(line+2, " ", -1);
-							if(!mline_parts) {
-								janus_sdp_mline_destroy(m);
-								if(error)
-									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
-								success = FALSE;
-								break;
-							}
+						/* Now let's check the payload types/formats */
+						gchar **mline_parts = g_strsplit(line+2, " ", -1);
+						if(!mline_parts && (m->port > 0 || m->type == JANUS_SDP_APPLICATION)) {
+							janus_sdp_mline_destroy(m);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
+							success = FALSE;
+							break;
+						} else {
 							int mindex = 0;
 							while(mline_parts[mindex]) {
 								if(mindex < 3) {

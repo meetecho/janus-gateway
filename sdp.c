@@ -47,17 +47,20 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 	GList *temp = parsed_sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+		if(m->type == JANUS_SDP_AUDIO) {
 			*audio = *audio + 1;
-		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+		} else if(m->type == JANUS_SDP_VIDEO) {
 			*video = *video + 1;
 		}
-		/* Preparse the mid as well */
+		/* Preparse the mid as well, and check if bundle-only is used */
 		GList *tempA = m->attributes;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(a->name) {
-				if(!strcasecmp(a->name, "mid")) {
+				if(!strcasecmp(a->name, "bundle-only") && m->port == 0) {
+					/* Port 0 but bundle-only is used, don't disable this m-line */
+					m->port = 9;
+				} else if(!strcasecmp(a->name, "mid")) {
 					/* Found mid attribute */
 					if(a->value == NULL) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid mid attribute (no value)\n", handle->handle_id);
@@ -87,6 +90,14 @@ janus_sdp *janus_sdp_preparse(void *ice_handle, const char *jsep_sdp, char *erro
 						if(handle->stream_mid == NULL)
 							handle->stream_mid = handle->video_mid;
 					}
+				}
+			}
+			/* If the m-line is disabled don't actually increase the count */
+			if(m->port == 0) {
+				if(m->type == JANUS_SDP_AUDIO) {
+					*audio = *audio - 1;
+				} else if(m->type == JANUS_SDP_VIDEO) {
+					*video = *video - 1;
 				}
 			}
 			tempA = tempA->next;
@@ -1234,14 +1245,14 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		if(m->type == JANUS_SDP_AUDIO) {
 			audio++;
-			if(audio == 1) {
+			if(audio == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->audio_mid ? handle->audio_mid : "audio");
 				g_strlcat(buffer, buffer_part, sizeof(buffer));
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			video++;
-			if(video == 1) {
+			if(video == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->video_mid ? handle->video_mid : "video");
 				g_strlcat(buffer, buffer_part, sizeof(buffer));
@@ -1250,7 +1261,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon, gboolean offer) {
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			if(m->proto && (!strcasecmp(m->proto, "DTLS/SCTP") || !strcasecmp(m->proto, "UDP/DTLS/SCTP")))
 				data++;
-			if(data == 1) {
+			if(data == 1 && m->port > 0) {
 				g_snprintf(buffer_part, sizeof(buffer_part),
 					" %s", handle->data_mid ? handle->data_mid : "data");
 				g_strlcat(buffer, buffer_part, sizeof(buffer));
