@@ -1965,7 +1965,7 @@ function Janus(gatewayCallbacks) {
 						config.pc.addTransceiver(track, {
 							direction: "sendrecv",
 							streams: [stream],
-							sendEncodings: [
+							sendEncodings: callbacks.sendEncodings || [
 								{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 								{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 								{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
@@ -2742,7 +2742,7 @@ function Janus(gatewayCallbacks) {
 					parameters = {};
 				}
 				var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-				parameters.encodings = [
+				parameters.encodings = callbacks.sendEncodings || [
 					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 					{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
@@ -2984,10 +2984,10 @@ function Janus(gatewayCallbacks) {
 			Janus.log(parameters);
 
 			var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
-				{ rid: "low", active: true, priority: "low", maxBitrate: maxBitrates.low }
+			sender.setParameters({encodings: callbacks.sendEncodings || [
+				{ rid: "h", active: true, maxBitrate: maxBitrates.high },
+				{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2},
+				{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4}
 			]});
 		}
 		config.pc.createAnswer(mediaConstraints)
