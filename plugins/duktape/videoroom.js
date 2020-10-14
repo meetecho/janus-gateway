@@ -14,6 +14,7 @@ var name = "duktape-videoroomjs";
 
 // Let's add more info to errors
 Error.prototype.toString = function () {
+	console.log(this.name + ": " + this.message + " (at line " + this.lineNumber + ")")
 	// @ts-ignore
 	return this.name + ": " + this.message + " (at line " + this.lineNumber + ")";
 };
@@ -48,6 +49,7 @@ Duktape.modSearch = function (id) {
 
 // Let's import our ugly SDP parser now
 var sdpUtils = require("./janus-sdp");
+//const JANUSSDP = require("./janus-sdp");
 
 // State and properties
 
@@ -61,6 +63,11 @@ var tasks = state.tasks;
 var rooms = state.rooms;
 var managerSessions = state.managerSessions;
 
+
+var newRoom = state.newRoom;
+var deleteRoom = state.deleteRoom;
+var newSession = state.newSession;
+var deleteSession = state.deleteSession
 var getRoom = state.getRoom;
 var getSession = state.getSession;
 var setSession = state.setSession;
@@ -131,9 +138,12 @@ function destroy() {
  * @param {number} id
  */
 function createSession(id) {
+	
+	console.log('lifecycle createSession', id)
 	// Keep track of a new session
 	console.log("Created new session:", id);
-	var session = getSession(id);
+	var session = newSession(id);
+	
 	// By default, we accept and relay all streams
 	global.configureMedium(id, "audio", "in", true);
 	global.configureMedium(id, "audio", "out", true);
@@ -148,25 +158,33 @@ function createSession(id) {
  * @param {number} id
  */
 function destroySession(id) {
+	console.log('lifecycle destroySession',id)
 	// A Janus plugin session has gone
 	var session = getSession(id);
 	console.log("Destroyed session:", id);
 
 	var room = getRoom(session.room);
-	room.publishers = room.publishers.filter(function (publisher) { return publisher !== id });
-	// room.sessions = room.sessions.filter(function (session) { return session !== id });
-	if (room.publishers.length === 0) {
-		delete rooms[session.room];
-	} else {
-		setRoom(room);
-	}
-	delete sessions[id];
-	try {
-		hangupMedia(id);
-	} catch (e) {
-		console.log("cannot hangupMedia for session (" + id + " )", e);
+	if(room){
+		room.publishers = room.publishers.filter(function (publisher) { return publisher !== id });
+		room.sessions = room.sessions.filter(function (session) { return session !== id });
+		if (room.publishers.length === 0) {
+			deleteRoom(session.room)
+		} else {
+			setRoom(room);
+		}
 	}
 
+	deleteSession(id);
+
+	
+	// try {
+	// 	hangupMedia(id);
+	// } catch (e) {
+	// 	console.log("cannot hangupMedia for session (" + id + " )", e);
+		
+	// }
+	
+	//delete sessions[id];
 	return 0;
 }
 
@@ -187,6 +205,10 @@ function querySession(id) {
  * @param {string} jsep
  */
 function handleMessage(id, tr, msg, jsep) {
+	console.log('lifecycle handleMessage',msg, JSON.stringify(msgT))
+	
+
+
 	// Handle a message, synchronously or asynchronously, and return
 	// something accordingly: if it's the latter, we'll do a coroutine
 	console.log("Handling incoming message for session:", id, msg);
@@ -200,6 +222,8 @@ function handleMessage(id, tr, msg, jsep) {
 	}
 	// Decode the message JSON string
 	var msgT = JSON.parse(msg);
+	setSessionType(id,msgT.ptype)
+	console.log("requesttt:" +  msgT.request + " msgT " + JSON.stringify(msgT))
 	// Let's return a synchronous response if there's no jsep, asynchronous otherwise
 	if (msgT.ptype === "manager") {
 		return handleManagerMessage(id, tr, msgT);
@@ -211,11 +235,15 @@ function handleMessage(id, tr, msg, jsep) {
 		if (msgT.request === "join") {
 			if (msgT.ptype === "publisher") {
 				//must have room if we whant to start publish somewhere ...
+			
 				if (!msgT.room) msgT.room = 1234;
 				var room = getRoom(msgT.room)
+				if(!room) room = newRoom(msgT.room)
+				console.log('requesttt publisher room',room)
 				var session = getSession(id)
 				session.display = msgT.display;
 				session.room = msgT.room;
+				session.type = 'publisher'
 				var responseJoinedSubscriber = {
 					videoroom: "joined",
 					room: room.roomId,
@@ -244,15 +272,18 @@ function handleMessage(id, tr, msg, jsep) {
 			} else if (msgT.ptype === "subscriber") {
 				console.log("subscriber addRecipient", msgT.feed, id);
 				console.log("Join request ......", msgT);
-				var room = getRoom(msgT.room);
+				var room = getRoom(msgT.room) 
+				console.log('requesttt subscriber', room)
 				room.sessions.push(id);
 				setRoom(room);
 				var session = getSession(id);
 				var sessionFeed = getSession(msgT.feed);
+
 				sessionFeed.subscribers.push(id);
 				session.publishers.push(msgT.feed);
 				setSession(session);
 				setSession(sessionFeed);
+
 				global.addRecipient(msgT.feed, id);
 				global.sendPli(msgT.feed);
 				var sdpOffer = sdpUtils.generateOffer({ audio: true, video: true });
@@ -274,6 +305,7 @@ function handleMessage(id, tr, msg, jsep) {
 			session.state = msgT.data;
 			setSession(session)
 			var room = getRoom(session.room)
+			
 			room.publishers.forEach(function (publisher) {
 				if (publisher !== id) {
 					var publishersArray = [session];
@@ -320,6 +352,7 @@ function handleMessage(id, tr, msg, jsep) {
 }
 
 function handleAdminMessage(message) {
+	console.log('lifecycle handleAdminMessage',message)
 	// This is just to showcase how you can handle incoming messages
 	// coming from the Admin API: we return the same message as a test
 	console.log("Got admin message:", message);
@@ -330,16 +363,18 @@ function handleAdminMessage(message) {
  * @param {number} id
  */
 function setupMedia(id) {
+	console.log('lifecycle setupMedia',id)
 	// WebRTC is now available
 	console.log("WebRTC PeerConnection is up for session:", id);
 	// Attach the session's stream to itself (echo test)
 	//addRecipient(id, id);
 	//console.log("sessions",sessions);
 	var session = getSession(id);
-	var publishersArray = getRoomPublishersArray(session.room, id);
+	//var publishersArray = getRoomPublishersArray(session.room, id);
+	//session.publishers = publishersArray; 
 	session.isConnected = true;
 	setSession(session);
-	global.notifyEvent(id, JSON.stringify(event));
+	global.notifyEvent(id, JSON.stringify({"FixMe":"Whe4re is my event ...."}));
 
 }
 
@@ -347,21 +382,37 @@ function setupMedia(id) {
  * @param {number} id
  */
 function hangupMedia(id) {
+	console.log('lifecycle hangupMedia',id)
 	// WebRTC not available anymore
 	console.log("WebRTC PeerConnection is down for session:", id);
 
 	var unpublishedEvent = { videoroom: "event", room: 1234, unpublished: id, janusServer: janusServer };
 	global.notifyEvent(id, JSON.stringify(unpublishedEvent));
 	var session = getSession(id);
+	if(!session) return 
+	console.log("WebRTC PeerConnection is down for session:", JSON.stringify(session));
+			// Detach the stream from all publishers	
+			session.publishers.forEach(function (publisher) {
+				console.log("Removing subscriber ", publisher, " from ", id)
+				var sessionPublisher = getSession(publisher);
+				console.log("sessionPublisher", JSON.stringify(sessionPublisher))
+				sessionPublisher.subscribers = sessionPublisher.subscribers.filter(function (subscriber) { return subscriber !== id });
+				setSession(sessionPublisher);
+				global.removeRecipient(id, publisher);
+			})
 	// Detach the stream from all subscribers
 	session.subscribers.forEach(function (subcriber) {
-		console.log("Removing subscriber ", subcriber, " from ", id);
+		console.log("Removing publisher ", subcriber, " from ", id);
+
 		var sessionSubcriber = getSession(subcriber);
+		console.log('Removing sessionSubcriber',sessionSubcriber.subscribers, sessionSubcriber.publishers)
 		sessionSubcriber.publishers = sessionSubcriber.publishers.filter(function (publisher) { return publisher !== id });
+
 		global.removeRecipient(id, subcriber);
 		setSession(sessionSubcriber);
 		tasks.push({ id: subcriber, tr: null, msg: unpublishedEvent, jsep: null });
 		global.pokeScheduler();
+		
 
 	});
 	// Clear some flags
@@ -402,12 +453,10 @@ function resumeScheduler() {
 	// you're free not to use this and just return, but the C Duktape plugin
 	// expects this method to exist so it MUST be present, even if empty
 	console.log("Resuming coroutines");
-	for (var index in tasks) {
-		var task = tasks[index];
-		processAsync(task);
-	}
+	tasks.forEach(function (el) { processAsync(el) });
 	console.log("Coroutines resumed");
-	tasks = [];
+
+	tasks.splice(0, tasks.length);
 }
 
 /**
@@ -416,6 +465,8 @@ function resumeScheduler() {
  * @param {{[key:string]: any}} msg
  */
 function processRequest(id, msg) {
+	console.log('lifecycle processRequest',id)
+	console.log('requesttt', msg)
 	if (!msg) {
 		console.log("Invalid request");
 		return -1;
@@ -525,6 +576,13 @@ function processAsync(task) {
 		console.log("Event ", msg);
 		global.pushEvent(id, tr, JSON.stringify(msg), null);
 	}
+}
+
+function setSessionType(id,ptype) {
+	var session  = getSession(id)
+	if(!session.type) session.type = ptype;
+	setSession(session)
+	return session
 }
 
 // Done

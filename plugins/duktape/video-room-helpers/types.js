@@ -7,6 +7,7 @@
  *  readFile: (path: string) => string | undefined;
  *  notifyEvent: (eventType: number, eventBodyJSON: string) => void;
  *  configureMedium: (id: number, mediaType: string, direction: string, bool: boolean) => void;
+ *  querySession: (id:number) => json
  *  addRecipient: (publisherSessionID: number, subscriberSessionID: number) => void;
  *  sendPli: (publisherSessionID: number) => void;
  *  pokeScheduler: () => void;
@@ -67,7 +68,11 @@
  getRoom: (roomID: number) => IRoom;
  getSession: (sessionID: number) => ISession;
  setSession: (session: ISession) => void;
+ newSession: (sessionID: number) => ISession;
+ deleteSession: (sessionID: number) => void
+ deleteRoom: (roomID: number) => void
  setRoom: (room: IRoom) => void;
+ newRoom: (roomID: number) => IRoom;
  getRoomPublishers: (roomId: number, filterPublisher: number) => ISessions;
  getRoomPublishersArray: (roomId: number, filterPublisher? : number) => Array<ISession>;
 }} IState
