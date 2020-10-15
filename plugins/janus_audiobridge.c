@@ -594,7 +594,7 @@ room-<unique room ID>: {
  * participants, if any;
  * -# you send a \c configure request attached to an audio-only JSEP offer
  * to start configuring your participation in the room (e.g., join unmuted
- * or muted), and wait for a \c configured event, which will be attached
+ * or muted), and wait for the related \c event, which will be attached
  * to a JSEP answer by the plugin to complete the setup of the WebRTC
  * PeerConnection;
  * -# you send other \c configure requests (without any JSEP-related
