@@ -1576,11 +1576,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* If we have rids, pass those, otherwise pass the SSRCs */
 					if(handle->stream->rid[0]) {
 						json_t *rids = json_array();
-						json_array_append_new(rids, json_string(handle->stream->rid[0]));
-						if(handle->stream->rid[1])
-							json_array_append_new(rids, json_string(handle->stream->rid[1]));
 						if(handle->stream->rid[2])
 							json_array_append_new(rids, json_string(handle->stream->rid[2]));
+						if(handle->stream->rid[1])
+							json_array_append_new(rids, json_string(handle->stream->rid[1]));
+						json_array_append_new(rids, json_string(handle->stream->rid[0]));
 						json_object_set_new(simulcast, "rids", rids);
 						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
 					} else {
@@ -2922,11 +2922,11 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	if(stream->rid[0] && stream->rid_ext_id > 0) {
 		json_t *sr = json_object();
 		json_t *rid = json_array();
-		json_array_append_new(rid, json_string(stream->rid[0]));
-		if(stream->rid[1])
-			json_array_append_new(rid, json_string(stream->rid[1]));
 		if(stream->rid[2])
 			json_array_append_new(rid, json_string(stream->rid[2]));
+		if(stream->rid[1])
+			json_array_append_new(rid, json_string(stream->rid[1]));
+		json_array_append_new(rid, json_string(stream->rid[0]));
 		json_object_set_new(sr, "rid", rid);
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
 		if(stream->ridrtx_ext_id > 0)
