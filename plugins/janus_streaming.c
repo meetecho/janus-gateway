@@ -332,7 +332,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  *
  * Once you created a mountpoint, you can modify some (not all) of its
  * properties via an \c edit request. Namely, you can only modify generic
- * properties like the mountoint description, the secret, the PIN and
+ * properties like the mountpoint description, the secret, the PIN and
  * whether or not the mountpoint should be listable. All other properties
  * are considered to be immutable. Again, you can choose whether the changes
  * should be permanent, e.g., saved to configuration file, or not. Notice
