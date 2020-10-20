@@ -76,7 +76,8 @@ $(document).ready(function() {
 				return;
 			}
 			// Make sure Insertable Streams are supported too
-			if(!RTCRtpSender.prototype.createEncodedAudioStreams ||
+			if(!RTCRtpSender.prototype.createEncodedStreams &&
+					!RTCRtpSender.prototype.createEncodedAudioStreams &&
 					!RTCRtpSender.prototype.createEncodedVideoStreams) {
 				bootbox.alert("Insertable Streams not supported by this browser... ");
 				return;
