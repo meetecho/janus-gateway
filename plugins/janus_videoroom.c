@@ -1950,6 +1950,8 @@ typedef struct janus_videoroom_publisher_stream {
 	janus_videocodec vcodec;				/* Video codec this publisher is using (if video) */
 	int pt;									/* Payload type of this stream (if audio or video) */
 	char *fmtp;								/* fmtp that ended up being negotiated, if any (for video profiles) */
+	char *h264_profile;						/* H264 profile used for this stream (if video and H264 codec) */
+	char *vp9_profile;						/* VP9 profile this publisher is using (if video and VP9 codec) */
 	guint32 ssrc;							/* Internal SSRC of this stream */
 	gint64 fir_latest;						/* Time of latest sent PLI (to avoid flooding) */
 	gint fir_seq;							/* FIR sequence number, if needed */
@@ -2020,6 +2022,8 @@ typedef struct janus_videoroom_subscriber_stream {
 	janus_videoroom_media type;			/* Type of this stream (audio, video or data) */
 	janus_audiocodec acodec;			/* Audio codec this publisher is using (if audio) */
 	janus_videocodec vcodec;			/* Video codec this publisher is using (if video) */
+	char *h264_profile;					/* H264 profile used for this stream (if video and H264 codec) */
+	char *vp9_profile;					/* VP9 profile this publisher is using (if video and VP9 codec) */
 	int pt;								/* Payload type of this stream (if audio or video) */
 	gboolean opusfec;					/* Whether this stream is using inband Opus FEC */
 	/* RTP and simulcasting contexts */
@@ -2075,6 +2079,8 @@ static void janus_videoroom_subscriber_stream_free(const janus_refcount *s_ref) 
 	/* This subscriber stream can be destroyed, free all the resources */
 		/* TODO Anything else we should free? */
 	g_free(s->mid);
+	g_free(s->h264_profile);
+	g_free(s->vp9_profile);
 	g_free(s);
 }
 
@@ -2119,6 +2125,8 @@ static void janus_videoroom_publisher_stream_free(const janus_refcount *ps_ref) 
 	g_free(ps->mid);
 	g_free(ps->description);
 	g_free(ps->fmtp);
+	g_free(ps->h264_profile);
+	g_free(ps->vp9_profile);
 	janus_recorder_destroy(ps->rc);
 	g_hash_table_destroy(ps->rtp_forwarders);
 	ps->rtp_forwarders = NULL;
@@ -2582,6 +2590,11 @@ static janus_videoroom_subscriber_stream *janus_videoroom_subscriber_stream_add(
 	stream->type = ps->type;
 	stream->acodec = ps->acodec;
 	stream->vcodec = ps->vcodec;
+	if(stream->vcodec == JANUS_VIDEOCODEC_H264 && ps->h264_profile) {
+		stream->h264_profile = g_strdup(ps->h264_profile);
+	} else if(stream->vcodec == JANUS_VIDEOCODEC_VP9 && ps->vp9_profile) {
+		stream->vp9_profile = g_strdup(ps->vp9_profile);
+	}
 	stream->pt = ps->pt;
 	stream->opusfec = ps->opusfec;
 	char mid[5];
@@ -2831,6 +2844,8 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && stream->opusfec ? "useinbandfec=1" :
 				//~ (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? vprofile : NULL)),
 				NULL),
+			JANUS_SDP_OA_H264_PROFILE, stream->h264_profile,
+			JANUS_SDP_OA_VP9_PROFILE, stream->vp9_profile,
 			JANUS_SDP_OA_DIRECTION, ((ps && !ps->disabled) || stream->type == JANUS_VIDEOROOM_MEDIA_DATA) ? JANUS_SDP_SENDONLY : JANUS_SDP_INACTIVE,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (ps && ps->audio_level_extmap_id > 0)) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_AUDIO_LEVEL) : 0,
@@ -9231,6 +9246,7 @@ static void *janus_videoroom_handler(void *data) {
 										h264_profile = NULL;
 										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
+										ps->vp9_profile = g_strdup(vp9_profile);
 										break;
 									}
 									/* It isn't, fallback to checking whether VP9 is available without the profile */
@@ -9242,6 +9258,7 @@ static void *janus_videoroom_handler(void *data) {
 										vp9_profile = NULL;
 										ps->vcodec = videoroom->vcodec[i];
 										ps->pt = janus_videocodec_pt(ps->vcodec);
+										ps->h264_profile = g_strdup(h264_profile);
 										break;
 									}
 									/* It isn't, fallback to checking whether H.264 is available without the profile */
