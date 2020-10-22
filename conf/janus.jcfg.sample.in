@@ -213,7 +213,7 @@ media: {
 	# sent shortly before the keyframe was sent, since it can be assumed
 	# that the keyframe will restore a complete working image for the user
 	# anyway (which is the main reason why video retransmissions are typically
-	# required. While this optimization is known to work fine in most cases,
+	# required). While this optimization is known to work fine in most cases,
 	# it can backfire in some edge cases, and so is disabled by default.
 	#nack_optimizations = true
 
