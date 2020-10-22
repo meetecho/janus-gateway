@@ -136,6 +136,9 @@ static struct janus_json_parameter colors_parameters[] = {
 static struct janus_json_parameter mnq_parameters[] = {
 	{"min_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter nopt_parameters[] = {
+	{"nack_optimizations", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -332,6 +335,7 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "full-trickle", janus_ice_is_full_trickle_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "mdns-enabled", janus_ice_is_mdns_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
+	json_object_set_new(info, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
 	if(janus_get_dscp() > 0)
 		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
@@ -1964,6 +1968,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "refcount_debug", refcount_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
+			json_object_set_new(status, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(status, "slowlink_threshold", json_integer(janus_get_slowlink_threshold()));
 			json_object_set_new(reply, "status", status);
@@ -2124,6 +2129,23 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			/* Prepare JSON reply */
 			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "min_nack_queue", json_integer(janus_get_min_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_nack_optimizations")) {
+			/* Enable/disable NACK optimizations */
+			JANUS_VALIDATE_JSON_OBJECT(root, nopt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			gboolean optimize = json_is_true(json_object_get(root, "nack_optimizations"));
+			janus_set_nack_optimizations_enabled(optimize);
+			/* Prepare JSON reply */
+			json_t *reply = janus_create_message("success", 0, transaction_text);
+			json_object_set_new(reply, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -4821,6 +4843,11 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_set_min_nack_queue(mnq);
 		}
+	}
+	item = janus_config_get(config, config_media, janus_config_type_item, "nack_optimizations");
+	if(item && item->value) {
+		gboolean optimize = janus_is_true(item->value);
+		janus_set_nack_optimizations_enabled(optimize);
 	}
 	/* no-media timer */
 	item = janus_config_get(config, config_media, janus_config_type_item, "no_media_timer");
