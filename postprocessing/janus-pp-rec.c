@@ -747,6 +747,8 @@ int main(int argc, char *argv[])
 		p->p_ts = pkt_ts;
 		p->seq = ntohs(rtp->seq_number);
 		p->pt = rtp->type;
+		p->len = len;
+		p->drop = 0;
 		uint32_t rtp_ts = ntohl(rtp->timestamp);
 		/* Due to resets, we need to mess a bit with the original timestamps */
 		if(!started) {
@@ -783,8 +785,6 @@ int main(int argc, char *argv[])
 			else
 				p->ts = ((times_resetted-1)*max32)+rtp_ts;
 		}
-		p->len = len;
-		p->drop = 0;
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
