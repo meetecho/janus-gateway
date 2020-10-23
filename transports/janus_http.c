@@ -350,7 +350,7 @@ static void janus_http_random_string(int length, char *buffer) {
 		int l = (int)(sizeof(charset)-1);
 		int i=0;
 		for(i=0; i<length; i++) {
-			int key = rand() % l;
+			int key = janus_random_uint32() % l;
 			buffer[i] = charset[key];
 		}
 		buffer[length-1] = '\0';
