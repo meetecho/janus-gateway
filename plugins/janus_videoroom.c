@@ -7066,32 +7066,37 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(info, "type", json_string(janus_videoroom_media_str(ps->type)));
 						json_object_set_new(info, "mindex", json_integer(ps->mindex));
 						json_object_set_new(info, "mid", json_string(ps->mid));
-						if(ps->description)
-							json_object_set_new(info, "description", json_string(ps->description));
-						if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
-							json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
-							/* FIXME For backwards compatibility, we need audio_codec in the global info */
-							if(!audio_added) {
-								audio_added = TRUE;
-								json_object_set_new(pl, "audio_codec", json_string(janus_audiocodec_name(ps->acodec)));
+
+						if(ps->disabled) {
+							json_object_set_new(info, "disabled", json_true());
+						} else {
+							if(ps->description)
+								json_object_set_new(info, "description", json_string(ps->description));
+							if(ps->type == JANUS_VIDEOROOM_MEDIA_AUDIO) {
+								json_object_set_new(info, "codec", json_string(janus_audiocodec_name(ps->acodec)));
+								/* FIXME For backwards compatibility, we need audio_codec in the global info */
+								if(!audio_added) {
+									audio_added = TRUE;
+									json_object_set_new(pl, "audio_codec", json_string(janus_audiocodec_name(ps->acodec)));
+								}
+								if(ps->audio_level_extmap_id > 0) {
+									json_object_set_new(info, "talking", talking ? json_true() : json_false());
+									/* FIXME For backwards compatibility, we also need talking in the global info */
+									talking_found = TRUE;
+									talking |= ps->talking;
+								}
+							} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
+								/* FIXME For backwards compatibility, we need video_codec in the global info */
+								json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
+								if(!video_added) {
+									video_added = TRUE;
+									json_object_set_new(pl, "video_codec", json_string(janus_videocodec_name(ps->vcodec)));
+								}
+								if(ps->simulcast)
+									json_object_set_new(info, "simulcast", json_true());
+								if(ps->svc)
+									json_object_set_new(info, "svc", json_true());
 							}
-							if(ps->audio_level_extmap_id > 0) {
-								json_object_set_new(info, "talking", talking ? json_true() : json_false());
-								/* FIXME For backwards compatibility, we also need talking in the global info */
-								talking_found = TRUE;
-								talking |= ps->talking;
-							}
-						} else if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
-							/* FIXME For backwards compatibility, we need video_codec in the global info */
-							json_object_set_new(info, "codec", json_string(janus_videocodec_name(ps->vcodec)));
-							if(!video_added) {
-								video_added = TRUE;
-								json_object_set_new(pl, "video_codec", json_string(janus_videocodec_name(ps->vcodec)));
-							}
-							if(ps->simulcast)
-								json_object_set_new(info, "simulcast", json_true());
-							if(ps->svc)
-								json_object_set_new(info, "svc", json_true());
 						}
 						json_array_append_new(media, info);
 						temp = temp->next;
