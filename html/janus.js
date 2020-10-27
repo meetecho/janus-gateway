@@ -1384,6 +1384,8 @@ function Janus(gatewayCallbacks) {
 			};
 			if(jsep.e2ee)
 				request.jsep.e2ee = true;
+			if(jsep.rid_order === "hml" || jsep.rid_order === "lmh")
+				request.jsep.rid_order = jsep.rid_order;
 		}
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
 		Janus.debug(request);
@@ -1514,6 +1516,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
+		if(!config.pc) {
+			Janus.warn("Invalid PeerConnection");
+			return;
+		}
 		var onDataChannelMessage = function(event) {
 			Janus.log('Received message on data channel:', event);
 			var label = event.target.label;
@@ -1820,8 +1826,9 @@ function Janus(gatewayCallbacks) {
 				pc_config.bundlePolicy = "max-bundle";
 			}
 			// Check if a sender or receiver transform has been provided
-			if(RTCRtpSender && RTCRtpSender.prototype.createEncodedAudioStreams &&
-					RTCRtpSender.prototype.createEncodedVideoStreams &&
+			if(RTCRtpSender && (RTCRtpSender.prototype.createEncodedStreams ||
+					(RTCRtpSender.prototype.createEncodedAudioStreams &&
+					RTCRtpSender.prototype.createEncodedVideoStreams)) &&
 					(callbacks.senderTransforms || callbacks.receiverTransforms)) {
 				config.senderTransforms = callbacks.senderTransforms;
 				config.receiverTransforms = callbacks.receiverTransforms;
@@ -1879,15 +1886,26 @@ function Janus(gatewayCallbacks) {
 					return;
 				if(config.receiverTransforms) {
 					var receiverStreams = null;
-					if(event.track.kind === "audio" && config.receiverTransforms["audio"]) {
-						receiverStreams = event.receiver.createEncodedAudioStreams();
-					} else if(event.track.kind === "video" && config.receiverTransforms["video"]) {
-						receiverStreams = event.receiver.createEncodedVideoStreams();
+					if(RTCRtpSender.prototype.createEncodedStreams) {
+						receiverStreams = event.receiver.createEncodedStreams();
+					} else if(RTCRtpSender.prototype.createAudioEncodedStreams || RTCRtpSender.prototype.createEncodedVideoStreams) {
+						if(event.track.kind === "audio" && config.receiverTransforms["audio"]) {
+							receiverStreams = event.receiver.createEncodedAudioStreams();
+						} else if(event.track.kind === "video" && config.receiverTransforms["video"]) {
+							receiverStreams = event.receiver.createEncodedVideoStreams();
+						}
 					}
 					if(receiverStreams) {
-						receiverStreams.readableStream
-							.pipeThrough(config.receiverTransforms[event.track.kind])
-							.pipeTo(receiverStreams.writableStream);
+						console.log(receiverStreams);
+						if(receiverStreams.readableStream && receiverStreams.writableStream) {
+							receiverStreams.readableStream
+								.pipeThrough(config.receiverTransforms[event.track.kind])
+								.pipeTo(receiverStreams.writableStream);
+						} else if(receiverStreams.readable && receiverStreams.writable) {
+							receiverStreams.readable
+								.pipeThrough(config.receiverTransforms[event.track.kind])
+								.pipeTo(receiverStreams.writable);
+						}
 					}
 				}
 				var trackMutedTimeoutId = null;
@@ -1936,37 +1954,47 @@ function Janus(gatewayCallbacks) {
 			var simulcast2 = (callbacks.simulcast2 === true);
 			stream.getTracks().forEach(function(track) {
 				Janus.log('Adding local track:', track);
-				if(!simulcast2) {
-					var sender = config.pc.addTrack(track, stream);
-					// Check if insertable streams are involved
-					if(sender && config.senderTransforms) {
-						var senderStreams = null;
+				var sender = null;
+				if(!simulcast2 || track.kind === 'audio') {
+					sender = config.pc.addTrack(track, stream);
+				} else {
+					Janus.log('Enabling rid-based simulcasting:', track);
+					var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
+					var tr = config.pc.addTransceiver(track, {
+						direction: "sendrecv",
+						streams: [stream],
+						sendEncodings: callbacks.sendEncodings || [
+							{ rid: "h", active: true, maxBitrate: maxBitrates.high },
+							{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
+							{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
+						]
+					});
+					if(tr)
+						sender = tr.sender;
+				}
+				// Check if insertable streams are involved
+				if(sender && config.senderTransforms) {
+					var senderStreams = null;
+					if(RTCRtpSender.prototype.createEncodedStreams) {
+						senderStreams = sender.createEncodedStreams();
+					} else if(RTCRtpSender.prototype.createAudioEncodedStreams || RTCRtpSender.prototype.createEncodedVideoStreams) {
 						if(sender.track.kind === "audio" && config.senderTransforms["audio"]) {
 							senderStreams = sender.createEncodedAudioStreams();
 						} else if(sender.track.kind === "video" && config.senderTransforms["video"]) {
 							senderStreams = sender.createEncodedVideoStreams();
 						}
-						if(senderStreams) {
+					}
+					if(senderStreams) {
+						console.log(senderStreams);
+						if(senderStreams.readableStream && senderStreams.writableStream) {
 							senderStreams.readableStream
 								.pipeThrough(config.senderTransforms[sender.track.kind])
 								.pipeTo(senderStreams.writableStream);
+						} else if(senderStreams.readable && senderStreams.writable) {
+							senderStreams.readable
+								.pipeThrough(config.senderTransforms[sender.track.kind])
+								.pipeTo(senderStreams.writable);
 						}
-					}
-				} else {
-					if(track.kind === "audio") {
-						config.pc.addTrack(track, stream);
-					} else {
-						Janus.log('Enabling rid-based simulcasting:', track);
-						var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-						config.pc.addTransceiver(track, {
-							direction: "sendrecv",
-							streams: [stream],
-							sendEncodings: [
-								{ rid: "h", active: true, maxBitrate: maxBitrates.high },
-								{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
-								{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
-							]
-						});
 					}
 				}
 			});
@@ -2738,7 +2766,7 @@ function Janus(gatewayCallbacks) {
 					parameters = {};
 				}
 				var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-				parameters.encodings = [
+				parameters.encodings = callbacks.sendEncodings || [
 					{ rid: "h", active: true, maxBitrate: maxBitrates.high },
 					{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2 },
 					{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4 }
@@ -2980,10 +3008,10 @@ function Janus(gatewayCallbacks) {
 			Janus.log(parameters);
 
 			var maxBitrates = getMaxBitrates(callbacks.simulcastMaxBitrates);
-			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: maxBitrates.high },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: maxBitrates.medium },
-				{ rid: "low", active: true, priority: "low", maxBitrate: maxBitrates.low }
+			sender.setParameters({encodings: callbacks.sendEncodings || [
+				{ rid: "h", active: true, maxBitrate: maxBitrates.high },
+				{ rid: "m", active: true, maxBitrate: maxBitrates.medium, scaleResolutionDownBy: 2},
+				{ rid: "l", active: true, maxBitrate: maxBitrates.low, scaleResolutionDownBy: 4}
 			]});
 		}
 		config.pc.createAnswer(mediaConstraints)

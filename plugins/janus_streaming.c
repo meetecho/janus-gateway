@@ -332,7 +332,7 @@ rtspiface = network interface IP address or device name to listen on when receiv
  *
  * Once you created a mountpoint, you can modify some (not all) of its
  * properties via an \c edit request. Namely, you can only modify generic
- * properties like the mountoint description, the secret, the PIN and
+ * properties like the mountpoint description, the secret, the PIN and
  * whether or not the mountpoint should be listable. All other properties
  * are considered to be immutable. Again, you can choose whether the changes
  * should be permanent, e.g., saved to configuration file, or not. Notice
@@ -862,6 +862,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"videofmtp", JSON_STRING, 0},
 	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videobufferkf", JANUS_JSON_BOOL, 0},
+	{"threads", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"rtspiface", JSON_STRING, 0},
 	{"rtsp_failcheck", JANUS_JSON_BOOL, 0}
 };
@@ -1130,8 +1131,8 @@ typedef struct janus_streaming_mountpoint {
 	janus_streaming_codecs codecs;
 	gboolean audio, video, data;
 	GList *viewers;
-	int helper_threads;		/* Only relevant for RTP mountpoints */
-	GList *threads;			/* Only relevant for RTP mountpoints */
+	int helper_threads;		/* Only relevant for RTP/RTSP mountpoints */
+	GList *threads;			/* Only relevant for RTP/RTSP mountpoints */
 	volatile gint destroyed;
 	janus_mutex mutex;
 	janus_refcount ref;
@@ -1186,7 +1187,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, int audiopt, char *artpmap, char *afmtp,
 		gboolean dovideo, int videopt, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-		const janus_network_address *iface,
+		const janus_network_address *iface, int threads,
 		gboolean error_on_failure);
 
 
@@ -2099,6 +2100,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vkf = janus_config_get(config, cat, janus_config_type_item, "videobufferkf");
 				janus_config_item *iface = janus_config_get(config, cat, janus_config_type_item, "rtspiface");
 				janus_config_item *failerr = janus_config_get(config, cat, janus_config_type_item, "rtsp_failcheck");
+				janus_config_item *threads = janus_config_get(config, cat, janus_config_type_item, "threads");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' mountpoint '%s', missing mandatory information...\n", cat->name);
@@ -2112,6 +2114,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean error_on_failure = TRUE;
 				if(failerr && failerr->value)
 					error_on_failure = janus_is_true(failerr->value);
+				if(threads && threads->value && atoi(threads->value) < 0) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' mountpoint '%s', invalid threads configuration...\n", cat->name);
+					cl = cl->next;
+					continue;
+				}
 
 				if((doaudio || dovideo) && iface && iface->value) {
 					if(!ifas) {
@@ -2145,6 +2152,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vfmtp ? (char *)vfmtp->value : NULL,
 						bufferkf,
 						iface && iface->value ? &iface_value : NULL,
+						(threads && threads->value) ? atoi(threads->value) : 0,
 						error_on_failure)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' mountpoint '%s'...\n", cat->name);
 					cl = cl->next;
@@ -3152,6 +3160,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_t *username = json_object_get(root, "rtsp_user");
 			json_t *password = json_object_get(root, "rtsp_pwd");
 			json_t *iface = json_object_get(root, "rtspiface");
+			json_t *threads = json_object_get(root, "threads");
 			json_t *failerr = json_object_get(root, "rtsp_failcheck");
 			if(failerr == NULL)	/* For an old typo, we support the legacy syntax too */
 				failerr = json_object_get(root, "rtsp_check");
@@ -3195,7 +3204,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					dovideo, (videopt ? json_integer_value(videopt) : -1),
 						(char *)json_string_value(videortpmap), (char *)json_string_value(videofmtp),
 						videobufferkf ? json_is_true(videobufferkf) : FALSE,
-					&multicast_iface,
+					&multicast_iface, (threads ? json_integer_value(threads) : 0),
 					error_on_failure);
 			janus_mutex_lock(&mountpoints_mutex);
 			g_hash_table_remove(mountpoints_temp, string_ids ? (gpointer)mpid_str : (gpointer)&mpid);
@@ -3353,6 +3362,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				json_t *iface = json_object_get(root, "rtspiface");
 				if(iface)
 					janus_config_add(config, c, janus_config_item_create("rtspiface", json_string_value(iface)));
+				if(mp->helper_threads > 0) {
+					g_snprintf(value, BUFSIZ, "%d", mp->helper_threads);
+					janus_config_add(config, c, janus_config_item_create("threads", value));
+				}
 			}
 			/* Some more common values */
 			if(mp->secret)
@@ -3563,6 +3576,10 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					json_t *iface = json_object_get(root, "rtspiface");
 					if(iface)
 						janus_config_add(config, c, janus_config_item_create("rtspiface", json_string_value(iface)));
+					if(mp->helper_threads > 0) {
+						g_snprintf(value, BUFSIZ, "%d", mp->helper_threads);
+						janus_config_add(config, c, janus_config_item_create("threads", value));
+					}
 				} else {
 					janus_config_add(config, c, janus_config_item_create("type", "rtp"));
 					janus_config_add(config, c, janus_config_item_create("audio", mp->codecs.audio_pt >= 0 ? "yes" : "no"));
@@ -6069,7 +6086,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 				/* This extra unref is for the init */
 				janus_refcount_decrease(&helper->ref);
 				janus_streaming_mountpoint_destroy(live_rtp);
-				g_free(helper);
 				return NULL;
 			}
 			janus_refcount_increase(&helper->ref);
@@ -6929,7 +6945,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, int vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-		const janus_network_address *iface,
+		const janus_network_address *iface, int threads,
 		gboolean error_on_failure) {
 	char id_num[30];
 	if(!string_ids) {
@@ -7041,9 +7057,44 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 			return NULL;
 		}
 	}
-	/* Start the thread that will receive the media packets */
+	/* If we need helper threads, spawn them now */
 	GError *error = NULL;
 	char tname[16];
+	if(threads > 0) {
+		int i=0;
+		for(i=0; i<threads; i++) {
+			janus_streaming_helper *helper = g_malloc0(sizeof(janus_streaming_helper));
+			helper->id = i+1;
+			helper->mp = live_rtsp;
+			helper->queued_packets = g_async_queue_new_full((GDestroyNotify)janus_streaming_rtp_relay_packet_free);
+			janus_mutex_init(&helper->mutex);
+			janus_refcount_init(&helper->ref, janus_streaming_helper_free);
+			live_rtsp->helper_threads++;
+			/* Spawn a thread and add references */
+			g_snprintf(tname, sizeof(tname), "help %u-%"SCNu64, helper->id, live_rtsp->id);
+			janus_refcount_increase(&live_rtsp->ref);
+			janus_refcount_increase(&helper->ref);
+			helper->thread = g_thread_try_new(tname, &janus_streaming_helper_thread, helper, &error);
+			if(error != NULL) {
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the helper thread...\n",
+					error->code, error->message ? error->message : "??");
+				g_error_free(error);
+				janus_refcount_decrease(&live_rtsp->ref);	/* This is for the helper thread */
+				g_async_queue_unref(helper->queued_packets);
+				janus_refcount_decrease(&helper->ref);
+				/* This extra unref is for the init */
+				janus_refcount_decrease(&helper->ref);
+				janus_mutex_lock(&mountpoints_mutex);
+				g_hash_table_remove(mountpoints_temp, &id);
+				janus_mutex_unlock(&mountpoints_mutex);
+				janus_refcount_decrease(&live_rtsp->ref);
+				return NULL;
+			}
+			janus_refcount_increase(&helper->ref);
+			live_rtsp->threads = g_list_append(live_rtsp->threads, helper);
+		}
+	}
+	/* Finally, start the thread that will receive the media packets */
 	g_snprintf(tname, sizeof(tname), "mp %s", live_rtsp->id_str);
 	janus_refcount_increase(&live_rtsp->ref);
 	live_rtsp->thread = g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
@@ -7073,7 +7124,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		char *url, char *username, char *password,
 		gboolean doaudio, int acodec, char *audiortpmap, char *audiofmtp,
 		gboolean dovideo, int vcodec, char *videortpmap, char *videofmtp, gboolean bufferkf,
-		const janus_network_address *iface,
+		const janus_network_address *iface, int threads,
 		gboolean error_on_failure) {
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
 	return NULL;
@@ -8317,6 +8368,13 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 				/* Process this packet: don't relay if it's not the SSRC/layer we wanted to handle */
 				gboolean relay = janus_rtp_simulcasting_context_process_rtp(&session->sim_context,
 					(char *)packet->data, packet->length, packet->ssrc, NULL, packet->codec, &session->context);
+				if(!relay) {
+					/* Did a lot of time pass before we could relay a packet? */
+					gint64 now = janus_get_monotonic_time();
+					if((now - session->sim_context.last_relayed) >= G_USEC_PER_SEC) {
+						g_atomic_int_set(&session->sim_context.need_pli, 1);
+					}
+				}
 				if(session->sim_context.need_pli) {
 					/* Schedule a PLI */
 					JANUS_LOG(LOG_VERB, "We need a PLI for the simulcast context\n");

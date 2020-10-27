@@ -59,6 +59,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id);
+json_t *janus_mqtt_query_transport(json_t *request);
 
 #define JANUS_MQTT_VERSION_3_1		  "3.1"
 #define JANUS_MQTT_VERSION_3_1_1		"3.1.1"
@@ -88,6 +89,8 @@ static janus_transport janus_mqtt_transport_ =
 		.session_created = janus_mqtt_session_created,
 		.session_over = janus_mqtt_session_over,
 		.session_claimed = janus_mqtt_session_claimed,
+
+		.query_transport = janus_mqtt_query_transport,
 	);
 
 /* Transport creator */
@@ -104,7 +107,22 @@ static gboolean janus_mqtt_admin_api_enabled_ = FALSE;
 static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
-static size_t json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
+/* Parameter validation (for tweaking and queries via Admin API) */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"events", JANUS_JSON_BOOL, 0},
+	{"json", JSON_STRING, 0},
+};
+/* Error codes (for the tweaking and queries via Admin API) */
+#define JANUS_MQTT_ERROR_INVALID_REQUEST		411
+#define JANUS_MQTT_ERROR_MISSING_ELEMENT		412
+#define JANUS_MQTT_ERROR_INVALID_ELEMENT		413
+#define JANUS_MQTT_ERROR_UNKNOWN_ERROR			499
+
 
 /* MQTT client context */
 typedef struct janus_mqtt_context {
@@ -121,6 +139,8 @@ typedef struct janus_mqtt_context {
 	} connect;
 	struct {
 		int timeout;
+		janus_mutex mutex;
+		janus_condition cond;
 	} disconnect;
 	/* If we loose connection, the will is our last publish */
 	struct {
@@ -321,16 +341,16 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		/* Check how we need to format/serialize the JSON output */
 		if(!strcasecmp(json_item->value, "indented")) {
 			/* Default: indented, we use three spaces for that */
-			json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		} else if(!strcasecmp(json_item->value, "plain")) {
 			/* Not indented and no new lines, but still readable */
-			json_format_ = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
 		} else if(!strcasecmp(json_item->value, "compact")) {
 			/* Compact, so no spaces between separators */
-			json_format_ = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
 		} else {
 			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", json_item->value);
-			json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
 	}
 
@@ -541,6 +561,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_ERR, "Invalid disconnect-timeout value: %s (falling back to default)\n", disconnect_timeout_item->value);
 		ctx->disconnect.timeout = 100;
 	}
+	janus_mutex_init(&ctx->disconnect.mutex);
+	janus_condition_init(&ctx->disconnect.cond);
 
 	/* Admin configuration */
 	janus_config_item *admin_enabled_item = janus_config_get(config, config_admin, janus_config_type_item, "admin_enabled");
@@ -836,7 +858,7 @@ int janus_mqtt_send_message(janus_transport_session *transport, void *request_id
 		return -1;
 	}
 
-	char *payload = json_dumps(message, json_format_);
+	char *payload = json_dumps(message, json_format);
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
 
 	int rc;
@@ -958,6 +980,83 @@ void janus_mqtt_session_over(janus_transport_session *transport, guint64 session
 void janus_mqtt_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
 	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
+}
+
+json_t *janus_mqtt_query_transport(json_t *request) {
+	if(context_ == NULL) {
+		return NULL;
+	}
+	/* We can use this request to dynamically change the behaviour of
+	 * the transport plugin, and/or query for some specific information */
+	json_t *response = json_object();
+	int error_code = 0;
+	char error_cause[512];
+	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_MQTT_ERROR_MISSING_ELEMENT, JANUS_MQTT_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	/* Get the request */
+	const char *request_text = json_string_value(json_object_get(request, "request"));
+	if(!strcasecmp(request_text, "configure")) {
+		/* We only allow for the configuration of some basic properties:
+		 * changing more complex things (e.g., port to bind to, etc.)
+		 * would likely require restarting backends, so just too much */
+		JANUS_VALIDATE_JSON_OBJECT(request, configure_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_MQTT_ERROR_MISSING_ELEMENT, JANUS_MQTT_ERROR_INVALID_ELEMENT);
+		/* Check if we now need to send events to handlers */
+		json_object_set_new(response, "result", json_integer(200));
+		json_t *notes = NULL;
+		gboolean events = json_is_true(json_object_get(request, "events"));
+		if(events && !context_->gateway->events_is_enabled()) {
+			/* Notify that this will be ignored */
+			notes = json_array();
+			json_array_append_new(notes, json_string("Event handlers disabled at the core level"));
+			json_object_set_new(response, "notes", notes);
+		}
+		if(events != notify_events) {
+			notify_events = events;
+			if(!notify_events && context_->gateway->events_is_enabled()) {
+				JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
+			}
+		}
+		const char *indentation = json_string_value(json_object_get(request, "json"));
+		if(indentation != NULL) {
+			if(!strcasecmp(indentation, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', ignoring tweak\n", indentation);
+				/* Notify that this will be ignored */
+				if(notes == NULL) {
+					notes = json_array();
+					json_object_set_new(response, "notes", notes);
+				}
+				json_array_append_new(notes, json_string("Ignored unsupported indentation format"));
+			}
+		}
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_MQTT_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+plugin_response:
+		{
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
 }
 
 void janus_mqtt_client_connected(void *context, char *cause) {
@@ -1224,7 +1323,16 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 
 	options.context = ctx;
 	options.timeout = ctx->disconnect.timeout;
-	return MQTTAsync_disconnect(ctx->client, &options);
+	int rc = MQTTAsync_disconnect(ctx->client, &options);
+	if (rc == MQTTASYNC_SUCCESS) {
+		janus_mutex_lock(&ctx->disconnect.mutex);
+		/* Block the thread awaiting asynchronous graceful disconnect to finish. */
+		gint64 deadline = janus_get_monotonic_time() + ctx->disconnect.timeout * G_TIME_SPAN_MILLISECOND;
+		janus_condition_wait_until(&ctx->disconnect.cond, &ctx->disconnect.mutex, deadline);
+		janus_mutex_unlock(&ctx->disconnect.mutex);
+		janus_mqtt_client_destroy_context(&ctx);
+	}
+	return rc;
 }
 
 void janus_mqtt_client_disconnect_success(void *context, MQTTAsync_successData *response) {
@@ -1240,7 +1348,9 @@ void janus_mqtt_client_disconnect_success5(void *context, MQTTAsync_successData5
 void janus_mqtt_client_disconnect_success_impl(void *context) {
 	JANUS_LOG(LOG_INFO, "MQTT client has been successfully disconnected.\n");
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	janus_mqtt_client_destroy_context(&ctx);
+	janus_mutex_lock(&ctx->disconnect.mutex);
+	janus_condition_signal(&ctx->disconnect.cond);
+	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 
 void janus_mqtt_client_disconnect_failure(void *context, MQTTAsync_failureData *response) {
@@ -1257,9 +1367,10 @@ void janus_mqtt_client_disconnect_failure5(void *context, MQTTAsync_failureData5
 
 void janus_mqtt_client_disconnect_failure_impl(void *context, int rc) {
 	JANUS_LOG(LOG_ERR, "Can't disconnect from MQTT broker, return code: %d\n", rc);
-
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
-	janus_mqtt_client_destroy_context(&ctx);
+	janus_mutex_lock(&ctx->disconnect.mutex);
+	g_cond_signal(&ctx->disconnect.cond);
+	janus_mutex_unlock(&ctx->disconnect.mutex);
 }
 
 int janus_mqtt_client_subscribe(janus_mqtt_context *ctx, gboolean admin) {
@@ -1564,6 +1675,8 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		g_free(ctx->publish.topic);
 		g_free(ctx->connect.username);
 		g_free(ctx->connect.password);
+		janus_mutex_destroy(&ctx->disconnect.mutex);
+		janus_condition_destroy(&ctx->disconnect.cond);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
 	#ifdef MQTTVERSION_5

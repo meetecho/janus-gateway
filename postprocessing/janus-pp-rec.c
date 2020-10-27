@@ -1169,18 +1169,18 @@ static int janus_pp_rtp_header_extension_find(char *buf, int len, int id,
 				uint8_t extid = 0, idlen;
 				int i = 0;
 				while(i < extlen) {
-					extid = buf[hlen+i] >> 4;
+					extid = (uint8_t)buf[hlen+i] >> 4;
 					if(extid == reserved) {
 						break;
 					} else if(extid == padding) {
 						i++;
 						continue;
 					}
-					idlen = (buf[hlen+i] & 0xF)+1;
+					idlen = ((uint8_t)buf[hlen+i] & 0xF)+1;
 					if(extid == id) {
 						/* Found! */
 						if(byte)
-							*byte = buf[hlen+i+1];
+							*byte = (uint8_t)buf[hlen+i+1];
 						if(word)
 							*word = ntohl(*(uint32_t *)(buf+hlen+i));
 						if(ref)
