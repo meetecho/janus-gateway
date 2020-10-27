@@ -303,6 +303,8 @@ JANUSSDP.generateAnswer = function(offer, options) {
 	}
 	if(options.data === null || options.data === undefined)
 		options.data = true;
+	if(options.disableTwcc === null || options.disableTwcc === undefined)
+		options.disableTwcc = false;
 	// Let's prepare the answer
 	var answer = [];
 	// Iterate on all lines
@@ -376,6 +378,17 @@ JANUSSDP.generateAnswer = function(offer, options) {
 					if(medium === "audio" && n === audioPt) {
 						answer.push(a);
 					} else if(medium === "video" && n === videoPt) {
+						answer.push(a);
+					}
+				} else if (a.name === "extmap") {
+					// We do negotiate some RTP extensions
+					if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:mid") !== -1) {
+						answer.push(a);
+					} else if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id") !== -1) {
+						answer.push(a);
+					} else if(a.value.indexOf("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id") !== -1) {
+						answer.push(a);
+					} else if(options.disableTwcc !== true && a.value.indexOf("draft-holmer-rmcat-transport-wide-cc-extensions-01") !== -1) {
 						answer.push(a);
 					}
 				}
