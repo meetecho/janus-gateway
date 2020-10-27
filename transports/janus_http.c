@@ -135,6 +135,7 @@ typedef struct janus_http_msg {
 	volatile int suspended;				/* Whether this connection is currently suspended */
 	volatile void *longpoll;			/* Whether this is a long poll connection for a session */
 	int max_events;						/* In case this is a long poll, how many events we should send back */
+	char *acro;							/* Value of the Origin HTTP header, if any (needed for CORS) */
 	char *acrh;							/* Value of the Access-Control-Request-Headers HTTP header, if any (needed for CORS) */
 	char *acrm;							/* Value of the Access-Control-Request-Method HTTP header, if any (needed for CORS) */
 	char *contenttype;					/* Content-Type of the payload */
@@ -158,6 +159,7 @@ static void janus_http_msg_free(const janus_refcount *msg_ref) {
 		return;
 	g_free(request->payload);
 	g_free(request->contenttype);
+	g_free(request->acro);
 	g_free(request->acrh);
 	g_free(request->acrm);
 	g_free(request->response);
@@ -286,6 +288,7 @@ static char *admin_ws_path = NULL;
 
 /* Custom Access-Control-Allow-Origin value, if specified */
 static char *allow_origin = NULL;
+static gboolean enforce_cors = FALSE;
 
 /* REST and Admin/Monitor ACL list */
 static GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
@@ -733,6 +736,13 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(item && item->value) {
 			allow_origin = g_strdup(item->value);
 			JANUS_LOG(LOG_INFO, "Restricting Access-Control-Allow-Origin to '%s'\n", allow_origin);
+		}
+		if(allow_origin != NULL) {
+			item = janus_config_get(config, config_cors, janus_config_type_item, "enforce_cors");
+			if(item && item->value && janus_is_true(item->value)) {
+				enforce_cors = TRUE;
+				JANUS_LOG(LOG_INFO, "Going to enforce CORS by 403 errors\n");
+			}
 		}
 
 		/* Start with the Janus API web server now */
@@ -1367,6 +1377,14 @@ static int janus_http_handler(void *cls, struct MHD_Connection *connection,
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
+	if(firstround && enforce_cors && (msg->acro == NULL || strstr(msg->acro, allow_origin) != msg->acro)) {
+		/* Got a request from the wrong origin and we're enforcing CORS with 403 errors */
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+		janus_http_add_cors_headers(msg, response);
+		ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+		MHD_destroy_response(response);
+		return ret;
+	}
 	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		janus_http_add_cors_headers(msg, response);
@@ -1755,6 +1773,14 @@ static int janus_http_admin_handler(void *cls, struct MHD_Connection *connection
 		ret = janus_http_return_error(ts, 0, NULL, JANUS_ERROR_TRANSPORT_SPECIFIC, "Unsupported method %s", method);
 		goto done;
 	}
+	if(firstround && enforce_cors && (msg->acro == NULL || strstr(msg->acro, allow_origin) != msg->acro)) {
+		/* Got a request from the wrong origin and we're enforcing CORS with 403 errors */
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+		janus_http_add_cors_headers(msg, response);
+		ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+		MHD_destroy_response(response);
+		return ret;
+	}
 	if(!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		janus_http_add_cors_headers(msg, response);
@@ -1942,6 +1968,13 @@ static int janus_http_headers(void *cls, enum MHD_ValueKind kind, const char *ke
 	janus_refcount_increase(&request->ref);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		request->contenttype = g_strdup(value);
+	} else if(!strcasecmp(key, "Referer")) {
+		/* We only use this as a backup in case Origin is missing (e.g., in GET) */
+		if(request->acro == NULL)
+			request->acro = g_strdup(value);
+	} else if(!strcasecmp(key, "Origin")) {
+		g_free(request->acro);
+		request->acro = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Method")) {
 		request->acrm = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Headers")) {
