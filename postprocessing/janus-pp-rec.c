@@ -707,6 +707,15 @@ int main(int argc, char *argv[])
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+		/* Check if we can get rid of the packet if we're expecting
+		 * static or specific payload types and they don't match */
+		if((g711 && rtp->type != 0 && rtp->type != 8) || (g722 && rtp->type != 9)) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d\n", rtp->type);
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
 		if(rtp->csrccount) {
 			JANUS_LOG(LOG_VERB, "  -- -- Skipping CSRC list\n");
 			skip += rtp->csrccount*4;
