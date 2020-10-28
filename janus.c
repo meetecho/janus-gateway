@@ -104,6 +104,7 @@ static struct janus_json_parameter jsep_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
+	{"rid_order", JSON_STRING, 0},
 	{"e2ee", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter add_token_parameters[] = {
@@ -143,6 +144,10 @@ static struct janus_json_parameter st_parameters[] = {
 };
 static struct janus_json_parameter ans_parameters[] = {
 	{"accept", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter querytransport_parameters[] = {
+	{"transport", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter queryhandler_parameters[] = {
 	{"handler", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1310,6 +1315,21 @@ int janus_process_incoming_request(janus_request *request) {
 			type = NULL;
 			json_t *jsep_trickle = json_object_get(jsep, "trickle");
 			gboolean do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
+			json_t *jsep_rids = json_object_get(jsep, "rid_order");
+			gboolean rids_hml = TRUE;
+			if(jsep_rids != NULL) {
+				const char *jsep_rids_value = json_string_value(jsep_rids);
+				if(jsep_rids_value != NULL) {
+					if(!strcasecmp(jsep_rids_value, "hml")) {
+						rids_hml = TRUE;
+					} else if(!strcasecmp(jsep_rids_value, "lmh")) {
+						rids_hml = FALSE;
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Invalid 'rid_order' value, falling back to 'hml'\n", handle->handle_id);
+					}
+				}
+				json_object_del(jsep, "rid_order");
+			}
 			json_t *jsep_e2ee = json_object_get(jsep, "e2ee");
 			gboolean e2ee = jsep_e2ee ? json_is_true(jsep_e2ee) : FALSE;
 			/* Are we still cleaning up from a previous media session? */
@@ -1416,7 +1436,7 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				if(janus_sdp_process(handle, parsed_sdp, FALSE) < 0) {
+				if(janus_sdp_process(handle, parsed_sdp, rids_hml, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
@@ -1454,7 +1474,7 @@ int janus_process_incoming_request(janus_request *request) {
 				/* FIXME This is a renegotiation: we can currently only handle simple changes in media
 				 * direction and ICE restarts: anything more complex than that will result in an error */
 				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
-				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
+				if(janus_sdp_process(handle, parsed_sdp, rids_hml, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
 					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
@@ -1556,11 +1576,11 @@ int janus_process_incoming_request(janus_request *request) {
 					/* If we have rids, pass those, otherwise pass the SSRCs */
 					if(handle->stream->rid[0]) {
 						json_t *rids = json_array();
-						json_array_append_new(rids, json_string(handle->stream->rid[0]));
-						if(handle->stream->rid[1])
-							json_array_append_new(rids, json_string(handle->stream->rid[1]));
 						if(handle->stream->rid[2])
 							json_array_append_new(rids, json_string(handle->stream->rid[2]));
+						if(handle->stream->rid[1])
+							json_array_append_new(rids, json_string(handle->stream->rid[1]));
+						json_array_append_new(rids, json_string(handle->stream->rid[0]));
 						json_object_set_new(simulcast, "rids", rids);
 						json_object_set_new(simulcast, "rid-ext", json_integer(handle->stream->rid_ext_id));
 					} else {
@@ -2192,6 +2212,40 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			json_t *query = json_object_get(root, "request");
 			json_t *response = p->handle_admin_message(query);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "response", response ? response : json_object());
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "query_transport")) {
+			/* Contact a transport and expect a response */
+			JANUS_VALIDATE_JSON_OBJECT(root, querytransport_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *transport = json_object_get(root, "transport");
+			const char *transport_value = json_string_value(transport);
+			janus_transport *t = g_hash_table_lookup(transports, transport_value);
+			if(t == NULL) {
+				/* No such transport... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Invalid transport");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, error_cause);
+				goto jsondone;
+			}
+			if(t->query_transport == NULL) {
+				/* Transport doesn't implement the hook... */
+				g_snprintf(error_cause, sizeof(error_cause), "%s", "Transport plugin doesn't support queries");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, error_cause);
+				goto jsondone;
+			}
+			json_t *query = json_object_get(root, "request");
+			json_t *response = t->query_transport(query);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -2868,15 +2922,16 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	if(stream->rid[0] && stream->rid_ext_id > 0) {
 		json_t *sr = json_object();
 		json_t *rid = json_array();
-		json_array_append_new(rid, json_string(stream->rid[0]));
-		if(stream->rid[1])
-			json_array_append_new(rid, json_string(stream->rid[1]));
 		if(stream->rid[2])
 			json_array_append_new(rid, json_string(stream->rid[2]));
+		if(stream->rid[1])
+			json_array_append_new(rid, json_string(stream->rid[1]));
+		json_array_append_new(rid, json_string(stream->rid[0]));
 		json_object_set_new(sr, "rid", rid);
 		json_object_set_new(sr, "rid-ext-id", json_integer(stream->rid_ext_id));
 		if(stream->ridrtx_ext_id > 0)
 			json_object_set_new(sr, "ridrtx-ext-id", json_integer(stream->ridrtx_ext_id));
+		json_object_set_new(sr, "rid-order", json_string(stream->rids_hml ? "hml" : "lmh"));
 		if(stream->legacy_rid)
 			json_object_set_new(sr, "rid-syntax", json_string("legacy"));
 		json_object_set_new(s, "rid-simulcast", sr);
@@ -4553,7 +4608,6 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_TURNRESTAPI
 	char *turn_rest_api_method = NULL;
 #endif
-	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, full_trickle = FALSE, ipv6 = FALSE,
 		ignore_mdns = FALSE, ignore_unreachable_ice_server = FALSE;
@@ -4707,32 +4761,41 @@ gint main(int argc, char *argv[])
 	}
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
-		gboolean private_address = FALSE;
-		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
-		janus_network_address addr;
-		if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
-			JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
-		} else {
-			if(addr.family == AF_INET) {
-				unsigned short int ip[4];
-				sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
-				if(ip[0] == 10) {
-					/* Class A private address */
-					private_address = TRUE;
-				} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
-					/* Class B private address */
-					private_address = TRUE;
-				} else if(ip[0] == 192 && ip[1] == 168) {
-					/* Class C private address */
-					private_address = TRUE;
-				}
-			} else {
-				/* TODO Similar check for IPv6... */
-			}
+		int num_ips = janus_get_public_ip_count();
+		if(num_ips == 0) {
+			/* If nat_1_1_mapping is off, the first (and only) public IP is the local_ip */
+			num_ips++;
 		}
-		if(private_address) {
-			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server!"
+		/* Check each public IP */
+		int i = 0;
+		for(i = 0; i < num_ips; i++) {
+			gboolean private_address = FALSE;
+			const gchar *test_ip = janus_get_public_ip(i);
+			janus_network_address addr;
+			if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
+				JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
+			} else {
+				if(addr.family == AF_INET) {
+					unsigned short int ip[4];
+					sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+					if(ip[0] == 10) {
+						/* Class A private address */
+						private_address = TRUE;
+					} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+						/* Class B private address */
+						private_address = TRUE;
+					} else if(ip[0] == 192 && ip[1] == 168) {
+						/* Class C private address */
+						private_address = TRUE;
+					}
+				} else {
+					/* TODO Similar check for IPv6... */
+				}
+			}
+			if(private_address) {
+				JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server!"
 			                    " Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", test_ip);
+			}
 		}
 	}
 

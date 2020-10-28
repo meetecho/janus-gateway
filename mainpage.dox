@@ -91,7 +91,7 @@
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
+ * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, v0.9.59, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
@@ -2316,6 +2316,13 @@ const token = getJanusToken('janus', ['janus.plugin.videoroom']),
  * - \c detach_handle: detached a specific handle; this behaves exactly
  * as the \c detach request does in the Janus API.
  *
+ * \subsection adminreqt Transport-related requests
+ * - \c query_transport: send a synchronous request to a transport plugin and
+ * return a response; whether this is implemented, and what functionality is
+ * provided, can vary from transport to transport, but in general this feature
+ * is available to tweak some setting dynamically and/or query some internal
+ * transport-specific information (e.g., the number of served connections).
+ *
  * \subsection adminreqe Event handlers-related requests
  * - \c query_eventhandler: send a synchronous request to an event handler and
  * return a response; implemented by most event handlers to dynamically
@@ -3544,6 +3551,12 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>OS</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
+ * 		<td>Android/iOS</td>
+ * 		<td><a href="https://github.com/meetecho">Meetecho</a></td>
+ * 		<td><a href="https://github.com/meetecho/janus-mobile-sdk">janus-mobile-sdk</a></td>
+ *		<td>Janus Client SDK</td>
+ * </tr>
+ * <tr>
  * 		<td>Android</td>
  * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
  * 		<td><a href="https://github.com/Computician/janus-gateway-android">janus-gateway-android</a></td>
@@ -3605,6 +3618,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/canyanio">Canyan.io</a></td>
  * 		<td><a href="https://github.com/canyanio/janus-gateway-docker">janus-gateway-docker</a></td>
  *		<td>Docker image for the Janus WebRTC Server</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/bartbalaz">Bartosz Balazinski</a></td>
+ * 		<td><a href="https://github.com/bartbalaz/janus-container">janus-container</a></td>
+ *		<td>Janus container</td>
  * </tr>
  * </table>
  * <br/>
@@ -3709,7 +3727,7 @@ ldd janus | grep asan
  * - \b libconfig: https://hyperrealm.github.io/libconfig/ (configuration files)
  * - \b libnice: https://libnice.freedesktop.org/ (ICE/STUN/TURN, at least v0.1.16 suggested, master recommended)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v1.5 suggested)
+ * - \b libsrtp: https://github.com/cisco/libsrtp (SRTP, at least v2.x suggested)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server, at least v0.9.59)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)

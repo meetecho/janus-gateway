@@ -53,6 +53,8 @@ var sfutest = null;
 var opaqueId = "videoroomtest-"+Janus.randomString(12);
 
 var myroom = 1234;	// Demo room
+if(getQueryStringValue("room") !== "")
+	myroom = parseInt(getQueryStringValue("room"));
 var myusername = null;
 var myid = null;
 var mystream = null;
@@ -164,12 +166,11 @@ $(document).ready(function() {
 											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(subscriber_mode) {
-                                                						$('#videojoin').hide();
-                                                						$('#videos').removeClass('hide').show();
-                                            						} else {
-                                                						publishOwnFeed(true);
+												$('#videojoin').hide();
+												$('#videos').removeClass('hide').show();
+											} else {
+												publishOwnFeed(true);
 											}
-
 											// Any new feed to attach to?
 											if(msg["publishers"]) {
 												var list = msg["publishers"];
@@ -576,7 +577,7 @@ function newRemoteFeed(id, display, audio, video) {
 				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
 					addButtons = true;
 					// No remote video yet
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width="100%" height="100%" />');
 					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay playsinline/>');
 					$('#videoremote'+remoteFeed.rfindex).append(
 						'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +

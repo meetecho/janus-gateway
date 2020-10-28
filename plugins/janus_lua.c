@@ -316,6 +316,16 @@ typedef struct janus_lua_callback {
 	char *function;
 	char *argument;
 } janus_lua_callback;
+static GHashTable *callbacks = NULL;
+static void janus_lua_callback_free(janus_lua_callback *cb) {
+	if(!cb)
+		return;
+	g_source_destroy(cb->source);
+	g_source_unref(cb->source);
+	g_free(cb->function);
+	g_free(cb->argument);
+	g_free(cb);
+}
 
 /* Helper function to sample the number of occupied slots into Lua stack */
 static void janus_lua_stackdump(lua_State* l) {
@@ -441,6 +451,7 @@ static int janus_lua_method_timecallback(lua_State *s) {
 	cb->ms = ms;
 	cb->source = g_timeout_source_new(ms);
 	g_source_set_callback(cb->source, janus_lua_timer_cb, cb, NULL);
+	g_hash_table_insert(callbacks, cb, cb);
 	cb->id = g_source_attach(cb->source, timer_context);
 	JANUS_LOG(LOG_VERB, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
 	/* Done */
@@ -1362,6 +1373,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
 	lua_ids = g_hash_table_new(NULL, NULL);
 	events = g_async_queue_new();
+	callbacks = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_callback_free);
 
 	g_atomic_int_set(&lua_initialized, 1);
 
@@ -1444,6 +1456,8 @@ void janus_lua_destroy(void) {
 	janus_mutex_lock(&lua_mutex);
 	lua_getglobal(lua_state, "destroy");
 	lua_call(lua_state, 0, 0);
+	g_hash_table_destroy(callbacks);
+	callbacks = NULL;
 	janus_mutex_unlock(&lua_mutex);
 
 	janus_mutex_lock(&lua_sessions_mutex);
@@ -2264,12 +2278,8 @@ static gboolean janus_lua_timer_cb(void *data) {
 		lua_call(t, 1, 0);
 	}
 	lua_pop(lua_state, 1);
-	janus_mutex_unlock(&lua_mutex);
 	/* Done */
-	g_source_destroy(cb->source);
-	g_source_unref(cb->source);
-	g_free(cb->function);
-	g_free(cb->argument);
-	g_free(cb);
+	g_hash_table_remove(callbacks, cb);
+	janus_mutex_unlock(&lua_mutex);
 	return FALSE;
 }

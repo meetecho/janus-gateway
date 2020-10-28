@@ -241,7 +241,7 @@ $(document).ready(function() {
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#videobox').append('<video class="rounded centered" id="thevideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
 									if(recordplay.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -279,9 +279,9 @@ $(document).ready(function() {
 										$('#videotitle').html(selectedRecordingInfo);
 										$('#stop').unbind('click').click(stop);
 										$('#video').removeClass('hide').show();
-										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay playsinline/>');
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width="100%" height="100%" autoplay playsinline/>');
 										// No remote video yet
-										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
 										if(spinner == null) {
 											var target = document.getElementById('videobox');
 											spinner = new Spinner({top:100}).spin(target);

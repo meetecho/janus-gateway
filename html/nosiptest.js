@@ -195,7 +195,7 @@ $(document).ready(function() {
 									Janus.debug("[caller]  ::: Got a local stream :::", stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay playsinline muted="muted"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay playsinline muted="muted"/>');
 									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									if(caller.webrtcStuff.pc.iceConnectionState !== "completed" &&
@@ -209,7 +209,7 @@ $(document).ready(function() {
 											}
 										});
 										// No remote video yet
-										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										$('#videoright').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
 										if(spinner == null) {
 											var target = document.getElementById('videoright');
 											spinner = new Spinner({top:100}).spin(target);
@@ -239,7 +239,7 @@ $(document).ready(function() {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay playsinline/>');
+											'<video class="rounded centered hide" id="peervideo" width="100%" height="100%" autoplay playsinline/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
