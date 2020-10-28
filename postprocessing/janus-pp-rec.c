@@ -632,7 +632,7 @@ int main(int argc, char *argv[])
 	times_resetted = 0;
 	post_reset_pkts = 0;
 	uint64_t max32 = UINT32_MAX;
-	uint16_t rtp_header_len;
+	uint16_t rtp_header_len, rtp_read_n;
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -714,7 +714,7 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		/* Only read RTP header */
-		rtp_header_len = len > 24 ? 24: len;
+		rtp_header_len = 12;
 		bytes = fread(prebuffer, sizeof(char), rtp_header_len, file);
 		if(bytes < rtp_header_len) {
 			JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", bytes, rtp_header_len);
@@ -727,29 +727,31 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "  -- -- Skipping CSRC list\n");
 			skip += rtp->csrccount*4;
 		}
+		if (rtp->csrccount || rtp->extension) {
+			rtp_read_n = (rtp->csrccount + rtp->extension)*4;
+			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
+			if (bytes < rtp_read_n) {
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
+				break;
+			} else
+				rtp_header_len += rtp_read_n;
+		}
 		audiolevel = -1;
 		rotation = -1;
 		if(rtp->extension) {
-			if (16+skip > rtp_header_len) {
-				bytes = fread(prebuffer+rtp_header_len, sizeof(char), 16+skip-rtp_header_len, file);
-				if (rtp_header_len+bytes < 16+skip) {
-					JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", rtp_header_len+bytes, 16+skip);
-					break;
-				}
-				rtp_header_len += bytes;
-			}
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12+skip);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=0x%"PRIX16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
-			skip += 4 + ntohs(ext->length)*4;
-			if (12+skip > rtp_header_len) {
-				bytes = fread(prebuffer+rtp_header_len, sizeof(char), 12+skip-rtp_header_len, file);
-				if (rtp_header_len+bytes < 12+skip) {
-					JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n", rtp_header_len+bytes, 12+skip);
-					break;
-				}
-				rtp_header_len += bytes;
-			}
+			rtp_read_n = ntohs(ext->length)*4;
+			skip += 4 + rtp_read_n;
+			bytes = fread(prebuffer+rtp_header_len, sizeof(char), rtp_read_n, file);
+			if (bytes < rtp_read_n) {
+				JANUS_LOG(LOG_WARN, "Missing RTP packet header data (%d instead %"SCNu16")\n",
+					rtp_header_len+bytes, rtp_header_len+rtp_read_n);
+				break;
+			} else
+				rtp_header_len += rtp_read_n;
 			if(audio_level_extmap_id > 0)
 				janus_pp_rtp_header_extension_parse_audio_level(prebuffer, len, audio_level_extmap_id, &audiolevel);
 			if(video_orient_extmap_id > 0) {
