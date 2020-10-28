@@ -760,6 +760,7 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 			GResolver *resolver = g_resolver_get_default();
 			g_resolver_lookup_by_name_async(resolver, rip, NULL,
 				(GAsyncReadyCallback)janus_sdp_mdns_resolved, mc);
+			g_object_unref(resolver);
 			return 0;
 		}
 		/* Add remote candidate */
