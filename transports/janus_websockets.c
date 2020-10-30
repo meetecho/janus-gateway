@@ -1327,6 +1327,7 @@ static int janus_websockets_common_callback(
 							(unsigned char *)args->p + args->max_len))
 						return 1;
 				}
+#if (LWS_LIBRARY_VERSION_MAJOR >= 3 && LWS_LIBRARY_VERSION_MINOR >= 2) || (LWS_LIBRARY_VERSION_MAJOR >= 4)
 				int mlen = lws_hdr_custom_length(wsi, "Access-Control-Request-Methods", strlen("Access-Control-Request-Methods"));
 				if(mlen > 0 && mlen < 255) {
 					lws_hdr_custom_copy(wsi, methods, sizeof(methods),
@@ -1338,6 +1339,7 @@ static int janus_websockets_common_callback(
 							(unsigned char *)args->p + args->max_len))
 						return 1;
 				}
+#endif
 				/* WebSockets are not bound by CORS, but we can enforce this */
 				if(enforce_cors) {
 					if(strlen(origin) == 0 || strstr(origin, allow_origin) != origin) {
