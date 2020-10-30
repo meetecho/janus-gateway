@@ -195,6 +195,13 @@ int main(int argc, char *argv[])
 			ignore_first_packets = val;
 	}
 
+	int match_pt = -1;
+	if(args_info.payload_type_given) {
+		int val = args_info.payload_type_arg;
+		if(val >= 0 && val <= 127)
+			match_pt = val;
+	}
+
 	if(args_info.audiolevel_ext_given || (g_getenv("JANUS_PPREC_AUDIOLEVELEXT") != NULL)) {
 		int val = args_info.audiolevel_ext_given ? args_info.audiolevel_ext_arg : atoi(g_getenv("JANUS_PPREC_AUDIOLEVELEXT"));
 		if(val >= 0)
@@ -232,6 +239,7 @@ int main(int argc, char *argv[])
 		if(setting == NULL || (
 				(strcmp(setting, "-m")) && (strcmp(setting, "--metadata")) &&
 				(strcmp(setting, "-i")) && (strcmp(setting, "--ignore-first")) &&
+				(strcmp(setting, "-P")) && (strcmp(setting, "--payload-type")) &&
 				(strcmp(setting, "-a")) && (strcmp(setting, "--audiolevel-ext")) &&
 				(strcmp(setting, "-v")) && (strcmp(setting, "--videoorient-ext")) &&
 				(strcmp(setting, "-d")) && (strcmp(setting, "--debug-level")) &&
@@ -710,7 +718,16 @@ int main(int argc, char *argv[])
 		/* Check if we can get rid of the packet if we're expecting
 		 * static or specific payload types and they don't match */
 		if((g711 && rtp->type != 0 && rtp->type != 8) || (g722 && rtp->type != 9)) {
-			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d\n", rtp->type);
+			JANUS_LOG(LOG_WARN, "Dropping packet with unexpected payload type: %d != %s\n",
+				rtp->type, g711 ? "0/8" : "9");
+			/* Skip data */
+			offset += len;
+			count++;
+			continue;
+		}
+		if(match_pt != -1 && rtp->type != match_pt) {
+			JANUS_LOG(LOG_WARN, "Dropping packet with non-matching payload type: %d != %d\n",
+				rtp->type, match_pt);
 			/* Skip data */
 			offset += len;
 			count++;
