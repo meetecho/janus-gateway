@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.10.7] - 2020-10-30
+
+- Fixed SDP negotiation when client uses max-bundle [[Issue-2390](#2390)]
+- Added optional JSEP flag to invert processing order of simulcast "rid" in SDP [[PR-2385](#2385)]
+- Fixed broken rid-based simulcast when using less than 3 substreams
+- Fixed occasional misleading "private IP" warning on startup (thanks @npikimasu!) [[PR-2386](#2386)]
+- Added "plugin-offer mode" to AudioBridge [[PR-2366](#2366)]
+- Fixed occasional deadlock when sending SUBSCRIBE messages via SIP plugin [[PR-2387](#2387)]
+- Fixed occasional SIGABRT in RabbitMQ transport (thanks @david-goncalves!) [[PR-2380](#2380)]
+- Fixed broken RTP parsing in janus-pp-rec when there were too many extensions (thanks @isnumanagic!) [[PR-2411](#2411)]
+- Fixed occasional segfault when post-processing G.722 mjr recordings
+- Added configurable simulcast encodings to janus.js (thanks @fippo!) [[PR-2393](#2392)]
+- Updated old Insertable Streams APIs in janus.js and e2etest.js
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.10.6] - 2020-10-05
 
 - New mechanism to tweak/query transport plugins via Admin API [[PR-2354](https://github.com/meetecho/janus-gateway/pull/2354)]
