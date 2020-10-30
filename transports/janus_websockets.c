@@ -260,6 +260,7 @@ static const char *janus_websockets_reason_string(enum lws_callback_reasons reas
 		CASE_STR(LWS_CALLBACK_HTTP_BODY_COMPLETION);
 		CASE_STR(LWS_CALLBACK_HTTP_FILE_COMPLETION);
 		CASE_STR(LWS_CALLBACK_HTTP_WRITEABLE);
+		CASE_STR(LWS_CALLBACK_ADD_HEADERS);
 		CASE_STR(LWS_CALLBACK_FILTER_NETWORK_CONNECTION);
 		CASE_STR(LWS_CALLBACK_FILTER_HTTP_CONNECTION);
 		CASE_STR(LWS_CALLBACK_SERVER_NEW_CLIENT_INSTANTIATED);
@@ -324,6 +325,10 @@ static char *janus_websockets_get_interface_name(const char *ip) {
 	freeifaddrs(addrs);
 	return NULL;
 }
+
+/* Custom Access-Control-Allow-Origin value, if specified */
+static char *allow_origin = NULL;
+static gboolean enforce_cors = FALSE;
 
 /* WebSockets ACL list for both Janus and Admin API */
 static GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
@@ -408,6 +413,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		janus_config_print(config);
 		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
 		janus_config_category *config_admin = janus_config_get_create(config, NULL, janus_config_type_category, "admin");
+		janus_config_category *config_cors = janus_config_get_create(config, NULL, janus_config_type_category, "cors");
 		janus_config_category *config_certs = janus_config_get_create(config, NULL, janus_config_type_category, "certificates");
 
 		/* Handle configuration */
@@ -521,6 +527,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			}
 			g_strfreev(list);
 			list = NULL;
+		}
+
+		/* Any custom value for the Access-Control-Allow-Origin header? */
+		item = janus_config_get(config, config_cors, janus_config_type_item, "allow_origin");
+		if(item && item->value) {
+			allow_origin = g_strdup(item->value);
+			JANUS_LOG(LOG_INFO, "Restricting Access-Control-Allow-Origin to '%s'\n", allow_origin);
+		}
+		if(allow_origin != NULL) {
+			item = janus_config_get(config, config_cors, janus_config_type_item, "enforce_cors");
+			if(item && item->value && janus_is_true(item->value)) {
+				enforce_cors = TRUE;
+				JANUS_LOG(LOG_INFO, "Going to enforce CORS by rejecting WebSocket connections\n");
+			}
 		}
 
 		/* Check if we need to enable the transport level ping/pong mechanism */
@@ -1267,6 +1287,64 @@ static int janus_websockets_common_callback(
 				json_object_set_new(info, "admin_api", admin ? json_true() : json_false());
 				json_object_set_new(info, "ip", json_string(ip));
 				gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
+			}
+			return 0;
+		}
+		case LWS_CALLBACK_ADD_HEADERS: {
+			/* If CORS is enabled, check the headers and add our own */
+			struct lws_process_html_args *args = (struct lws_process_html_args *)in;
+			if(allow_origin == NULL) {
+				/* Return a wildcard for the Access-Control-Allow-Origin header */
+				if(lws_add_http_header_by_name(wsi,
+						(unsigned char *)"Access-Control-Allow-Origin:",
+						(unsigned char *)"*", 1,
+						(unsigned char **)&args->p,
+						(unsigned char *)args->p + args->max_len))
+					return 1;
+			} else {
+				/* Return the configured origin in the header */
+				if(lws_add_http_header_by_name(wsi,
+						(unsigned char *)"Access-Control-Allow-Origin:",
+						(unsigned char *)allow_origin, strlen(allow_origin),
+						(unsigned char **)&args->p,
+						(unsigned char *)args->p + args->max_len))
+					return 1;
+				char origin[256], headers[256], methods[256];
+				origin[0] = '\0';
+				headers[0] = '\0';
+				methods[0] = '\0';
+				int olen = lws_hdr_total_length(wsi, WSI_TOKEN_ORIGIN);
+				if(olen > 0 && olen < 255) {
+					lws_hdr_copy(wsi, origin, sizeof(origin), WSI_TOKEN_ORIGIN);
+				}
+				int hlen = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_AC_REQUEST_HEADERS);
+				if(hlen > 0 && hlen < 255) {
+					lws_hdr_copy(wsi, headers, sizeof(headers), WSI_TOKEN_HTTP_AC_REQUEST_HEADERS);
+					if(lws_add_http_header_by_name(wsi,
+							(unsigned char *)"Access-Control-Allow-Headers:",
+							(unsigned char *)headers, strlen(headers),
+							(unsigned char **)&args->p,
+							(unsigned char *)args->p + args->max_len))
+						return 1;
+				}
+				int mlen = lws_hdr_custom_length(wsi, "Access-Control-Request-Methods", strlen("Access-Control-Request-Methods"));
+				if(mlen > 0 && mlen < 255) {
+					lws_hdr_custom_copy(wsi, methods, sizeof(methods),
+						"Access-Control-Request-Methods", strlen("Access-Control-Request-Methods"));
+					if(lws_add_http_header_by_name(wsi,
+							(unsigned char *)"Access-Control-Allow-Methods:",
+							(unsigned char *)methods, strlen(methods),
+							(unsigned char **)&args->p,
+							(unsigned char *)args->p + args->max_len))
+						return 1;
+				}
+				/* WebSockets are not bound by CORS, but we can enforce this */
+				if(enforce_cors) {
+					if(strlen(origin) == 0 || strstr(origin, allow_origin) != origin) {
+						JANUS_LOG(LOG_ERR, "[%s-%p] Invalid origin, rejecting...\n", log_prefix, wsi);
+						return -1;
+					}
+				}
 			}
 			return 0;
 		}

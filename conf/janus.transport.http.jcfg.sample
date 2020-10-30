@@ -52,8 +52,12 @@ admin: {
 # you need that, uncomment and set the 'allow_origin' below to specify
 # what must be returned in 'Access-Control-Allow-Origin'. More details:
 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
+# In case you want to enforce the Origin validation, rather than leave
+# it to browsers, you can set 'enforce_cors' to 'true' to have Janus
+# return a '403 Forbidden' for all requests that don't comply.
 cors: {
 	#allow_origin = "http://foo.example"
+	#enforce_cors = true
 }
 
 # Certificate and key to use for HTTPS, if enabled (and passphrase if needed).
