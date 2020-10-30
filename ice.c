@@ -95,7 +95,7 @@ gboolean janus_ice_is_mdns_enabled(void) {
 	return janus_mdns_enabled;
 }
 
-/* IPv6 support (still mostly WIP) */
+/* IPv6 support */
 static gboolean janus_ipv6_enabled;
 gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
@@ -498,6 +498,14 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 #define DEFAULT_MAX_NACK_QUEUE	1000
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
+
+static gboolean nack_optimizations = FALSE;
+void janus_set_nack_optimizations_enabled(gboolean optimize) {
+	nack_optimizations = optimize;
+}
+gboolean janus_is_nack_optimizations_enabled(void) {
+	return nack_optimizations;
+}
 
 static uint16_t min_nack_queue = DEFAULT_MIN_NACK_QUEUE;
 void janus_set_min_nack_queue(uint16_t mnq) {
@@ -3449,7 +3457,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
 				continue;
-			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
+			/* We only add IPv6 addresses if support for them has been explicitly enabled */
 			if(family == AF_INET6 && !janus_ipv6_enabled)
 				continue;
 			/* Check the interface name first, we can ignore that as well: enforce list would be checked later */
@@ -4358,8 +4366,9 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, FALSE, pkt->data, pkt->length,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
-				/* If this is video, check if this is a keyframe: if so, we empty our retransmit buffer for incoming NACKs */
-				if(video && stream->video_is_keyframe) {
+				/* If this is video and NACK optimizations are enabled, check if this is
+				 * a keyframe: if so, we empty our retransmit buffer for incoming NACKs */
+				if(video && nack_optimizations && stream->video_is_keyframe) {
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
 					if(stream->video_is_keyframe(payload, plen)) {
