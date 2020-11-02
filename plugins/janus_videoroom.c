@@ -2844,8 +2844,8 @@ static json_t *janus_videoroom_subscriber_offer(janus_videoroom_subscriber *subs
 			JANUS_SDP_OA_FMTP, (stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && stream->opusfec ? "useinbandfec=1" :
 				//~ (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? vprofile : NULL)),
 				NULL),
-			JANUS_SDP_OA_H264_PROFILE, stream->h264_profile,
-			JANUS_SDP_OA_VP9_PROFILE, stream->vp9_profile,
+			JANUS_SDP_OA_H264_PROFILE, (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? stream->h264_profile : NULL),
+			JANUS_SDP_OA_VP9_PROFILE, (stream->type == JANUS_VIDEOROOM_MEDIA_VIDEO ? stream->vp9_profile : NULL),
 			JANUS_SDP_OA_DIRECTION, ((ps && !ps->disabled) || stream->type == JANUS_VIDEOROOM_MEDIA_DATA) ? JANUS_SDP_SENDONLY : JANUS_SDP_INACTIVE,
 			JANUS_SDP_OA_EXTENSION, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
 				(stream->type == JANUS_VIDEOROOM_MEDIA_AUDIO && (ps && ps->audio_level_extmap_id > 0)) ? janus_rtp_extension_id(JANUS_RTP_EXTMAP_AUDIO_LEVEL) : 0,
