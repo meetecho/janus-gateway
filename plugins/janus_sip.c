@@ -3835,6 +3835,16 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Error manipulating SDP");
 				goto error;
 			}
+			if(!offer) {
+				if(session->media.audio_pt_name == NULL && session->media.audio_pt > -1) {
+					session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
+					JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+				}
+				if(session->media.video_pt_name == NULL && session->media.video_pt > -1) {
+					session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
+					JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+				}
+			}
 			/* Take note of the new SDP */
 			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
