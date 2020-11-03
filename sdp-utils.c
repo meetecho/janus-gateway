@@ -1450,15 +1450,15 @@ int janus_sdp_generate_offer_mline(janus_sdp *offer, ...) {
 			pt = va_arg(args, int);
 		} else if(property == JANUS_SDP_OA_FMTP) {
 			fmtp = va_arg(args, char *);
-		} else if(type == JANUS_SDP_AUDIO && property == JANUS_SDP_OA_AUDIO_DTMF) {
+		} else if(property == JANUS_SDP_OA_AUDIO_DTMF) {
 			audio_dtmf = va_arg(args, gboolean);
-		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
+		} else if(property == JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS) {
 			video_rtcpfb = va_arg(args, gboolean);
-		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_VP9_PROFILE) {
+		} else if(property == JANUS_SDP_OA_VP9_PROFILE) {
 			vp9_profile = va_arg(args, char *);
-		} else if(type == JANUS_SDP_VIDEO && property == JANUS_SDP_OA_H264_PROFILE) {
+		} else if(property == JANUS_SDP_OA_H264_PROFILE) {
 			h264_profile = va_arg(args, char *);
-		} else if(type == JANUS_SDP_APPLICATION && property == JANUS_SDP_OA_DATA_LEGACY) {
+		} else if(property == JANUS_SDP_OA_DATA_LEGACY) {
 			data_legacy = va_arg(args, gboolean);
 		} else if(property == JANUS_SDP_OA_EXTENSION) {
 			if((extmaps != NULL || extids != NULL) && !extids_allocated) {
