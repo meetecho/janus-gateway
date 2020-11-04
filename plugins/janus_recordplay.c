@@ -1787,16 +1787,20 @@ recdone:
 			answer->o_version = session->sdp_version;
 			/* Refresh extmaps */
 			if(audio) {
-				janus_recordplay_map_extmaps(rec->audio_extmaps,
-					janus_sdp_mline_find(answer, JANUS_SDP_AUDIO)->attributes);
-				if(session->arc != NULL)
-					janus_recordplay_copy_extmaps(session->arc->extmaps, rec->audio_extmaps);
+				janus_sdp_mline *media = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO);
+				if(media) {
+					janus_recordplay_map_extmaps(rec->audio_extmaps, media->attributes);
+					if(session->arc != NULL)
+						janus_recordplay_copy_extmaps(session->arc->extmaps, rec->audio_extmaps);
+				}
 			}
 			if(video) {
-				janus_recordplay_map_extmaps(rec->video_extmaps,
-					janus_sdp_mline_find(answer, JANUS_SDP_VIDEO)->attributes);
-				if(session->vrc != NULL)
-					janus_recordplay_copy_extmaps(session->vrc->extmaps, rec->video_extmaps);
+				janus_sdp_mline *media = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO);
+				if(media) {
+					janus_recordplay_map_extmaps(rec->video_extmaps, media->attributes);
+					if(session->vrc != NULL)
+						janus_recordplay_copy_extmaps(session->vrc->extmaps, rec->video_extmaps);
+				}
 			}
 			/* Generate the SDP string */
 			sdp = janus_sdp_write(answer);
