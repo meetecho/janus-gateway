@@ -400,10 +400,12 @@ typedef struct janus_recordplay_recording {
 	janus_audiocodec acodec;	/* Codec used for audio, if available */
 	char *afmtp;				/* Audio fmtp, if any */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
+	GList *audio_extmaps;       /* Audio extmaps */
 	char *vrc_file;				/* Video file name */
 	janus_videocodec vcodec;	/* Codec used for video, if available */
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
+	GList *video_extmaps;       /* Video extmaps */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	gboolean e2ee;				/* Whether media in the recording is encrypted, e.g., using Insertable Streams */
 	GList *viewers;				/* List of users watching this recording */
@@ -447,6 +449,38 @@ typedef struct janus_recordplay_session {
 } janus_recordplay_session;
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+
+static GList *janus_recordplay_filter_extmaps(const GList *attributes) {
+	GList *filtered = NULL;
+	while(attributes != NULL) {
+		janus_sdp_attribute *attr = (janus_sdp_attribute *)attributes->data;
+		if(!strcasecmp(attr->name, "extmap"))
+			filtered = g_list_prepend(filtered,
+				janus_sdp_attribute_create(attr->name, attr->value));
+		attributes = attributes->next;
+	}
+	return g_list_reverse(filtered);
+}
+
+static GList *janus_recordplay_bake_extmaps(const GList *extmaps) {
+	GList *baked = NULL;
+	while(extmaps != NULL) {
+		janus_sdp_attribute *ext = (janus_sdp_attribute *)extmaps->data;
+		baked = g_list_prepend(baked, g_strdup(ext->value));
+		extmaps = extmaps->next;
+	}
+	return g_list_reverse(baked);
+}
+
+static GList *janus_recordplay_copy_extmaps(const GList *extmaps) {
+	GList *copy = NULL;
+	while(extmaps != NULL) {
+		janus_sdp_attribute *ext = (janus_sdp_attribute *)extmaps->data;
+		copy = g_list_prepend(copy, janus_sdp_attribute_create(ext->name, ext->value));
+		extmaps = extmaps->next;
+	}
+	return g_list_reverse(copy);
+}
 
 static void janus_recordplay_session_destroy(janus_recordplay_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -494,7 +528,8 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define VIDEO_PT		100
 
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
-static const char *janus_recordplay_parse_codec(const char *dir, const char *filename, char *fmtp, size_t fmtplen, gboolean *e2ee) {
+static const char *janus_recordplay_parse_codec(const char *dir, const char *filename,
+		char *fmtp, size_t fmtplen, GList **extmaps, gboolean *e2ee) {
 	if(dir == NULL || filename == NULL)
 		return NULL;
 	if(e2ee)
@@ -562,16 +597,19 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				bytes = fread(prebuffer, sizeof(char), len, file);
+				char *json_header = malloc(sizeof(char)*(len+1));
+				bytes = fread(json_header, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
+					free(json_header);
 					fclose(file);
 					return NULL;
 				}
 				parsed_header = TRUE;
-				prebuffer[len] = '\0';
+				json_header[len] = '\0';
 				json_error_t error;
-				json_t *info = json_loads(prebuffer, 0, &error);
+				json_t *info = json_loads(json_header, 0, &error);
+				free(json_header);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
@@ -606,6 +644,21 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				json_t *f = json_object_get(info, "f");
 				if(f && json_is_string(f) && fmtp && fmtplen > 0)
 					g_snprintf(fmtp, fmtplen, "%s", json_string_value(f));
+				/* Any extmaps? */
+				json_t *ext_json = json_object_get(info, "x");
+				if(ext_json && json_is_array(ext_json) && json_array_size(ext_json) > 0) {
+					size_t ext_n = json_array_size(ext_json), i = 0;
+					for(i = 0; i < ext_n; i++) {
+						const char *ext_str = json_string_value(json_array_get(ext_json, i));
+						char delim = ':', **ext_split = g_strsplit(ext_str, &delim, 2);
+						janus_sdp_attribute *ext = janus_sdp_attribute_create(
+							g_strdup(ext_split[0]),
+							ext_split[1] ? g_strdup(ext_split[1]) : NULL);
+						g_strfreev(ext_split);
+						*extmaps = g_list_prepend(*extmaps, ext);
+					}
+					*extmaps = g_list_reverse(*extmaps);
+				}
 				/* What codec was used? */
 				json_t *codec = json_object_get(info, "c");
 				if(!codec || !json_is_string(codec)) {
@@ -653,15 +706,24 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_FMTP, rec->afmtp,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 		JANUS_SDP_OA_VIDEO_FMTP, rec->vfmtp,
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
+		JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
 		JANUS_SDP_OA_DATA, FALSE,
 		JANUS_SDP_OA_DONE);
+	if(offer_audio) {
+		janus_sdp_mline *audio = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
+		audio->attributes = g_list_concat(audio->attributes,
+			janus_recordplay_copy_extmaps(rec->audio_extmaps));
+	}
+	if(offer_video) {
+		janus_sdp_mline *video = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
+		video->attributes = g_list_concat(video->attributes,
+			janus_recordplay_copy_extmaps(rec->video_extmaps));
+	}
 	g_free(rec->offer);
 	rec->offer = janus_sdp_write(offer);
 	janus_sdp_destroy(offer);
@@ -1551,6 +1613,8 @@ static void *janus_recordplay_handler(void *data) {
 			rec->offer = NULL;
 			rec->acodec = JANUS_AUDIOCODEC_NONE;
 			rec->vcodec = JANUS_VIDEOCODEC_NONE;
+			rec->audio_extmaps = NULL;
+			rec->video_extmaps = NULL;
 			rec->e2ee = e2ee;
 			g_atomic_int_set(&rec->destroyed, 0);
 			g_atomic_int_set(&rec->completed, 0);
@@ -1674,6 +1738,8 @@ recdone:
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_REPAIRED_RID,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_FRAME_MARKING,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_AUDIO_LEVEL,
+				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION,
 				JANUS_SDP_OA_ACCEPT_EXTMAP, JANUS_RTP_EXTMAP_TRANSPORT_WIDE_CC,
 				JANUS_SDP_OA_DONE);
 			g_free(answer->s_name);
@@ -1683,6 +1749,25 @@ recdone:
 			/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 			answer->o_sessid = session->sdp_sessid;
 			answer->o_version = session->sdp_version;
+			/* Update media attributes */
+			if(audio) {
+				if(rec->audio_extmaps != NULL) {
+					g_list_free_full(rec->audio_extmaps, janus_sdp_attribute_destroy);
+					g_list_free_full(session->arc->extmaps, g_free);
+				}
+				GList *attr = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO)->attributes;
+				rec->audio_extmaps = janus_recordplay_filter_extmaps(attr);
+				session->arc->extmaps = janus_recordplay_bake_extmaps(rec->audio_extmaps);
+			}
+			if(video) {
+				if(rec->video_extmaps != NULL) {
+					g_list_free_full(rec->video_extmaps, janus_sdp_attribute_destroy);
+					g_list_free_full(session->vrc->extmaps, g_free);
+				}
+				GList *attr = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO)->attributes;
+				rec->video_extmaps = janus_recordplay_filter_extmaps(attr);
+				session->vrc->extmaps = janus_recordplay_bake_extmaps(rec->video_extmaps);
+			}
 			/* Generate the SDP string */
 			sdp = janus_sdp_write(answer);
 			janus_sdp_destroy(offer);
@@ -2019,7 +2104,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->arc_file, fmtp, sizeof(fmtp), &e2ee));
+				rec->arc_file, fmtp, sizeof(fmtp), &rec->audio_extmaps, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->afmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2035,7 +2120,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->vrc_file, fmtp, sizeof(fmtp), &e2ee));
+				rec->vrc_file, fmtp, sizeof(fmtp), &rec->video_extmaps, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->vfmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2161,16 +2246,19 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
 				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
-				bytes = fread(prebuffer, sizeof(char), len, file);
+				char *json_header = malloc(sizeof(char)*(len+1));
+				bytes = fread(json_header, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
+					free(json_header);
 					fclose(file);
 					return NULL;
 				}
 				parsed_header = TRUE;
-				prebuffer[len] = '\0';
+				json_header[len] = '\0';
 				json_error_t error;
-				json_t *info = json_loads(prebuffer, 0, &error);
+				json_t *info = json_loads(json_header, 0, &error);
+				free(json_header);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");

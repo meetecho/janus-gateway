@@ -20,6 +20,7 @@
 #ifndef JANUS_RECORD_H
 #define JANUS_RECORD_H
 
+#include <glib.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
@@ -48,6 +49,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
 	char *fmtp;
+	/*! \brief Media extmaps */
+	GList *extmaps;
 	/*! \brief When the recording file has been created and started */
 	gint64 created, started;
 	/*! \brief Media this instance is recording */

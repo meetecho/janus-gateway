@@ -101,6 +101,7 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
 #include <jansson.h>
 
 #include "../debug.h"
+#include "../rtp.h"
 #include "../version.h"
 #include "pp-cmdline.h"
 #include "pp-rtp.h"
@@ -159,6 +160,8 @@ typedef struct janus_pp_rtp_skew_context {
 	gint16 seq_offset;
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
+
+static int janus_pp_get_extmap_id(const char *attr, const char *urn);
 
 /* Main Code */
 int main(int argc, char *argv[])
@@ -347,6 +350,8 @@ int main(int argc, char *argv[])
 	uint16_t len = 0;
 	uint32_t count = 0;
 	uint32_t ssrc = 0;
+	int ext_n = 0;
+	char **ext = NULL;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	char prebuffer2[1500];
@@ -439,20 +444,23 @@ int main(int argc, char *argv[])
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				bytes = fread(prebuffer, sizeof(char), len, file);
+				char *json_header = malloc(sizeof(char)*(len+1));
+				bytes = fread(json_header, sizeof(char), len, file);
 				parsed_header = TRUE;
-				prebuffer[len] = '\0';
+				json_header[len] = '\0';
 				if(jsonheader_only) {
 					/* Print the header as it is and exit */
-					JANUS_PRINT("%s\n", prebuffer);
+					JANUS_PRINT("%s\n", json_header);
+					free(json_header);
 					cmdline_parser_free(&args_info);
 					exit(0);
 				}
 				json_error_t error;
-				json_t *info = json_loads(prebuffer, 0, &error);
+				json_t *info = json_loads(json_header, 0, &error);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
+					free(json_header);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -576,6 +584,19 @@ int main(int argc, char *argv[])
 				}
 				/* Any codec-specific info? (just informational) */
 				const char *f = json_string_value(json_object_get(info, "f"));
+				/* Any extmaps? */
+				json_t *ext_json = json_object_get(info, "x");
+				if(ext_json) {
+					if(!json_is_array(ext_json)) {
+						JANUS_LOG(LOG_WARN, "Malformed extmaps in info header...\n");
+						cmdline_parser_free(&args_info);
+						exit(1);
+					}
+					ext_n = json_array_size(ext_json);
+					ext = (char **)malloc(sizeof(char *)*ext_n);
+					for(i = 0; i < ext_n; i++)
+						ext[i] = g_strdup(json_string_value(json_array_get(ext_json, i)));
+				}
 				/* When was the file created? */
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
@@ -597,13 +618,19 @@ int main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);
 				if(f != NULL)
 					JANUS_LOG(LOG_INFO, "  -- -- fmtp: %s\n", f);
+				if(ext != NULL) {
+					JANUS_LOG(LOG_INFO, "  -- -- extmap:\n");
+					for (i = 0; i < ext_n; i++)
+						JANUS_LOG(LOG_INFO, "        -- %s\n", ext[i]);
+				}
 				JANUS_LOG(LOG_INFO, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_INFO, "  -- Written: %"SCNi64"\n", w_time);
 				if(e2ee)
 					JANUS_LOG(LOG_INFO, "  -- Recording is end-to-end encrypted\n");
 				/* Save the original string as a metadata to save in the media container, if possible */
 				if(metadata == NULL)
-					metadata = g_strdup(prebuffer);
+					metadata = g_strdup(json_header);
+				free(json_header);
 				json_decref(info);
 			}
 		} else {
@@ -633,6 +660,13 @@ int main(int argc, char *argv[])
 	post_reset_pkts = 0;
 	uint64_t max32 = UINT32_MAX;
 	uint16_t rtp_header_len, rtp_read_n;
+	/* Set extmap ids from attr list if not set */
+	for(i = 0; i < ext_n; i++) {
+		if(audio_level_extmap_id < 1)
+			audio_level_extmap_id = janus_pp_get_extmap_id(ext[i], JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+		if(video_orient_extmap_id < 1)
+			video_orient_extmap_id = janus_pp_get_extmap_id(ext[i], JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+	}
 	/* Start loop */
 	while(working && offset < fsize) {
 		/* Read frame header */
@@ -1176,6 +1210,16 @@ int main(int argc, char *argv[])
 
 	JANUS_LOG(LOG_INFO, "Bye!\n");
 	return 0;
+}
+
+/* Static helper to quickly get extmap id */
+static int janus_pp_get_extmap_id(const char *attr, const char *urn) {
+	if(strncmp(attr, "extmap:", 7))
+		return -1;
+	uint32_t attr_n = strlen(attr), urn_n = strlen(urn);
+	if(attr_n<urn_n || strcmp(attr+attr_n-urn_n, urn))
+		return -1;
+	return atoi(attr+7);
 }
 
 /* Static helper to quickly find the extension data */

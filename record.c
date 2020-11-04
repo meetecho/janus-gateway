@@ -77,6 +77,8 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->codec = NULL;
 	g_free(recorder->fmtp);
 	recorder->fmtp = NULL;
+	g_list_free_full(recorder->extmaps, g_free);
+	recorder->extmaps = NULL;
 	g_free(recorder);
 }
 
@@ -113,6 +115,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
+	rc->extmaps = NULL;
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
@@ -300,6 +303,16 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		/* If media will be end-to-end encrypted, mark it in the recording header */
 		if(recorder->encrypted)
 			json_object_set_new(info, "e", json_true());
+		/* Write extmaps */
+		if(recorder->extmaps) {
+			json_t *ext_json = json_array();
+			GList *ext = recorder->extmaps;
+			while(ext != NULL) {
+				json_array_append_new(ext_json, json_string(ext->data));
+				ext = ext->next;
+			}
+			json_object_set(info, "x", ext_json);
+		}
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));
