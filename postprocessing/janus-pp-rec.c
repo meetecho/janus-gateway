@@ -161,8 +161,6 @@ typedef struct janus_pp_rtp_skew_context {
 } janus_pp_rtp_skew_context;
 static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_rtp_skew_context *context);
 
-static int janus_pp_get_extmap_id(const char *attr, const char *urn);
-
 /* Main Code */
 int main(int argc, char *argv[])
 {
@@ -662,10 +660,10 @@ int main(int argc, char *argv[])
 	uint16_t rtp_header_len, rtp_read_n;
 	/* Set extmap ids from attr list if not set */
 	for(i = 0; i < ext_n; i++) {
-		if(audio_level_extmap_id < 1)
-			audio_level_extmap_id = janus_pp_get_extmap_id(ext[i], JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-		if(video_orient_extmap_id < 1)
-			video_orient_extmap_id = janus_pp_get_extmap_id(ext[i], JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+		if(audio_level_extmap_id < 1 && strstr(ext[i], JANUS_RTP_EXTMAP_AUDIO_LEVEL))
+			audio_level_extmap_id = atoi(ext[i]);
+		if(video_orient_extmap_id < 1 && strstr(ext[i], JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
+			video_orient_extmap_id = atoi(ext[i]);
 	}
 	/* Start loop */
 	while(working && offset < fsize) {
@@ -1210,16 +1208,6 @@ int main(int argc, char *argv[])
 
 	JANUS_LOG(LOG_INFO, "Bye!\n");
 	return 0;
-}
-
-/* Static helper to quickly get extmap id */
-static int janus_pp_get_extmap_id(const char *attr, const char *urn) {
-	if(strncmp(attr, "extmap:", 7))
-		return -1;
-	uint32_t attr_n = strlen(attr), urn_n = strlen(urn);
-	if(attr_n<urn_n || strcmp(attr+attr_n-urn_n, urn))
-		return -1;
-	return atoi(attr+7);
 }
 
 /* Static helper to quickly find the extension data */

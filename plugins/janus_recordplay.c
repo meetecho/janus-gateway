@@ -400,12 +400,12 @@ typedef struct janus_recordplay_recording {
 	janus_audiocodec acodec;	/* Codec used for audio, if available */
 	char *afmtp;				/* Audio fmtp, if any */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
-	GList *audio_extmaps;       /* Audio extmaps */
+	GList *audio_extmaps;		/* Audio extmaps */
 	char *vrc_file;				/* Video file name */
 	janus_videocodec vcodec;	/* Codec used for video, if available */
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
-	GList *video_extmaps;       /* Video extmaps */
+	GList *video_extmaps;		/* Video extmaps */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	gboolean e2ee;				/* Whether media in the recording is encrypted, e.g., using Insertable Streams */
 	GList *viewers;				/* List of users watching this recording */
