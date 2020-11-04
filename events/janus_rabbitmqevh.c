@@ -101,6 +101,7 @@ static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
 static amqp_bytes_t rmq_route_key;
+static gboolean durable = FALSE;
 
 static janus_mutex mutex;
 
@@ -278,6 +279,14 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s) exch: (%s) exchange_type:%s\n", rmqhost, rmqport, route_key, exchange,exchange_type);
 	}
 
+	item = janus_config_get(config, config_general, janus_config_type_item, "durable");
+	if(!item || !item->value || !janus_is_true(item->value)) {
+		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Using non durable exchange & queue\n");
+	} else {
+		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Using durable exchange & queue\n");
+		durable = TRUE;
+	}
+
 	/* Connect */
 	int result = janus_rabbitmqevh_connect();
 	if(result < 0) {
@@ -401,7 +410,7 @@ int janus_rabbitmqevh_connect(void) {
 	if(exchange != NULL) {
 		JANUS_LOG(LOG_VERB, "RabbitMQEventHandler: Declaring exchange...\n");
 		rmq_exchange = amqp_cstring_bytes(exchange);
-		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, 0, 0, 0, amqp_empty_table);
+		amqp_exchange_declare(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(exchange_type), 0, durable, 0, 0, amqp_empty_table);
 		result = amqp_get_rpc_reply(rmq_conn);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
@@ -410,7 +419,7 @@ int janus_rabbitmqevh_connect(void) {
 	}
 	JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", route_key);
 	rmq_route_key = amqp_cstring_bytes(route_key);
-	amqp_queue_declare(rmq_conn, rmq_channel, rmq_route_key, 0, 0, 0, 0, amqp_empty_table);
+	amqp_queue_declare(rmq_conn, rmq_channel, rmq_route_key, 0, durable, 0, 0, amqp_empty_table);
 	result = amqp_get_rpc_reply(rmq_conn);
 	if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
