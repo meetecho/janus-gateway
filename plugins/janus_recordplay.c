@@ -451,7 +451,7 @@ static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 /*! \brief Helper function to filter and map \ref janus_sdp_attribute list to
- * (int)id:(char*)info extmap hash table
+ * (char*)id:(char*)info extmap hash table
  * \param extmaps Hash table to contain filtered and mapped extmaps
  * \param attributes List of sdp media attributes
  */
@@ -472,7 +472,7 @@ static void janus_recordplay_map_extmaps(GHashTable *extmaps, const GList *attri
 	}
 }
 
-/*! \brief Helper function to copy extmaps from one tablo to other
+/*! \brief Helper function to copy extmaps from one table to other
  * \param dst Destination table
  * \param src Source table
  */
@@ -489,7 +489,7 @@ static void janus_recordplay_copy_extmaps(GHashTable *dst, GHashTable *src) {
 		g_hash_table_insert(dst, g_strdup(ext_id), g_strdup(ext_info));
 }
 
-/*! \brief Helper function to add extmap attributes to media
+/*! \brief Helper function to update extmap attributes in media
  * \param media Parsed SDP mline
  * \param extmaps Table of extmaps to add to media
  */
@@ -1789,12 +1789,14 @@ recdone:
 			if(audio) {
 				janus_recordplay_map_extmaps(rec->audio_extmaps,
 					janus_sdp_mline_find(answer, JANUS_SDP_AUDIO)->attributes);
-				janus_recordplay_copy_extmaps(session->arc->extmaps, rec->audio_extmaps);
+				if(session->arc != NULL)
+					janus_recordplay_copy_extmaps(session->arc->extmaps, rec->audio_extmaps);
 			}
 			if(video) {
 				janus_recordplay_map_extmaps(rec->video_extmaps,
 					janus_sdp_mline_find(answer, JANUS_SDP_VIDEO)->attributes);
-				janus_recordplay_copy_extmaps(session->vrc->extmaps, rec->video_extmaps);
+				if(session->vrc != NULL)
+					janus_recordplay_copy_extmaps(session->vrc->extmaps, rec->video_extmaps);
 			}
 			/* Generate the SDP string */
 			sdp = janus_sdp_write(answer);
