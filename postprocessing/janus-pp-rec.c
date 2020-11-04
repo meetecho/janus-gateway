@@ -442,14 +442,14 @@ int main(int argc, char *argv[])
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				char *json_header = malloc(sizeof(char)*(len+1));
+				char *json_header = g_new(char, len+1);
 				bytes = fread(json_header, sizeof(char), len, file);
 				parsed_header = TRUE;
 				json_header[len] = '\0';
 				if(jsonheader_only) {
 					/* Print the header as it is and exit */
 					JANUS_PRINT("%s\n", json_header);
-					free(json_header);
+					g_free(json_header);
 					cmdline_parser_free(&args_info);
 					exit(0);
 				}
@@ -458,7 +458,7 @@ int main(int argc, char *argv[])
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
-					free(json_header);
+					g_free(json_header);
 					cmdline_parser_free(&args_info);
 					exit(1);
 				}
@@ -585,15 +585,19 @@ int main(int argc, char *argv[])
 				/* Any extmaps? */
 				json_t *ext_json = json_object_get(info, "x");
 				if(ext_json) {
-					if(!json_is_array(ext_json)) {
+					if(!json_is_object(ext_json)) {
 						JANUS_LOG(LOG_WARN, "Malformed extmaps in info header...\n");
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
-					ext_n = json_array_size(ext_json);
-					ext = (char **)malloc(sizeof(char *)*ext_n);
-					for(i = 0; i < ext_n; i++)
-						ext[i] = g_strdup(json_string_value(json_array_get(ext_json, i)));
+					ext_n = json_object_size(ext_json);
+					ext = g_new(char *, ext_n);
+					const char *ext_id;
+					json_t *ext_value;
+					json_object_foreach(ext_json, ext_id, ext_value) {
+						sprintf(prebuffer, "%s%s", ext_id, json_string_value(ext_value));
+						ext[i] = g_strdup(prebuffer);
+					}
 				}
 				/* When was the file created? */
 				json_t *created = json_object_get(info, "s");
@@ -628,7 +632,7 @@ int main(int argc, char *argv[])
 				/* Save the original string as a metadata to save in the media container, if possible */
 				if(metadata == NULL)
 					metadata = g_strdup(json_header);
-				free(json_header);
+				g_free(json_header);
 				json_decref(info);
 			}
 		} else {

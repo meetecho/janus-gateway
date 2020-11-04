@@ -233,13 +233,13 @@ int main(int argc, char *argv[])
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				char *json_header = malloc(sizeof(char)*(len+1));
+				char *json_header = g_new(char, len+1);
 				bytes = fread(json_header, sizeof(char), len, file);
 				parsed_header = TRUE;
 				json_header[len] = '\0';
 				json_error_t error;
 				mjr_header = json_loads(json_header, 0, &error);
-				free(json_header);
+				g_free(json_header);
 				if(!mjr_header) {
 					fclose(file);
 					JANUS_LOG(LOG_ERR, "Error parsing header, JSON error: on line %d: %s\n", error.line, error.text);

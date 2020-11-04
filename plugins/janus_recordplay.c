@@ -400,12 +400,12 @@ typedef struct janus_recordplay_recording {
 	janus_audiocodec acodec;	/* Codec used for audio, if available */
 	char *afmtp;				/* Audio fmtp, if any */
 	int audio_pt;				/* Payload types to use for audio when playing recordings */
-	GList *audio_extmaps;		/* Audio extmaps */
+	GHashTable *audio_extmaps;	/* Audio extmaps, saved as (char*)id:(char*)info table */
 	char *vrc_file;				/* Video file name */
 	janus_videocodec vcodec;	/* Codec used for video, if available */
 	char *vfmtp;				/* Video fmtp, if any */
 	int video_pt;				/* Payload types to use for audio when playing recordings */
-	GList *video_extmaps;		/* Video extmaps */
+	GHashTable *video_extmaps;	/* Video extmaps, saved as (char*)id:(char*)info table */
 	char *offer;				/* The SDP offer that will be sent to watchers */
 	gboolean e2ee;				/* Whether media in the recording is encrypted, e.g., using Insertable Streams */
 	GList *viewers;				/* List of users watching this recording */
@@ -450,37 +450,79 @@ typedef struct janus_recordplay_session {
 static GHashTable *sessions;
 static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
-static GList *janus_recordplay_filter_extmaps(const GList *attributes) {
-	GList *filtered = NULL;
-	while(attributes != NULL) {
+/*! \brief Helper function to filter and map \ref janus_sdp_attribute list to
+ * (int)id:(char*)info extmap hash table
+ * \param extmaps Hash table to contain filtered and mapped extmaps
+ * \param attributes List of sdp media attributes
+ */
+static void janus_recordplay_map_extmaps(GHashTable *extmaps, const GList *attributes) {
+	if(extmaps == NULL)
+		return;
+	g_hash_table_remove_all(extmaps);
+	for(; attributes != NULL; attributes = attributes->next) {
 		janus_sdp_attribute *attr = (janus_sdp_attribute *)attributes->data;
-		if(!strcasecmp(attr->name, "extmap"))
-			filtered = g_list_prepend(filtered,
-				janus_sdp_attribute_create(attr->name, attr->value));
-		attributes = attributes->next;
+		if(!strcasecmp(attr->name, "extmap")) {
+			size_t id_len = strcspn(attr->value, " /");
+			if(!id_len || id_len == strlen(attr->value)) {
+				JANUS_LOG(LOG_WARN, "Extmap 'extmap:%s' is malformed\n", attr->value);
+				continue;
+			}
+			g_hash_table_insert(extmaps, g_strndup(attr->value, id_len), g_strdup(attr->value+id_len));
+		}
 	}
-	return g_list_reverse(filtered);
 }
 
-static GList *janus_recordplay_bake_extmaps(const GList *extmaps) {
-	GList *baked = NULL;
-	while(extmaps != NULL) {
-		janus_sdp_attribute *ext = (janus_sdp_attribute *)extmaps->data;
-		baked = g_list_prepend(baked, g_strdup(ext->value));
-		extmaps = extmaps->next;
-	}
-	return g_list_reverse(baked);
+/*! \brief Helper function to copy extmaps from one tablo to other
+ * \param dst Destination table
+ * \param src Source table
+ */
+static void janus_recordplay_copy_extmaps(GHashTable *dst, GHashTable *src) {
+	if(dst == NULL)
+		return;
+	g_hash_table_remove_all(dst);
+	if(src == NULL)
+		return;
+	GHashTableIter iter;
+	char *ext_id, *ext_info;
+	g_hash_table_iter_init(&iter, src);
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info))
+		g_hash_table_insert(dst, g_strdup(ext_id), g_strdup(ext_info));
 }
 
-static GList *janus_recordplay_copy_extmaps(const GList *extmaps) {
-	GList *copy = NULL;
-	while(extmaps != NULL) {
-		janus_sdp_attribute *ext = (janus_sdp_attribute *)extmaps->data;
-		copy = g_list_prepend(copy, janus_sdp_attribute_create(ext->name, ext->value));
-		extmaps = extmaps->next;
+/*! \brief Helper function to add extmap attributes to media
+ * \param media Parsed SDP mline
+ * \param extmaps Table of extmaps to add to media
+ */
+static void janus_recordplay_regenerate_extmaps(janus_sdp_mline *media, GHashTable *extmaps) {
+	if(media == NULL || extmaps == NULL)
+		return;
+	/* Consolidate extmaps */
+	GHashTable *mapped = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	janus_recordplay_map_extmaps(mapped, media->attributes);
+	GHashTableIter iter;
+	char *ext_id, *ext_info;
+	g_hash_table_iter_init(&iter, extmaps);
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info))
+		g_hash_table_insert(mapped, g_strdup(ext_id), g_strdup(ext_info));
+	/* Remove existing extmaps */
+	GList *node, *next;
+	for(node = media->attributes; node != NULL; node = next) {
+		janus_sdp_attribute *attr = (janus_sdp_attribute *)node->data;
+		next = node->next;
+		if(!strcasecmp(attr->name, "extmap")) {
+			janus_sdp_attribute_destroy(attr);
+			media->attributes = g_list_remove_link(media->attributes, node);
+		}
 	}
-	return g_list_reverse(copy);
+	/* Add consolidated extmaps */
+	g_hash_table_iter_init(&iter, extmaps);
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
+		janus_sdp_attribute *attr = janus_sdp_attribute_create("extmap", "%s%s", ext_id, ext_info);
+		media->attributes = g_list_prepend(media->attributes, attr);
+	}
+	g_hash_table_destroy(mapped);
 }
+
 
 static void janus_recordplay_session_destroy(janus_recordplay_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -511,6 +553,8 @@ static void janus_recordplay_recording_free(const janus_refcount *recording_ref)
 	g_free(recording->vrc_file);
 	g_free(recording->afmtp);
 	g_free(recording->vfmtp);
+	g_hash_table_destroy(recording->audio_extmaps);
+	g_hash_table_destroy(recording->video_extmaps);
 	g_free(recording->offer);
 	g_free(recording);
 }
@@ -529,7 +573,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 
 /* Helper method to check which codec was used in a specific recording (and if it's end-to-end encrypted) */
 static const char *janus_recordplay_parse_codec(const char *dir, const char *filename,
-		char *fmtp, size_t fmtplen, GList **extmaps, gboolean *e2ee) {
+		char *fmtp, size_t fmtplen, GHashTable *extmaps, gboolean *e2ee) {
 	if(dir == NULL || filename == NULL)
 		return NULL;
 	if(e2ee)
@@ -597,11 +641,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 			offset += 2;
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
-				char *json_header = malloc(sizeof(char)*(len+1));
+				char *json_header = g_new(char, len+1);
 				bytes = fread(json_header, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
-					free(json_header);
+					g_free(json_header);
 					fclose(file);
 					return NULL;
 				}
@@ -609,7 +653,7 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				json_header[len] = '\0';
 				json_error_t error;
 				json_t *info = json_loads(json_header, 0, &error);
-				free(json_header);
+				g_free(json_header);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
@@ -645,19 +689,12 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				if(f && json_is_string(f) && fmtp && fmtplen > 0)
 					g_snprintf(fmtp, fmtplen, "%s", json_string_value(f));
 				/* Any extmaps? */
-				json_t *ext_json = json_object_get(info, "x");
-				if(ext_json && json_is_array(ext_json) && json_array_size(ext_json) > 0) {
-					size_t ext_n = json_array_size(ext_json), i = 0;
-					for(i = 0; i < ext_n; i++) {
-						const char *ext_str = json_string_value(json_array_get(ext_json, i));
-						char delim = ':', **ext_split = g_strsplit(ext_str, &delim, 2);
-						janus_sdp_attribute *ext = janus_sdp_attribute_create(
-							g_strdup(ext_split[0]),
-							ext_split[1] ? g_strdup(ext_split[1]) : NULL);
-						g_strfreev(ext_split);
-						*extmaps = g_list_prepend(*extmaps, ext);
-					}
-					*extmaps = g_list_reverse(*extmaps);
+				json_t *ext_json = json_object_get(info, "x"), *ext_info;
+				const char *ext_id;
+				if(ext_json && json_is_object(ext_json)) {
+					g_hash_table_remove_all(extmaps);
+					json_object_foreach(ext_json, ext_id, ext_info)
+						g_hash_table_insert(extmaps, g_strdup(ext_id), (gpointer)json_string_value(ext_info));
 				}
 				/* What codec was used? */
 				json_t *codec = json_object_get(info, "c");
@@ -706,23 +743,22 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_FMTP, rec->afmtp,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_AUDIO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, janus_videocodec_name(rec->vcodec),
 		JANUS_SDP_OA_VIDEO_FMTP, rec->vfmtp,
 		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
-		JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
+		JANUS_SDP_OA_VIDEO_EXTENSION, JANUS_RTP_EXTMAP_MID, 1,
 		JANUS_SDP_OA_DATA, FALSE,
 		JANUS_SDP_OA_DONE);
 	if(offer_audio) {
 		janus_sdp_mline *audio = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
-		audio->attributes = g_list_concat(audio->attributes,
-			janus_recordplay_copy_extmaps(rec->audio_extmaps));
+		janus_recordplay_regenerate_extmaps(audio, rec->audio_extmaps);
 	}
 	if(offer_video) {
 		janus_sdp_mline *video = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
-		video->attributes = g_list_concat(video->attributes,
-			janus_recordplay_copy_extmaps(rec->video_extmaps));
+		janus_recordplay_regenerate_extmaps(video, rec->video_extmaps);
 	}
 	g_free(rec->offer);
 	rec->offer = janus_sdp_write(offer);
@@ -1613,8 +1649,8 @@ static void *janus_recordplay_handler(void *data) {
 			rec->offer = NULL;
 			rec->acodec = JANUS_AUDIOCODEC_NONE;
 			rec->vcodec = JANUS_VIDEOCODEC_NONE;
-			rec->audio_extmaps = NULL;
-			rec->video_extmaps = NULL;
+			rec->audio_extmaps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+			rec->video_extmaps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 			rec->e2ee = e2ee;
 			g_atomic_int_set(&rec->destroyed, 0);
 			g_atomic_int_set(&rec->completed, 0);
@@ -1749,24 +1785,16 @@ recdone:
 			/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 			answer->o_sessid = session->sdp_sessid;
 			answer->o_version = session->sdp_version;
-			/* Update media attributes */
+			/* Refresh extmaps */
 			if(audio) {
-				if(rec->audio_extmaps != NULL) {
-					g_list_free_full(rec->audio_extmaps, janus_sdp_attribute_destroy);
-					g_list_free_full(session->arc->extmaps, g_free);
-				}
-				GList *attr = janus_sdp_mline_find(answer, JANUS_SDP_AUDIO)->attributes;
-				rec->audio_extmaps = janus_recordplay_filter_extmaps(attr);
-				session->arc->extmaps = janus_recordplay_bake_extmaps(rec->audio_extmaps);
+				janus_recordplay_map_extmaps(rec->audio_extmaps,
+					janus_sdp_mline_find(answer, JANUS_SDP_AUDIO)->attributes);
+				janus_recordplay_copy_extmaps(session->arc->extmaps, rec->audio_extmaps);
 			}
 			if(video) {
-				if(rec->video_extmaps != NULL) {
-					g_list_free_full(rec->video_extmaps, janus_sdp_attribute_destroy);
-					g_list_free_full(session->vrc->extmaps, g_free);
-				}
-				GList *attr = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO)->attributes;
-				rec->video_extmaps = janus_recordplay_filter_extmaps(attr);
-				session->vrc->extmaps = janus_recordplay_bake_extmaps(rec->video_extmaps);
+				janus_recordplay_map_extmaps(rec->video_extmaps,
+					janus_sdp_mline_find(answer, JANUS_SDP_VIDEO)->attributes);
+				janus_recordplay_copy_extmaps(session->vrc->extmaps, rec->video_extmaps);
 			}
 			/* Generate the SDP string */
 			sdp = janus_sdp_write(answer);
@@ -2094,6 +2122,8 @@ void janus_recordplay_update_recordings_list(void) {
 		rec->id = id;
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
+		rec->audio_extmaps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+		rec->video_extmaps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 		if(audio && audio->value) {
 			rec->arc_file = g_strdup(audio->value);
 			char *ext = strstr(rec->arc_file, ".mjr");
@@ -2104,7 +2134,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->acodec = janus_audiocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->arc_file, fmtp, sizeof(fmtp), &rec->audio_extmaps, &e2ee));
+				rec->arc_file, fmtp, sizeof(fmtp), rec->audio_extmaps, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->afmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2120,7 +2150,7 @@ void janus_recordplay_update_recordings_list(void) {
 			char fmtp[256];
 			fmtp[0] = '\0';
 			rec->vcodec = janus_videocodec_from_name(janus_recordplay_parse_codec(recordings_path,
-				rec->vrc_file, fmtp, sizeof(fmtp), &rec->video_extmaps, &e2ee));
+				rec->vrc_file, fmtp, sizeof(fmtp), rec->video_extmaps, &e2ee));
 			if(strlen(fmtp) > 0)
 				rec->vfmtp = g_strdup(fmtp);
 			if(e2ee)
@@ -2246,11 +2276,11 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			if(len > 0 && !parsed_header) {
 				/* This is the info header */
 				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
-				char *json_header = malloc(sizeof(char)*(len+1));
+				char *json_header = g_new(char, len+1);
 				bytes = fread(json_header, sizeof(char), len, file);
 				if(bytes < 0) {
 					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
-					free(json_header);
+					g_free(json_header);
 					fclose(file);
 					return NULL;
 				}
@@ -2258,7 +2288,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_header[len] = '\0';
 				json_error_t error;
 				json_t *info = json_loads(json_header, 0, &error);
-				free(json_header);
+				g_free(json_header);
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");

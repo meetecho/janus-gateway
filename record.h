@@ -49,8 +49,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief Codec-specific info (e.g., H.264 or VP9 profile) */
 	char *fmtp;
-	/*! \brief Media extmaps */
-	GList *extmaps;
+	/*! \brief Media extmap table in (char*)id:(char*)info format */
+	GHashTable *extmaps;
 	/*! \brief When the recording file has been created and started */
 	gint64 created, started;
 	/*! \brief Media this instance is recording */
