@@ -4705,7 +4705,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch")
-			|| !strcasecmp(request_text, "leave")) {
+			|| !strcasecmp(request_text, "leave") || !strcasecmp(request_text, "muteaudio") || !strcasecmp(request_text, "unmuteaudio")
+			|| !strcasecmp(request_text, "mutevideo") || !strcasecmp(request_text, "unmutevideo")) {
 		/* These messages are handled asynchronously */
 
 		janus_videoroom_message *msg = g_malloc(sizeof(janus_videoroom_message));
@@ -6507,6 +6508,34 @@ static void *janus_videoroom_handler(void *data) {
 				participant->data_active = FALSE;
 				g_atomic_int_set(&session->started, 0);
 				//~ session->destroy = TRUE;
+			} else if(!strcasecmp(request_text, "muteaudio")) {
+				JANUS_LOG(LOG_ERR, "mute audio request '%s'\n", request_text);
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "audio", json_false());
+				janus_videoroom_notify_participants(participant, event, FALSE);
+				json_decref(event);
+			} else if(!strcasecmp(request_text, "unmuteaudio")) {
+				JANUS_LOG(LOG_ERR, "unmute audio request '%s'\n", request_text);
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "audio", json_true());
+				janus_videoroom_notify_participants(participant, event, FALSE);
+				json_decref(event);
+			} else if(!strcasecmp(request_text, "mutevideo")) {
+				JANUS_LOG(LOG_ERR, "mute audio request '%s'\n", request_text);
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "video", json_false());
+				janus_videoroom_notify_participants(participant, event, FALSE);
+				json_decref(event);
+			} else if(!strcasecmp(request_text, "unmutevideo")) {
+				JANUS_LOG(LOG_ERR, "unmute audio request '%s'\n", request_text);
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "video", json_true());
+				janus_videoroom_notify_participants(participant, event, FALSE);
+				json_decref(event);
 			} else {
 				janus_refcount_decrease(&participant->ref);
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
