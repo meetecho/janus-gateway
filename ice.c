@@ -2063,25 +2063,32 @@ static void janus_ice_cb_new_local_candidate (NiceAgent *agent, NiceCandidate *c
 #endif
 	char buffer[200];
 	guint public_ip_index = 0;
+	gboolean ipv6 = (nice_address_ip_version(&candidate->addr) == 6);
+	gboolean same_family = (!ipv6 && janus_has_public_ipv4_ip()) || (ipv6 && janus_has_public_ipv6_ip());
 	do {
 		if(janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, FALSE, public_ip_index) == 0) {
 			/* Candidate encoded, send a "trickle" event to the browser (but only if it's not a 'prflx') */
 			if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 			} else {
-				janus_ice_notify_trickle(handle, buffer);
+				if(strlen(buffer) > 0)
+					janus_ice_notify_trickle(handle, buffer);
 				/* If nat-1-1 is enabled but we want to keep the private host, add another candidate */
-				if(nat_1_1_enabled && keep_private_host && public_ip_index == 0 &&
+				if(nat_1_1_enabled && public_ip_index == 0 && (keep_private_host || !same_family) &&
 						janus_ice_candidate_to_string(handle, candidate, buffer, sizeof(buffer), TRUE, TRUE, public_ip_index) == 0) {
 					if(candidate->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
-					} else {
+					} else if(strlen(buffer) > 0) {
 						janus_ice_notify_trickle(handle, buffer);
 					}
 				}
 			}
 		}
 		public_ip_index++;
+		if(!same_family) {
+			/* We don't have any nat-1-1 address of the same family as this candidate, we're done */
+			break;
+		}
 	} while (public_ip_index < janus_get_public_ip_count());
 
 #ifndef HAVE_LIBNICE_TCP
@@ -3052,9 +3059,16 @@ static int janus_ice_candidate_to_string(janus_ice_handle *handle, NiceCandidate
 	if(!component)
 		return -3;
 	char *host_ip = NULL;
+	gboolean ipv6 = (nice_address_ip_version(&c->addr) == 6);
 	if(nat_1_1_enabled && !force_private) {
 		/* A 1:1 NAT mapping was specified, either overwrite all the host addresses with the public IP, or add new candidates */
 		host_ip = janus_get_public_ip(public_ip_index);
+		gboolean host_ip_v6 = (strchr(host_ip, ':') != NULL);
+		if(host_ip_v6 != ipv6) {
+			/* nat-1-1 address and candidate are not the same address family, don't do anything */
+			buffer[0] = '\0';
+			return 0;
+		}
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
 	}
 	/* Encode the candidate to a string */
@@ -3222,6 +3236,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 	gboolean log_candidates = (component->local_candidates == NULL);
 	for(i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
+		gboolean ipv6 = (nice_address_ip_version(&c->addr) == 6);
+		gboolean same_family = (!ipv6 && janus_has_public_ipv4_ip()) || (ipv6 && janus_has_public_ipv6_ip());
 		guint public_ip_index = 0;
 		do {
 			if(janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, FALSE, public_ip_index) == 0) {
@@ -3229,14 +3245,16 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 				if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 				} else {
-					janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
-					mline->attributes = g_list_append(mline->attributes, a);
-					if(nat_1_1_enabled && keep_private_host && public_ip_index == 0 &&
+					if(strlen(buffer) > 0) {
+						janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
+						mline->attributes = g_list_append(mline->attributes, a);
+					}
+					if(nat_1_1_enabled && public_ip_index == 0 && (keep_private_host || !same_family) &&
 							janus_ice_candidate_to_string(handle, c, buffer, sizeof(buffer), log_candidates, TRUE, public_ip_index) == 0) {
 						/* Candidate with private host encoded, add to the SDP (but only if it's not a 'prflx') */
 						if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
-						} else {
+						} else if(strlen(buffer) > 0) {
 							janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
 							mline->attributes = g_list_append(mline->attributes, a);
 						}
@@ -3244,6 +3262,10 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 				}
 			}
 			public_ip_index++;
+			if(!same_family) {
+				/* We don't have any nat-1-1 address of the same family as this candidate, we're done */
+				break;
+			}
 		} while (public_ip_index < janus_get_public_ip_count());
 		nice_candidate_free(c);
 	}

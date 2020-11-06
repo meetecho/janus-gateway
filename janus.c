@@ -201,6 +201,7 @@ gchar *janus_get_local_ip(void) {
 }
 static GHashTable *public_ips_table = NULL;
 static GList *public_ips = NULL;
+gboolean public_ips_ipv4 = FALSE, public_ips_ipv6 = FALSE;
 guint janus_get_public_ip_count(void) {
 	return public_ips_table ? g_hash_table_size(public_ips_table) : 0;
 }
@@ -226,7 +227,20 @@ void janus_add_public_ip(const gchar *ip) {
 		g_list_free(public_ips);
 		public_ips = g_hash_table_get_keys(public_ips_table);
 	}
+	/* Take note of whether we received at least one IPv4 and/or IPv6 address */
+	if(strchr(ip, ':')) {
+		public_ips_ipv6 = TRUE;
+	} else {
+		public_ips_ipv4 = TRUE;
+	}
 }
+gboolean janus_has_public_ipv4_ip(void) {
+	return public_ips_ipv4;
+}
+gboolean janus_has_public_ipv6_ip(void) {
+	return public_ips_ipv6;
+}
+
 static volatile gint stop = 0;
 static gint stop_signal = 0;
 gint janus_is_stopping(void) {
