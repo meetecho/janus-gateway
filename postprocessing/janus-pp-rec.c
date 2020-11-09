@@ -587,6 +587,7 @@ int main(int argc, char *argv[])
 				if(ext_json) {
 					if(!json_is_object(ext_json)) {
 						JANUS_LOG(LOG_WARN, "Malformed extmaps in info header...\n");
+						g_free(json_header);
 						cmdline_parser_free(&args_info);
 						exit(1);
 					}
@@ -594,9 +595,10 @@ int main(int argc, char *argv[])
 					ext = g_new(char *, ext_n);
 					const char *ext_id;
 					json_t *ext_value;
+					i = 0;
 					json_object_foreach(ext_json, ext_id, ext_value) {
 						sprintf(prebuffer, "%s%s", ext_id, json_string_value(ext_value));
-						ext[i] = g_strdup(prebuffer);
+						ext[i++] = g_strdup(prebuffer);
 					}
 				}
 				/* When was the file created? */
