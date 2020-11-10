@@ -359,7 +359,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled (Admin API)\n");
 	} else {
 		/* Parse configuration */
-		item = janus_config_get(config, config_general, janus_config_type_item, "queue_name_admin");
+		item = janus_config_get(config, config_admin, janus_config_type_item, "queue_name_admin");
 		if(item && item->value) {
 			queue_name_admin = g_strdup(item->value);
 		}
