@@ -465,7 +465,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			rmq_client->janus_api_enabled = TRUE;
 			// Case when we have a queue_name, and to_janus is the name of the topic to bind on (if exchange_type is topic)
 			if (queue_name != NULL) {
-				JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", queue_name);
+				JANUS_LOG(LOG_VERB, "Declaring incoming queue (using queue_name)... (%s)\n", queue_name);
 				rmq_client->to_janus_queue = amqp_cstring_bytes(queue_name);
 				amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->to_janus_queue, 0, 0, 0, 0, amqp_empty_table);
 				result = amqp_get_rpc_reply(rmq_client->rmq_conn);
@@ -486,7 +486,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 
 			// Case when to_janus is the name of the queue (and there's no binding)
 			} else {
-				JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus);
+				JANUS_LOG(LOG_VERB, "Declaring incoming queue (using to_janus)... (%s)\n", to_janus);
 				rmq_client->to_janus_queue = amqp_cstring_bytes(to_janus);
 				amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->to_janus_queue, 0, 0, 0, 0, amqp_empty_table);
 				result = amqp_get_rpc_reply(rmq_client->rmq_conn);
@@ -508,7 +508,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			rmq_client->admin_api_enabled = TRUE;
 			// Case when we have a queue_name_admin, and to_janus_admin is the name of the topic to bind on (if exchange_type is topic)
 			if (queue_name_admin != NULL) {
-				JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", queue_name_admin);
+				JANUS_LOG(LOG_VERB, "Declaring incoming admin queue (using queue_name_admin)... (%s)\n", queue_name_admin);
 				rmq_client->to_janus_admin_queue = amqp_cstring_bytes(queue_name_admin);
 				amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->to_janus_admin_queue, 0, 0, 0, 0, amqp_empty_table);
 				result = amqp_get_rpc_reply(rmq_client->rmq_conn);
@@ -529,7 +529,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 
 			// Case when to_janus_admin is the name of the queue (and there's no binding
 			} else {
-				JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus_admin);
+				JANUS_LOG(LOG_VERB, "Declaring incoming admin queue (using to_janus_admin)... (%s)\n", to_janus_admin);
 				rmq_client->to_janus_admin_queue = amqp_cstring_bytes(to_janus_admin);
 				amqp_queue_declare(rmq_client->rmq_conn, rmq_client->rmq_channel, rmq_client->to_janus_admin_queue, 0, 0, 0, 0, amqp_empty_table);
 				result = amqp_get_rpc_reply(rmq_client->rmq_conn);
