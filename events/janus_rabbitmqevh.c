@@ -100,7 +100,6 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 static amqp_connection_state_t rmq_conn;
 static amqp_channel_t rmq_channel = 0;
 static amqp_bytes_t rmq_exchange;
-static amqp_bytes_t rmq_route_key;
 
 static janus_mutex mutex;
 
@@ -408,14 +407,7 @@ int janus_rabbitmqevh_connect(void) {
 			return -1;
 		}
 	}
-	JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", route_key);
-	rmq_route_key = amqp_cstring_bytes(route_key);
-	amqp_queue_declare(rmq_conn, rmq_channel, rmq_route_key, 0, 0, 0, 0, amqp_empty_table);
-	result = amqp_get_rpc_reply(rmq_conn);
-	if(result.reply_type != AMQP_RESPONSE_NORMAL) {
-		JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
-		return -1;
-	}
+
 	return 0;
 }
 
@@ -444,8 +436,6 @@ void janus_rabbitmqevh_destroy(void) {
 	}
 	if(rmq_exchange.bytes)
 		g_free((char *)rmq_exchange.bytes);
-	if(rmq_route_key.bytes)
-		g_free((char *)rmq_route_key.bytes);
 	if(rmqhost)
 		g_free((char *)rmqhost);
 	if(vhost)
@@ -611,7 +601,7 @@ static void *jns_rmqevh_hdlr(void *data) {
 			props.content_type = amqp_cstring_bytes("application/json");
 			amqp_bytes_t message = amqp_cstring_bytes(event_text);
 			janus_mutex_lock(&mutex);
-			int status = amqp_basic_publish(rmq_conn, rmq_channel, rmq_exchange, rmq_route_key, 0, 0, &props, message);
+			int status = amqp_basic_publish(rmq_conn, rmq_channel, rmq_exchange, amqp_cstring_bytes(route_key), 0, 0, &props, message);
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "RabbitMQEventHandler: Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}

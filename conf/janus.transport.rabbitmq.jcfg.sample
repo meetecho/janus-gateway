@@ -24,10 +24,15 @@ general: {
 	#username = "guest"					# Username to use to authenticate, if needed
 	#password = "guest"					# Password to use to authenticate, if needed
 	#vhost = "/"						# Virtual host to specify when logging in, if needed
-	to_janus = "to-janus"				# Name of the queue for incoming messages
-	from_janus = "from-janus"			# Name of the queue for outgoing messages
+
 	#janus_exchange = "janus-exchange"	# Exchange for outgoing messages, using default if not provided
 	#janus_exchange_type = "fanout" 		# Rabbitmq exchange_type can be one of the available types: direct, topic, headers and fanout (fanout by defualt).
+
+	queue_name = "janus-gateway" # Queue name for incoming messages (if this is set and janus_exchange_type is topic, to_janus will be the topic the queue is bound to the exchange on)
+
+	to_janus = "to-janus"				# Name of the queue for incoming messages if queue_name isn't set, otherwise, the topic that queue_name is bound to
+	from_janus = "from-janus"			# Topic of the message sent from janus
+
 	#ssl_enabled = false					# Whether ssl support must be enabled
 	#ssl_verify_peer = true				# Whether peer verification must be enabled
 	#ssl_verify_hostname = true			# Whether hostname verification must be enabled
@@ -44,6 +49,10 @@ general: {
 # Notice that by default the Admin API support via RabbitMQ is disabled.
 admin: {
 	#admin_enabled = false					# Whether the support must be enabled
+
+	queue_name_admin = "janus-gateway-admin" # Queue name for incoming admin messages (if this is set and janus_exchange_type is topic, to_janus_admin will be the topic the queue is bound to the exchange on)
+
+	# Deprecated config values, ignored if admin_queue_name is set above
 	#to_janus_admin = "to-janus-admin"		# Name of the queue for incoming messages
-	#from_janus_admin = "from-janus-admin"	# Name of the queue for outgoing messages
+	#from_janus_admin = "from-janus-admin"	# Topic of the message sent from janus
 }
