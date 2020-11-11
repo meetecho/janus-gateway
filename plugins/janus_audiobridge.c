@@ -6292,6 +6292,14 @@ static void *janus_audiobridge_handler(void *data) {
 				msg = NULL;
 				continue;
 			}
+			if(participant == NULL || participant->room == NULL) {
+				JANUS_LOG(LOG_ERR, "Can't handle SDP (not in a room)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_NOT_JOINED;
+				g_snprintf(error_cause, 512, "Can't handle SDP (not in a room)");
+				if(sdp)
+					janus_sdp_destroy(sdp);
+				goto error;
+			}
 			/* We use a custom session name in the SDP */
 			char s_name[100];
 			g_snprintf(s_name, sizeof(s_name), "AudioBridge %s", participant->room->room_id_str);
