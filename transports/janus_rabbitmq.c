@@ -914,7 +914,7 @@ void *janus_rmq_out_thread(void *data) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
 			char *payload_text = response->payload;
-			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
+			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes) on exchange %s with topic %s...\n", response->admin ? "Admin" : "Janus", strlen(payload_text), janus_exchange, response->admin ? from_janus_admin : from_janus);
 			JANUS_LOG(LOG_VERB, "%s\n", payload_text);
 			amqp_basic_properties_t props;
 			props._flags = 0;
