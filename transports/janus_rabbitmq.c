@@ -839,17 +839,10 @@ void *janus_rmq_in_thread(void *data) {
 			JANUS_LOG(LOG_VERB, "Delivery #%u, %.*s\n", (unsigned) d->delivery_tag, (int) d->routing_key.len, (char *) d->routing_key.bytes);
 			/* Check if this is a Janus or Admin API request */
 			if(rmq_client->admin_api_enabled) {
-				if(d->routing_key.len == rmq_client->to_janus_admin_queue.len) {
-					size_t i=0;
+				char incoming_topic[d->routing_key.len + 2];
+				strlcpy(incoming_topic, (char *)d->routing_key.bytes, d->routing_key.len + 1); // Convert the amqp_bytes_t back to char*
+				if (strcmp(incoming_topic, to_janus_admin) == 0) {
 					admin = TRUE;
-					char *inq = (char *)d->routing_key.bytes;
-					char *expq = (char *)rmq_client->to_janus_admin_queue.bytes;
-					for(i=0; i< d->routing_key.len; i++) {
-						if(inq[i] != expq[i]) {
-							admin = FALSE;
-							break;
-						}
-					}
 				}
 			}
 			JANUS_LOG(LOG_VERB, "  -- This is %s API request\n", admin ? "an admin" : "a Janus");
