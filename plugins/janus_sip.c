@@ -110,6 +110,7 @@
 	"force_udp" : <true|false; if true, forces UDP for the SIP messaging; optional>,
 	"force_tcp" : <true|false; if true, forces TCP for the SIP messaging; optional>,
 	"sips" : <true|false; if true, configures a SIPS URI too when registering; optional>,
+	"rfc2543_cancel" : <true|false; if true, configures sip client to CANCEL pending INVITEs without having received a provisional response first; optional>,
 	"username" : "<SIP URI to register; mandatory>",
 	"secret" : "<password to use to register; optional>",
 	"ha1_secret" : "<prehashed password to use to register; optional>",
@@ -699,6 +700,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"force_udp", JANUS_JSON_BOOL, 0},
 	{"force_tcp", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
+	{"rfc2543_cancel", JANUS_JSON_BOOL, 0},
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
@@ -898,6 +900,7 @@ typedef struct janus_sip_account {
 	gboolean force_udp;
 	gboolean force_tcp;
 	gboolean sips;
+	gboolean rfc2543_cancel;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
@@ -1971,6 +1974,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.force_udp = FALSE;
 	session->account.force_tcp = FALSE;
 	session->account.sips = TRUE;
+	session->account.rfc2543_cancel = FALSE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
 	session->account.user_agent = NULL;
@@ -2725,6 +2729,11 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Conflicting elements: force_udp and force_tcp cannot both be true");
 				goto error;
 			}
+			gboolean rfc2543_cancel = FALSE;
+			json_t *do_rfc2543_cancel = json_object_get(root, "rfc2543_cancel");
+			if(do_rfc2543_cancel != NULL) {
+				rfc2543_cancel = json_is_true(do_rfc2543_cancel);
+			}
 
 			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
@@ -2882,6 +2891,7 @@ static void *janus_sip_handler(void *data) {
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -2913,6 +2923,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.force_udp = force_udp;
 			session->account.force_tcp = force_tcp;
 			session->account.sips = sips;
+			session->account.rfc2543_cancel = rfc2543_cancel;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
 			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
@@ -5539,6 +5550,7 @@ auth_failed:
 				session->account.force_udp = FALSE;
 				session->account.force_tcp = FALSE;
 				session->account.sips = TRUE;
+				session->account.rfc2543_cancel = FALSE;
 				if(session->account.username != NULL)
 					g_free(session->account.username);
 				session->account.username = NULL;
@@ -6581,6 +6593,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_APPL_METHOD("REFER"),			/* We'll respond to incoming REFER messages ourselves */
 				SIPTAG_SUPPORTED_STR("replaces"),	/* Advertise that we support the Replaces header */
 				SIPTAG_SUPPORTED(NULL),
+				NTATAG_CANCEL_2543(session->account.rfc2543_cancel),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
