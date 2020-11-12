@@ -2436,6 +2436,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 		json_object_set_new(info, "active", g_atomic_int_get(&participant->active) ? json_true() : json_false());
 		json_object_set_new(info, "pre-buffering", participant->prebuffering ? json_true() : json_false());
+		json_object_set_new(info, "prebuffer-count", json_integer(participant->prebuffer_count));
 		if(participant->inbuf) {
 			janus_mutex_lock(&participant->qmutex);
 			json_object_set_new(info, "queue-in", json_integer(g_list_length(participant->inbuf)));
@@ -5562,6 +5563,9 @@ static void *janus_audiobridge_handler(void *data) {
 							g_free(pkt->data);
 							g_free(pkt);
 						}
+					} else {
+						/* Reset the prebuffering state */
+						participant->prebuffering = TRUE;
 					}
 					participant->prebuffer_count = prebuffer_count;
 					janus_mutex_unlock(&participant->qmutex);
