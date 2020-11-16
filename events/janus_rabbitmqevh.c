@@ -114,6 +114,7 @@ static gboolean ssl_verify_hostname = FALSE;
 static const char *route_key = NULL, *exchange = NULL, *exchange_type = NULL ;
 static uint16_t heartbeat = 0;
 static uint16_t rmqport = AMQP_PROTOCOL_PORT;
+static gboolean declare_outgoing_queue = TRUE;
 
 /* Parameter validation (for tweaking via Admin API) */
 static struct janus_json_parameter request_parameters[] = {
@@ -265,6 +266,12 @@ int janus_rabbitmqevh_init(const char *config_path) {
 		exchange_type = g_strdup(item->value);
 	}
 
+	// By default we *DO* declare the outgoing queue
+	item = janus_config_get(config, config_general, janus_config_type_item, "declare_outgoing_queue");
+	if(item && item->value && !janus_is_true(item->value)) {
+		declare_outgoing_queue = FALSE;
+	}
+
 	item = janus_config_get(config, config_general, janus_config_type_item, "exchange");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_INFO, "RabbitMQEventHandler: Missing name of outgoing exchange for RabbitMQ, using default\n");
@@ -404,6 +411,16 @@ int janus_rabbitmqevh_connect(void) {
 		result = amqp_get_rpc_reply(rmq_conn);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error diclaring exchange... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			return -1;
+		}
+	}
+
+	if (declare_outgoing_queue) {
+		JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", route_key);
+		amqp_queue_declare(rmq_conn, rmq_channel, amqp_cstring_bytes(route_key), 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "RabbitMQEventHandler: Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
 			return -1;
 		}
 	}
