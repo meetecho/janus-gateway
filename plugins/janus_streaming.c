@@ -7219,7 +7219,10 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	now.tv_usec = before.tv_usec;
 	time_t passed, d_s, d_us;
 	/* Loop */
-	gint read = 0, plen = (sizeof(buf)-RTP_HEADER_SIZE);
+	gint read = 0;
+#ifdef HAVE_LIBOGG
+	const gint plen = (sizeof(buf)-RTP_HEADER_SIZE);
+#endif
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mountpoint->destroyed) &&
 			!g_atomic_int_get(&session->stopping) && !g_atomic_int_get(&session->destroyed)) {
@@ -7366,7 +7369,10 @@ static void *janus_streaming_filesource_thread(void *data) {
 	now.tv_usec = before.tv_usec;
 	time_t passed, d_s, d_us;
 	/* Loop */
-	gint read = 0, plen = (sizeof(buf)-RTP_HEADER_SIZE);
+	gint read = 0;
+#ifdef HAVE_LIBOGG
+	const gint plen = (sizeof(buf)-RTP_HEADER_SIZE);
+#endif
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !g_atomic_int_get(&mountpoint->destroyed)) {
 		/* See if it's time to prepare a frame */
