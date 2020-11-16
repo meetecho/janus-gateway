@@ -188,6 +188,26 @@ function destroySession(id) {
 	return 0;
 }
 
+function substreamChanged(id, substream) {
+    // If simulcast is used, this callback is invoked when the substream
+    // we're sending to this session changes: 0=low, 1=medium, 2=high
+    console.log("Substream changed for session " + id + ": " + substream);
+    // Let's send an event so that the user is aware
+    var event = { videoroom: "event", videocodec: "vp8", substream: substream };
+    var jsonevent = JSON.stringify(event);
+    global.pushEvent(id, null, jsonevent, null);
+}
+
+function temporalLayerChanged(id, temporal) {
+    // If simulcast is used, this callback is invoked when the temporal
+    // layer we're sending to this session changes: 0=lowfps, 1=maxfps
+    console.log(" Temporal layer changed for session " + id + ": " + temporal);
+    // Let's send an event so that the user is aware
+    var event = { videoroom: "event", videocodec: "vp8", temporal: temporal };
+    var jsonevent = JSON.stringify(event);
+	global.pushEvent(id, null, jsonevent, null);
+}
+
 /**
  * @param {number} id
  */
@@ -316,9 +336,12 @@ function handleMessage(id, tr, msg, jsep) {
 			});
 			global.pokeScheduler();
 			return 1;
+		} else if(msgT.request==="configure"){
+			console.log("CONFIGURE >> ",msgT);
+			setSubstream(msgT.subId, msgT.substream);
+			global.sendPli(id);
 		}
-
-
+		
 		return JSON.stringify(response);
 	} else {
 		if (msgT.request === "start") {
@@ -370,8 +393,13 @@ function setupMedia(id) {
 	//addRecipient(id, id);
 	//console.log("sessions",sessions);
 	var session = getSession(id);
-	//var publishersArray = getRoomPublishersArray(session.room, id);
-	//session.publishers = publishersArray; 
+	var publishersArray = getRoomPublishersArray(session.room, id);
+	//session.publishers = publishersArray;
+	var event = { event: "media", publishers:publishersArray, newPublisher:id };
+	publishersArray.forEach(function (publisher) {
+		tasks.push({ id: publisher.id, tr: null, msg: event, jsep: null });
+	})
+	global.pokeScheduler();
 	session.isConnected = true;
 	setSession(session);
 	global.notifyEvent(id, JSON.stringify({"FixMe":"Whe4re is my event ...."}));

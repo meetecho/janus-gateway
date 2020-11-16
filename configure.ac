@@ -91,6 +91,7 @@ esac
 glib_version=2.34
 ssl_version=1.0.1
 jansson_version=2.5
+jwt_version=1.9
 
 ##
 # Janus
@@ -645,6 +646,7 @@ PKG_CHECK_MODULES([PLUGINS],
                   [
                     glib-2.0 >= $glib_version
                     jansson >= $jansson_version
+                    libjwt >= $jwt_version
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],
