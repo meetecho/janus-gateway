@@ -16,11 +16,14 @@ general: {
 							# plain (no indentation) or compact (no indentation and no spaces)
 
 	url = "tcp://localhost:1883"	# The URL of the MQTT server. Only tcp supported at this time.
+	#mqtt_version = "3.1.1"			# Protocol version. Available values: 3.1, 3.1.1 (default), 5.
 	client_id = "janus.example.com"	# Janus client id. You have to configure a unique ID (default: guest).
 	#keep_alive_interval = 20		# Keep connection for N seconds (default: 30)
 	#cleansession = 0				# Clean session flag (default: off)
 	#retain = 0						# Default MQTT retain flag for published events
 	#qos = 1						# Default MQTT QoS for published events
+	#max_inflight = 10				# Maximum number of inflight messages
+	#max_buffered = 100				# Maximum number of buffered messages
 	#disconnect_timeout = 100		# Seconds to wait before destroying client
 	#username = "guest"				# Username for authentication (default: no authentication)
 	#password = "guest"				# Password for authentication (default: no authentication)
@@ -46,4 +49,7 @@ general: {
 	#tls_client_key = "/path/to/key.pem"
 	#tls_ciphers
 	#tls_version
+
+	# These options work with MQTT 5 only.
+	#add_user_properties = ()	# List of user property ["key", "value"] pairs to add.
 }

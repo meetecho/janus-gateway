@@ -82,6 +82,12 @@ char *janus_random_uuid(void);
  * @returns A pointer to a guint64 number, if successful, NULL otherwise */
 guint64 *janus_uint64_dup(guint64 num);
 
+/*! \brief Helper to hash a guint64 number to another guint64 number
+ * @note We currently only use for event handlers
+ * @param
+ * @returns The hashed number */
+guint64 janus_uint64_hash(guint64 num);
+
 /*! \brief Helper method to convert a string to a uint8_t
  * @note The value of \c num should be ignored, if the method returned an error
  * @param[in] str The string to convert
@@ -278,6 +284,20 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len);
  * @param[in] len The length of the RTP payload
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an AV1 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_av1_is_keyframe(const char *buffer, int len);
+
+/*! \brief Helper method to check if an H.265 frame is a keyframe or not
+ * @note Currently only a placeholder, always returns FALSE
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_h265_is_keyframe(const char *buffer, int len);
 
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {

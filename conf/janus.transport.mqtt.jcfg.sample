@@ -14,6 +14,8 @@ general: {
 	#password = "guest"					# Password to use to authenticate, if needed
 	#keep_alive_interval = 20			# Keep connection for N seconds
 	#cleansession = 0					# Clean session flag
+	#max_inflight = 10					# Maximum number of inflight messages
+	#max_buffered = 100					# Maximum number of buffered messages
 	#disconnect_timeout = 100			# Milliseconds to wait before destroying client
 	subscribe_topic = "to-janus"		# Topic for incoming messages
 	#subscribe_qos = 1					# QoS for incoming messages
@@ -28,6 +30,10 @@ general: {
 	#certfile = /path/to/cert.pem
 	#keyfile = /path/to/key.pem
 
+	# These options work with MQTT 5 only.
+	#vacuum_interval = 60					# Interval for removing old transaction states in seconds.
+	#proxy_transaction_user_properties = []	# Array of user property names to copy from the incoming message.
+	#add_transaction_user_properties = ()	# List of user property ["key", "value"] pairs to add.
 }
 
 admin: {
@@ -48,6 +54,6 @@ status: {
 	#disconnect_message = "{\"online\": false}"
 
 	#topic = "status"			# Status topic (default: "status")
-	#qos = 1			      	# QoS for status messages (default: 1)
-	#retain = false		    # Whether status messages should be retained (default: false)
+	#qos = 1				  	# QoS for status messages (default: 1)
+	#retain = false				# Whether status messages should be retained (default: false)
 }

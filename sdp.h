@@ -53,9 +53,10 @@ janus_sdp *janus_sdp_preparse(void *handle, const char *jsep_sdp, char *error_st
  * and supporting multiple streams in the same PeerConnection are still WIP.
  * @param[in] handle Opaque pointer to the ICE handle this session description will modify
  * @param[in] sdp The Janus SDP object to process
+ * @param[in] rids_hml Whether the order of rids in the SDP, if present, will be h-m-l (TRUE) or l-m-h (FALSE)
  * @param[in] update Whether this SDP is an update to an existing session or not
  * @returns 0 in case of success, -1 in case of an error */
-int janus_sdp_process(void *handle, janus_sdp *sdp, gboolean update);
+int janus_sdp_process(void *handle, janus_sdp *sdp, gboolean rids_hml, gboolean update);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not

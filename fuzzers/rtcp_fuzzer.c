@@ -30,11 +30,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/* Do some copies of input data */
 	uint8_t copy_data0[size], copy_data1[size],
 		copy_data2[size], copy_data3[size],
-			copy_data4[size];
-	uint8_t *copy_data[5] = { copy_data0, copy_data1,
-			copy_data2, copy_data3, copy_data4};
+			copy_data4[size], copy_data5[size];
+	uint8_t *copy_data[6] = { copy_data0, copy_data1,
+			copy_data2, copy_data3,
+				copy_data4, copy_data5 };
 	int idx, newlen;
-	for (idx=0; idx < 5; idx++) {
+	for (idx=0; idx < 6; idx++) {
 		memcpy(copy_data[idx], data, size);
 	}
 	idx = 0;
@@ -53,8 +54,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtcp_get_sender_ssrc((char *)data, size);
 	/* Functions that alter input data */
 	janus_rtcp_cap_remb((char *)copy_data[idx++], size, 256000);
-	janus_rtcp_fix_report_data((char *)copy_data[idx++], size, 2000, 1000, 1234, 1234, 1234, TRUE);
-	janus_rtcp_fix_ssrc(&ctx0, (char *)copy_data[idx++], size, 1, 2, 3);
+	janus_rtcp_swap_report_blocks((char *)copy_data[idx++], size, 2);
+	janus_rtcp_fix_report_data((char *)copy_data[idx++], size, 2000, 1000, 2, 2, 2, TRUE);
+	janus_rtcp_fix_ssrc(&ctx0, (char *)copy_data[idx++], size, 1, 2, 2);
 	janus_rtcp_parse(&ctx1, (char *)copy_data[idx++], size);
 	janus_rtcp_remove_nacks((char *)copy_data[idx++], size);
 	/* Functions that allocate new memory */

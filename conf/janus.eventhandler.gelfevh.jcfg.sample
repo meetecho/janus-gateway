@@ -1,0 +1,21 @@
+# This configures the GELF event handler. Appending necessary headers 
+# and sending messages via TCP or UDP
+
+general: {
+	enabled = false						# By default the module is not enabled
+	events = "all"
+										# Comma separated list of the events mask you're interested
+										# in. Valid values are none, sessions, handles, jsep, webrtc,
+										# media, plugins, transports, core, external and all. By
+										# default we subscribe to everything (all)
+
+	backend = "your.graylog.server"		# DNS or IP of your Graylog server
+	port = "12201"						# Port Graylog server is listening on
+	protocol = "tcp"					# tcp or udp transport type
+	max_message_len = 1024				# Note that we add 12 bytes of headers + standard UDP headers (8 bytes) 
+										# when calculating packet size based on MTU   
+
+	#compress = true					# Optionally, only for UDP transport, JSON messages can be compressed using zlib
+	#compression = 9					# In case, you can specify the compression factor, where 1 is
+										# the fastest (low compression), and 9 gives the best compression
+}

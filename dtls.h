@@ -125,7 +125,7 @@ int janus_dtls_srtp_create_sctp(janus_dtls_srtp *dtls);
 /*! \brief Handle an incoming DTLS message
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on
  * @param[in] buf The DTLS message data
- * @param[in] len The DTLS message data lenght */
+ * @param[in] len The DTLS message data length */
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len);
 /*! \brief Send an alert on a janus_dtls_srtp instance
  * @param[in] dtls The janus_dtls_srtp instance to send the alert on */
@@ -147,13 +147,18 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret);
 int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
 
 #ifdef HAVE_SCTP
+/*! \brief Callback (called from the SCTP stack) that SCTP data (DataChannel) can be sent
+ * @param[in] dtls The janus_dtls_srtp instance to use */
+void janus_dtls_sctp_data_ready(janus_dtls_srtp *dtls);
+
 /*! \brief Callback (called from the ICE handle) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
  * @param[in] label The label of the data channel to use
+ * @param[in] protocol The protocol of the data channel to use
  * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buf The data buffer to encapsulate
  * @param[in] len The data length */
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len);
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *protocol, gboolean textdata, char *buf, int len);
 
 /*! \brief Callback (called from the SCTP stack) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
@@ -165,10 +170,11 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
 /*! \brief Callback to be notified about incoming SCTP data (DataChannel) to forward to the handle
  * @param[in] dtls The janus_dtls_srtp instance to use
  * @param[in] label The label of the data channel the message is from
+ * @param[in] protocol The protocol of the data channel the message is from
  * @param[in] textdata Whether the buffer is text (domstring) or binary data
  * @param[in] buf The data buffer
  * @param[in] len The data length */
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len);
+void janus_dtls_notify_sctp_data(janus_dtls_srtp *dtls, char *label, char *protocol, gboolean textdata, char *buf, int len);
 #endif
 
 /*! \brief DTLS retransmission timer

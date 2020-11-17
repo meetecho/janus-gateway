@@ -1,4 +1,4 @@
-AC_INIT([Janus WebRTC Server],[0.9.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus WebRTC Server],[0.10.8],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -69,9 +69,9 @@ clang*)
 		-Wunused-but-set-variable"
 esac
 
-JANUS_VERSION=93
+JANUS_VERSION=108
 AC_SUBST(JANUS_VERSION)
-JANUS_VERSION_STRING="0.9.3"
+JANUS_VERSION_STRING="0.10.8"
 AC_SUBST(JANUS_VERSION_STRING)
 
 case "$host_os" in
@@ -214,6 +214,8 @@ AC_ARG_ENABLE([all-handlers],
                      [enable_mqtt_event_handler=no])
                AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])
+               AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])
               ],
               [])
 
@@ -313,6 +315,13 @@ AC_ARG_ENABLE([nanomsg-event-handler],
               [AS_IF([test "x$enable_nanomsg_event_handler" != "xyes"],
                      [enable_nanomsg_event_handler=no])],
               [enable_nanomsg_event_handler=maybe])
+
+AC_ARG_ENABLE([gelf-event-handler],
+              [AS_HELP_STRING([--disable-gelf-event-handler],
+                              [Disable gelf event handler ])],
+              [AS_IF([test "x$enable_gelf_event_handler" != "xyes"],
+                     [enable_gelf_event_handler=no])],
+              [enable_gelf_event_handler=yes])
 
 AC_ARG_ENABLE([json-logger],
               [AS_HELP_STRING([--enable-json-logger],
@@ -470,10 +479,16 @@ AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 if test "x$enable_docs" = "xyes"; then
 	doxygen_version=$($DOXYGEN --version)
 	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
-					   [],
-					   [],
-					   [AC_MSG_ERROR([Doxygen $doxygen_version too new: versions higher than 1.8.11 are known to render poorly.])]
-					  )
+                           [],
+                           [],
+                           [
+                            AS_VERSION_COMPARE([$doxygen_version], [1.8.14],
+                                               [AC_MSG_ERROR([Doxygen $doxygen_version not usable: versions between 1.8.12 and 1.8.14 are known to render poorly.])],
+                                               [],
+                                               []
+                                              )
+                           ]
+                          )
 fi
 
 AC_CHECK_PROG([GENGETOPT_CHECK],
@@ -601,6 +616,7 @@ AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSG], [test "x$enable_nanomsg" = "xyes"])
 AM_CONDITIONAL([ENABLE_NANOMSGEVH], [test "x$enable_nanomsg_event_handler" = "xyes"])
+AM_CONDITIONAL([ENABLE_GELFEVH], [test "x$enable_gelf_event_handler" = "xyes"])
 
 AM_CONDITIONAL([ENABLE_JSONLOGGER], [test "x$enable_json_logger" = "xyes"])
 
@@ -903,8 +919,21 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          ])
       ])
 
+PKG_CHECK_MODULES([PCAP],
+                  [libpcap],
+                  [
+                   AC_DEFINE(HAVE_LIBPCAP)
+                   enable_pcap2mjr=yes
+                  ],
+                  [
+                   enable_pcap2mjr=no
+                  ])
+AC_SUBST([PCAP_CFLAGS])
+AC_SUBST([PCAP_LIBS])
+
 AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
+AM_CONDITIONAL([ENABLE_PCAP2MJR], [test "x$enable_pcap2mjr" = "xyes"])
 
 AC_CONFIG_FILES([
   Makefile
@@ -1021,6 +1050,9 @@ AM_COND_IF([ENABLE_MQTTEVH],
 AM_COND_IF([ENABLE_NANOMSGEVH],
 	[echo "    Nanomsg event handler: yes"],
 	[echo "    Nanomsg event handler: no"])
+AM_COND_IF([ENABLE_GELFEVH],
+	[echo "    GELF event handler:    yes"],
+	[echo "    GELF event handler:    no"])
 echo "External loggers:"
 AM_COND_IF([ENABLE_JSONLOGGER],
 	[echo "    JSON file logger:      yes"],

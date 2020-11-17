@@ -1,7 +1,7 @@
 /*! \file    pp-h264.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    Post-processing to generate .mp4 files
+ * \brief    Post-processing to generate .mp4 files out of H.264 frames
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .mp4 files out of H.264 RTP frames.
  *

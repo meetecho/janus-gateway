@@ -6,10 +6,10 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Server: Text Room</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="textroomtest.js"></script>
@@ -22,9 +22,9 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
 </head>
 <body>
 
@@ -53,7 +53,7 @@
 						individual participants. To send messages on the chatroom, just type
 						your text and send. To send private messages to individual participants,
 						click the participant name in the list on the right and a custom dialog
-						will appear.</code>.</p>
+						will appear.</p>
 						<p>To try the demo, just insert a username to join the room. This will
 						add you to chatroom, and allow you to interact with the other participants.</p>
 						<p>Notice that this is just a very basic demo, and that is just one of
@@ -72,7 +72,7 @@
 					<div class="col-md-12" id="controls">
 						<div class="input-group margin-bottom-md hide" id="registernow">
 							<span class="input-group-addon">@</span>
-							<input class="form-control" type="text" placeholder="Choose a display name" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<input class="form-control" type="text" placeholder="Choose a display name" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);" />
 							<span class="input-group-btn">
 								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
 							</span>
@@ -96,14 +96,14 @@
 					<div class="col-md-8">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Public Chatroom</span></h3>
+								<h3 class="panel-title">Public Chatroom</h3>
 							</div>
 							<div class="panel-body relative" style="overflow-x: auto;" id="chatroom">
 							</div>
 							<div class="panel-footer">
 								<div class="input-group margin-bottom-sm">
 									<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-									<input class="form-control" type="text" placeholder="Write a chatroom message" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
+									<input class="form-control" type="text" placeholder="Write a chatroom message" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled />
 								</div>
 							</div>
 						</div>

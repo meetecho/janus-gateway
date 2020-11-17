@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Server: End-to-end Encryption Test</title>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/6.4.0/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.4.0/bootbox.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="e2etest.js"></script>
+<script>
+	$(function() {
+		$(".navbar-static-top").load("navbar.html", function() {
+			$(".navbar-static-top li.dropdown").addClass("active");
+			$(".navbar-static-top a[href='e2etest.html']").parent().addClass("active");
+		});
+		$(".footer").load("footer.html");
+	});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.4.0/cerulean/bootstrap.min.css" type="text/css"/>
+<link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css"/>
+</head>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<nav class="navbar navbar-default navbar-static-top">
+</nav>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="page-header">
+				<h1>Plugin Demo: End-to-end Encryption
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This is a variant of the Echo Test demo: everything is exactly
+						the same in term of available controls, features, and the like, with
+						the substantial difference that it shows how you can configure an
+						end-to-end encryption context using the recently introduced
+						<a target="_blank" href="https://www.chromestatus.com/feature/6321945865879552">Insertable Streams</a>.</p>
+						<p>Specifically, this demo will prompt for a secret, and then use the same transform functions as
+						<a target="_blank" href="https://webrtc.github.io/samples/src/content/peerconnection/endtoend-encryption/">this official demo</a>
+						to encrypt the media: this means Janus will NOT have access to the media, but
+						will still be able to pass the packets to the EchoTest plugin and send them
+						back, thus ensuring an end-to-end encryption of the content. In this context,
+						the same page that encrypted the media will also decrypt it, which means
+						that if you see both local and remote video, then it's working as expected.
+						You'll probably want to then experiment with this feature by playing with
+						other plugins as well, e.g., the VideoRoom, for E2E-encrypted conferences.</p>
+						<p>Notice that at the time of writing, only video can be end-to-end encrypted,
+						and not audio. More importantly, at the moment this will only work if you're
+						using a recent of Chrome version that has been started either with the following flag:</p>
+						<p><div class="alert alert-info"><code>--enable-experimental-web-platform-features --force-fieldtrials=WebRTC-GenericDescriptorAdvertised/Enabled/</code></div></p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
+			</div>
+			<div class="container hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Local Stream
+									<div class="btn-group btn-group-xs pull-right hide">
+										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
+										<div class="btn-group btn-group-xs">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+												Bandwidth<span class="caret"></span>
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<li><a href="#" id="0">No limit</a></li>
+												<li><a href="#" id="128">Cap to 128kbit</a></li>
+												<li><a href="#" id="256">Cap to 256kbit</a></li>
+												<li><a href="#" id="512">Cap to 512kbit</a></li>
+												<li><a href="#" id="1024">Cap to 1mbit</a></li>
+												<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
+												<li><a href="#" id="2000">Cap to 2mbit</a></li>
+											</ul>
+										</div>
+									</div>
+								</h3>
+							</div>
+							<div class="panel-body" id="videoleft"></div>
+						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+							</div>
+							<div class="panel-body" id="videoright"></div>
+						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
+							<input class="form-control" type="text" id="datarecv" disabled></input>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	</div>
+</div>
+
+</body>
+</html>

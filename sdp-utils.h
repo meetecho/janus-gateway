@@ -260,6 +260,10 @@ JANUS_SDP_OA_VIDEO_DIRECTION,
 JANUS_SDP_OA_AUDIO_CODEC,
 /*! \brief When generating an offer or answer automatically, use this codec for video (depends on value that follows) */
 JANUS_SDP_OA_VIDEO_CODEC,
+/*! \brief When generating an offer or answer automatically, use this profile for VP9 (depends on value that follows) */
+JANUS_SDP_OA_VP9_PROFILE,
+/*! \brief When generating an offer or answer automatically, use this profile for H.264 (depends on value that follows) */
+JANUS_SDP_OA_H264_PROFILE,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for audio (depends on value that follows) */
 JANUS_SDP_OA_AUDIO_PT,
 /*! \brief When generating an offer (this is ignored for answers), use this payload type for video (depends on value that follows) */
@@ -268,10 +272,11 @@ JANUS_SDP_OA_VIDEO_PT,
 JANUS_SDP_OA_AUDIO_DTMF,
 /*! \brief When generating an offer or answer automatically, add this custom fmtp string for audio */
 JANUS_SDP_OA_AUDIO_FMTP,
+/*! \brief When generating an offer or answer automatically, add this custom fmtp string for video
+ * @note This property is ignored if JANUS_SDP_OA_VP9_PROFILE or JANUS_SDP_OA_H264_PROFILE is used on a compliant codec. */
+JANUS_SDP_OA_VIDEO_FMTP,
 /*! \brief When generating an offer or answer automatically, do or do not add the rtcpfb attributes we typically negotiate (fir, nack, pli, remb) */
 JANUS_SDP_OA_VIDEO_RTCPFB_DEFAULTS,
-/*! \brief When generating an offer or answer automatically, do or do not add the default fmtp attribute for H.264 (profile-level-id=42e01f;packetization-mode=1) */
-JANUS_SDP_OA_VIDEO_H264_FMTP,
 /*! \brief When generating an offer (this is ignored for answers), use the old "DTLS/SCTP" instead of the new "UDP/DTLS/SCTP (default=TRUE for now, depends on what follows) */
 JANUS_SDP_OA_DATA_LEGACY,
 /*! \brief When generating an offer (this is ignored for answers), negotiate this audio extension: needs two arguments, extmap value and extension ID; can be used multiple times) */
@@ -327,10 +332,25 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...);
 janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...);
 
 /*! \brief Helper to get the payload type associated to a specific codec
+ * @note This version doesn't involve profiles, which means that in case
+ * of multiple payload types associated to the same codec because of
+ * different profiles (e.g., VP9 and H.264), this will simply return the
+ * first payload type associated with it the codec itself.
  * @param sdp The Janus SDP instance to process
  * @param codec The codec to find, as a string
  * @returns The payload type, if found, or -1 otherwise */
 int janus_sdp_get_codec_pt(janus_sdp *sdp, const char *codec);
+
+/*! \brief Helper to get the payload type associated to a specific codec,
+ * taking into account a codec profile as a hint as well
+ * @note The profile will only be used if the codec supports it, and the
+ * core is aware of it: right now, this is only VP9 and H.264. If the codec
+ * is there but the profile is not found, then no payload type is returned.
+ * @param sdp The Janus SDP instance to process
+ * @param codec The codec to find, as a string
+ * @param profile The codec profile to use as a hint, as a string
+ * @returns The payload type, if found, or -1 otherwise */
+int janus_sdp_get_codec_pt_full(janus_sdp *sdp, const char *codec, const char *profile);
 
 /*! \brief Helper to get the codec name associated to a specific payload type
  * @param sdp The Janus SDP instance to process
@@ -342,5 +362,11 @@ const char *janus_sdp_get_codec_name(janus_sdp *sdp, int pt);
  * @param codec The codec name, as a string (e.g., "opus")
  * @returns The rtpmap value, if found (e.g., "opus/48000/2"), or -1 otherwise */
 const char *janus_sdp_get_codec_rtpmap(const char *codec);
+
+/*! \brief Helper to get the fmtp associated to a specific payload type
+ * @param sdp The Janus SDP instance to process
+ * @param pt The payload type to find
+ * @returns The fmtp content, if found, or NULL otherwise */
+const char *janus_sdp_get_fmtp(janus_sdp *sdp, int pt);
 
 #endif

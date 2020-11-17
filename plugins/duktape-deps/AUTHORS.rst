@@ -52,6 +52,18 @@ and agreed to irrevocably license their contributions under the Duktape
 * Christopher Hiller (https://github.com/boneskull)
 * Gonzalo Diethelm (https://github.com/gonzus)
 * Michal Kasperek (https://github.com/michalkas)
+* Andrew Janke (https://github.com/apjanke)
+* Steve Fan (https://github.com/stevefan1999)
+* Edward Betts (https://github.com/edwardbetts)
+* Ozhan Duz (https://github.com/webfolderio)
+* Akos Kiss (https://github.com/akosthekiss)
+* TheBrokenRail (https://github.com/TheBrokenRail)
+* Jesse Doyle (https://github.com/jessedoyle)
+* Gero Kuehn (https://github.com/dc6jgk)
+* James Swift (https://github.com/phraemer)
+* Luis de Bethencourt (https://github.com/luisbg)
+* Ian Whyman (https://github.com/v00d00)
+* Rick Sayre (https://github.com/whorfin)
 
 Other contributions
 ===================
@@ -92,6 +104,8 @@ bugs, provided ideas, etc; roughly in order of appearance):
 * Neil Kolban (https://github.com/nkolban)
 * Wilhelm Wanecek (https://github.com/wanecek)
 * Andrew Janke (https://github.com/apjanke)
+* Unamer (https://github.com/unamer)
+* Karl Dahlke (eklhad@gmail.com)
 
 If you are accidentally missing from this list, send me an e-mail
 (``sami.vaarala@iki.fi``) and I'll fix the omission.

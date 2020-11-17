@@ -206,15 +206,26 @@ media: {
 	#twcc_period = 100
 	#dtls_timeout = 500
 
+	# Janus can do some optimizations on the NACK queue, specifically when
+	# keyframes are involved. Namely, you can configure Janus so that any
+	# time a keyframe is sent to a user, the NACK buffer for that connection
+	# is emptied. This allows Janus to ignore NACK requests for packets
+	# sent shortly before the keyframe was sent, since it can be assumed
+	# that the keyframe will restore a complete working image for the user
+	# anyway (which is the main reason why video retransmissions are typically
+	# required). While this optimization is known to work fine in most cases,
+	# it can backfire in some edge cases, and so is disabled by default.
+	#nack_optimizations = true
+
 	# If you need DSCP packet marking and prioritization, you can configure
-	# the 'dscp_tos' property to a specific values, and Janus will try to
+	# the 'dscp' property to a specific values, and Janus will try to
 	# set it on all outgoing packets using libnice. Normally, the specs
 	# suggest to use different values depending on whether audio, video
 	# or data are used, but since all PeerConnections in Janus are bundled,
 	# we can only use one. You can refer to this document for more info:
 	# https://tools.ietf.org/html/draft-ietf-tsvwg-rtcweb-qos-18#page-6
 	# That said, DON'T TOUCH THIS IF YOU DON'T KNOW WHAT IT MEANS!
-	#dscp_tos = 46
+	#dscp = 46
 }
 
 # NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -258,7 +269,14 @@ nat: {
 	# such, use the option with caution and only if you know what you're doing.
 	# Make sure you keep ICE Lite disabled, though, as it's not strictly
 	# speaking a publicly reachable server, and a NAT is still involved.
+	# If you'd rather keep the private IP address in place, rather than
+	# replacing it (and so have both of them as advertised candidates),
+	# then set the 'keep_private_host' property to true.
+	# Multiple public IP addresses can be specified as a comma separated list
+	# if the Janus is deployed in a DMZ between two 1-1 NAT for internal and
+	# external users.
 	#nat_1_1_mapping = "1.2.3.4"
+	#keep_private_host = true
 
 	# You can configure a TURN server in two different ways: specifying a
 	# statically configured TURN server, and thus provide the address of the
@@ -276,7 +294,9 @@ nat: {
 	# which is currently available in both rfc5766-turn-server and coturn.
 	# You enable this by specifying the address of your TURN REST API backend,
 	# the HTTP method to use (GET or POST) and, if required, the API key Janus
-	# must provide.
+	# must provide. Notice that the 'opaque_id' provided via Janus API will be
+	# used as the username for a specific PeerConnection by default; if that one
+	# is missing, the 'session_id' will be used as the username instead.
 	#turn_rest_api = "http://yourbackend.com/path/to/api"
 	#turn_rest_api_key = "anyapikeyyoumayhaveset"
 	#turn_rest_api_method = "GET"

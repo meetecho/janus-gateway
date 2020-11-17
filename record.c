@@ -75,18 +75,25 @@ static void janus_recorder_free(const janus_refcount *recorder_ref) {
 	recorder->file = NULL;
 	g_free(recorder->codec);
 	recorder->codec = NULL;
+	g_free(recorder->fmtp);
+	recorder->fmtp = NULL;
 	g_free(recorder);
 }
 
 janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
+	/* Same as janus_recorder_create_full, but with no fmtp */
+	return janus_recorder_create_full(dir, codec, NULL, filename);
+}
+janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, const char *fmtp, const char *filename) {
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
 		return NULL;
 	}
-	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
+	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")
+			 || !strcasecmp(codec, "av1") || !strcasecmp(codec, "h265")) {
 		type = JANUS_RECORDER_VIDEO;
-	} else if(!strcasecmp(codec, "opus")
+	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "multiopus")
 			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
 			|| !strcasecmp(codec, "g722")) {
 		type = JANUS_RECORDER_AUDIO;
@@ -105,6 +112,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->filename = NULL;
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
+	rc->fmtp = fmtp ? g_strdup(fmtp) : NULL;
 	rc->created = janus_get_real_time();
 	const char *rec_dir = NULL;
 	const char *rec_file = NULL;
@@ -245,6 +253,16 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	return rc;
 }
 
+int janus_recorder_encrypted(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	if(!recorder->header) {
+		recorder->encrypted = TRUE;
+		return 0;
+	}
+	return -1;
+}
+
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length) {
 	if(!recorder)
 		return -1;
@@ -275,8 +293,13 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			type = "d";
 		json_object_set_new(info, "t", json_string(type));								/* Audio/Video/Data */
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
+		if(recorder->fmtp)
+			json_object_set_new(info, "f", json_string(recorder->fmtp));				/* Codec-specific info */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
+		/* If media will be end-to-end encrypted, mark it in the recording header */
+		if(recorder->encrypted)
+			json_object_set_new(info, "e", json_true());
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));

@@ -321,6 +321,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler client thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 	/* Start another thread to handle incoming events */
@@ -330,6 +331,7 @@ int janus_wsevh_init(const char *config_path) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the WebSocketsEventHandler handler thread...\n",
 			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		goto error;
 	}
 
@@ -656,7 +658,7 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 				char *event = g_async_queue_try_pop(messages);
 				if(event && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(event) + LWS_SEND_BUFFER_POST_PADDING;
+					int buflen = LWS_PRE + strlen(event);
 					if(ws_client->buffer == NULL) {
 						/* Let's allocate a shared buffer */
 						JANUS_LOG(LOG_VERB, "Allocating %d bytes (event is %zu bytes)\n", buflen, strlen(event));
@@ -669,14 +671,14 @@ static int janus_wsevh_callback(struct lws *wsi, enum lws_callback_reasons reaso
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
-					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, event, strlen(event));
+					memcpy(ws_client->buffer + LWS_PRE, event, strlen(event));
 					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(event));
-					int sent = lws_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(event), LWS_WRITE_TEXT);
+					int sent = lws_write(wsi, ws_client->buffer + LWS_PRE, strlen(event), LWS_WRITE_TEXT);
 					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(event));
 					if(sent > -1 && sent < (int)strlen(event)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
 						ws_client->bufpending = strlen(event) - sent;
-						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						ws_client->bufoffset = LWS_PRE + sent;
 						JANUS_LOG(LOG_VERB, "  -- Couldn't write all bytes (%d missing), setting offset %d\n",
 							ws_client->bufpending, ws_client->bufoffset);
 					}

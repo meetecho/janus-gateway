@@ -135,6 +135,13 @@ guint64 *janus_uint64_dup(guint64 num) {
 	return numdup;
 }
 
+guint64 janus_uint64_hash(guint64 num) {
+	num = (num ^ (num >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+	num = (num ^ (num >> 27)) * UINT64_C(0x94d049bb133111eb);
+	num = num ^ (num >> 31);
+	return num;
+}
+
 int janus_string_to_uint8(const char *str, uint8_t *num) {
 	if(str == NULL || num == NULL)
 		return -EINVAL;
@@ -333,6 +340,14 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 1;
 		format = "h264/90000";
 		format2 = "H264/90000";
+	} else if(!strcasecmp(codec, "av1")) {
+		video = 1;
+		format = "av1x/90000";
+		format2 = "AV1X/90000";
+	} else if(!strcasecmp(codec, "h265")) {
+		video = 1;
+		format = "h265/90000";
+		format2 = "H265/90000";
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
 		return -1;
@@ -398,7 +413,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 			if(strstr(line, rtpmap)) {
 				/* Gotcha! */
 				char name[100];
-				if(sscanf(line, "a=rtpmap:%d %s", &pt, name) == 2) {
+				if(sscanf(line, "a=rtpmap:%d %99s", &pt, name) == 2) {
 					*next = '\n';
 					if(strstr(name, "vp8") || strstr(name, "VP8"))
 						return "vp8";
@@ -406,6 +421,10 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "vp9";
 					if(strstr(name, "h264") || strstr(name, "H264"))
 						return "h264";
+					if(strstr(name, "av1") || strstr(name, "AV1"))
+						return "av1";
+					if(strstr(name, "h265") || strstr(name, "H265"))
+						return "h265";
 					if(strstr(name, "opus") || strstr(name, "OPUS"))
 						return "opus";
 					if(strstr(name, "pcmu") || strstr(name, "PCMU"))
@@ -664,31 +683,31 @@ gboolean janus_vp8_is_keyframe(const char *buffer, int len) {
 			buffer++;
 			vp8pd = *buffer;
 		}
-		buffer++;	/* Now we're in the payload */
-		if(sbit) {
-			JANUS_LOG(LOG_HUGE, "  -- S bit is set!\n");
-			unsigned long int vp8ph = 0;
-			memcpy(&vp8ph, buffer, 4);
-			vp8ph = ntohl(vp8ph);
-			uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
-			if(!pbit) {
-				JANUS_LOG(LOG_HUGE, "  -- P bit is NOT set!\n");
-				/* It is a key frame! Get resolution for debugging */
-				unsigned char *c = (unsigned char *)buffer+3;
-				/* vet via sync code */
-				if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-					JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
-				} else {
-					unsigned short val3, val5;
-					memcpy(&val3,c+3,sizeof(short));
-					int vp8w = swap2(val3)&0x3fff;
-					int vp8ws = swap2(val3)>>14;
-					memcpy(&val5,c+5,sizeof(short));
-					int vp8h = swap2(val5)&0x3fff;
-					int vp8hs = swap2(val5)>>14;
-					JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
-					return TRUE;
-				}
+	}
+	buffer++;	/* Now we're in the payload */
+	if(sbit) {
+		JANUS_LOG(LOG_HUGE, "  -- S bit is set!\n");
+		unsigned long int vp8ph = 0;
+		memcpy(&vp8ph, buffer, 4);
+		vp8ph = ntohl(vp8ph);
+		uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+		if(!pbit) {
+			JANUS_LOG(LOG_HUGE, "  -- P bit is NOT set!\n");
+			/* It is a key frame! Get resolution for debugging */
+			unsigned char *c = (unsigned char *)buffer+3;
+			/* vet via sync code */
+			if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+				JANUS_LOG(LOG_HUGE, "First 3-bytes after header not what they're supposed to be?\n");
+			} else {
+				unsigned short val3, val5;
+				memcpy(&val3,c+3,sizeof(short));
+				int vp8w = swap2(val3)&0x3fff;
+				int vp8ws = swap2(val3)>>14;
+				memcpy(&val5,c+5,sizeof(short));
+				int vp8h = swap2(val5)&0x3fff;
+				int vp8hs = swap2(val5)>>14;
+				JANUS_LOG(LOG_HUGE, "Got a VP8 key frame: %dx%d (scale=%dx%d)\n", vp8w, vp8h, vp8ws, vp8hs);
+				return TRUE;
 			}
 		}
 	}
@@ -810,6 +829,32 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 		}
 	}
 	/* If we got here it's not a key frame */
+	return FALSE;
+}
+
+gboolean janus_av1_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 3)
+		return FALSE;
+	/* Read the aggregation header */
+	uint8_t aggrh = *buffer;
+	uint8_t zbit = (aggrh & 0x80) >> 7;
+	uint8_t nbit = (aggrh & 0x08) >> 3;
+	/* FIXME Ugly hack: we consider a packet with Z=0 and N=1 a keyframe */
+	return (!zbit && nbit);
+}
+
+gboolean janus_h265_is_keyframe(const char *buffer, int len) {
+	if(!buffer || len < 2)
+		return FALSE;
+	/* Parse the NAL unit */
+	uint16_t unit = 0;
+	memcpy(&unit, buffer, sizeof(uint16_t));
+	unit = ntohs(unit);
+	uint8_t type = (unit & 0x7E00) >> 9;
+	if(type == 32 || type == 33) {
+		/* FIXME We return TRUE for VPS and SPS */
+		return TRUE;
+	}
 	return FALSE;
 }
 
