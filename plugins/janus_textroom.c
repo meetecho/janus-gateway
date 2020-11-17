@@ -535,6 +535,7 @@ void janus_textroom_setup_media(janus_plugin_session *handle);
 void janus_textroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
 void janus_textroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
+void janus_textroom_data_ready(janus_plugin_session *handle);
 void janus_textroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_textroom_hangup_media(janus_plugin_session *handle);
 void janus_textroom_destroy_session(janus_plugin_session *handle, int *error);
@@ -561,6 +562,7 @@ static janus_plugin janus_textroom_plugin =
 		.incoming_rtp = janus_textroom_incoming_rtp,
 		.incoming_rtcp = janus_textroom_incoming_rtcp,
 		.incoming_data = janus_textroom_incoming_data,
+		.data_ready = janus_textroom_data_ready,
 		.slow_link = janus_textroom_slow_link,
 		.hangup_media = janus_textroom_hangup_media,
 		.destroy_session = janus_textroom_destroy_session,
@@ -687,6 +689,7 @@ typedef struct janus_textroom_session {
 	GHashTable *rooms;			/* Map of rooms this user is in, and related participant instance */
 	janus_mutex mutex;			/* Mutex to lock this session */
 	volatile gint setup;
+	volatile gint dataready;
 	volatile gint hangingup;
 	volatile gint destroyed;
 	janus_refcount ref;
@@ -790,9 +793,9 @@ static void janus_textroom_message_free(janus_textroom_message *msg) {
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
 		"s=Janus TextRoom plugin\r\n" \
 		"t=0 0\r\n" \
-		"m=application 1 DTLS/SCTP 5000\r\n" \
+		"m=application 1 UDP/DTLS/SCTP webrtc-datachannel\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
-		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
+		"a=sctp-port:5000\r\n"
 
 
 /* Error codes */
@@ -1017,7 +1020,9 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	handler_thread = g_thread_try_new("textroom handler", janus_textroom_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the TextRoom handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the TextRoom handler thread...\n",
+			error->code, error->message ? error->message : "??");
+		g_error_free(error);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_TEXTROOM_NAME);
@@ -1109,6 +1114,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_textroom_session_free);
 	g_atomic_int_set(&session->setup, 0);
+	g_atomic_int_set(&session->dataready, 0);
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -1215,6 +1221,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
@@ -1295,6 +1302,7 @@ json_t *janus_textroom_handle_admin_message(json_t *message) {
 			|| !strcasecmp(request_text, "create")
 			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "announcement")
+			|| !strcasecmp(request_text, "kick")
 			|| !strcasecmp(request_text, "destroy")) {
 		if(json_object_get(message, "textroom") == NULL)
 			json_object_set_new(message, "textroom", json_string(request_text));
@@ -1330,7 +1338,7 @@ admin_response:
 }
 
 void janus_textroom_setup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_mutex_lock(&sessions_mutex);
@@ -1387,6 +1395,19 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
 	janus_textroom_handle_incoming_request(handle, text, NULL, FALSE);
 	janus_refcount_decrease(&session->ref);
+}
+
+void janus_textroom_data_ready(janus_plugin_session *handle) {
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) ||
+			g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	/* Data channels are writable: we shouldn't send anything before this happens */
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
+	if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->hangingup))
+		return;
+	if(g_atomic_int_compare_and_exchange(&session->dataready, 0, 1)) {
+		JANUS_LOG(LOG_INFO, "[%s-%p] Data channel available\n", JANUS_TEXTROOM_PACKAGE, handle);
+	}
 }
 
 /* Helper method to handle incoming messages from the data channel */
@@ -1507,7 +1528,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_textroom_participant *top = g_hash_table_lookup(textroom->participants, to);
 			if(top) {
 				janus_refcount_increase(&top->ref);
-				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 				gateway->relay_data(top->session->handle, &data);
 				janus_refcount_decrease(&top->ref);
 				json_object_set_new(sent, to, json_true());
@@ -1527,7 +1548,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_textroom_participant *top = g_hash_table_lookup(textroom->participants, to);
 				if(top) {
 					janus_refcount_increase(&top->ref);
-					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+					janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 					gateway->relay_data(top->session->handle, &data);
 					janus_refcount_decrease(&top->ref);
 					json_object_set_new(sent, to, json_true());
@@ -1548,7 +1569,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 					janus_textroom_participant *top = value;
 					JANUS_LOG(LOG_VERB, "  >> To %s in %s: %s\n", top->username, room_id_str, message);
 					janus_refcount_increase(&top->ref);
-					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+					janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 					gateway->relay_data(top->session->handle, &data);
 					janus_refcount_decrease(&top->ref);
 				}
@@ -1697,7 +1718,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				json_object_set_new(event, "display", json_string(display_text));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
 			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
@@ -1801,7 +1822,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(event, "username", json_string(participant->username));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
 			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
@@ -1838,8 +1859,22 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		}
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
-		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list for all text rooms\n");
+		gboolean lock_room_list = TRUE;
+		if(admin_key != NULL) {
+			json_t *admin_key_json = json_object_get(root, "admin_key");
+			/* Verify admin_key if it was provided */
+			if(admin_key_json != NULL && json_is_string(admin_key_json) && strlen(json_string_value(admin_key_json)) > 0) {
+				JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+					JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+				if(error_code != 0) {
+					goto msg_response;
+				} else {
+					lock_room_list = FALSE;
+				}
+			}
+		}
+		json_t *list = json_array();
 		janus_mutex_lock(&rooms_mutex);
 		GHashTableIter iter;
 		gpointer value;
@@ -1850,8 +1885,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				continue;
 			janus_refcount_increase(&room->ref);
 			janus_mutex_lock(&room->mutex);
-			if(room->is_private) {
-				/* Skip private room */
+			if(room->is_private && lock_room_list) {
+				/* Skip private room if no valid admin_key was provided */
 				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
 				janus_mutex_unlock(&room->mutex);
 				janus_refcount_decrease(&room->ref);
@@ -2123,7 +2158,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			while(g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_textroom_participant *top = value;
 				JANUS_LOG(LOG_VERB, "  >> To %s in %s\n", top->username, room_id_str);
-				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
 				gateway->relay_data(top->session->handle, &data);
 			}
 			free(event_text);
@@ -2225,7 +2260,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_textroom_participant *top = value;
 				JANUS_LOG(LOG_VERB, "  >> To %s in %s: %s\n", top->username, room_id_str, message);
 				janus_refcount_increase(&top->ref);
-				janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
+				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 				gateway->relay_data(top->session->handle, &data);
 				janus_refcount_decrease(&top->ref);
 			}
@@ -2721,7 +2756,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(event, "room", string_ids ? json_string(textroom->room_id_str) : json_integer(textroom->room_id));
 			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
-			janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
+			janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = event_text, .length = strlen(event_text) };
 			gateway->relay_data(handle, &data);
 			/* Broadcast */
 			GHashTableIter iter;
@@ -2786,7 +2821,7 @@ msg_response:
 					/* Reply via data channels */
 					char *reply_text = json_dumps(reply, json_format);
 					json_decref(reply);
-					janus_plugin_data data = { .label = NULL, .binary = FALSE, .buffer = reply_text, .length = strlen(reply_text) };
+					janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = reply_text, .length = strlen(reply_text) };
 					gateway->relay_data(handle, &data);
 					free(reply_text);
 				} else {
@@ -2811,7 +2846,7 @@ void janus_textroom_hangup_media(janus_plugin_session *handle) {
 }
 
 static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_TEXTROOM_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_textroom_session *session = janus_textroom_lookup_session(handle);
@@ -2823,6 +2858,7 @@ static void janus_textroom_hangup_media_internal(janus_plugin_session *handle) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->hangingup, 0, 1))
 		return;
+	g_atomic_int_set(&session->dataready, 0);
 	/* Get rid of all participants */
 	janus_mutex_lock(&session->mutex);
 	GList *list = NULL;

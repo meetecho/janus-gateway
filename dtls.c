@@ -135,7 +135,7 @@ gchar *janus_dtls_get_local_fingerprint(void) {
 }
 
 
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 /*
  * DTLS locking stuff to make OpenSSL thread safe (not needed for 1.1.0)
  *
@@ -373,7 +373,7 @@ const char *janus_get_ssl_version(void) {
 gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const char *password,
 		const char *ciphers, guint16 timeout, gboolean rsa_private_key, gboolean accept_selfsigned) {
 	const char *crypto_lib = NULL;
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 #if defined(LIBRESSL_VERSION_NUMBER)
 	crypto_lib = "LibreSSL";
 #else
@@ -399,7 +399,7 @@ gint janus_dtls_srtp_init(const char *server_pem, const char *server_key, const 
 #endif
 
 	/* Go on and create the DTLS context */
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 #if defined(LIBRESSL_VERSION_NUMBER)
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
 #else
@@ -534,7 +534,7 @@ void janus_dtls_srtp_cleanup(void) {
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 	}
-#if JANUS_USE_OPENSSL_PRE_1_1_API
+#if JANUS_USE_OPENSSL_PRE_1_1_API && !defined(HAVE_BORINGSSL)
 	g_free(janus_dtls_locks);
 #endif
 }
@@ -1031,10 +1031,33 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
 }
 
 #ifdef HAVE_SCTP
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len) {
+void janus_dtls_sctp_data_ready(janus_dtls_srtp *dtls) {
+	if(dtls == NULL)
+		return;
+	janus_ice_component *component = (janus_ice_component *)dtls->component;
+	if(component == NULL) {
+		JANUS_LOG(LOG_ERR, "No component...\n");
+		return;
+	}
+	janus_ice_stream *stream = component->stream;
+	if(!stream) {
+		JANUS_LOG(LOG_ERR, "No stream...\n");
+		return;
+	}
+	janus_ice_handle *handle = stream->handle;
+	if(!handle || !handle->agent || !dtls->write_bio) {
+		JANUS_LOG(LOG_ERR, "No handle...\n");
+		return;
+	}
+	janus_ice_notify_data_ready(handle);
+}
+
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
-	janus_sctp_send_data(dtls->sctp, label, textdata, buf, len);
+	janus_refcount_increase(&dtls->sctp->ref);
+	janus_sctp_send_data(dtls->sctp, label, protocol, textdata, buf, len);
+	janus_refcount_decrease(&dtls->sctp->ref);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
@@ -1048,7 +1071,7 @@ int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	return res;
 }
 
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, gboolean textdata, char *buf, int len) {
+void janus_dtls_notify_sctp_data(janus_dtls_srtp *dtls, char *label, char *protocol, gboolean textdata, char *buf, int len) {
 	if(dtls == NULL || buf == NULL || len < 1)
 		return;
 	janus_ice_component *component = (janus_ice_component *)dtls->component;
@@ -1066,7 +1089,7 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *label, gboolean textdat
 		JANUS_LOG(LOG_ERR, "No handle...\n");
 		return;
 	}
-	janus_ice_incoming_data(handle, label, textdata, buf, len);
+	janus_ice_incoming_data(handle, label, protocol, textdata, buf, len);
 }
 #endif
 

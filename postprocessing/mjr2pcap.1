@@ -7,7 +7,7 @@ mjr2pcap \- Helper tool to convert a Janus recordings to pcap format.
 .IR destination.pcap
 .SH DESCRIPTION
 .B mjr2pcap
-is a simple utility that allows you remove extract RTP packets from Janus recordings and save them to a .pcap file instead. Notice that network levels are simulated, and so are timestamps for when the packets have really been received, since that info is not stored in .mjr files. As such, its main purpose is helping analyze RTP packets, rather than investigate network issues.
+is a simple utility that allows you to extract RTP packets from Janus recordings and save them to a .pcap file instead. Notice that network levels are simulated, and so are timestamps for when the packets have really been received, since that info is not stored in .mjr files. As such, its main purpose is helping analyze RTP packets, rather than investigate network issues.
 .TP
 The tool requires two parameters: the path to the .mjr file to read, and a path to the target .pcap file. Notice that an attempt to process a non-RTP recording will result in an error.
 .SH EXAMPLES

@@ -185,6 +185,34 @@ function incomingBinaryData(id, buf, len) {
 	relayBinaryData(id, buf, len);
 }
 
+function dataReady(id) {
+	// This callback is invoked when the datachannel first becomes
+	// available (meaning you should never send data before it has been
+	// invoked at least once), but also when the datachannel is ready to
+	// receive more data (buffers are empty), which means it can be used
+	// to throttle outgoing data and not send too much at a time.
+}
+
+function substreamChanged(id, substream) {
+	// If simulcast is used, this callback is invoked when the substream
+	// we're sending to this session changes: 0=low, 1=medium, 2=high
+	console.log("Substream changed for session " + id + ": " + substream);
+	// Let's send an event so that the user is aware
+	var event = { echotest: "event", videocodec: "vp8", substream: substream };
+	var jsonevent = JSON.stringify(event);
+	pushEvent(id, null, jsonevent, null);
+}
+
+function temporalLayerChanged(id, temporal) {
+	// If simulcast is used, this callback is invoked when the temporal
+	// layer we're sending to this session changes: 0=lowfps, 1=maxfps
+	console.log("Temporal layer changed for session " + id + ": " + temporal);
+	// Let's send an event so that the user is aware
+	var event = { echotest: "event", videocodec: "vp8", temporal: temporal };
+	var jsonevent = JSON.stringify(event);
+	pushEvent(id, null, jsonevent, null);
+}
+
 function resumeScheduler() {
 	// This is the function responsible for resuming coroutines associated
 	// with whatever is relevant to the JS script, e.g., for this script,
@@ -232,11 +260,27 @@ function processRequest(id, msg) {
 	if(msg["bitrate"] !== null && msg["bitrate"] !== undefined) {
 		setBitrate(id, msg["bitrate"]);
 	}
+	if(msg["substream"] !== null && msg["substream"] !== undefined) {
+		setSubstream(id, msg["substream"]);
+		sendPli(id);
+	}
+	if(msg["temporal"] !== null && msg["temporal"] !== undefined) {
+		setTemporalLayer(id, msg["temporal"]);
+		sendPli(id);
+	}
+	if(msg["keyframe"] !== null && msg["keyframe"] !== undefined) {
+		sendPli(id);
+	}
 	if(msg["record"] === true) {
 		var fnbase = msg["filename"];
 		if(!fnbase) {
 			fnbase = "duktape-echotest-" + id + "-" + new Date().getTime();
 		}
+		// For the sake of simplicity, we're assuming Opus/VP8 here; in
+		// practice, you'll need to check what was negotiated. If you
+		// want the codec-specific info to be saved to the .mjr file as
+		// well, you'll need to add the '/fmtp=<info>' to the codec name,
+		// e.g.:    "vp9/fmtp=profile-id=2"
 		startRecording(id,
 			"audio", "opus", "/tmp", fnbase + "-audio",
 			"video", "vp8", "/tmp", fnbase + "-video",
@@ -263,7 +307,9 @@ function processAsync(task) {
 	}
 	var offer = sdpUtils.parse(jsep.sdp)
 	console.log("Got offer:", offer);
-	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true });
+	var answer = sdpUtils.generateAnswer(offer, { audio: true, video: true, data: true,
+		audioCodec: msg["audiocodec"], videoCodec: msg["videocodec"],
+		vp9Profile: msg["videoprofile"], h264Profile: msg["videoprofile"] });
 	console.log("Generated answer:", answer);
 	console.log("Processing request:", msg);
 	processRequest(id, msg);

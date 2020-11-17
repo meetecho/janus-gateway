@@ -20,7 +20,7 @@
  * these requests addressed to Janus should include as part of their payload,
  * when needed, additional pieces of information like \c session_id and
  * \c handle_id. That is, where you'd send a Janus request related to a
- * specific session to the \c /janus/<session> path, with RabbitMQ
+ * specific session to the \c /janus/\<session> path, with RabbitMQ
  * you'd have to send the same request with an additional \c session_id
  * field in the JSON payload.
  * \note When you create a session using RabbitMQ, a subscription to the
@@ -70,6 +70,7 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 void janus_rabbitmq_session_created(janus_transport_session *transport, guint64 session_id);
 void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout, gboolean claimed);
 void janus_rabbitmq_session_claimed(janus_transport_session *transport, guint64 session_id);
+json_t *janus_rabbitmq_query_transport(json_t *request);
 
 
 /* Transport setup */
@@ -93,6 +94,8 @@ static janus_transport janus_rabbitmq_transport =
 		.session_created = janus_rabbitmq_session_created,
 		.session_over = janus_rabbitmq_session_over,
 		.session_claimed = janus_rabbitmq_session_claimed,
+
+		.query_transport = janus_rabbitmq_query_transport,
 	);
 
 /* Transport creator */
@@ -109,11 +112,24 @@ static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
-/* FIXME: Should it be configurable? */
 #define JANUS_RABBITMQ_EXCHANGE_TYPE "fanout"
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
+/* Parameter validation (for tweaking and queries via Admin API) */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"events", JANUS_JSON_BOOL, 0},
+	{"json", JSON_STRING, 0},
+};
+/* Error codes (for the tweaking and queries via Admin API) */
+#define JANUS_RABBITMQ_ERROR_INVALID_REQUEST		411
+#define JANUS_RABBITMQ_ERROR_MISSING_ELEMENT		412
+#define JANUS_RABBITMQ_ERROR_INVALID_ELEMENT		413
+#define JANUS_RABBITMQ_ERROR_UNKNOWN_ERROR			499
 
 
 /* RabbitMQ client session: we only create a single one as of now */
@@ -301,18 +317,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
-
-
-
-
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange_type");
 		if(!item || !item->value) {
-			janus_exchange_type = JANUS_RABBITMQ_EXCHANGE_TYPE;
+			janus_exchange_type = (char *)JANUS_RABBITMQ_EXCHANGE_TYPE;
 		} else {
 			janus_exchange_type = g_strdup(item->value);
 		}
-
-
 		item = janus_config_get(config, config_general, janus_config_type_item, "janus_exchange");
 		if(!item || !item->value) {
 			JANUS_LOG(LOG_INFO, "Missing name of outgoing exchange for RabbitMQ integration, using default\n");
@@ -494,7 +504,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->in_thread = g_thread_try_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -503,7 +515,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmq_client->out_thread = g_thread_try_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n",
+				error->code, error->message ? error->message : "??");
+			g_error_free(error);
 			janus_transport_session_destroy(rmq_session);
 			g_free(rmq_client);
 			janus_config_destroy(config);
@@ -654,6 +668,83 @@ void janus_rabbitmq_session_over(janus_transport_session *transport, guint64 ses
 void janus_rabbitmq_session_claimed(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care about this. We should start receiving messages from the core about this session: no action necessary */
 	/* FIXME Is the above statement accurate? Should we care? Unlike the HTTP transport, there is no hashtable to update */
+}
+
+json_t *janus_rabbitmq_query_transport(json_t *request) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}
+	/* We can use this request to dynamically change the behaviour of
+	 * the transport plugin, and/or query for some specific information */
+	json_t *response = json_object();
+	int error_code = 0;
+	char error_cause[512];
+	JANUS_VALIDATE_JSON_OBJECT(request, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RABBITMQ_ERROR_MISSING_ELEMENT, JANUS_RABBITMQ_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto plugin_response;
+	/* Get the request */
+	const char *request_text = json_string_value(json_object_get(request, "request"));
+	if(!strcasecmp(request_text, "configure")) {
+		/* We only allow for the configuration of some basic properties:
+		 * changing more complex things (e.g., port to bind to, etc.)
+		 * would likely require restarting backends, so just too much */
+		JANUS_VALIDATE_JSON_OBJECT(request, configure_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_RABBITMQ_ERROR_MISSING_ELEMENT, JANUS_RABBITMQ_ERROR_INVALID_ELEMENT);
+		/* Check if we now need to send events to handlers */
+		json_object_set_new(response, "result", json_integer(200));
+		json_t *notes = NULL;
+		gboolean events = json_is_true(json_object_get(request, "events"));
+		if(events && !gateway->events_is_enabled()) {
+			/* Notify that this will be ignored */
+			notes = json_array();
+			json_array_append_new(notes, json_string("Event handlers disabled at the core level"));
+			json_object_set_new(response, "notes", notes);
+		}
+		if(events != notify_events) {
+			notify_events = events;
+			if(!notify_events && gateway->events_is_enabled()) {
+				JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_RABBITMQ_NAME);
+			}
+		}
+		const char *indentation = json_string_value(json_object_get(request, "json"));
+		if(indentation != NULL) {
+			if(!strcasecmp(indentation, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(indentation, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', ignoring tweak\n", indentation);
+				/* Notify that this will be ignored */
+				if(notes == NULL) {
+					notes = json_array();
+					json_object_set_new(response, "notes", notes);
+				}
+				json_array_append_new(notes, json_string("Ignored unsupported indentation format"));
+			}
+		}
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_RABBITMQ_ERROR_INVALID_REQUEST;
+		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
+	}
+
+plugin_response:
+		{
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
+			}
+			return response;
+		}
 }
 
 
