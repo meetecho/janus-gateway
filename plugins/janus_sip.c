@@ -5092,9 +5092,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, notify, NULL);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(notify);
-			/* Sending a 200 back will trigger a 'Responding to a Non-Existing Request' error
-			 * in sofia-sip since response is already handled internally */
-			//nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 			break;
 		}
 		case nua_i_options:
