@@ -1358,11 +1358,9 @@ static gint janus_pp_skew_compensate_audio(janus_pp_frame_packet *pkt, janus_pp_
 	/* Fix header timestamp considering the active offset */
 	guint64 fixed_rtp_ts = context->last_ts + context->ts_offset;
 	pkt->ts = fixed_rtp_ts;
-	pkt->header->timestamp = htonl(fixed_rtp_ts);
 	/* Fix header sequence number considering the total offset */
 	guint16 fixed_rtp_seq = context->last_seq + context->seq_offset;
 	pkt->seq = fixed_rtp_seq;
-	pkt->header->seq_number = htons(fixed_rtp_seq);
 
 	return exit_status;
 }
