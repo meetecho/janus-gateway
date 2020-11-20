@@ -454,7 +454,7 @@ endif
 if ENABLE_PLUGIN_SIP
 plugin_LTLIBRARIES += plugins/libjanus_sip.la
 plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
-plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS)
+plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS) $(LIBSRTP_CFLAGS)
 plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LIBS)
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.jcfg.sample
