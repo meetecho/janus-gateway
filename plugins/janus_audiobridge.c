@@ -1829,8 +1829,7 @@ static int janus_audiobridge_create_udp_socket_if_needed(janus_audiobridge_room 
 		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %s)\n", audiobridge->room_id_str);
 		return -1;
 	}
-	int v6only = 0;
-	if(setsockopt(audiobridge->rtp_udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0) {
+	if(setsockopt(audiobridge->rtp_udp_sock, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0}, sizeof(int)) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not open UDP socket for RTP forwarder (room %s)\n", audiobridge->room_id_str);
 		return -1;
 	}
