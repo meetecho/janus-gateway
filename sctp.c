@@ -259,26 +259,19 @@ janus_sctp_association *janus_sctp_association_create(janus_dtls_srtp *dtls, jan
 		return NULL;
 	}
 	/* Set SO_LINGER */
-	struct linger linger_opt;
-	linger_opt.l_onoff = 1;
-	linger_opt.l_linger = 0;
-	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt))) {
+	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &(struct linger){.l_onoff = 1, .l_linger = 0}, sizeof(struct linger))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER (%d)\n", sctp->handle_id, errno);
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Allow resetting streams */
-	struct sctp_assoc_value av;
-	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ;
-	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
+	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &(struct sctp_assoc_value){.assoc_id = SCTP_ALL_ASSOC, .assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ}, sizeof(struct sctp_assoc_value)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET (%d)\n", sctp->handle_id, errno);
 		janus_sctp_association_destroy(sctp);
 		return NULL;
 	}
 	/* Disable Nagle */
-	uint32_t nodelay = 1;
-	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
+	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &(uint32_t){ 1 }, sizeof(uint32_t))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY (%d)\n", sctp->handle_id, errno);
 		janus_sctp_association_destroy(sctp);
 		return NULL;
