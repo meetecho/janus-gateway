@@ -5415,8 +5415,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 					break;
 				}
 #ifdef IP_MULTICAST_ALL
-				int mc_all = 0;
-				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
+				if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, &(int){0}, sizeof(int))) < 0) {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed... %d (%s)\n",
 						mountpointname, listenername, errno, strerror(errno));
 					close(fd);
