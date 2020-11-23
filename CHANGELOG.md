@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
+## [v0.10.8] - 2020-11-23
+
+- Added differentiation between IPv4 and IPv6 NAT-1-1 addresses [[PR-2423](#2423)]
+- Made NACK buffer cleanup on outgoing keyframe disabled by default but configurable [[PR-2402](#2402)]
+- Added support for simulcast and TWCC to Duktape and Lua plugins [[PR-2409](#2409)]
+- Fixed rare crash in AudioBridge plugin when leaving a room [[Issue-2432](#2432)]
+- Fixed codec names not being updated in the SIP plugin after renegotiations (thanks @ihusejnovic!) [[PR-2417](#2417)]
+- Fixed crash in SIP plugin when handling REGISTER challenges without WWW-Authenticate headers [[Issue-2419](#2419)]
+- Added option to SIP plugin to let users CANCEL pending transactions without waiting for a 1xx [[PR-2434](#2434)]
+- Added option to enforce CORS on the server side in both HTTP and WebSocket transport plugins [[PR-2410](#2410)]
+- Other smaller fixes and improvements (thanks to all who contributed pull requests and reported issues!)
+
 ## [v0.10.7] - 2020-10-30
 
 - Fixed SDP negotiation when client uses max-bundle [[Issue-2390](#2390)]
