@@ -57,6 +57,9 @@ var spinner = null;
 var myroom = 1234;	// Demo room
 if(getQueryStringValue("room") !== "")
 	myroom = parseInt(getQueryStringValue("room"));
+var stereo = false;
+if(getQueryStringValue("stereo") !== "")
+	stereo = (getQueryStringValue("stereo") === "true");
 var myusername = null;
 var myid = null;
 var webrtcUp = false;
@@ -146,7 +149,13 @@ $(document).ready(function() {
 													// Publish our stream
 													mixertest.createOffer(
 														{
-															media: { video: false},	// This is an audio only room
+															media: { video: false },	// This is an audio only room
+															customizeSdp: function(jsep) {
+																if(stereo && jsep.sdp.indexOf("stereo=1") == -1) {
+																	// Make sure that our offer contains stereo too
+																	jsep.sdp = jsep.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1");
+																}
+															},
 															success: function(jsep) {
 																Janus.debug("Got SDP!", jsep);
 																var publish = { request: "configure", muted: false };
