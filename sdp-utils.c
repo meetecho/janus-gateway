@@ -1282,7 +1282,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				char *extmap = g_hash_table_lookup(audio_extids, iter->data);
 				if(extmap != NULL) {
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;
@@ -1320,7 +1320,7 @@ janus_sdp *janus_sdp_generate_offer(const char *name, const char *address, ...) 
 				char *extmap = g_hash_table_lookup(video_extids, iter->data);
 				if(extmap != NULL) {
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d %s\r\n", GPOINTER_TO_INT(iter->data), extmap);
+						"%d %s", GPOINTER_TO_INT(iter->data), extmap);
 					janus_sdp_attribute_add_to_mline(m, a);
 				}
 				iter = iter->next;

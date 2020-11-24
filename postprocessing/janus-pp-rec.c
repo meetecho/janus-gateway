@@ -592,13 +592,15 @@ int main(int argc, char *argv[])
 						exit(1);
 					}
 					ext_n = json_object_size(ext_json);
-					ext = g_new(char *, ext_n);
-					const char *ext_id;
-					json_t *ext_value;
-					i = 0;
-					json_object_foreach(ext_json, ext_id, ext_value) {
-						sprintf(prebuffer, "%s%s", ext_id, json_string_value(ext_value));
-						ext[i++] = g_strdup(prebuffer);
+					if(ext_n > 0) {
+						ext = g_new(char *, ext_n);
+						const char *ext_id;
+						json_t *ext_value;
+						i = 0;
+						json_object_foreach(ext_json, ext_id, ext_value) {
+							sprintf(prebuffer, "%s%s", ext_id, json_string_value(ext_value));
+							ext[i++] = g_strdup(prebuffer);
+						}
 					}
 				}
 				/* When was the file created? */
@@ -666,9 +668,9 @@ int main(int argc, char *argv[])
 	uint16_t rtp_header_len, rtp_read_n;
 	/* Set extmap ids from attr list if not set */
 	for(i = 0; i < ext_n; i++) {
-		if(audio_level_extmap_id < 1 && strstr(ext[i], JANUS_RTP_EXTMAP_AUDIO_LEVEL))
+		if(audio_level_extmap_id < 1 && ext[i] != NULL && strstr(ext[i], JANUS_RTP_EXTMAP_AUDIO_LEVEL))
 			audio_level_extmap_id = atoi(ext[i]);
-		if(video_orient_extmap_id < 1 && strstr(ext[i], JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
+		if(video_orient_extmap_id < 1 && ext[i] != NULL && strstr(ext[i], JANUS_RTP_EXTMAP_VIDEO_ORIENTATION))
 			video_orient_extmap_id = atoi(ext[i]);
 	}
 	/* Start loop */

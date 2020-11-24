@@ -461,6 +461,10 @@ static void janus_recordplay_map_extmaps(GHashTable *extmaps, const GList *attri
 	g_hash_table_remove_all(extmaps);
 	for(; attributes != NULL; attributes = attributes->next) {
 		janus_sdp_attribute *attr = (janus_sdp_attribute *)attributes->data;
+		if(attr->name == NULL || attr->value == NULL) {
+			JANUS_LOG(LOG_WARN, "Malformed NULL attribute\n");
+			continue;
+		}
 		if(!strcasecmp(attr->name, "extmap")) {
 			size_t id_len = strcspn(attr->value, " /");
 			if(!id_len || id_len == strlen(attr->value)) {
@@ -485,8 +489,13 @@ static void janus_recordplay_copy_extmaps(GHashTable *dst, GHashTable *src) {
 	GHashTableIter iter;
 	char *ext_id, *ext_info;
 	g_hash_table_iter_init(&iter, src);
-	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info))
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
+		if(ext_id == NULL || ext_info == NULL) {
+			JANUS_LOG(LOG_WARN, "Extmap has null fields\n");
+			continue;
+		}
 		g_hash_table_insert(dst, g_strdup(ext_id), g_strdup(ext_info));
+	}
 }
 
 /*! \brief Helper function to update extmap attributes in media
@@ -496,15 +505,48 @@ static void janus_recordplay_copy_extmaps(GHashTable *dst, GHashTable *src) {
 static void janus_recordplay_regenerate_extmaps(janus_sdp_mline *media, GHashTable *extmaps) {
 	if(media == NULL || extmaps == NULL)
 		return;
-	/* Consolidate extmaps */
-	GHashTable *mapped = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-	janus_recordplay_map_extmaps(mapped, media->attributes);
+	GHashTable *id2info = g_hash_table_new(g_str_hash, g_str_equal);
+	GHashTable *info2id = g_hash_table_new(g_str_hash, g_str_equal);
+	GHashTable *generated = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	GHashTableIter iter;
 	char *ext_id, *ext_info;
+	/* Add saved extmaps */
 	g_hash_table_iter_init(&iter, extmaps);
-	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info))
-		g_hash_table_insert(mapped, g_strdup(ext_id), g_strdup(ext_info));
-	/* Remove existing extmaps */
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
+		if(ext_id == NULL || ext_info == NULL) {
+			JANUS_LOG(LOG_WARN, "Extmap has null fields\n");
+			continue;
+		}
+		g_hash_table_insert(id2info, ext_id, ext_info);
+		g_hash_table_insert(info2id, ext_info, ext_id);
+	}
+	/* Add generated extmaps */
+	janus_recordplay_map_extmaps(generated, media->attributes);
+	g_hash_table_iter_init(&iter, generated);
+	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
+		if(ext_id == NULL || ext_info == NULL) {
+			JANUS_LOG(LOG_WARN, "Extmap has null fields\n");
+			continue;
+		}
+		int id = atoi(ext_id);
+		if(id < 1 || id > 14) {
+			/* 0 is padding and 15 is reserved */
+			JANUS_LOG(LOG_WARN, "Extmap has invalid id %s\n", ext_id);
+		} else if(g_hash_table_contains(info2id, ext_info)) {
+			/* Extmap info collision; use saved id as it's renegotiated */
+			JANUS_LOG(LOG_INFO, "Extmap with value '%s' already exists, skipping\n", ext_info);
+		} else if(g_hash_table_contains(id2info, ext_id)) {
+			/* Extmap id collision; use generated extamp as those have higher priority */
+			JANUS_LOG(LOG_INFO, "Extmap with id %s already exists, overwriting\n", ext_id);
+			g_hash_table_remove(info2id, g_hash_table_lookup(id2info, ext_id));
+			g_hash_table_insert(info2id, ext_info, ext_id);
+			g_hash_table_insert(id2info, ext_id, ext_info);
+		} else {
+			g_hash_table_insert(id2info, ext_id, ext_info);
+			g_hash_table_insert(info2id, ext_info, ext_id);
+		}
+	}
+	/* Regenerate media extmaps */
 	GList *node, *next;
 	for(node = media->attributes; node != NULL; node = next) {
 		janus_sdp_attribute *attr = (janus_sdp_attribute *)node->data;
@@ -514,13 +556,15 @@ static void janus_recordplay_regenerate_extmaps(janus_sdp_mline *media, GHashTab
 			media->attributes = g_list_remove_link(media->attributes, node);
 		}
 	}
-	/* Add consolidated extmaps */
-	g_hash_table_iter_init(&iter, extmaps);
+	g_hash_table_iter_init(&iter, id2info);
 	while(g_hash_table_iter_next(&iter, (gpointer *)&ext_id, (gpointer *)&ext_info)) {
 		janus_sdp_attribute *attr = janus_sdp_attribute_create("extmap", "%s%s", ext_id, ext_info);
 		media->attributes = g_list_prepend(media->attributes, attr);
 	}
-	g_hash_table_destroy(mapped);
+	/* Cleanup */
+	g_hash_table_destroy(id2info);
+	g_hash_table_destroy(info2id);
+	g_hash_table_destroy(generated);
 }
 
 
@@ -693,8 +737,13 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				const char *ext_id;
 				if(ext_json && json_is_object(ext_json)) {
 					g_hash_table_remove_all(extmaps);
-					json_object_foreach(ext_json, ext_id, ext_info)
-						g_hash_table_insert(extmaps, g_strdup(ext_id), (gpointer)json_string_value(ext_info));
+					json_object_foreach(ext_json, ext_id, ext_info) {
+						if(ext_id == NULL || ext_info == NULL) {
+							JANUS_LOG(LOG_WARN, "Extmap has null fields\n");
+							continue;
+						}
+						g_hash_table_insert(extmaps, g_strdup(ext_id), g_strdup(json_string_value(ext_info)));
+					}
 				}
 				/* What codec was used? */
 				json_t *codec = json_object_get(info, "c");
