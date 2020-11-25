@@ -75,6 +75,8 @@ Usage: janus-pp-rec [OPTIONS] source.mjr [destination.[opus|wav|webm|mp4|srt]]
                                   of the file  (default=off)
   -S, --audioskew=milliseconds  Time threshold to trigger an audio skew
                                   compensation, disabled if 0 (default=0)
+  -F, --fec                     For opus content, try to use in-band FEC data
+                                  to recover lost packets (default=off)
 \endverbatim
  *
  * \note This utility does not do any form of transcoding. It just
@@ -136,6 +138,7 @@ static int ignore_first_packets = 0;
 #define DEFAULT_AUDIO_SKEW_TH 0
 static int audioskew_th = DEFAULT_AUDIO_SKEW_TH;
 
+static gboolean enable_opus_fec = FALSE;
 
 /* Signal handler */
 static void janus_pp_handle_signal(int signum) {
@@ -225,6 +228,8 @@ int main(int argc, char *argv[])
 		if(val >= 0)
 			audioskew_th = val;
 	}
+	if(args_info.fec_given)
+		enable_opus_fec = TRUE;
 
 	/* Evaluate arguments to find source and target */
 	char *source = NULL, *destination = NULL, *setting = NULL;
@@ -1040,7 +1045,7 @@ int main(int argc, char *argv[])
 
 	if(!video && !data) {
 		if(opus) {
-			if(janus_pp_opus_create(destination, metadata) < 0) {
+			if(janus_pp_opus_create(destination, enable_opus_fec, metadata) < 0) {
 				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
 				cmdline_parser_free(&args_info);
 				exit(1);

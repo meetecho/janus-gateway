@@ -610,7 +610,7 @@ janus_pp_rec_CFLAGS = \
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
-	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
+	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) $(OPUS_LDFLAGS) $(OPUS_LIBS) \
 	$(NULL)
 
 BUILT_SOURCES += postprocessing/pp-cmdline.c postprocessing/pp-cmdline.h

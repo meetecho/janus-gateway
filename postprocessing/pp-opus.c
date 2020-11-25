@@ -26,10 +26,13 @@
 #include "../debug.h"
 #include "../version.h"
 
+#define	OPUS_SAMPLES	960
+#define	BUFFER_SAMPLES	OPUS_SAMPLES*6
 
 /* OGG/Opus helpers */
 FILE *ogg_file = NULL;
 ogg_stream_state *stream = NULL;
+gboolean use_fec = FALSE;
 
 void le32(unsigned char *p, int v);
 void le16(unsigned char *p, int v);
@@ -41,7 +44,7 @@ int ogg_write(void);
 int ogg_flush(void);
 
 
-int janus_pp_opus_create(char *destination, char *metadata) {
+int janus_pp_opus_create(char *destination, gboolean enable_opus_fec, char *metadata) {
 	stream = g_malloc0(sizeof(ogg_stream_state));
 	if(ogg_stream_init(stream, rand()) < 0) {
 		JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
@@ -56,6 +59,7 @@ int janus_pp_opus_create(char *destination, char *metadata) {
 	/* Write stream headers */
 	ogg_packet *op = op_opushead();
 	ogg_stream_packetin(stream, op);
+	use_fec = enable_opus_fec;
 	op_free(op);
 	op = op_opustags(metadata);
 	ogg_stream_packetin(stream, op);
@@ -72,31 +76,87 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
 	uint64_t pos = 0, nextPos = 0;
 	uint8_t *buffer = g_malloc0(1500);
+
+	int error = 0;
+	OpusDecoder *decoder = NULL;
+	OpusEncoder *encoder = NULL;
+	opus_int16 *pcm_data = NULL, *out_buffer = NULL;
+	if(use_fec) {
+		decoder = opus_decoder_create(48000, 1, &error);
+		encoder = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &error);
+		pcm_data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
+		out_buffer = g_malloc0(OPUS_SAMPLES*sizeof(opus_int16));
+	}
+
 	while(*working && tmp != NULL) {
+		/* Discontinuity detected */
 		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
-			/* FIXME Write the silence packet N times to fill in the gaps */
-			ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, sizeof(opus_silence));
-			/* use ts differ to insert silence packet */
-			int silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
-			pos = (tmp->prev->ts - list->ts) / 48 / 20 + 1;
-			JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silences (count=%d)\n", pos, silence_count);
-			int i=0;
-			for(i=0; i<silence_count; i++) {
-				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
-				if(tmp->next != NULL)
-					nextPos = (tmp->next->ts - list->ts) / 48 / 20;
-				if(pos >= nextPos) {
-					JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos);
-					break;
+
+			if(!use_fec) {
+				/* If not using FEC, write the silence packet N times to fill in the gaps */
+				ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, sizeof(opus_silence));
+				/* use ts differ to insert silence packet */
+				int silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
+				pos = (tmp->prev->ts - list->ts) / 48 / 20 + 1;
+				JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silences (count=%d)\n", pos, silence_count);
+				int i=0;
+				for(i=0; i<silence_count; i++) {
+					pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
+					if(tmp->next != NULL)
+						nextPos = (tmp->next->ts - list->ts) / 48 / 20;
+					if(pos >= nextPos) {
+						JANUS_LOG(LOG_WARN, "[SKIP] pos: %06" SCNu64 ", skipping remaining silence\n", pos);
+						break;
+					}
+					op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
+					ogg_stream_packetin(stream, op);
+					ogg_write();
 				}
-				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
-				ogg_stream_packetin(stream, op);
-				ogg_write();
+				ogg_flush();
+				g_free(op);
+			} else {
+				/* Using FEC, try to recover missing packets */
+				len = 0;
+				uint16_t gap_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
+				/* RTP payload */
+				offset = tmp->offset+12+tmp->skip;
+				fseek(file, offset, SEEK_SET);
+				len = tmp->len-12-tmp->skip;
+				if(len < 1) {
+					tmp = tmp->next;
+					continue;
+				}
+				bytes = fread(buffer, sizeof(char), len, file);
+				if(bytes != len) {
+					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
+					tmp = tmp->next;
+					continue;
+				}
+				pos = (tmp->prev->ts - list->ts) / 48 / 20 + 1;
+				JANUS_LOG(LOG_WARN, "[FEC] pos: %06"SCNu64", recovering packets (count=%d)\n", pos, gap_count);
+				for(uint16_t i=1; i<=gap_count ; i++) {
+					pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
+					memset(pcm_data, 0, BUFFER_SAMPLES*2);
+					memset(out_buffer, 0, OPUS_SAMPLES*2);
+					/* Attempt to decode with in-band FEC from next packet */
+					int decoded_samples = opus_decode(decoder, i == gap_count ? buffer : NULL, bytes, pcm_data, BUFFER_SAMPLES, 1);
+					if(decoded_samples < 0) {
+						JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", decoded_samples, opus_strerror(decoded_samples));
+						continue;
+					}
+					int encoded_bytes = opus_encode(encoder, pcm_data, OPUS_SAMPLES, (unsigned char *)out_buffer, 1500-12);
+					ogg_packet *op = op_from_pkt((const unsigned char *)out_buffer, encoded_bytes);
+					JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
+							pos, encoded_bytes, 0, tmp->prev->seq+i, (uint16_t)1, tmp->prev->ts+(i*OPUS_SAMPLES), ((tmp->prev->ts+(i*OPUS_SAMPLES))-list->ts)/48000);
+					op->granulepos = OPUS_SAMPLES*(pos); /* FIXME: get this from the toc byte */
+					ogg_stream_packetin(stream, op);
+					g_free(op);
+					ogg_write();
+					ogg_flush();
+				}
 			}
-			ogg_flush();
-			g_free(op);
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
@@ -129,6 +189,14 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			last_seq = tmp->seq;
 			steps++;
 		}
+		if(use_fec) {
+			memset(pcm_data, 0, BUFFER_SAMPLES*2);
+			int decoded_samples = opus_decode(decoder, buffer, bytes, pcm_data, BUFFER_SAMPLES, 0);
+			if(decoded_samples < 0) {
+				JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", decoded_samples, opus_strerror(decoded_samples));
+				continue;
+			}
+		}
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		pos = (tmp->ts - list->ts) / 48 / 20 + 1;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
@@ -140,6 +208,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		ogg_flush();
 		tmp = tmp->next;
 	}
+
+	g_free(encoder);
+	g_free(decoder);
+	g_free(pcm_data);
+	g_free(out_buffer);
 	g_free(buffer);
 	return 0;
 }
